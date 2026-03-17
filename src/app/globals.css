@@ -200,6 +200,7 @@ textarea {
 .badge-accepted { background: var(--success-light); color: var(--success); }
 .badge-rejected { background: var(--error-light); color: var(--error); }
 .badge-expired { background: var(--bg-subtle); color: var(--text-tertiary); }
+.badge-deleted { background: var(--warning-light); color: var(--warning); }
 
 /* ===== Responsive ===== */
 

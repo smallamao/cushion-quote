@@ -2,12 +2,14 @@
 
 import { Copy, Edit, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CHANNEL_LABELS } from "@/lib/constants";
 import type { QuoteRecord, QuoteStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -22,12 +24,18 @@ const STATUS_MAP: Record<QuoteStatus, { label: string; className: string }> = {
   accepted: { label: "已接受", className: "badge-accepted" },
   rejected: { label: "已拒絕", className: "badge-rejected" },
   expired: { label: "已過期", className: "badge-expired" },
+  deleted: { label: "已刪除", className: "badge-deleted" },
 };
 
 export function QuotesClient() {
   const router = useRouter();
   const [quotes, setQuotes] = useState<QuoteRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchText, setSearchText] = useState("");
+  const [filterStatus, setFilterStatus] = useState<QuoteStatus | "all">("all");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,12 +97,32 @@ export function QuotesClient() {
     }
   }
 
-  const sorted = [...quotes].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
+  const filtered = useMemo(() => {
+    return quotes.filter((q) => {
+      if (!showDeleted && q.status === "deleted") return false;
+
+      if (searchText) {
+        const s = searchText.toLowerCase();
+        const match = [q.clientName, q.projectName, q.quoteId].some((field) =>
+          field.toLowerCase().includes(s),
+        );
+        if (!match) return false;
+      }
+
+      if (filterStatus !== "all" && q.status !== filterStatus) return false;
+      if (filterDateFrom && q.quoteDate < filterDateFrom) return false;
+      if (filterDateTo && q.quoteDate > filterDateTo) return false;
+      return true;
+    });
+  }, [filterDateFrom, filterDateTo, filterStatus, quotes, searchText, showDeleted]);
+
+  const sorted = useMemo(
+    () => [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [filtered],
   );
 
   async function handleDelete(quoteId: string) {
-    if (!confirm(`確定要刪除報價單 ${quoteId}？此操作無法復原。`)) return;
+    if (!confirm(`確定要刪除報價單 ${quoteId}？（可從已刪除中恢復）`)) return;
     try {
       const response = await fetch("/api/sheets/quotes", {
         method: "DELETE",
@@ -102,14 +130,25 @@ export function QuotesClient() {
         body: JSON.stringify({ quoteId }),
       });
       if (!response.ok) throw new Error("刪除失敗");
-      setQuotes((prev) => prev.filter((q) => q.quoteId !== quoteId));
+      setQuotes((prev) =>
+        prev.map((q) =>
+          q.quoteId === quoteId ? { ...q, status: "deleted" } : q,
+        ),
+      );
     } catch (err) {
       alert(err instanceof Error ? err.message : "刪除失敗");
     }
   }
 
-  const acceptedCount = quotes.filter((q) => q.status === "accepted").length;
-  const totalAmount = quotes.reduce((sum, q) => sum + q.total, 0);
+  const summaryQuotes = filtered.filter((q) => q.status !== "deleted");
+  const hasFilters =
+    searchText !== "" ||
+    filterStatus !== "all" ||
+    filterDateFrom !== "" ||
+    filterDateTo !== "" ||
+    showDeleted;
+  const acceptedCount = summaryQuotes.filter((q) => q.status === "accepted").length;
+  const totalAmount = summaryQuotes.reduce((sum, q) => sum + q.total, 0);
 
   return (
     <div className="space-y-6">
@@ -121,7 +160,7 @@ export function QuotesClient() {
           <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
             {loading
               ? "載入中..."
-              : `${quotes.length} 筆報價 · ${acceptedCount} 筆已接受 · 總額 ${formatCurrency(totalAmount)}`}
+              : `${hasFilters ? `顯示 ${filtered.length} / ${quotes.length} 筆` : `${quotes.length} 筆報價`} · ${acceptedCount} 筆已接受 · 總額 ${formatCurrency(totalAmount)}`}
           </p>
         </div>
         <Button
@@ -137,6 +176,53 @@ export function QuotesClient() {
           )}
           重新載入
         </Button>
+      </div>
+
+      <div className="card-surface rounded-[var(--radius-lg)] px-4 py-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <Input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="搜尋客戶、案場、單號..."
+            className="lg:max-w-sm"
+          />
+          <Select
+            value={filterStatus}
+            onValueChange={(value) => setFilterStatus(value as QuoteStatus | "all")}
+          >
+            <SelectTrigger className="w-full lg:w-40">
+              <SelectValue placeholder="全部狀態" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部</SelectItem>
+              {Object.entries(STATUS_MAP).map(([key, info]) => (
+                <SelectItem key={key} value={key}>
+                  {info.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            value={filterDateFrom}
+            onChange={(e) => setFilterDateFrom(e.target.value)}
+            className="w-full lg:w-44"
+          />
+          <span className="hidden text-sm text-[var(--text-tertiary)] lg:inline">~</span>
+          <Input
+            type="date"
+            value={filterDateTo}
+            onChange={(e) => setFilterDateTo(e.target.value)}
+            className="w-full lg:w-44"
+          />
+          <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+            <Checkbox
+              checked={showDeleted}
+              onCheckedChange={(checked) => setShowDeleted(checked === true)}
+            />
+            顯示已刪除
+          </label>
+        </div>
       </div>
 
       <div className="card-surface overflow-hidden rounded-[var(--radius-lg)]">

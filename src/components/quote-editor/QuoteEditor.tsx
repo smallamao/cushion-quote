@@ -1,11 +1,20 @@
 "use client";
 
+import { DndContext, type DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   ChevronDown,
   ChevronUp,
   Copy,
   Download,
   FilePlus,
+  GripVertical,
   ImagePlus,
   Loader2,
   MessageSquare,
@@ -51,8 +60,29 @@ import { Textarea } from "@/components/ui/textarea";
 const UNIT_OPTIONS: ItemUnit[] = ["只", "式", "件", "才", "組", "碼", "張", "片"];
 
 const COL_WIDTH_KEY = "quote-table-column-widths";
+const AUTO_DRAFT_KEY = "quote-auto-draft";
 const COL_MIN = { itemName: 150, spec: 120 } as const;
 const COL_DEFAULT = { itemName: 200, spec: 160 } as const;
+
+interface AutoDraft {
+  savedAt: string;
+  quoteId: string;
+  isEditMode: boolean;
+  selectedClientId: string;
+  companyName: string;
+  contactName: string;
+  phone: string;
+  taxId: string;
+  projectName: string;
+  email: string;
+  address: string;
+  channel: Channel;
+  items: FlexQuoteItem[];
+  description: string;
+  descriptionImageUrl: string;
+  includeTax: boolean;
+  termsTemplate: string;
+}
 
 function createEmptyItem(): FlexQuoteItem {
   return {
@@ -70,6 +100,229 @@ function createEmptyItem(): FlexQuoteItem {
 
 function generateQuoteId(): string {
   return `PQ${slugDate()}-01`;
+}
+
+interface SortableQuoteItemRowProps {
+  item: FlexQuoteItem;
+  index: number;
+  colWidths: { itemName: number; spec: number };
+  expanded: boolean;
+  onToggleExpand: (id: string) => void;
+  onUpdateItem: (id: string, patch: Partial<FlexQuoteItem>) => void;
+  onRemoveItem: (id: string) => void;
+  onHandleImageUpload: (id: string, file: File) => void;
+}
+
+function SortableQuoteItemRow({
+  item,
+  index,
+  colWidths,
+  expanded,
+  onToggleExpand,
+  onUpdateItem,
+  onRemoveItem,
+  onHandleImageUpload,
+}: SortableQuoteItemRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const rowStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <>
+      <tr
+        ref={setNodeRef}
+        style={rowStyle}
+        className={`border-b border-[var(--border)] last:border-b-0 ${
+          isDragging ? "relative z-10 bg-[var(--bg-elevated)] shadow-[var(--shadow-md)]" : ""
+        }`}
+      >
+        <td className="px-3 py-2 text-center text-xs text-[var(--text-secondary)]">
+          <div className="flex items-center justify-center gap-1">
+            <button
+              type="button"
+              className="cursor-grab rounded-[var(--radius-sm)] p-1 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-secondary)] active:cursor-grabbing"
+              aria-label={`拖曳排序第 ${index + 1} 項`}
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
+            <span>{index + 1}</span>
+          </div>
+        </td>
+        <td
+          className="px-3 py-2"
+          style={{ width: colWidths.itemName, minWidth: COL_MIN.itemName }}
+        >
+          <textarea
+            rows={2}
+            value={item.name}
+            onChange={(e) =>
+              onUpdateItem(item.id, { name: e.target.value })
+            }
+            placeholder="商品名稱 / 描述"
+            className="w-full resize-none rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-sm leading-snug text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+          />
+          <div className="flex items-center gap-2 px-1">
+            {item.isCostItem && (
+              <span className="text-[11px] text-[var(--error)]">
+                此為工本費支出
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => onToggleExpand(item.id)}
+              className={`flex items-center gap-0.5 text-[11px] transition-colors ${
+                expanded || item.notes || item.imageUrl
+                  ? "text-[var(--accent)]"
+                  : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              <MessageSquare className="h-3 w-3" />
+              {item.notes ? "備註" : expanded ? "收起" : "備註"}
+            </button>
+          </div>
+        </td>
+        <td
+          className="px-3 py-2"
+          style={{ width: colWidths.spec, minWidth: COL_MIN.spec }}
+        >
+          <input
+            value={item.spec}
+            onChange={(e) =>
+              onUpdateItem(item.id, { spec: e.target.value })
+            }
+            placeholder="規格 / 材質"
+            className="w-full rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+          />
+        </td>
+        <td className="px-3 py-2">
+          <input
+            type="number"
+            min={1}
+            value={item.qty}
+            onChange={(e) =>
+              onUpdateItem(item.id, {
+                qty: Math.max(1, Number(e.target.value)),
+              })
+            }
+            className="w-full rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-right text-sm text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+          />
+        </td>
+        <td className="px-3 py-2">
+          <Select
+            value={item.unit}
+            onValueChange={(v) =>
+              onUpdateItem(item.id, { unit: v as ItemUnit })
+            }
+          >
+            <SelectTrigger className="h-7 border-transparent bg-transparent text-xs hover:border-[var(--border)]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {UNIT_OPTIONS.map((u) => (
+                <SelectItem key={u} value={u}>
+                  {u}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </td>
+        <td className="px-3 py-2">
+          <input
+            type="number"
+            min={0}
+            value={item.unitPrice}
+            onChange={(e) =>
+              onUpdateItem(item.id, {
+                unitPrice: Number(e.target.value),
+              })
+            }
+            className="w-full rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-right text-sm text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+          />
+        </td>
+        <td className="px-3 py-2 text-right text-sm font-medium text-[var(--text-primary)]">
+          {formatCurrency(item.amount)}
+        </td>
+        <td className="px-3 py-2">
+          <button
+            type="button"
+            onClick={() => onRemoveItem(item.id)}
+            className="rounded-[var(--radius-sm)] p-1 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--error-light)] hover:text-[var(--error)]"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr
+          style={rowStyle}
+          className={`border-b border-[var(--border)] last:border-b-0 ${
+            isDragging ? "bg-[var(--bg-elevated)]" : ""
+          }`}
+        >
+          <td />
+          <td colSpan={6} className="px-3 pb-3">
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">備註</div>
+                <textarea
+                  rows={2}
+                  value={item.notes}
+                  onChange={(e) => onUpdateItem(item.id, { notes: e.target.value })}
+                  placeholder="內部備註，不會顯示在報價單上..."
+                  className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+                />
+              </div>
+              <div className="w-32 shrink-0">
+                <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">參考圖片</div>
+                {item.imageUrl ? (
+                  <div className="group relative">
+                    <img
+                      src={item.imageUrl}
+                      alt=""
+                      className="h-16 w-full rounded-[var(--radius-sm)] border border-[var(--border)] object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onUpdateItem(item.id, { imageUrl: "" })}
+                      className="absolute -right-1 -top-1 hidden rounded-full bg-[var(--error)] p-0.5 text-white group-hover:block"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex h-16 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-muted)]">
+                    <ImagePlus className="h-4 w-4 text-[var(--text-tertiary)]" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) onHandleImageUpload(item.id, file);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+          </td>
+          <td />
+        </tr>
+      )}
+    </>
+  );
 }
 
 export function QuoteEditor() {
@@ -106,6 +359,13 @@ export function QuoteEditor() {
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
 
   const [colWidths, setColWidths] = useState<{ itemName: number; spec: number }>({ ...COL_DEFAULT });
+  const autoDraftReadyRef = useRef(false);
+
+  const clearAutoDraft = useCallback(() => {
+    try {
+      localStorage.removeItem(AUTO_DRAFT_KEY);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     try {
@@ -211,6 +471,103 @@ export function QuoteEditor() {
     }
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AUTO_DRAFT_KEY);
+      if (!raw) {
+        autoDraftReadyRef.current = true;
+        return;
+      }
+
+      const draft = JSON.parse(raw) as AutoDraft;
+      const savedAtMs = new Date(draft.savedAt).getTime();
+
+      if (!Number.isFinite(savedAtMs) || Date.now() - savedAtMs > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem(AUTO_DRAFT_KEY);
+        autoDraftReadyRef.current = true;
+        return;
+      }
+
+      const shouldRestore = confirm(`發現未儲存的草稿（${draft.savedAt}），要還原嗎？`);
+
+      if (shouldRestore) {
+        setQuoteId(draft.quoteId);
+        setIsEditMode(draft.isEditMode);
+        setSelectedClientId(draft.selectedClientId);
+        setCompanyName(draft.companyName);
+        setContactName(draft.contactName);
+        setPhone(draft.phone);
+        setTaxId(draft.taxId);
+        setProjectName(draft.projectName);
+        setEmail(draft.email);
+        setAddress(draft.address);
+        setChannel(draft.channel);
+        setItems(draft.items.length > 0 ? draft.items : [createEmptyItem()]);
+        setDescription(draft.description);
+        setDescriptionImageUrl(draft.descriptionImageUrl);
+        setIncludeTax(draft.includeTax);
+        setTermsTemplate(draft.termsTemplate);
+      } else {
+        localStorage.removeItem(AUTO_DRAFT_KEY);
+      }
+    } catch {
+      clearAutoDraft();
+    } finally {
+      autoDraftReadyRef.current = true;
+    }
+  }, [clearAutoDraft]);
+
+  useEffect(() => {
+    if (!autoDraftReadyRef.current) return;
+
+    const timeoutId = window.setTimeout(() => {
+      const draft: AutoDraft = {
+        savedAt: new Date().toISOString(),
+        quoteId,
+        isEditMode,
+        selectedClientId,
+        companyName,
+        contactName,
+        phone,
+        taxId,
+        projectName,
+        email,
+        address,
+        channel,
+        items,
+        description,
+        descriptionImageUrl,
+        includeTax,
+        termsTemplate,
+      };
+
+      try {
+        localStorage.setItem(AUTO_DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // Ignore quota errors from large base64 images.
+      }
+    }, 2000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    address,
+    channel,
+    companyName,
+    contactName,
+    description,
+    descriptionImageUrl,
+    email,
+    includeTax,
+    isEditMode,
+    items,
+    phone,
+    projectName,
+    quoteId,
+    selectedClientId,
+    taxId,
+    termsTemplate,
+  ]);
+
   const selectClient = useCallback(
     (clientId: string) => {
       setSelectedClientId(clientId);
@@ -307,6 +664,7 @@ export function QuoteEditor() {
   const total = subtotal + tax;
 
   function handleNewQuote() {
+    clearAutoDraft();
     setIsEditMode(false);
     setQuoteId(generateQuoteId());
     setSelectedClientId("");
@@ -323,6 +681,19 @@ export function QuoteEditor() {
     setIncludeTax(true);
     setTermsTemplate(DEFAULT_TERMS);
     setChannel("retail");
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setItems((prev) => {
+      const oldIndex = prev.findIndex((item) => item.id === active.id);
+      const newIndex = prev.findIndex((item) => item.id === over.id);
+
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
   }
 
   async function fetchNextQuoteId(): Promise<string> {
@@ -393,6 +764,7 @@ export function QuoteEditor() {
           body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error("更新失敗");
+        clearAutoDraft();
         alert(`報價單 ${quoteId} 已更新`);
       } else {
         const finalId = await fetchNextQuoteId();
@@ -405,6 +777,7 @@ export function QuoteEditor() {
         });
         if (!response.ok) throw new Error("儲存失敗");
         setIsEditMode(true);
+        clearAutoDraft();
         alert(`報價單 ${finalId} 已儲存`);
       }
     } catch (err) {
@@ -427,6 +800,7 @@ export function QuoteEditor() {
       });
       if (!response.ok) throw new Error("儲存失敗");
       setIsEditMode(true);
+      clearAutoDraft();
       alert(`報價單 ${newId} 已另存新檔`);
     } catch (err) {
       alert(err instanceof Error ? err.message : "另存新檔失敗");
@@ -477,6 +851,7 @@ export function QuoteEditor() {
     accepted: "已接受",
     rejected: "已拒絕",
     expired: "已過期",
+    deleted: "已刪除",
   };
 
   return (
@@ -634,216 +1009,70 @@ export function QuoteEditor() {
 
       <div className="card-surface rounded-[var(--radius-lg)]">
         <div className="overflow-x-auto rounded-t-[var(--radius-lg)]">
-          <table className={`w-full border-collapse text-sm ${isResizing ? "select-none" : ""}`}>
-            <thead>
-              <tr className="border-b border-[var(--border)] bg-[var(--bg-subtle)]">
-                <th className="w-12 px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]">
-                  項次
-                </th>
-                <th
-                  className="relative px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]"
-                  style={{ width: colWidths.itemName, minWidth: COL_MIN.itemName }}
-                >
-                  商品名稱
-                  <div
-                    onMouseDown={(e) => handleResizeStart("itemName", e)}
-                    className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--accent)]"
-                  />
-                </th>
-                <th
-                  className="relative px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]"
-                  style={{ width: colWidths.spec, minWidth: COL_MIN.spec }}
-                >
-                  規格
-                  <div
-                    onMouseDown={(e) => handleResizeStart("spec", e)}
-                    className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--accent)]"
-                  />
-                </th>
-                <th className="w-20 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
-                  數量
-                </th>
-                <th className="w-20 px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]">
-                  單位
-                </th>
-                <th className="w-28 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
-                  單價
-                </th>
-                <th className="w-28 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
-                  金額
-                </th>
-                <th className="w-12 px-3 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, idx) => (
-                <React.Fragment key={item.id}>
-                <tr
-                  className="border-b border-[var(--border)] last:border-b-0"
-                >
-                  <td className="px-3 py-2 text-center text-xs text-[var(--text-secondary)]">
-                    {idx + 1}
-                  </td>
-                  <td
-                    className="px-3 py-2"
+          <DndContext onDragEnd={handleDragEnd}>
+            <table className={`w-full border-collapse text-sm ${isResizing ? "select-none" : ""}`}>
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-[var(--bg-subtle)]">
+                  <th className="w-12 px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]">
+                    項次
+                  </th>
+                  <th
+                    className="relative px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]"
                     style={{ width: colWidths.itemName, minWidth: COL_MIN.itemName }}
                   >
-                    <textarea
-                      rows={2}
-                      value={item.name}
-                      onChange={(e) =>
-                        updateItem(item.id, { name: e.target.value })
-                      }
-                      placeholder="商品名稱 / 描述"
-                      className="w-full resize-none rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-sm leading-snug text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+                    商品名稱
+                    <div
+                      onMouseDown={(e) => handleResizeStart("itemName", e)}
+                      className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--accent)]"
                     />
-                    <div className="flex items-center gap-2 px-1">
-                      {item.isCostItem && (
-                        <span className="text-[11px] text-[var(--error)]">
-                          此為工本費支出
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => toggleItemExpand(item.id)}
-                        className={`flex items-center gap-0.5 text-[11px] transition-colors ${
-                          expandedItems.has(item.id) || item.notes || item.imageUrl
-                            ? "text-[var(--accent)]"
-                            : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                        }`}
-                      >
-                        <MessageSquare className="h-3 w-3" />
-                        {item.notes ? "備註" : expandedItems.has(item.id) ? "收起" : "備註"}
-                      </button>
-                    </div>
-                  </td>
-                  <td
-                    className="px-3 py-2"
+                  </th>
+                  <th
+                    className="relative px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]"
                     style={{ width: colWidths.spec, minWidth: COL_MIN.spec }}
                   >
-                    <input
-                      value={item.spec}
-                      onChange={(e) =>
-                        updateItem(item.id, { spec: e.target.value })
-                      }
-                      placeholder="規格 / 材質"
-                      className="w-full rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+                    規格
+                    <div
+                      onMouseDown={(e) => handleResizeStart("spec", e)}
+                      className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--accent)]"
                     />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      min={1}
-                      value={item.qty}
-                      onChange={(e) =>
-                        updateItem(item.id, {
-                          qty: Math.max(1, Number(e.target.value)),
-                        })
-                      }
-                      className="w-full rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-right text-sm text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <Select
-                      value={item.unit}
-                      onValueChange={(v) =>
-                        updateItem(item.id, { unit: v as ItemUnit })
-                      }
-                    >
-                      <SelectTrigger className="h-7 border-transparent bg-transparent text-xs hover:border-[var(--border)]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {UNIT_OPTIONS.map((u) => (
-                          <SelectItem key={u} value={u}>
-                            {u}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      value={item.unitPrice}
-                      onChange={(e) =>
-                        updateItem(item.id, {
-                          unitPrice: Number(e.target.value),
-                        })
-                      }
-                      className="w-full rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-right text-sm text-[var(--text-primary)] outline-none transition-colors hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-right text-sm font-medium text-[var(--text-primary)]">
-                    {formatCurrency(item.amount)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.id)}
-                      className="rounded-[var(--radius-sm)] p-1 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--error-light)] hover:text-[var(--error)]"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
+                  </th>
+                  <th className="w-20 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
+                    數量
+                  </th>
+                  <th className="w-20 px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]">
+                    單位
+                  </th>
+                  <th className="w-28 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
+                    單價
+                  </th>
+                  <th className="w-28 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
+                    金額
+                  </th>
+                  <th className="w-12 px-3 py-2.5" />
                 </tr>
-                {expandedItems.has(item.id) && (
-                  <tr className="border-b border-[var(--border)] last:border-b-0">
-                    <td />
-                    <td colSpan={6} className="px-3 pb-3">
-                      <div className="flex gap-4">
-                        <div className="flex-1">
-                          <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">備註</div>
-                          <textarea
-                            rows={2}
-                            value={item.notes}
-                            onChange={(e) => updateItem(item.id, { notes: e.target.value })}
-                            placeholder="內部備註，不會顯示在報價單上..."
-                            className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
-                          />
-                        </div>
-                        <div className="w-32 shrink-0">
-                          <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">參考圖片</div>
-                          {item.imageUrl ? (
-                            <div className="group relative">
-                              <img
-                                src={item.imageUrl}
-                                alt=""
-                                className="h-16 w-full rounded-[var(--radius-sm)] border border-[var(--border)] object-cover"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => updateItem(item.id, { imageUrl: "" })}
-                                className="absolute -right-1 -top-1 hidden rounded-full bg-[var(--error)] p-0.5 text-white group-hover:block"
-                              >
-                                <X className="h-2.5 w-2.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <label className="flex h-16 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-muted)]">
-                              <ImagePlus className="h-4 w-4 text-[var(--text-tertiary)]" />
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) handleImageUpload(item.id, file);
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td />
-                  </tr>
-                )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <SortableContext
+                items={items.map((item) => item.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <tbody>
+                  {items.map((item, idx) => (
+                    <SortableQuoteItemRow
+                      key={item.id}
+                      item={item}
+                      index={idx}
+                      colWidths={colWidths}
+                      expanded={expandedItems.has(item.id)}
+                      onToggleExpand={toggleItemExpand}
+                      onUpdateItem={updateItem}
+                      onRemoveItem={removeItem}
+                      onHandleImageUpload={handleImageUpload}
+                    />
+                  ))}
+                </tbody>
+              </SortableContext>
+            </table>
+          </DndContext>
         </div>
 
         <div className="flex items-center gap-2 border-t border-[var(--border)] px-4 py-3">

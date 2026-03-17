@@ -79,6 +79,45 @@ function rowToHeader(row: string[]): QuoteRecord {
   };
 }
 
+async function batchExpireQuotes(
+  client: Awaited<ReturnType<typeof getSheetsClient>>,
+  quoteIds: string[],
+): Promise<void> {
+  if (!client || quoteIds.length === 0) return;
+
+  try {
+    const response = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: "報價紀錄!A2:A",
+    });
+    const ids = (response.data.values ?? []).flat();
+    const now = new Date().toISOString().slice(0, 10);
+    const data = quoteIds.reduce<Array<{ range: string; values: string[][] }>>(
+      (acc, quoteId) => {
+        const idx = ids.indexOf(quoteId);
+        if (idx === -1) return acc;
+
+        const row = idx + 2;
+        acc.push(
+          { range: `報價紀錄!O${row}`, values: [["expired"]] },
+          { range: `報價紀錄!S${row}`, values: [[now]] },
+        );
+        return acc;
+      },
+      [],
+    );
+
+    if (data.length > 0) {
+      await client.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: client.spreadsheetId,
+        requestBody: { valueInputOption: "RAW", data },
+      });
+    }
+  } catch {
+    // Ignore background sync failures; the next GET will retry.
+  }
+}
+
 export async function GET() {
   const client = await getSheetsClient();
   if (!client) {
@@ -91,7 +130,30 @@ export async function GET() {
       range: "報價紀錄!A2:S",
     });
     const quotes = (response.data.values ?? []).map(rowToHeader);
-    return NextResponse.json({ quotes, source: "sheets" as const });
+    const today = new Date().toISOString().slice(0, 10);
+    const validityDays = 30;
+
+    const expiredIds: string[] = [];
+    const updatedQuotes = quotes.map((q) => {
+      if (q.status !== "draft" && q.status !== "sent") return q;
+
+      const quoteDate = new Date(q.quoteDate);
+      quoteDate.setDate(quoteDate.getDate() + validityDays);
+      const validUntil = quoteDate.toISOString().slice(0, 10);
+
+      if (today > validUntil) {
+        expiredIds.push(q.quoteId);
+        return { ...q, status: "expired" as QuoteStatus };
+      }
+
+      return q;
+    });
+
+    if (expiredIds.length > 0) {
+      void batchExpireQuotes(client, expiredIds);
+    }
+
+    return NextResponse.json({ quotes: updatedQuotes, source: "sheets" as const });
   } catch {
     return NextResponse.json({ quotes: [] as QuoteRecord[], source: "defaults" as const });
   }
@@ -265,18 +327,6 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    const sheetsInfo = await client.sheets.spreadsheets.get({
-      spreadsheetId: client.spreadsheetId,
-    });
-    const sheets = sheetsInfo.data.sheets ?? [];
-    const headerSheet = sheets.find((s) => s.properties?.title === "報價紀錄");
-    const detailSheet = sheets.find((s) => s.properties?.title === "報價明細");
-
-    const headerSheetId = headerSheet?.properties?.sheetId ?? 0;
-    const detailSheetId = detailSheet?.properties?.sheetId ?? 0;
-
-    const deleteRequests: Array<{ deleteDimension: { range: { sheetId: number; dimension: "ROWS"; startIndex: number; endIndex: number } } }> = [];
-
     const headerResponse = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
       range: "報價紀錄!A2:A",
@@ -288,33 +338,18 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ ok: false, error: "報價單不存在" }, { status: 404 });
     }
 
-    deleteRequests.push({
-      deleteDimension: {
-        range: { sheetId: headerSheetId, dimension: "ROWS", startIndex: headerRowIndex + 1, endIndex: headerRowIndex + 2 },
+    const sheetRow = headerRowIndex + 2;
+    const now = new Date().toISOString().slice(0, 10);
+
+    await client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: client.spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: [
+          { range: `報價紀錄!O${sheetRow}`, values: [["deleted"]] },
+          { range: `報價紀錄!S${sheetRow}`, values: [[now]] },
+        ],
       },
-    });
-
-    const linesResponse = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: "報價明細!A2:A",
-    });
-    const lineIds = (linesResponse.data.values ?? []).flat();
-    const lineRowIndices: number[] = [];
-    lineIds.forEach((id, i) => {
-      if (id === quoteId) lineRowIndices.push(i);
-    });
-
-    lineRowIndices.reverse().forEach((i) => {
-      deleteRequests.push({
-        deleteDimension: {
-          range: { sheetId: detailSheetId, dimension: "ROWS", startIndex: i + 1, endIndex: i + 2 },
-        },
-      });
-    });
-
-    await client.sheets.spreadsheets.batchUpdate({
-      spreadsheetId: client.spreadsheetId,
-      requestBody: { requests: deleteRequests },
     });
 
     return NextResponse.json({ ok: true });

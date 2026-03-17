@@ -21,7 +21,7 @@ export type Category = "fabric" | "pu_leather" | "pvc_leather" | "genuine_leathe
 
 export type StockStatus = "in_stock" | "low" | "out_of_stock" | "order_only";
 
-export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
+export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired" | "deleted";
 
 export type CommissionMode = "price_gap" | "rebate" | "none";
 
