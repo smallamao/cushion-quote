@@ -1,0 +1,44 @@
+{
+  "materials": [
+    {
+      "id": "MAT-001",
+      "brand": "JF 輝煌",
+      "series": "貓抓布 N200 系列",
+      "colorCode": "N200-03",
+      "colorName": "駝色",
+      "category": "fabric",
+      "costPerCai": 45,
+      "listPricePerCai": 80,
+      "supplier": "宏亞布行",
+      "widthCm": 150,
+      "minOrder": "1碼",
+      "leadTimeDays": 3,
+      "stockStatus": "in_stock",
+      "features": ["防貓抓", "防潑水"],
+      "notes": "以色列進口。",
+      "isActive": true,
+      "createdAt": "2026-03-16",
+      "updatedAt": "2026-03-16"
+    },
+    {
+      "id": "MAT-002",
+      "brand": "Potato Sofa",
+      "series": "商空皮革",
+      "colorCode": "PU-21",
+      "colorName": "焦糖棕",
+      "category": "pu_leather",
+      "costPerCai": 30,
+      "listPricePerCai": 58,
+      "supplier": "同安皮行",
+      "widthCm": 137,
+      "minOrder": "2碼",
+      "leadTimeDays": 2,
+      "stockStatus": "low",
+      "features": ["易清潔"],
+      "notes": "適合床頭板。",
+      "isActive": true,
+      "createdAt": "2026-03-16",
+      "updatedAt": "2026-03-16"
+    }
+  ]
+}

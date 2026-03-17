@@ -1,0 +1,313 @@
+"use client";
+
+import { Loader2, Save } from "lucide-react";
+import { useState } from "react";
+
+import { useSettings } from "@/hooks/useSettings";
+import type { CommissionMode, SystemSettings } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+
+function NumberField({
+  label,
+  value,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  suffix?: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="max-w-[120px]"
+        />
+        {suffix ? (
+          <span className="text-xs text-[var(--text-secondary)]">
+            {suffix}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function SettingsClient() {
+  const { settings, loading, saving, error, save } = useSettings();
+  const [draft, setDraft] = useState<SystemSettings | null>(null);
+  const current = draft ?? settings;
+  const dirty = draft !== null;
+
+  function update(patch: Partial<SystemSettings>) {
+    setDraft({ ...current, ...patch });
+  }
+
+  function updateMultiplier(
+    ch: "wholesale" | "designer" | "retail" | "luxury_retail",
+    value: number,
+  ) {
+    setDraft({
+      ...current,
+      channelMultipliers: { ...current.channelMultipliers, [ch]: value },
+    });
+  }
+
+  async function handleSave() {
+    await save(current);
+    setDraft(null);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-12 text-sm text-[var(--text-secondary)]">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        讀取設定中...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-[var(--text-primary)]">
+            系統設定
+          </h1>
+          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+            修改後按儲存寫入 Google Sheets
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {error && (
+            <span className="text-xs text-[var(--error)]">{error}</span>
+          )}
+          {dirty && (
+            <Button size="sm" disabled={saving} onClick={handleSave}>
+              {saving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              {saving ? "儲存中..." : "儲存設定"}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="card-surface rounded-[var(--radius-lg)]">
+          <div className="border-b border-[var(--border)] px-6 py-3">
+            <span className="text-sm font-medium">通路倍率</span>
+          </div>
+          <div className="space-y-5 px-6 py-4">
+            {(["wholesale", "designer", "retail", "luxury_retail"] as const).map((ch) => {
+              const labels = {
+                wholesale: "批發",
+                designer: "設計師",
+                retail: "屋主",
+                luxury_retail: "豪華屋主",
+              } as const;
+              return (
+                <div key={ch} className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[var(--text-secondary)]">
+                      {labels[ch]}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-[var(--text-tertiary)]">
+                        ×
+                      </span>
+                      <Input
+                        type="number"
+                        value={current.channelMultipliers[ch]}
+                        onChange={(e) =>
+                          updateMultiplier(
+                            ch,
+                            Math.round(Number(e.target.value) * 100) / 100,
+                          )
+                        }
+                        min={1}
+                        max={4}
+                        step={0.05}
+                        className="h-7 w-20 text-right text-sm font-medium"
+                      />
+                    </div>
+                  </div>
+                  <Slider
+                    value={[current.channelMultipliers[ch]]}
+                    onValueChange={([v]) => updateMultiplier(ch, v)}
+                    min={1}
+                    max={4}
+                    step={0.05}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="card-surface rounded-[var(--radius-lg)]">
+          <div className="border-b border-[var(--border)] px-6 py-3">
+            <span className="text-sm font-medium">定價參數</span>
+          </div>
+          <div className="space-y-4 px-6 py-4">
+            <NumberField
+              label="品質溢價"
+              value={current.qualityPremium}
+              suffix="%"
+              onChange={(v) => update({ qualityPremium: v })}
+            />
+            <NumberField
+              label="損耗率"
+              value={current.wasteRate}
+              suffix="%"
+              onChange={(v) => update({ wasteRate: v })}
+            />
+            <NumberField
+              label="營業稅"
+              value={current.taxRate}
+              suffix="%"
+              onChange={(v) => update({ taxRate: v })}
+            />
+            <div>
+              <Label>佣金模式</Label>
+              <Select
+                value={current.commissionMode}
+                onValueChange={(v) =>
+                  update({ commissionMode: v as CommissionMode })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="price_gap">賺價差（模式 A）</SelectItem>
+                  <SelectItem value="rebate">返佣（模式 B）</SelectItem>
+                  <SelectItem value="none">無佣金</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {current.commissionMode === "rebate" && (
+              <NumberField
+                label="返佣比例"
+                value={current.commissionRate}
+                suffix="%"
+                onChange={(v) => update({ commissionRate: v })}
+              />
+            )}
+            <NumberField
+              label="報價有效天數"
+              value={current.quoteValidityDays}
+              suffix="天"
+              onChange={(v) => update({ quoteValidityDays: v })}
+            />
+          </div>
+        </div>
+
+        <div className="card-surface rounded-[var(--radius-lg)] lg:col-span-2">
+          <div className="border-b border-[var(--border)] px-6 py-3">
+            <span className="text-sm font-medium">公司資訊</span>
+            <span className="ml-2 text-xs text-[var(--text-secondary)]">
+              顯示於 PDF 報價單
+            </span>
+          </div>
+          <div className="grid gap-4 px-6 py-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <Label>公司簡稱</Label>
+              <Input
+                value={current.companyName}
+                onChange={(e) => update({ companyName: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>公司全名</Label>
+              <Input
+                value={current.companyFullName}
+                onChange={(e) =>
+                  update({ companyFullName: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>統一編號</Label>
+              <Input
+                value={current.companyTaxId}
+                onChange={(e) =>
+                  update({ companyTaxId: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>聯絡窗口</Label>
+              <Input
+                value={current.companyContact}
+                onChange={(e) =>
+                  update({ companyContact: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>電話</Label>
+              <Input
+                value={current.companyPhone}
+                onChange={(e) =>
+                  update({ companyPhone: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>傳真</Label>
+              <Input
+                value={current.companyFax}
+                onChange={(e) => update({ companyFax: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input
+                value={current.companyEmail}
+                onChange={(e) =>
+                  update({ companyEmail: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>LINE</Label>
+              <Input
+                value={current.companyLine}
+                onChange={(e) =>
+                  update({ companyLine: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>地址</Label>
+              <Input
+                value={current.companyAddress}
+                onChange={(e) =>
+                  update({ companyAddress: e.target.value })
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
