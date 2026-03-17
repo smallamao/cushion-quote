@@ -56,6 +56,29 @@ function lineToRow(l: QuoteLineRecord): string[] {
   ];
 }
 
+function rowToLine(row: string[]): QuoteLineRecord {
+  return {
+    quoteId: row[0] ?? "",
+    lineNumber: Number(row[1] ?? 0),
+    itemName: row[2] ?? "",
+    method: (row[3] as QuoteLineRecord["method"]) ?? "flat",
+    widthCm: Number(row[4] ?? 0),
+    heightCm: Number(row[5] ?? 0),
+    caiCount: Number(row[6] ?? 0),
+    foamThickness: Number(row[7] ?? 0),
+    materialId: row[8] ?? "",
+    materialDesc: row[9] ?? "",
+    qty: Number(row[10] ?? 0),
+    laborRate: Number(row[11] ?? 0),
+    materialRate: Number(row[12] ?? 0),
+    extras: row[13] ?? "",
+    unitPrice: Number(row[14] ?? 0),
+    piecePrice: Number(row[15] ?? 0),
+    subtotal: Number(row[16] ?? 0),
+    notes: row[17] ?? "",
+  };
+}
+
 function rowToHeader(row: string[]): QuoteRecord {
   return {
     quoteId: row[0] ?? "",
@@ -202,33 +225,63 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const headerIds = await client.sheets.spreadsheets.values.get({
+    const headerResponse = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: "報價紀錄!A2:A",
+      range: "報價紀錄!A2:T",
     });
-    const ids = (headerIds.data.values ?? []).flat();
-    const rowIndex = ids.indexOf(payload.header.quoteId);
+    const headerRows = headerResponse.data.values ?? [];
+    const rowIndex = headerRows.findIndex((row) => row[0] === payload.header.quoteId);
 
     if (rowIndex === -1) {
       return NextResponse.json({ ok: false, error: "報價單不存在" }, { status: 404 });
     }
 
     const sheetRow = rowIndex + 2;
+    const currentHeader = rowToHeader(headerRows[rowIndex] ?? []);
+
+    const linesResponse = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: "報價明細!A2:R",
+    });
+    const lineRows = linesResponse.data.values ?? [];
+    const currentLines = lineRows
+      .map(rowToLine)
+      .filter((line) => line.quoteId === payload.header.quoteId);
+    const lineRowIndices = lineRows.reduce<number[]>((acc, row, index) => {
+      if (row[0] === payload.header.quoteId) {
+        acc.push(index);
+      }
+      return acc;
+    }, []);
+
+    const revisionsResponse = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: "報價變更紀錄!A2:B",
+    });
+    const revisionRows = revisionsResponse.data.values ?? [];
+    const nextRevision =
+      revisionRows.filter((row) => row[0] === payload.header.quoteId).length + 1;
+
+    await client.sheets.spreadsheets.values.append({
+      spreadsheetId: client.spreadsheetId,
+      range: "報價變更紀錄!A:E",
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [[
+          payload.header.quoteId,
+          String(nextRevision),
+          new Date().toISOString(),
+          "update",
+          JSON.stringify({ header: currentHeader, lines: currentLines }),
+        ]],
+      },
+    });
+
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
       range: `報價紀錄!A${sheetRow}:T${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [headerToRow(payload.header)] },
-    });
-
-    const linesResponse = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: "報價明細!A2:A",
-    });
-    const allLineIds = (linesResponse.data.values ?? []).flat();
-    const lineRowIndices: number[] = [];
-    allLineIds.forEach((id, i) => {
-      if (id === payload.header.quoteId) lineRowIndices.push(i);
     });
 
     if (lineRowIndices.length > 0) {

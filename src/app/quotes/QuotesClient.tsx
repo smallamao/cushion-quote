@@ -1,15 +1,23 @@
 "use client";
 
-import { Copy, Edit, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { Clock, Copy, Edit, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
 import { CHANNEL_LABELS } from "@/lib/constants";
-import type { QuoteRecord, QuoteStatus } from "@/lib/types";
+import type { QuoteLineRecord, QuoteRecord, QuoteStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -28,6 +36,61 @@ const STATUS_MAP: Record<QuoteStatus, { label: string; className: string }> = {
   deleted: { label: "已刪除", className: "badge-deleted" },
 };
 
+type RevisionChangeType = "create" | "update" | "status_change";
+
+interface QuoteRevisionRecord {
+  quoteId: string;
+  revision: number;
+  timestamp: string;
+  changeType: RevisionChangeType;
+  snapshot: string;
+}
+
+interface RevisionSnapshot {
+  header: QuoteRecord;
+  lines: QuoteLineRecord[];
+}
+
+function isRevisionSnapshot(value: unknown): value is RevisionSnapshot {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.header === "object" &&
+    candidate.header !== null &&
+    Array.isArray(candidate.lines)
+  );
+}
+
+function parseRevisionSnapshot(snapshot: string): RevisionSnapshot | null {
+  try {
+    const parsed: unknown = JSON.parse(snapshot);
+    if (!isRevisionSnapshot(parsed)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function formatRevisionTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return timestamp || "—";
+  }
+
+  return date.toLocaleString("zh-TW", {
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 export function QuotesClient() {
   const router = useRouter();
   const { clients, loading: clientsLoading } = useClients();
@@ -39,6 +102,11 @@ export function QuotesClient() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showDeleted, setShowDeleted] = useState(false);
+  const [historyQuote, setHistoryQuote] = useState<QuoteRecord | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [revisions, setRevisions] = useState<QuoteRevisionRecord[]>([]);
+  const [expandedRevision, setExpandedRevision] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,6 +165,39 @@ export function QuotesClient() {
       router.push("/");
     } catch (err) {
       alert(err instanceof Error ? err.message : "複製報價失敗");
+    }
+  }
+
+  function closeHistoryModal() {
+    setHistoryQuote(null);
+    setHistoryLoading(false);
+    setHistoryError("");
+    setRevisions([]);
+    setExpandedRevision(null);
+  }
+
+  async function handleOpenHistory(quote: QuoteRecord) {
+    setHistoryQuote(quote);
+    setHistoryLoading(true);
+    setHistoryError("");
+    setRevisions([]);
+    setExpandedRevision(null);
+
+    try {
+      const response = await fetch(
+        `/api/sheets/revisions?quoteId=${encodeURIComponent(quote.quoteId)}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw new Error("讀取歷史失敗");
+
+      const payload = (await response.json()) as { revisions: QuoteRevisionRecord[] };
+      setRevisions(
+        [...payload.revisions].sort((a, b) => b.revision - a.revision),
+      );
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "讀取歷史失敗");
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
@@ -268,7 +369,7 @@ export function QuotesClient() {
                   <th className="px-4 py-2.5">通路</th>
                   <th className="px-4 py-2.5 text-right">含稅合計</th>
                   <th className="w-28 px-4 py-2.5">狀態</th>
-                  <th className="w-32 px-4 py-2.5">操作</th>
+                  <th className="w-40 px-4 py-2.5">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -344,6 +445,14 @@ export function QuotesClient() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => void handleOpenHistory(quote)}
+                            className="h-7 px-2"
+                          >
+                            <Clock className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleDelete(quote.quoteId)}
                             className="h-7 px-2 text-[var(--text-tertiary)] hover:text-[var(--error)]"
                           >
@@ -359,6 +468,158 @@ export function QuotesClient() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={historyQuote !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeHistoryModal();
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-hidden p-0">
+          <DialogHeader>
+            <DialogTitle>
+              報價版本歷史{historyQuote ? ` · ${historyQuote.quoteId}` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              查看報價更新前的完整快照，不提供還原功能。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[62vh] overflow-y-auto px-6 py-4">
+            {historyLoading ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--text-secondary)]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                讀取版本歷史中...
+              </div>
+            ) : historyError ? (
+              <div className="rounded-[var(--radius-md)] border border-[var(--error)]/20 bg-[var(--error)]/5 px-4 py-3 text-sm text-[var(--error)]">
+                {historyError}
+              </div>
+            ) : revisions.length === 0 ? (
+              <div className="py-12 text-center text-sm text-[var(--text-secondary)]">
+                尚無版本歷史
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {revisions.map((revision) => {
+                  const snapshot = parseRevisionSnapshot(revision.snapshot);
+                  const isExpanded = expandedRevision === revision.revision;
+
+                  return (
+                    <div
+                      key={`${revision.quoteId}-${revision.revision}`}
+                      className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedRevision((prev) =>
+                            prev === revision.revision ? null : revision.revision,
+                          )
+                        }
+                        className="flex w-full items-center justify-between gap-4 bg-[var(--bg-subtle)] px-4 py-3 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                      >
+                        <div>
+                          <div className="text-sm font-medium text-[var(--text-primary)]">
+                            版本 #{revision.revision} · {formatRevisionTimestamp(revision.timestamp)} · {revision.changeType}
+                          </div>
+                          <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                            {snapshot
+                              ? `${snapshot.lines.length} 筆品項 · 含稅合計 ${formatCurrency(snapshot.header.total)}`
+                              : "快照資料無法解析"}
+                          </div>
+                        </div>
+                        <span className="text-xs text-[var(--text-tertiary)]">
+                          {isExpanded ? "收合" : "展開"}
+                        </span>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="space-y-4 px-4 py-4">
+                          {snapshot ? (
+                            <>
+                              <div className="grid gap-3 sm:grid-cols-3">
+                                <div className="rounded-[var(--radius-md)] bg-[var(--bg-subtle)] px-3 py-2">
+                                  <div className="text-[11px] text-[var(--text-tertiary)]">
+                                    狀態
+                                  </div>
+                                  <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                                    {STATUS_MAP[snapshot.header.status]?.label ?? snapshot.header.status}
+                                  </div>
+                                </div>
+                                <div className="rounded-[var(--radius-md)] bg-[var(--bg-subtle)] px-3 py-2">
+                                  <div className="text-[11px] text-[var(--text-tertiary)]">
+                                    稅前合計
+                                  </div>
+                                  <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                                    {formatCurrency(snapshot.header.totalBeforeTax)}
+                                  </div>
+                                </div>
+                                <div className="rounded-[var(--radius-md)] bg-[var(--bg-subtle)] px-3 py-2">
+                                  <div className="text-[11px] text-[var(--text-tertiary)]">
+                                    含稅合計
+                                  </div>
+                                  <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                                    {formatCurrency(snapshot.header.total)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="rounded-[var(--radius-md)] border border-[var(--border)]">
+                                <div className="border-b border-[var(--border)] px-4 py-2 text-xs font-medium text-[var(--text-secondary)]">
+                                  品項摘要
+                                </div>
+                                {snapshot.lines.length === 0 ? (
+                                  <div className="px-4 py-3 text-sm text-[var(--text-secondary)]">
+                                    此版本沒有報價明細。
+                                  </div>
+                                ) : (
+                                  <div className="divide-y divide-[var(--border)]">
+                                    {snapshot.lines.map((line) => (
+                                      <div
+                                        key={`${revision.revision}-${line.lineNumber}`}
+                                        className="flex items-start justify-between gap-4 px-4 py-3"
+                                      >
+                                        <div>
+                                          <div className="text-sm font-medium text-[var(--text-primary)]">
+                                            {line.itemName || `品項 ${line.lineNumber}`}
+                                          </div>
+                                          <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                                            {line.materialDesc || "—"} · 數量 {line.qty} · 單價 {formatCurrency(line.unitPrice)}
+                                          </div>
+                                        </div>
+                                        <div className="text-sm font-medium text-[var(--text-primary)]">
+                                          {formatCurrency(line.subtotal)}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="rounded-[var(--radius-md)] border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+                              此版本的 snapshot JSON 無法解析。
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeHistoryModal}>
+              關閉
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

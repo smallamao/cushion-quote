@@ -20,6 +20,10 @@ const SHEET_DEFINITIONS = [
     headers: ["報價單號", "項次", "商品名稱", "作法", "寬cm", "高cm", "才數", "泡棉厚度", "材質編號", "材質描述", "數量", "工資/才", "面料/才", "加工項目", "單價", "每片價", "小計", "備註"],
   },
   {
+    title: "報價變更紀錄",
+    headers: ["quoteId", "revision", "timestamp", "changeType", "snapshot"],
+  },
+  {
     title: "系統設定",
     headers: ["設定項", "設定值"],
   },
