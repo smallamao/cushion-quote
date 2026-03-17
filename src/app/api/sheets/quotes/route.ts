@@ -29,6 +29,7 @@ function headerToRow(h: QuoteRecord): string[] {
     h.notes,
     h.createdAt,
     h.updatedAt,
+    h.clientId ?? "",
   ];
 }
 
@@ -76,6 +77,7 @@ function rowToHeader(row: string[]): QuoteRecord {
     notes: row[16] ?? "",
     createdAt: row[17] ?? "",
     updatedAt: row[18] ?? "",
+    clientId: row[19] ?? "",
   };
 }
 
@@ -127,7 +129,7 @@ export async function GET() {
   try {
     const response = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: "報價紀錄!A2:S",
+      range: "報價紀錄!A2:T",
     });
     const quotes = (response.data.values ?? []).map(rowToHeader);
     const today = new Date().toISOString().slice(0, 10);
@@ -170,7 +172,7 @@ export async function POST(request: Request) {
   try {
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-      range: "報價紀錄!A:S",
+      range: "報價紀錄!A:T",
       valueInputOption: "RAW",
       requestBody: { values: [headerToRow(payload.header)] },
     });
@@ -214,7 +216,7 @@ export async function PUT(request: Request) {
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `報價紀錄!A${sheetRow}:S${sheetRow}`,
+      range: `報價紀錄!A${sheetRow}:T${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [headerToRow(payload.header)] },
     });

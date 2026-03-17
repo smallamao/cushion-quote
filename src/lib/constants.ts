@@ -157,6 +157,14 @@ export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
   other: "其他",
 };
 
+export interface QuoteTemplate {
+  id: string;
+  label: string;
+  description: string;
+  items: Array<Omit<FlexQuoteItem, "id">>;
+  defaultTerms?: string;
+}
+
 export const ITEM_TEMPLATES: Array<{ label: string; item: Omit<FlexQuoteItem, "id"> }> = [
   { label: "雙北市區運費", item: { name: "雙北市區運費", spec: "包含產品配送、垃圾清運", qty: 1, unit: "式", unitPrice: 4000, amount: 4000, isCostItem: true, notes: "" } },
   { label: "外縣市運費", item: { name: "外縣市運費", spec: "包含產品配送、垃圾清運", qty: 1, unit: "式", unitPrice: 0, amount: 0, isCostItem: true, notes: "" } },
@@ -164,6 +172,39 @@ export const ITEM_TEMPLATES: Array<{ label: string; item: Omit<FlexQuoteItem, "i
   { label: "現場安裝工資", item: { name: "現場安裝工資", spec: "產品安裝與定位", qty: 1, unit: "式", unitPrice: 3000, amount: 3000, isCostItem: true, notes: "" } },
   { label: "夜間施工工資", item: { name: "夜間施工工資", spec: "產品安裝與定位", qty: 1, unit: "式", unitPrice: 3500, amount: 3500, isCostItem: true, notes: "" } },
   { label: "製版費", item: { name: "製版費", spec: "", qty: 1, unit: "式", unitPrice: 6500, amount: 6500, isCostItem: false, notes: "" } },
+];
+
+export const QUOTE_TEMPLATES: QuoteTemplate[] = [
+  {
+    id: "sofa-reupholster",
+    label: "沙發換皮標準組",
+    description: "換皮 + 運費 + 安裝",
+    items: [
+      { name: "沙發換皮", spec: "", qty: 1, unit: "只", unitPrice: 0, amount: 0, isCostItem: false, notes: "" },
+      { name: "雙北市區運費", spec: "包含產品配送、垃圾清運", qty: 1, unit: "式", unitPrice: 4000, amount: 4000, isCostItem: true, notes: "" },
+      { name: "現場安裝工資", spec: "產品安裝與定位", qty: 1, unit: "式", unitPrice: 3000, amount: 3000, isCostItem: true, notes: "" },
+    ],
+  },
+  {
+    id: "cushion-set",
+    label: "訂製坐墊組",
+    description: "坐墊 + 運費",
+    items: [
+      { name: "訂製坐墊", spec: "", qty: 1, unit: "只", unitPrice: 0, amount: 0, isCostItem: false, notes: "" },
+      { name: "雙北市區運費", spec: "包含產品配送、垃圾清運", qty: 1, unit: "式", unitPrice: 4000, amount: 4000, isCostItem: true, notes: "" },
+    ],
+  },
+  {
+    id: "commercial-project",
+    label: "商空工程組",
+    description: "訂製品項 + 運費 + 安裝 + 製版費",
+    items: [
+      { name: "訂製沙發", spec: "", qty: 1, unit: "只", unitPrice: 0, amount: 0, isCostItem: false, notes: "" },
+      { name: "製版費", spec: "", qty: 1, unit: "式", unitPrice: 6500, amount: 6500, isCostItem: false, notes: "" },
+      { name: "雙北市區運費", spec: "包含產品配送、垃圾清運", qty: 1, unit: "式", unitPrice: 4000, amount: 4000, isCostItem: true, notes: "" },
+      { name: "現場安裝工資", spec: "產品安裝與定位", qty: 1, unit: "式", unitPrice: 3000, amount: 3000, isCostItem: true, notes: "" },
+    ],
+  },
 ];
 
 export const DEFAULT_TERMS = `1. 付款方式：匯款

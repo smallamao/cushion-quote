@@ -4,6 +4,7 @@ import { Copy, Edit, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useClients } from "@/hooks/useClients";
 import { CHANNEL_LABELS } from "@/lib/constants";
 import type { QuoteRecord, QuoteStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -29,10 +30,12 @@ const STATUS_MAP: Record<QuoteStatus, { label: string; className: string }> = {
 
 export function QuotesClient() {
   const router = useRouter();
+  const { clients, loading: clientsLoading } = useClients();
   const [quotes, setQuotes] = useState<QuoteRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [filterStatus, setFilterStatus] = useState<QuoteStatus | "all">("all");
+  const [filterClientId, setFilterClientId] = useState("all");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showDeleted, setShowDeleted] = useState(false);
@@ -110,11 +113,12 @@ export function QuotesClient() {
       }
 
       if (filterStatus !== "all" && q.status !== filterStatus) return false;
+      if (filterClientId !== "all" && q.clientId !== filterClientId) return false;
       if (filterDateFrom && q.quoteDate < filterDateFrom) return false;
       if (filterDateTo && q.quoteDate > filterDateTo) return false;
       return true;
     });
-  }, [filterDateFrom, filterDateTo, filterStatus, quotes, searchText, showDeleted]);
+  }, [filterClientId, filterDateFrom, filterDateTo, filterStatus, quotes, searchText, showDeleted]);
 
   const sorted = useMemo(
     () => [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
@@ -144,6 +148,7 @@ export function QuotesClient() {
   const hasFilters =
     searchText !== "" ||
     filterStatus !== "all" ||
+    filterClientId !== "all" ||
     filterDateFrom !== "" ||
     filterDateTo !== "" ||
     showDeleted;
@@ -198,6 +203,22 @@ export function QuotesClient() {
               {Object.entries(STATUS_MAP).map(([key, info]) => (
                 <SelectItem key={key} value={key}>
                   {info.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={filterClientId}
+            onValueChange={setFilterClientId}
+          >
+            <SelectTrigger className="w-full lg:w-48">
+              <SelectValue placeholder={clientsLoading ? "載入客戶中..." : "全部客戶"} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部客戶</SelectItem>
+              {clients.map((client) => (
+                <SelectItem key={client.id} value={client.id}>
+                  {client.companyName}
                 </SelectItem>
               ))}
             </SelectContent>

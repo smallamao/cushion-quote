@@ -19,18 +19,22 @@ import {
   Loader2,
   MessageSquare,
   Plus,
+  Redo2,
   Save,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
+import { useHistory } from "@/hooks/useHistory";
 import { useSettings } from "@/hooks/useSettings";
 import {
   CHANNEL_LABELS,
   DEFAULT_TERMS,
   ITEM_TEMPLATES,
+  QUOTE_TEMPLATES,
 } from "@/lib/constants";
 import type {
   Channel,
@@ -342,7 +346,8 @@ export function QuoteEditor() {
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
 
-  const [items, setItems] = useState<FlexQuoteItem[]>([createEmptyItem()]);
+  const [historyInitialItems, setHistoryInitialItems] = useState<FlexQuoteItem[]>(() => [createEmptyItem()]);
+  const { state: items, setState: setItems, undo, redo, canUndo, canRedo } = useHistory<FlexQuoteItem[]>(historyInitialItems);
   const [description, setDescription] = useState("");
   const [descriptionImageUrl, setDescriptionImageUrl] = useState("");
   const [includeTax, setIncludeTax] = useState(true);
@@ -357,6 +362,7 @@ export function QuoteEditor() {
   const [saving, setSaving] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
+  const [quoteTemplateDropdownOpen, setQuoteTemplateDropdownOpen] = useState(false);
 
   const [colWidths, setColWidths] = useState<{ itemName: number; spec: number }>({ ...COL_DEFAULT });
   const autoDraftReadyRef = useRef(false);
@@ -445,6 +451,7 @@ export function QuoteEditor() {
       }
 
       setCompanyName(header.clientName || "");
+      setSelectedClientId(header.clientId || "");
       setContactName(header.clientContact || "");
       setPhone(header.clientPhone || "");
       setAddress(header.projectAddress || "");
@@ -464,7 +471,7 @@ export function QuoteEditor() {
           isCostItem: false,
           notes: line.notes || "",
         }));
-        setItems(loadedItems);
+        setHistoryInitialItems(loadedItems);
       }
     } catch (err) {
       console.error("Failed to load quote from session storage:", err);
@@ -502,7 +509,7 @@ export function QuoteEditor() {
         setEmail(draft.email);
         setAddress(draft.address);
         setChannel(draft.channel);
-        setItems(draft.items.length > 0 ? draft.items : [createEmptyItem()]);
+        setHistoryInitialItems(draft.items.length > 0 ? draft.items : [createEmptyItem()]);
         setDescription(draft.description);
         setDescriptionImageUrl(draft.descriptionImageUrl);
         setIncludeTax(draft.includeTax);
@@ -653,6 +660,39 @@ export function QuoteEditor() {
     [addItem],
   );
 
+  const applyQuoteTemplate = useCallback(
+    (template: (typeof QUOTE_TEMPLATES)[number]) => {
+      const confirmed = confirm(
+        `套用範本「${template.label}」將替換目前所有品項，確定嗎？`,
+      );
+      if (!confirmed) return;
+
+      setItems(template.items.map((item) => ({ ...item, id: crypto.randomUUID() })));
+      setExpandedItems(new Set());
+      if (template.defaultTerms) {
+        setTermsTemplate(template.defaultTerms);
+      }
+      setQuoteTemplateDropdownOpen(false);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [redo, undo]);
+
   const subtotal = useMemo(
     () => items.reduce((sum, item) => sum + item.amount, 0),
     [items],
@@ -675,7 +715,8 @@ export function QuoteEditor() {
     setProjectName("");
     setEmail("");
     setAddress("");
-    setItems([createEmptyItem()]);
+    setHistoryInitialItems([createEmptyItem()]);
+    setExpandedItems(new Set());
     setDescription("");
     setDescriptionImageUrl("");
     setIncludeTax(true);
@@ -729,6 +770,7 @@ export function QuoteEditor() {
         notes: description,
         createdAt: now,
         updatedAt: now,
+        clientId: selectedClientId === "__new__" ? "" : selectedClientId,
       },
       lines: items.map((item, idx) => ({
         quoteId: targetId,
@@ -1076,6 +1118,12 @@ export function QuoteEditor() {
         </div>
 
         <div className="flex items-center gap-2 border-t border-[var(--border)] px-4 py-3">
+          <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo}>
+            <Undo2 className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={redo} disabled={!canRedo}>
+            <Redo2 className="h-3.5 w-3.5" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => addItem()}>
             <Plus className="h-3.5 w-3.5" />
             新增品項
@@ -1116,6 +1164,41 @@ export function QuoteEditor() {
                           ? formatCurrency(tpl.item.unitPrice)
                           : "待定"}
                       </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setQuoteTemplateDropdownOpen(!quoteTemplateDropdownOpen)}
+            >
+              📄 套用整單範本
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+            {quoteTemplateDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setQuoteTemplateDropdownOpen(false)}
+                />
+                <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]">
+                  {QUOTE_TEMPLATES.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => applyQuoteTemplate(template)}
+                      className="block w-full px-3 py-2 text-left transition-colors hover:bg-[var(--bg-subtle)]"
+                    >
+                      <div className="text-sm font-medium text-[var(--text-primary)]">
+                        {template.label}
+                      </div>
+                      <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                        {template.description}
+                      </div>
                     </button>
                   ))}
                 </div>

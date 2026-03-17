@@ -24,6 +24,7 @@ function rowToHeader(row: string[]): QuoteRecord {
     notes: row[16] ?? "",
     createdAt: row[17] ?? "",
     updatedAt: row[18] ?? "",
+    clientId: row[19] ?? "",
   };
 }
 
@@ -67,7 +68,7 @@ export async function GET(
   try {
     const headerResponse = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: "報價紀錄!A2:S",
+      range: "報價紀錄!A2:T",
     });
     const headerRows = headerResponse.data.values ?? [];
     const header = headerRows

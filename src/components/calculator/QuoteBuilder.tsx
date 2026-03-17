@@ -141,6 +141,7 @@ export function QuoteBuilder() {
         notes,
         createdAt: now,
         updatedAt: now,
+        clientId: "",
       };
 
       const lines: QuoteLineRecord[] = result.lineResults.map((line, idx) => ({

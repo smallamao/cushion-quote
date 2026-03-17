@@ -120,6 +120,7 @@ export interface QuoteRecord {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  clientId: string;
 }
 
 export interface QuoteLineRecord {
