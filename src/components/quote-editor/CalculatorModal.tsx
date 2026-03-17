@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useMaterials } from "@/hooks/useMaterials";
 import { useSettings } from "@/hooks/useSettings";
@@ -23,6 +23,7 @@ import type {
   Method,
 } from "@/lib/types";
 import { caiToYard, formatCurrency, yardToCai } from "@/lib/utils";
+import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -57,7 +58,7 @@ export function CalculatorModal({
   channel,
 }: CalculatorModalProps) {
   const { settings } = useSettings();
-  const { materials } = useMaterials();
+  const { materials, favoriteIds, recentIds, toggleFavorite, addRecent } = useMaterials();
 
   const [method, setMethod] = useState<Method>("single_headboard");
   const [widthCm, setWidthCm] = useState(180);
@@ -77,6 +78,23 @@ export function CalculatorModal({
     () => materials.find((m) => m.id === selectedMaterialId) ?? null,
     [materials, selectedMaterialId],
   );
+
+  const favoriteMaterials = useMemo(
+    () => materials.filter((m) => favoriteIds.includes(m.id)),
+    [materials, favoriteIds],
+  );
+
+  const recentMaterials = useMemo(
+    () => recentIds
+      .map((id) => materials.find((m) => m.id === id))
+      .filter((m): m is NonNullable<typeof m> => m != null && !favoriteIds.includes(m.id)),
+    [materials, recentIds, favoriteIds],
+  );
+
+  const handleMaterialChange = useCallback((value: string) => {
+    setSelectedMaterialId(value);
+    addRecent(value);
+  }, [addRecent]);
 
   const caiCount = useMemo(
     () => calculateCaiCount(widthCm, heightCm, methodConfig.minCai),
@@ -206,6 +224,11 @@ export function CalculatorModal({
       amount: unitPrice * qty,
       isCostItem: false,
       notes: "",
+      costPerUnit: pieceCost,
+      laborRate,
+      materialRate,
+      method,
+      materialId: selectedMaterialId === "custom" ? "" : selectedMaterialId,
     };
 
     onInsertItem(item);
@@ -366,13 +389,37 @@ export function CalculatorModal({
             <Label>選擇材質</Label>
             <Select
               value={selectedMaterialId}
-              onValueChange={setSelectedMaterialId}
+              onValueChange={handleMaterialChange}
             >
               <SelectTrigger>
                 <SelectValue placeholder="選擇材質或自訂" />
               </SelectTrigger>
               <SelectContent>
+                {favoriteMaterials.length > 0 && (
+                  <>
+                    <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">★ 常用材質</div>
+                    {favoriteMaterials.map((mat) => (
+                      <SelectItem key={`fav-${mat.id}`} value={mat.id}>
+                        ★ {mat.brand} {mat.series} / {mat.colorCode} {mat.colorName}
+                      </SelectItem>
+                    ))}
+                    <div className="my-1 border-t border-[var(--border)]" />
+                  </>
+                )}
+                {recentMaterials.length > 0 && (
+                  <>
+                    <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">最近使用</div>
+                    {recentMaterials.map((mat) => (
+                      <SelectItem key={`recent-${mat.id}`} value={mat.id}>
+                        {mat.brand} {mat.series} / {mat.colorCode} {mat.colorName}
+                      </SelectItem>
+                    ))}
+                    <div className="my-1 border-t border-[var(--border)]" />
+                  </>
+                )}
                 <SelectItem value="custom">自訂面料（手動輸入成本）</SelectItem>
+                <div className="my-1 border-t border-[var(--border)]" />
+                <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">全部材質</div>
                 {materials.map((mat) => (
                   <SelectItem key={mat.id} value={mat.id}>
                     {mat.brand} {mat.series} / {mat.colorCode} {mat.colorName}
@@ -383,9 +430,21 @@ export function CalculatorModal({
 
             {selectedMaterial ? (
               <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
-                <div className="font-medium">
-                  {selectedMaterial.brand} {selectedMaterial.series} /{" "}
-                  {selectedMaterial.colorCode}
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">
+                    {selectedMaterial.brand} {selectedMaterial.series} /{" "}
+                    {selectedMaterial.colorCode}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(selectedMaterial.id)}
+                    className="rounded p-0.5 transition-colors hover:bg-[var(--bg-hover)]"
+                    title={favoriteIds.includes(selectedMaterial.id) ? "取消常用" : "加入常用"}
+                  >
+                    <Star
+                      className={`h-3.5 w-3.5 ${favoriteIds.includes(selectedMaterial.id) ? "fill-[var(--warning)] text-[var(--warning)]" : "text-[var(--text-tertiary)]"}`}
+                    />
+                  </button>
                 </div>
                 <div className="mt-1 flex gap-3 text-[var(--text-secondary)]">
                   <span>

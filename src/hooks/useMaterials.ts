@@ -10,13 +10,27 @@ interface MaterialsResponse {
 }
 
 const CACHE_KEY = "cq-materials-cache";
+const FAVORITES_KEY = "cq-material-favorites";
+const RECENT_KEY = "cq-material-recent";
+const MAX_RECENT = 5;
 const TTL = 5 * 60 * 1000;
+
+function readIds(key: string): string[] {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function useMaterials() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<MaterialsResponse["source"]>("defaults");
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => readIds(FAVORITES_KEY));
+  const [recentIds, setRecentIds] = useState<string[]>(() => readIds(RECENT_KEY));
 
   const load = useCallback(async (force = false) => {
     try {
@@ -75,5 +89,28 @@ export function useMaterials() {
     await load(true);
   }, [load]);
 
-  return { materials, loading, error, source, reload: () => load(true), addMaterial, updateMaterial };
+  const toggleFavorite = useCallback((materialId: string) => {
+    setFavoriteIds((prev) => {
+      const next = prev.includes(materialId)
+        ? prev.filter((id) => id !== materialId)
+        : [...prev, materialId];
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const addRecent = useCallback((materialId: string) => {
+    if (materialId === "custom") return;
+    setRecentIds((prev) => {
+      const next = [materialId, ...prev.filter((id) => id !== materialId)].slice(0, MAX_RECENT);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  return {
+    materials, loading, error, source,
+    reload: () => load(true), addMaterial, updateMaterial,
+    favoriteIds, recentIds, toggleFavorite, addRecent,
+  };
 }

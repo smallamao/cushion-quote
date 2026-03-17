@@ -41,6 +41,7 @@ import type {
   Client,
   FlexQuoteItem,
   ItemUnit,
+  Method,
   QuoteLineRecord,
   QuoteStatus,
 } from "@/lib/types";
@@ -135,6 +136,7 @@ function SortableQuoteItemRow({
     transition,
     isDragging,
   } = useSortable({ id: item.id });
+  const showManualCostInput = useRef(item.costPerUnit == null).current;
 
   const rowStyle = {
     transform: CSS.Transform.toString(transform),
@@ -288,6 +290,24 @@ function SortableQuoteItemRow({
                   className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
                 />
               </div>
+              {showManualCostInput && (
+                <div className="w-40 shrink-0">
+                  <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">成本/件（選填）</div>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={item.costPerUnit ?? ""}
+                    onChange={(e) =>
+                      onUpdateItem(item.id, {
+                        costPerUnit: e.target.value === "" ? undefined : Number(e.target.value),
+                      })
+                    }
+                    placeholder="0"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              )}
               <div className="w-32 shrink-0">
                 <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">參考圖片</div>
                 {item.imageUrl ? (
@@ -776,16 +796,16 @@ export function QuoteEditor() {
         quoteId: targetId,
         lineNumber: idx + 1,
         itemName: item.name,
-        method: "flat",
+        method: item.method ?? ("flat" as Method),
         widthCm: 0,
         heightCm: 0,
         caiCount: 0,
         foamThickness: 0,
-        materialId: "",
+        materialId: item.materialId ?? "",
         materialDesc: item.spec,
         qty: item.qty,
-        laborRate: 0,
-        materialRate: 0,
+        laborRate: item.laborRate ?? 0,
+        materialRate: item.materialRate ?? 0,
         extras: "",
         unitPrice: item.unitPrice,
         piecePrice: item.unitPrice,

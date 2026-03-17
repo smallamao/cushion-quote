@@ -202,6 +202,11 @@ export interface FlexQuoteItem {
   isCostItem: boolean;
   notes: string;
   imageUrl?: string;
+  costPerUnit?: number; // pieceCost (raw cost before channel multiplier)
+  laborRate?: number; // labor cost per cai
+  materialRate?: number; // material cost per cai (after waste)
+  method?: Method; // calculation method used
+  materialId?: string; // material ID from database
 }
 
 export interface QuoteDocument {
