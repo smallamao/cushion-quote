@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
 import type { CommissionMode, SystemSettings } from "@/lib/types";
+import { clampCommissionRate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,11 +23,17 @@ function NumberField({
   value,
   suffix,
   onChange,
+  min,
+  max,
+  step,
 }: {
   label: string;
   value: number;
   suffix?: string;
   onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
 }) {
   return (
     <div>
@@ -35,8 +42,19 @@ function NumberField({
         <Input
           type="number"
           value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
+          onChange={(e) => {
+            const raw = Number(e.target.value);
+            const next = Number.isNaN(raw)
+              ? 0
+              : max != null || min != null
+                ? Math.min(max ?? raw, Math.max(min ?? raw, raw))
+                : raw;
+            onChange(next);
+          }}
           className="max-w-[120px]"
+          min={min}
+          max={max}
+          step={step}
         />
         {suffix ? (
           <span className="text-xs text-[var(--text-secondary)]">
@@ -180,6 +198,12 @@ export function SettingsClient() {
               onChange={(v) => update({ wasteRate: v })}
             />
             <NumberField
+              label="布料折數（牌價 ×）"
+              value={current.fabricDiscount}
+              suffix=""
+              onChange={(v) => update({ fabricDiscount: Math.round(v * 100) / 100 })}
+            />
+            <NumberField
               label="營業稅"
               value={current.taxRate}
               suffix="%"
@@ -199,6 +223,7 @@ export function SettingsClient() {
                 <SelectContent>
                   <SelectItem value="price_gap">賺價差（模式 A）</SelectItem>
                   <SelectItem value="rebate">返佣（模式 B）</SelectItem>
+                  <SelectItem value="fixed">固定金額</SelectItem>
                   <SelectItem value="none">無佣金</SelectItem>
                 </SelectContent>
               </Select>
@@ -208,7 +233,23 @@ export function SettingsClient() {
                 label="返佣比例"
                 value={current.commissionRate}
                 suffix="%"
-                onChange={(v) => update({ commissionRate: v })}
+                min={0}
+                max={50}
+                step={0.1}
+                onChange={(v) =>
+                  update({ commissionRate: clampCommissionRate(v) })
+                }
+              />
+            )}
+            {current.commissionMode === "fixed" && (
+              <NumberField
+                label="固定佣金金額"
+                value={current.commissionFixedAmount}
+                min={0}
+                max={500000}
+                onChange={(v) =>
+                  update({ commissionFixedAmount: Math.max(0, Math.round(v)) })
+                }
               />
             )}
             <NumberField
@@ -245,20 +286,11 @@ export function SettingsClient() {
               />
             </div>
             <div>
-              <Label>統一編號</Label>
+              <Label>統一編號：</Label>
               <Input
                 value={current.companyTaxId}
                 onChange={(e) =>
                   update({ companyTaxId: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <Label>聯絡窗口</Label>
-              <Input
-                value={current.companyContact}
-                onChange={(e) =>
-                  update({ companyContact: e.target.value })
                 }
               />
             </div>

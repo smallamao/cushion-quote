@@ -124,6 +124,13 @@ const s = StyleSheet.create({
     objectFit: "contain" as const,
     borderRadius: 2,
   },
+  specImage: {
+    marginTop: 4,
+    maxWidth: 90,
+    maxHeight: 60,
+    objectFit: "contain" as const,
+    borderRadius: 2,
+  },
 
   descSection: {
     marginBottom: 10,
@@ -193,7 +200,7 @@ const s = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: C.border,
   },
-  notesText: { fontSize: 8, color: C.muted, lineHeight: 1.6 },
+  notesText: { fontSize: 10, color: C.muted, lineHeight: 1.6 },
 
   spacer: { flex: 1 },
   footer: {
@@ -203,8 +210,8 @@ const s = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  footerCompany: { fontSize: 9, fontWeight: 700, color: C.black },
-  footerInfo: { fontSize: 7.5, color: C.muted, lineHeight: 1.4 },
+  footerCompany: { fontSize: 16, fontWeight: 700, color: C.black },
+  footerInfo: { fontSize: 12, color: C.muted, lineHeight: 1.4 },
 });
 
 export interface QuotePDFProps {
@@ -237,7 +244,7 @@ function fmt(n: number): string {
 }
 
 function fmtCurrency(n: number): string {
-  return `$${fmt(n)}`;
+  return n < 0 ? `-$${fmt(Math.abs(n))}` : `$${fmt(n)}`;
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -253,6 +260,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
     validityDays,
     client,
     projectName,
+    channel,
     items,
     description,
     descriptionImageUrl,
@@ -264,6 +272,8 @@ function QuotePDFDocument(props: QuotePDFProps) {
     settings,
   } = props;
 
+  const fw = (s: string) => s.replace(/：/g, ": ").replace(/，/g, ", ").replace(/；/g, "; ");
+
   const validUntil = addDays(quoteDate, validityDays);
 
   return (
@@ -274,7 +284,6 @@ function QuotePDFDocument(props: QuotePDFProps) {
             <Image src="/logo.png" style={s.logo} />
             <View style={s.brandBlock}>
               <Text style={s.brandName}>{settings.companyName}</Text>
-              <Text style={s.brandSub}>Potato Sofa</Text>
             </View>
           </View>
           <View style={s.headerRight}>
@@ -371,7 +380,12 @@ function QuotePDFDocument(props: QuotePDFProps) {
                   <Image src={item.imageUrl} style={s.itemImage} />
                 ) : null}
               </View>
-              <Text style={[s.tCell, s.colSpec]}>{item.spec || ""}</Text>
+              <View style={s.colSpec}>
+                <Text style={s.tCell}>{item.spec || ""}</Text>
+                {item.specImageUrl ? (
+                  <Image src={item.specImageUrl} style={s.specImage} />
+                ) : null}
+              </View>
               <Text style={[s.tCellR, s.colQty]}>{item.qty}</Text>
               <Text style={[s.tCell, s.colUnit]}>{item.unit}</Text>
               <Text style={[s.tCellR, s.colPrice]}>{fmtCurrency(item.unitPrice)}</Text>
@@ -414,8 +428,8 @@ function QuotePDFDocument(props: QuotePDFProps) {
         {termsTemplate.trim() ? (
           <View style={s.notesSection}>
             <Text style={s.notesTitle}>備註 / 條款</Text>
-            {termsTemplate.split("\n").map((line, i) => (
-              <Text key={i} style={s.notesText}>{line}</Text>
+            {termsTemplate.split("\n").filter(l => l.trim()).map((line, idx) => (
+              <Text key={idx} style={s.notesText}>{fw(line.trim())}</Text>
             ))}
           </View>
         ) : null}
@@ -423,28 +437,31 @@ function QuotePDFDocument(props: QuotePDFProps) {
         <View style={s.spacer} />
 
         <View style={s.footer}>
-          <View>
-            <Text style={s.footerCompany}>
-              {settings.companyFullName || settings.companyName}
-            </Text>
-            <Text style={s.footerInfo}>
-              統編：{settings.companyTaxId}
-            </Text>
-            {settings.companyContact ? (
-              <Text style={s.footerInfo}>
-                聯絡窗口：{settings.companyContact}
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start", flex: 1 }}>
+            <View>
+              <Text style={s.footerCompany}>
+                {settings.companyFullName || settings.companyName}
               </Text>
-            ) : null}
+              <Text style={s.footerInfo}>
+                統編: {settings.companyTaxId}
+              </Text>
+              {settings.companyContact && (channel === "wholesale" || channel === "designer") ? (
+                <Text style={s.footerInfo}>
+                  聯絡窗口: {settings.companyContact}
+                </Text>
+              ) : null}
+            </View>
+            <Image src="/stamp.png" style={{ width: 72, height: 72, opacity: 0.85, alignSelf: "flex-end" }} />
           </View>
-          <View style={{ alignItems: "flex-end" as const }}>
+          <View style={{ alignItems: "flex-end" as const, flex: 1 }}>
             {settings.companyPhone ? (
-              <Text style={s.footerInfo}>電話：{settings.companyPhone}</Text>
+              <Text style={s.footerInfo}>電話: {settings.companyPhone}</Text>
             ) : null}
             {settings.companyFax ? (
-              <Text style={s.footerInfo}>傳真：{settings.companyFax}</Text>
+              <Text style={s.footerInfo}>傳真: {settings.companyFax}</Text>
             ) : null}
             {settings.companyAddress ? (
-              <Text style={s.footerInfo}>地址：{settings.companyAddress}</Text>
+              <Text style={s.footerInfo}>地址: {settings.companyAddress}</Text>
             ) : null}
           </View>
         </View>

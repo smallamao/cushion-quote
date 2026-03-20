@@ -3,7 +3,6 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { useMaterials } from "@/hooks/useMaterials";
-import { useSettings } from "@/hooks/useSettings";
 import {
   CATEGORY_LABELS,
   EXTRA_DEFS,
@@ -12,6 +11,8 @@ import {
   METHODS,
   STOCK_STATUS_LABELS,
 } from "@/lib/constants";
+import { calculateFabric } from "@/lib/fabric-calculator";
+import type { CutPiece } from "@/lib/fabric-calculator";
 import {
   calculateCaiCount,
   calculateLaborRate,
@@ -21,8 +22,9 @@ import type {
   ExtraItem,
   FlexQuoteItem,
   Method,
+  SystemSettings,
 } from "@/lib/types";
-import { caiToYard, formatCurrency, yardToCai } from "@/lib/utils";
+import { calculateQuotedUnitPrice, caiToYard, formatCurrency, roundPriceToTens, yardToCai } from "@/lib/utils";
 import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -49,17 +51,26 @@ interface CalculatorModalProps {
   onOpenChange: (open: boolean) => void;
   onInsertItem: (item: Omit<FlexQuoteItem, "id">) => void;
   channel: Channel;
+  settings: SystemSettings;
 }
+
+const CHANNEL_OPTIONS = [
+  { value: "wholesale", label: "批發" },
+  { value: "designer", label: "設計師" },
+  { value: "retail", label: "屋主" },
+  { value: "luxury_retail", label: "豪華屋主" },
+] as const;
 
 export function CalculatorModal({
   open,
   onOpenChange,
   onInsertItem,
-  channel,
+  channel: defaultChannel,
+  settings,
 }: CalculatorModalProps) {
-  const { settings } = useSettings();
   const { materials, favoriteIds, recentIds, toggleFavorite, addRecent } = useMaterials();
 
+  const [channel, setChannel] = useState<Channel>(defaultChannel);
   const [method, setMethod] = useState<Method>("single_headboard");
   const [widthCm, setWidthCm] = useState(180);
   const [heightCm, setHeightCm] = useState(120);
@@ -129,19 +140,35 @@ export function CalculatorModal({
     [isFoamCore, methodConfig, totalThickness, settings.qualityPremium],
   );
 
-  const materialRateRaw = useMemo(() => {
+  const fabricResult = useMemo(
+    () => isFoamCore ? null : calculateFabric(method, widthCm, heightCm, totalThickness, qty),
+    [isFoamCore, method, widthCm, heightCm, totalThickness, qty],
+  );
+
+  const listPricePerYard = useMemo(() => {
     if (isFoamCore) return 0;
     if (selectedMaterial) {
-      return useListPrice
-        ? selectedMaterial.listPricePerCai
-        : selectedMaterial.costPerCai;
+      return caiToYard(selectedMaterial.listPricePerCai, selectedMaterial.widthCm);
     }
-    return yardToCai(customMaterialCostYard, 135);
-  }, [isFoamCore, selectedMaterial, useListPrice, customMaterialCostYard]);
+    return customMaterialCostYard;
+  }, [isFoamCore, selectedMaterial, customMaterialCostYard]);
 
-  const materialRate = Math.round(
-    materialRateRaw * (1 + settings.wasteRate / 100),
-  );
+  const pricePerYard = Math.round(listPricePerYard * settings.fabricDiscount);
+
+  const fabricCostPerPiece = useMemo(() => {
+    if (!fabricResult || fabricResult.roundedYards === 0 || pricePerYard === 0) return 0;
+    return Math.round((fabricResult.roundedYards * pricePerYard) / qty);
+  }, [fabricResult, pricePerYard, qty]);
+
+  const costPricePerYard = useMemo(() => {
+    if (isFoamCore || !selectedMaterial) return 0;
+    return caiToYard(selectedMaterial.costPerCai, selectedMaterial.widthCm);
+  }, [isFoamCore, selectedMaterial]);
+
+  const materialRate = useMemo(() => {
+    if (isFoamCore || caiCount === 0) return 0;
+    return Math.round(fabricCostPerPiece / caiCount);
+  }, [isFoamCore, fabricCostPerPiece, caiCount]);
 
   const extrasPerCai = useMemo(() => {
     let total = 0;
@@ -161,12 +188,15 @@ export function CalculatorModal({
     return total;
   }, [extras, powerHoleCount]);
 
-  const costPerCai = laborRate + materialRate + extrasPerCai;
   const pieceCost = isFoamCore
     ? foamCorePrice + extrasPerCai * caiCount + extrasFixed
-    : costPerCai * caiCount + extrasFixed;
+    : laborRate * caiCount + fabricCostPerPiece + extrasPerCai * caiCount + extrasFixed;
   const multiplier = isFoamCore ? 1 : settings.channelMultipliers[channel];
-  const unitPrice = Math.round((pieceCost * multiplier) / 10) * 10;
+  const baseUnitPrice = roundPriceToTens(pieceCost * multiplier);
+  const unitPrice =
+    settings.commissionMode === "fixed"
+      ? baseUnitPrice
+      : calculateQuotedUnitPrice(pieceCost, multiplier, settings.commissionMode, settings.commissionRate);
 
   function toggleExtra(extra: ExtraItem, checked: boolean) {
     setExtras((prev) =>
@@ -202,7 +232,7 @@ export function CalculatorModal({
           : "";
 
       const materialDesc = selectedMaterial
-        ? `${selectedMaterial.brand} ${selectedMaterial.series} ${selectedMaterial.colorCode}`
+        ? `${selectedMaterial.brand} ${selectedMaterial.series}${selectedMaterial.colorCode ? ` ${selectedMaterial.colorCode}` : ""}`
         : "自訂面料";
 
       name = [
@@ -224,6 +254,7 @@ export function CalculatorModal({
       amount: unitPrice * qty,
       isCostItem: false,
       notes: "",
+      autoPriced: true,
       costPerUnit: pieceCost,
       laborRate,
       materialRate,
@@ -237,12 +268,32 @@ export function CalculatorModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>繃布計算器</DialogTitle>
-          <DialogDescription>
-            選擇作法、尺寸、材質，計算後插入品項
-          </DialogDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle>繃布計算器</DialogTitle>
+              <DialogDescription>
+                選擇作法、尺寸、材質，計算後插入品項
+              </DialogDescription>
+            </div>
+            <div className="flex gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-0.5">
+              {CHANNEL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setChannel(opt.value)}
+                  className={`rounded-[var(--radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    channel === opt.value
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </DialogHeader>
 
         <div className="space-y-5 px-6 py-4">
@@ -400,7 +451,7 @@ export function CalculatorModal({
                     <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">★ 常用材質</div>
                     {favoriteMaterials.map((mat) => (
                       <SelectItem key={`fav-${mat.id}`} value={mat.id}>
-                        ★ {mat.brand} {mat.series} / {mat.colorCode} {mat.colorName}
+                        ★ {mat.brand} {mat.series}{mat.colorCode ? ` / ${mat.colorCode} ${mat.colorName}` : ""}
                       </SelectItem>
                     ))}
                     <div className="my-1 border-t border-[var(--border)]" />
@@ -411,8 +462,8 @@ export function CalculatorModal({
                     <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">最近使用</div>
                     {recentMaterials.map((mat) => (
                       <SelectItem key={`recent-${mat.id}`} value={mat.id}>
-                        {mat.brand} {mat.series} / {mat.colorCode} {mat.colorName}
-                      </SelectItem>
+                    {mat.brand} {mat.series}{mat.colorCode ? ` / ${mat.colorCode} ${mat.colorName}` : ""}
+                  </SelectItem>
                     ))}
                     <div className="my-1 border-t border-[var(--border)]" />
                   </>
@@ -422,7 +473,7 @@ export function CalculatorModal({
                 <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">全部材質</div>
                 {materials.map((mat) => (
                   <SelectItem key={mat.id} value={mat.id}>
-                    {mat.brand} {mat.series} / {mat.colorCode} {mat.colorName}
+                    {mat.brand} {mat.series}{mat.colorCode ? ` / ${mat.colorCode} ${mat.colorName}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -433,7 +484,7 @@ export function CalculatorModal({
                 <div className="flex items-center justify-between">
                   <div className="font-medium">
                     {selectedMaterial.brand} {selectedMaterial.series} /{" "}
-                    {selectedMaterial.colorCode}
+                    {selectedMaterial.colorCode || selectedMaterial.series}
                   </div>
                   <button
                     type="button"
@@ -446,52 +497,33 @@ export function CalculatorModal({
                     />
                   </button>
                 </div>
-                <div className="mt-1 flex gap-3 text-[var(--text-secondary)]">
-                  <span>
-                    {
-                      CATEGORY_LABELS[
-                        selectedMaterial.category
-                      ]
-                    }
-                  </span>
-                  <span>
-                    {
-                      STOCK_STATUS_LABELS[
-                        selectedMaterial.stockStatus
-                      ]
-                    }
-                  </span>
-                  <span>
-                    進價{" "}
-                    {formatCurrency(
-                      caiToYard(
-                        selectedMaterial.costPerCai,
-                        selectedMaterial.widthCm,
-                      ),
-                    )}
-                    /碼
-                  </span>
+                <div className="mt-1 flex flex-wrap gap-3 text-[var(--text-secondary)]">
+                  <span>{CATEGORY_LABELS[selectedMaterial.category]}</span>
+                  <span>{STOCK_STATUS_LABELS[selectedMaterial.stockStatus]}</span>
+                  <span>牌價 {formatCurrency(caiToYard(selectedMaterial.listPricePerCai, selectedMaterial.widthCm))}/碼</span>
+                  <span>報價 {formatCurrency(pricePerYard)}/碼（{settings.fabricDiscount * 10}折）</span>
                 </div>
-                <label className="mt-2 flex items-center gap-2 text-[var(--text-secondary)]">
-                  <Checkbox
-                    checked={useListPrice}
-                    onCheckedChange={(v) => setUseListPrice(v === true)}
-                  />
-                  以牌價計算
-                </label>
+                <div className="mt-1.5 text-[11px] text-[var(--text-tertiary)]">
+                  進價 {formatCurrency(costPricePerYard)}/碼 · 毛利 {costPricePerYard > 0 ? Math.round(((pricePerYard - costPricePerYard) / pricePerYard) * 100) : 0}%
+                </div>
               </div>
             ) : (
               <div className="mt-2">
-                <Label>面料成本（元/碼）</Label>
+                <Label>面料牌價（元/碼）</Label>
                 <Input
                   type="number"
                   value={customMaterialCostYard}
                   onChange={(e) =>
                     setCustomMaterialCostYard(Number(e.target.value))
                   }
-                  placeholder="供應商報價/碼"
+                  placeholder="牌價/碼"
                   className="max-w-[200px]"
                 />
+                {customMaterialCostYard > 0 && (
+                  <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                    報價 {formatCurrency(pricePerYard)}/碼（牌價 {settings.fabricDiscount * 10}折）
+                  </div>
+                )}
               </div>
             )}
           </div>}
@@ -539,6 +571,49 @@ export function CalculatorModal({
             </div>
           </div>
 
+          {fabricResult && fabricResult.cutPieces.length > 0 && (
+            <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+              <div className="mb-2 text-xs font-medium text-[var(--text-secondary)]">裁切清單</div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-[var(--text-tertiary)]">
+                    <th className="py-1 text-left font-normal">裁片</th>
+                    <th className="py-1 text-right font-normal">尺寸 (cm)</th>
+                    <th className="py-1 text-right font-normal">數量</th>
+                    <th className="py-1 text-right font-normal">材質</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fabricResult.cutPieces.map((piece: CutPiece, i: number) => (
+                    <tr key={i} className={piece.material === "secondary" ? "text-[var(--text-tertiary)]" : ""}>
+                      <td className="py-1">{piece.name}</td>
+                      <td className="py-1 text-right">{Math.round(piece.widthCm)} × {Math.round(piece.lengthCm)}</td>
+                      <td className="py-1 text-right">{piece.qty}</td>
+                      <td className="py-1 text-right">{piece.material === "primary" ? "主布" : "副資材"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-3 flex items-center justify-between border-t border-[var(--border)] pt-2 text-xs">
+                <span className="text-[var(--text-secondary)]">
+                  布幅寬 137cm · 排版預估
+                </span>
+                <div className="flex gap-3 font-medium">
+                  <span>{fabricResult.exactYards} 碼</span>
+                  <span className="text-[var(--accent)]">→ 計價 {fabricResult.roundedYards} 碼</span>
+                </div>
+              </div>
+              {pricePerYard > 0 && (
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="text-[var(--text-tertiary)]">
+                    {formatCurrency(pricePerYard)}/碼（{settings.fabricDiscount * 10}折）× {fabricResult.roundedYards} 碼 ÷ {qty} 件
+                  </span>
+                  <span className="font-medium">{formatCurrency(fabricCostPerPiece)}/件</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
             {isFoamCore ? (
               <>
@@ -561,23 +636,32 @@ export function CalculatorModal({
                   <span>係數 ×{foamCoreFactor}</span>
                   {extrasPerCai > 0 && <span>加工/才 {formatCurrency(extrasPerCai)}</span>}
                 </div>
+                {settings.commissionMode === "fixed" && (
+                  <div className="mt-2 text-center text-[11px] text-[var(--text-tertiary)]">
+                    固定佣金會在加入報價後，依全單品項自動分攤。
+                  </div>
+                )}
               </>
             ) : (
               <>
-                <div className="grid grid-cols-3 gap-4 text-center text-xs">
+                <div className="grid grid-cols-4 gap-3 text-center text-xs">
                   <div>
                     <div className="text-[var(--text-tertiary)]">才數</div>
                     <div className="mt-1 text-lg font-semibold">{caiCount}</div>
                   </div>
                   <div>
-                    <div className="text-[var(--text-tertiary)]">成本/片</div>
+                    <div className="text-[var(--text-tertiary)]">用布</div>
+                    <div className="mt-1 text-lg font-semibold">{fabricResult?.roundedYards ?? 0} 碼</div>
+                  </div>
+                  <div>
+                    <div className="text-[var(--text-tertiary)]">成本/件</div>
                     <div className="mt-1 text-lg font-semibold">
                       {formatCurrency(pieceCost)}
                     </div>
                   </div>
                   <div>
                     <div className="text-[var(--text-tertiary)]">
-                      報價/片 ({channel === "wholesale" ? "批發" : channel === "designer" ? "設計師" : channel === "luxury_retail" ? "豪華屋主" : "屋主"})
+                      報價/件
                     </div>
                     <div className="mt-1 text-lg font-bold text-[var(--accent)]">
                       {formatCurrency(unitPrice)}
@@ -586,9 +670,14 @@ export function CalculatorModal({
                 </div>
                 <div className="mt-3 flex justify-center gap-6 text-[11px] text-[var(--text-tertiary)]">
                   <span>工資/才 {formatCurrency(laborRate)}</span>
-                  <span>面料/才 {formatCurrency(materialRate)}</span>
+                  <span>布料/件 {formatCurrency(fabricCostPerPiece)}</span>
                   <span>倍率 ×{multiplier}</span>
                 </div>
+                {settings.commissionMode === "fixed" && (
+                  <div className="mt-2 text-center text-[11px] text-[var(--text-tertiary)]">
+                    固定佣金會在加入報價後，依全單品項自動分攤。
+                  </div>
+                )}
               </>
             )}
           </div>

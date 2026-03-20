@@ -25,6 +25,7 @@ function rowToClient(row: string[]): Client {
     createdAt: row[17] ?? "",
     updatedAt: row[18] ?? "",
     notes: row[19] ?? "",
+    commissionFixedAmount: Number(row[20] ?? 0),
   };
 }
 
@@ -34,7 +35,7 @@ function clientToRow(c: Client): string[] {
     c.contactName, c.phone, c.phone2, c.lineId, c.email,
     c.address, c.taxId, c.commissionMode, String(c.commissionRate),
     c.paymentTerms, c.defaultNotes, c.isActive ? "TRUE" : "FALSE",
-    c.createdAt, c.updatedAt, c.notes,
+    c.createdAt, c.updatedAt, c.notes, String(c.commissionFixedAmount),
   ];
 }
 
@@ -47,7 +48,7 @@ export async function GET() {
   try {
     const response = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: "客戶資料庫!A2:T",
+      range: "客戶資料庫!A2:U",
     });
     const clients = (response.data.values ?? []).map(rowToClient).filter((c) => c.isActive);
     return NextResponse.json({ clients, source: "sheets" as const });
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
   try {
     await sheetsClient.sheets.spreadsheets.values.append({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: "客戶資料庫!A:T",
+      range: "客戶資料庫!A:U",
       valueInputOption: "RAW",
       requestBody: { values: [clientToRow(payload)] },
     });
@@ -105,7 +106,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `客戶資料庫!A${sheetRow}:T${sheetRow}`,
+      range: `客戶資料庫!A${sheetRow}:U${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [clientToRow(payload)] },
     });

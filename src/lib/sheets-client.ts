@@ -30,7 +30,10 @@ export async function getSheetsClient(): Promise<{ sheets: sheets_v4.Sheets; spr
 
   const auth = new GoogleAuth({
     credentials,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    scopes: [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/drive.file",
+    ],
   });
 
   return {

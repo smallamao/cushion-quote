@@ -5,17 +5,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { CHANNEL_LABELS } from "@/lib/constants";
-import type { Channel, QuoteRecord, QuoteStatus } from "@/lib/types";
+import type { Channel, QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 
-const DASHBOARD_STATUSES = ["draft", "sent", "accepted", "rejected", "expired"] as const;
+const DASHBOARD_STATUSES: VersionStatus[] = ["draft", "sent", "following_up", "negotiating", "accepted", "rejected"];
 
-const STATUS_META: Record<(typeof DASHBOARD_STATUSES)[number], { label: string; className: string }> = {
+const STATUS_META: Record<VersionStatus, { label: string; className: string }> = {
   draft: { label: "草稿", className: "badge-draft" },
   sent: { label: "已發送", className: "badge-sent" },
+  following_up: { label: "追蹤中", className: "badge-sent" },
+  negotiating: { label: "議價中", className: "badge-sent" },
   accepted: { label: "已接受", className: "badge-accepted" },
   rejected: { label: "已拒絕", className: "badge-rejected" },
-  expired: { label: "已過期", className: "badge-expired" },
+  superseded: { label: "已取代", className: "badge-expired" },
 };
 
 const CHANNELS: Channel[] = ["wholesale", "designer", "retail", "luxury_retail"];
@@ -25,18 +27,18 @@ function formatPercent(value: number): string {
 }
 
 export function DashboardPanel() {
-  const [quotes, setQuotes] = useState<QuoteRecord[]>([]);
+  const [versions, setVersions] = useState<QuoteVersionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/sheets/quotes", { cache: "no-store" });
+      const response = await fetch("/api/sheets/versions", { cache: "no-store" });
       if (!response.ok) throw new Error("load dashboard");
-      const payload = (await response.json()) as { quotes: QuoteRecord[] };
-      setQuotes(payload.quotes);
+      const payload = (await response.json()) as { versions: QuoteVersionRecord[] };
+      setVersions(payload.versions);
     } catch {
-      setQuotes([]);
+      setVersions([]);
     } finally {
       setLoading(false);
     }
@@ -46,45 +48,47 @@ export function DashboardPanel() {
     void load();
   }, [load]);
 
-  const activeQuotes = useMemo(
-    () => quotes.filter((quote) => quote.status !== "deleted"),
-    [quotes],
+  const activeVersions = useMemo(
+    () => versions.filter((v) => v.versionStatus !== "superseded"),
+    [versions],
   );
 
-  const acceptedQuotes = useMemo(
-    () => activeQuotes.filter((quote) => quote.status === "accepted"),
-    [activeQuotes],
+  const acceptedVersions = useMemo(
+    () => activeVersions.filter((v) => v.versionStatus === "accepted"),
+    [activeVersions],
   );
 
-  const actionableQuotes = useMemo(
+  const actionableVersions = useMemo(
     () =>
-      activeQuotes.filter(
-        (quote) =>
-          quote.status === "sent" ||
-          quote.status === "accepted" ||
-          quote.status === "rejected",
+      activeVersions.filter(
+        (v) =>
+          v.versionStatus === "sent" ||
+          v.versionStatus === "following_up" ||
+          v.versionStatus === "negotiating" ||
+          v.versionStatus === "accepted" ||
+          v.versionStatus === "rejected",
       ),
-    [activeQuotes],
+    [activeVersions],
   );
 
   const acceptedTotal = useMemo(
-    () => acceptedQuotes.reduce((sum, quote) => sum + quote.total, 0),
-    [acceptedQuotes],
+    () => acceptedVersions.reduce((sum, v) => sum + v.totalAmount, 0),
+    [acceptedVersions],
   );
 
-  const acceptedRate = actionableQuotes.length === 0 ? 0 : acceptedQuotes.length / actionableQuotes.length;
+  const acceptedRate = actionableVersions.length === 0 ? 0 : acceptedVersions.length / actionableVersions.length;
 
   const statusDistribution = useMemo(() => {
     const maxCount = Math.max(
       ...DASHBOARD_STATUSES.map(
-        (status) => activeQuotes.filter((quote) => quote.status === status).length,
+        (status) => activeVersions.filter((v) => v.versionStatus === status).length,
       ),
       0,
     );
 
     return DASHBOARD_STATUSES.map((status) => {
-      const matches = activeQuotes.filter((quote) => quote.status === status);
-      const total = matches.reduce((sum, quote) => sum + quote.total, 0);
+      const matches = activeVersions.filter((v) => v.versionStatus === status);
+      const total = matches.reduce((sum, v) => sum + v.totalAmount, 0);
       return {
         status,
         count: matches.length,
@@ -92,15 +96,15 @@ export function DashboardPanel() {
         barWidth: maxCount === 0 ? 0 : (matches.length / maxCount) * 100,
       };
     });
-  }, [activeQuotes]);
+  }, [activeVersions]);
 
   const topClients = useMemo(() => {
     const clientRevenue = new Map<string, { total: number; count: number }>();
-    acceptedQuotes.forEach((quote) => {
-      const name = quote.clientName || "未填客戶";
+    acceptedVersions.forEach((v) => {
+      const name = v.clientNameSnapshot || "未填客戶";
       const current = clientRevenue.get(name) ?? { total: 0, count: 0 };
       clientRevenue.set(name, {
-        total: current.total + quote.total,
+        total: current.total + v.totalAmount,
         count: current.count + 1,
       });
     });
@@ -108,12 +112,12 @@ export function DashboardPanel() {
     return [...clientRevenue.entries()]
       .sort((a, b) => b[1].total - a[1].total)
       .slice(0, 5);
-  }, [acceptedQuotes]);
+  }, [acceptedVersions]);
 
   const channelRevenue = useMemo(() => {
     return CHANNELS.map((channel) => {
-      const matches = acceptedQuotes.filter((quote) => quote.channel === channel);
-      const total = matches.reduce((sum, quote) => sum + quote.total, 0);
+      const matches = acceptedVersions.filter((v) => v.channel === channel);
+      const total = matches.reduce((sum, v) => sum + v.totalAmount, 0);
       return {
         channel,
         count: matches.length,
@@ -121,12 +125,12 @@ export function DashboardPanel() {
         ratio: acceptedTotal === 0 ? 0 : total / acceptedTotal,
       };
     });
-  }, [acceptedQuotes, acceptedTotal]);
+  }, [acceptedVersions, acceptedTotal]);
 
   const statCards = [
-    { label: "總報價數", value: String(activeQuotes.length), detail: "排除已刪除" },
-    { label: "已成交", value: String(acceptedQuotes.length), detail: "accepted 報價數" },
-    { label: "成交率", value: formatPercent(acceptedRate), detail: "sent + accepted + rejected" },
+    { label: "總報價數", value: String(activeVersions.length), detail: "排除已取代版本" },
+    { label: "已成交", value: String(acceptedVersions.length), detail: "accepted 版本數" },
+    { label: "成交率", value: formatPercent(acceptedRate), detail: "已發送 + 已成交 + 已拒絕" },
     { label: "成交總額", value: formatCurrency(acceptedTotal), detail: "accepted 合計" },
   ];
 
@@ -138,7 +142,7 @@ export function DashboardPanel() {
             營運統計
           </h1>
           <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-            依報價紀錄即時彙整成交與通路表現
+            依報價版本即時彙整成交與通路表現
           </p>
         </div>
         <Button variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
@@ -166,7 +170,7 @@ export function DashboardPanel() {
         ))}
       </div>
 
-      {!loading && activeQuotes.length === 0 ? (
+      {!loading && activeVersions.length === 0 ? (
         <div className="card-surface rounded-[var(--radius-lg)] px-6 py-12 text-center">
           <div className="text-base font-medium text-[var(--text-primary)]">
             尚無報價資料

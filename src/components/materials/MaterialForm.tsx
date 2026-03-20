@@ -57,8 +57,8 @@ export function MaterialForm({ initial, onSave, onCancel }: MaterialFormProps) {
   }
 
   async function handleSubmit() {
-    if (!draft.brand.trim() || !draft.colorCode.trim()) {
-      setError("品牌和色號為必填");
+    if (!draft.brand.trim() || !draft.series.trim()) {
+      setError("品牌和系列為必填");
       return;
     }
     setSaving(true);
@@ -117,14 +117,15 @@ export function MaterialForm({ initial, onSave, onCancel }: MaterialFormProps) {
             </Select>
           </div>
           <div>
-            <Label>色號 *</Label>
+            <Label>色號（選填）</Label>
             <Input
               value={draft.colorCode}
               onChange={(e) => update({ colorCode: e.target.value })}
+              placeholder="僅需記錄到系列即可"
             />
           </div>
           <div>
-            <Label>色名</Label>
+            <Label>色名（選填）</Label>
             <Input
               value={draft.colorName}
               onChange={(e) => update({ colorName: e.target.value })}

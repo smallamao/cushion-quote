@@ -1,3 +1,5 @@
+import type { CommissionMode } from "@/lib/types";
+
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -33,9 +35,28 @@ export function caiPerYard(widthCm: number = DEFAULT_WIDTH_CM): number {
 }
 
 export function yardToCai(pricePerYard: number, widthCm: number): number {
-  return Math.round((pricePerYard / caiPerYard(widthCm)) * 10) / 10;
+  return Math.round((pricePerYard / caiPerYard(widthCm)) * 100) / 100;
 }
 
 export function caiToYard(pricePerCai: number, widthCm: number): number {
   return Math.round(pricePerCai * caiPerYard(widthCm));
+}
+
+export function clampCommissionRate(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(50, Math.max(0, value));
+}
+
+export function roundPriceToTens(value: number) {
+  return Math.round(value / 10) * 10;
+}
+
+export function calculateQuotedUnitPrice(
+  pieceCost: number,
+  multiplier: number,
+  commissionMode: CommissionMode,
+  commissionRate: number,
+) {
+  const commissionMultiplier = commissionMode === "rebate" ? 1 + commissionRate / 100 : 1;
+  return roundPriceToTens(pieceCost * multiplier * commissionMultiplier);
 }

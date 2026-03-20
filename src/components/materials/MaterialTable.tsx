@@ -67,10 +67,14 @@ export function MaterialTable({
                   </div>
                 </td>
                 <td className="px-4 py-2.5">
-                  <div className="text-sm">{material.colorCode}</div>
-                  <div className="text-xs text-[var(--text-secondary)]">
-                    {material.colorName}
-                  </div>
+                  {material.colorCode ? (
+                    <>
+                      <div className="text-sm">{material.colorCode}</div>
+                      {material.colorName && <div className="text-xs text-[var(--text-secondary)]">{material.colorName}</div>}
+                    </>
+                  ) : (
+                    <span className="text-xs text-[var(--text-tertiary)]">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-sm">
                   {CATEGORY_LABELS[material.category]}

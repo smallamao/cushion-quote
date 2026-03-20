@@ -3,11 +3,13 @@
 import { Loader2, Pencil, Plus, Save, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { ClientQuoteHistoryDialog } from "@/app/clients/ClientQuoteHistoryDialog";
 import { useClients } from "@/hooks/useClients";
 import {
   CHANNEL_LABELS,
   CLIENT_TYPE_LABELS,
 } from "@/lib/constants";
+import { clampCommissionRate } from "@/lib/utils";
 import type {
   Channel,
   Client,
@@ -40,6 +42,7 @@ const EMPTY_CLIENT: Client = {
   taxId: "",
   commissionMode: "default",
   commissionRate: 0,
+  commissionFixedAmount: 0,
   paymentTerms: "",
   defaultNotes: "",
   isActive: true,
@@ -136,7 +139,7 @@ export function ClientsClient() {
                   <th className="px-4 py-2.5">聯絡人</th>
                   <th className="px-4 py-2.5">電話</th>
                   <th className="px-4 py-2.5">統編</th>
-                  <th className="w-12 px-4 py-2.5" />
+                  <th className="w-44 px-4 py-2.5">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -166,13 +169,19 @@ export function ClientsClient() {
                       {client.taxId || "—"}
                     </td>
                     <td className="px-4 py-2.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEdit(client)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <ClientQuoteHistoryDialog
+                          clientId={client.id}
+                          clientName={client.companyName}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(client)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -220,6 +229,17 @@ function ClientForm({
   async function handleSubmit() {
     if (!draft.companyName.trim()) {
       setError("公司名稱為必填");
+      return;
+    }
+    if (
+      draft.commissionMode === "rebate" &&
+      (draft.commissionRate < 0 || draft.commissionRate > 50)
+    ) {
+      setError("返佣比例需介於 0% 到 50%");
+      return;
+    }
+    if (draft.commissionMode === "fixed" && draft.commissionFixedAmount < 0) {
+      setError("固定佣金金額不可小於 0");
       return;
     }
     setSaving(true);
@@ -361,10 +381,43 @@ function ClientForm({
                 <SelectItem value="default">跟隨系統設定</SelectItem>
                 <SelectItem value="price_gap">賺價差</SelectItem>
                 <SelectItem value="rebate">返佣</SelectItem>
+                <SelectItem value="fixed">固定金額</SelectItem>
                 <SelectItem value="none">無佣金</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {draft.commissionMode === "rebate" && (
+            <div>
+              <Label>返佣比例 (%)</Label>
+              <Input
+                type="number"
+                value={draft.commissionRate}
+                min={0}
+                max={50}
+                step={0.1}
+                onChange={(e) =>
+                  update({
+                    commissionRate: clampCommissionRate(Number(e.target.value)),
+                  })
+                }
+              />
+            </div>
+          )}
+          {draft.commissionMode === "fixed" && (
+            <div>
+              <Label>固定佣金金額</Label>
+              <Input
+                type="number"
+                value={draft.commissionFixedAmount}
+                min={0}
+                onChange={(e) =>
+                  update({
+                    commissionFixedAmount: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                  })
+                }
+              />
+            </div>
+          )}
         </div>
         <div>
           <Label>備註</Label>

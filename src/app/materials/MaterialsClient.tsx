@@ -31,7 +31,7 @@ export function MaterialsClient() {
   }
 
   async function handleDeactivate(material: Material) {
-    if (!confirm(`確定要停用「${material.brand} ${material.colorCode}」嗎？`))
+    if (!confirm(`確定要停用「${material.brand} ${material.series}」嗎？`))
       return;
     await updateMaterial({ ...material, isActive: false });
   }

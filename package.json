@@ -1,12 +1,14 @@
 {
   "name": "cushion-quote",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -23,6 +25,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@react-pdf/renderer": "^4.3.1",
     "class-variance-authority": "^0.7.1",
+    "cloudinary": "^2.9.0",
     "clsx": "^2.1.1",
     "googleapis": "^148.0.0",
     "lucide-react": "^0.511.0",
@@ -41,6 +44,7 @@
     "eslint": "^9.28.0",
     "eslint-config-next": "^15.3.1",
     "tailwindcss": "^4.1.7",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.0"
   }
 }

@@ -17,6 +17,7 @@ export interface LineCalculationResult {
   costPerCai: number;
   pieceCost: number;
   lineSubtotal: number;
+  allocatedCommission: number;
   channelPrices: Record<Channel, ChannelPrice>;
 }
 
@@ -33,7 +34,7 @@ export interface QuoteCalculationResult {
 
 export function calculateCaiCount(widthCm: number, heightCm: number, minCai: number) {
   const raw = (widthCm * heightCm) / 900;
-  return Math.max(Math.ceil(raw * 10) / 10, minCai);
+  return Math.max(Math.ceil(raw), minCai);
 }
 
 export function calculateLaborRate(method: MethodConfig, thickness: number | null, qualityPremium: number) {
@@ -73,11 +74,13 @@ export function calculateLineItem(item: QuoteLineItem, method: MethodConfig, con
   const pieceCost = costPerCai * caiCount + extrasFixed;
   const lineSubtotal = pieceCost * item.qty;
 
+  const commissionMultiplier = config.commissionMode === "rebate" ? 1 + config.commissionRate / 100 : 1;
+
   const channelPrices = (Object.entries(config.channelMultipliers) as Array<[Channel, number]>).reduce<
     Record<Channel, ChannelPrice>
   >(
     (result, [channel, multiplier]) => {
-      const perPiece = Math.round((pieceCost * multiplier) / 10) * 10;
+      const perPiece = Math.round((pieceCost * multiplier * commissionMultiplier) / 10) * 10;
       const total = perPiece * item.qty;
       const perCai = Math.round(perPiece / caiCount);
       const margin = Math.round((((perPiece - pieceCost) / perPiece) * 100) * 10) / 10;
@@ -92,7 +95,18 @@ export function calculateLineItem(item: QuoteLineItem, method: MethodConfig, con
     },
   );
 
-  return { caiCount, laborRate, materialRate, extrasPerCai, extrasFixed, costPerCai, pieceCost, lineSubtotal, channelPrices };
+  return {
+    caiCount,
+    laborRate,
+    materialRate,
+    extrasPerCai,
+    extrasFixed,
+    costPerCai,
+    pieceCost,
+    lineSubtotal,
+    allocatedCommission: 0,
+    channelPrices,
+  };
 }
 
 export function calculateQuote(
@@ -102,6 +116,51 @@ export function calculateQuote(
   channel: Channel,
 ): QuoteCalculationResult {
   const lineResults = items.map(({ item, method }) => ({ ...calculateLineItem(item, method, config), item }));
+
+  if (config.commissionMode === "fixed") {
+    const fixedCommission = Math.max(0, Math.round(config.commissionFixedAmount));
+    const channels = Object.keys(config.channelMultipliers) as Channel[];
+
+    for (const currentChannel of channels) {
+      const baseSubtotals = lineResults.map((line) => line.channelPrices[currentChannel].perPiece * line.item.qty);
+      const allocatableSubtotal = baseSubtotals.reduce((sum, value) => sum + value, 0);
+      if (allocatableSubtotal <= 0 || fixedCommission <= 0) {
+        continue;
+      }
+
+      const allocations = baseSubtotals.map((baseSubtotal) => Math.floor((fixedCommission * baseSubtotal) / allocatableSubtotal));
+      const allocatedTotal = allocations.reduce((sum, value) => sum + value, 0);
+      const remainder = fixedCommission - allocatedTotal;
+
+      let targetIndex = 0;
+      for (let i = 1; i < baseSubtotals.length; i++) {
+        if (baseSubtotals[i] > baseSubtotals[targetIndex]) {
+          targetIndex = i;
+        }
+      }
+      allocations[targetIndex] += remainder;
+
+      lineResults.forEach((line, index) => {
+        const basePerPiece = line.channelPrices[currentChannel].perPiece;
+        const qty = Math.max(1, line.item.qty);
+        const allocatedCommission = allocations[index] ?? 0;
+        const finalPerPiece = Math.round((basePerPiece + allocatedCommission / qty) / 10) * 10;
+        const finalTotal = finalPerPiece * qty;
+        const margin = finalPerPiece > 0 ? Math.round((((finalPerPiece - line.pieceCost) / finalPerPiece) * 100) * 10) / 10 : 0;
+
+        line.channelPrices[currentChannel] = {
+          total: finalTotal,
+          perCai: Math.round(finalPerPiece / line.caiCount),
+          perPiece: finalPerPiece,
+          margin,
+        };
+
+        if (currentChannel === channel) {
+          line.allocatedCommission = allocatedCommission;
+        }
+      });
+    }
+  }
 
   const itemsSubtotal = lineResults.reduce((sum, line) => sum + line.channelPrices[channel].total, 0);
 
@@ -124,6 +183,8 @@ export function calculateQuote(
   let commissionAmount = 0;
   if (config.commissionMode === "rebate") {
     commissionAmount = Math.round(grandTotal * (config.commissionRate / 100));
+  } else if (config.commissionMode === "fixed") {
+    commissionAmount = Math.max(0, Math.round(config.commissionFixedAmount));
   }
 
   return { lineResults, itemsSubtotal, addonFixed, rushSurcharge, subtotalBeforeTax, tax, grandTotal, commissionAmount };

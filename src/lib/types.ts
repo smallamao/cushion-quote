@@ -8,6 +8,17 @@ export type Method =
 
 export type Channel = "wholesale" | "designer" | "retail" | "luxury_retail";
 
+export type LeadSource =
+  | "unknown"
+  | "google_search"
+  | "google_maps"
+  | "facebook_instagram"
+  | "line"
+  | "referral"
+  | "repeat_customer"
+  | "walk_in"
+  | "other";
+
 export type ExtraItem = "leather_labor" | "lining" | "anti_slip" | "power_hole";
 
 export type AddonType =
@@ -21,9 +32,64 @@ export type Category = "fabric" | "pu_leather" | "pvc_leather" | "genuine_leathe
 
 export type StockStatus = "in_stock" | "low" | "out_of_stock" | "order_only";
 
-export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired" | "deleted";
+export type CaseStatus =
+  | "new"
+  | "quoting"
+  | "following_up"
+  | "won"
+  | "lost"
+  | "on_hold"
+  | "closed";
 
-export type CommissionMode = "price_gap" | "rebate" | "none";
+export type QuotePlanStatus =
+  | "draft"
+  | "quoting"
+  | "negotiating"
+  | "adopted"
+  | "not_adopted"
+  | "cancelled"
+  | "archived";
+
+export type VersionStatus =
+  | "draft"
+  | "sent"
+  | "following_up"
+  | "negotiating"
+  | "accepted"
+  | "rejected"
+  | "superseded";
+
+export type ReminderStatus =
+  | "not_sent"
+  | "pending"
+  | "due_today"
+  | "overdue"
+  | "done";
+
+export type CommissionMode = "price_gap" | "rebate" | "fixed" | "none";
+
+export type SettlementStatus = "pending" | "paid" | "cancelled";
+
+export type PartnerRole = "designer" | "installer" | "referrer" | "other";
+
+export interface CommissionSettlement {
+  settlementId: string;
+  quoteId: string;
+  versionId: string;
+  caseId: string;
+  partnerName: string;
+  partnerId: string;
+  partnerRole: PartnerRole;
+  commissionMode: CommissionMode;
+  commissionRate: number;
+  commissionAmount: number;
+  settlementStatus: SettlementStatus;
+  paidAt: string;
+  paymentMethod: string;
+  receiptNotes: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface MethodConfig {
   id: Method;
@@ -81,10 +147,12 @@ export interface AddonItem {
 export interface PricingConfig {
   qualityPremium: number;
   wasteRate: number;
+  fabricDiscount: number;
   channelMultipliers: Record<Channel, number>;
   taxRate: number;
   commissionMode: CommissionMode;
   commissionRate: number;
+  commissionFixedAmount: number;
 }
 
 export interface SystemSettings extends PricingConfig {
@@ -100,57 +168,120 @@ export interface SystemSettings extends PricingConfig {
   companyEmail: string;
 }
 
-export interface QuoteRecord {
-  quoteId: string;
-  quoteDate: string;
-  clientName: string;
-  clientContact: string;
-  clientPhone: string;
-  projectName: string;
+export interface CaseRecord {
+  caseId: string;
+  caseName: string;
+  clientId: string;
+  clientNameSnapshot: string;
+  contactNameSnapshot: string;
+  phoneSnapshot: string;
   projectAddress: string;
-  channel: Channel;
-  totalBeforeTax: number;
-  tax: number;
-  total: number;
+  channelSnapshot: Channel;
+  leadSource: LeadSource;
+  leadSourceContact: string;
+  leadSourceNotes: string;
+  caseStatus: CaseStatus;
+  inquiryDate: string;
+  latestQuoteId: string;
+  latestVersionId: string;
+  latestSentAt: string;
+  nextFollowUpDate: string;
+  lastFollowUpAt: string;
+  wonVersionId: string;
+  lostReason: string;
+  internalNotes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuotePlanRecord {
+  quoteId: string;
+  caseId: string;
+  quoteSeq: number;
+  quoteName: string;
+  quoteType: string;
+  scopeNote: string;
+  quoteStatus: QuotePlanStatus;
+  currentVersionId: string;
+  selectedVersionId: string;
+  versionCount: number;
+  latestSentAt: string;
+  nextFollowUpDate: string;
+  sortOrder: number;
+  internalNotes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuoteVersionRecord {
+  versionId: string;
+  quoteId: string;
+  caseId: string;
+  versionNo: number;
+  basedOnVersionId: string;
+  versionLabel: string;
+  versionStatus: VersionStatus;
+  quoteDate: string;
+  sentAt: string;
+  validUntil: string;
+  followUpDays: number;
+  nextFollowUpDate: string;
+  lastFollowUpAt: string;
+  reminderStatus: ReminderStatus;
+  subtotalBeforeTax: number;
+  discountAmount: number;
+  taxRate: number;
+  taxAmount: number;
+  totalAmount: number;
   commissionMode: CommissionMode;
   commissionRate: number;
   commissionAmount: number;
-  status: QuoteStatus;
-  createdBy: string;
-  notes: string;
+  commissionFixedAmount: number;
+  commissionPartners: string;
+  estimatedCostTotal: number;
+  grossMarginAmount: number;
+  grossMarginRate: number;
+  channel: Channel;
+  termsTemplate: string;
+  publicDescription: string;
+  descriptionImageUrl: string;
+  internalNotes: string;
+  snapshotLocked: boolean;
+  snapshotLockedAt: string;
+  clientNameSnapshot: string;
+  contactNameSnapshot: string;
+  clientPhoneSnapshot: string;
+  projectNameSnapshot: string;
+  projectAddressSnapshot: string;
+  channelSnapshot: Channel;
   createdAt: string;
   updatedAt: string;
-  clientId: string;
 }
 
-export interface QuoteLineRecord {
+export interface VersionLineRecord {
+  itemId: string;
+  versionId: string;
   quoteId: string;
-  lineNumber: number;
+  caseId: string;
+  lineNo: number;
   itemName: string;
-  method: Method;
-  widthCm: number;
-  heightCm: number;
-  caiCount: number;
-  foamThickness: number;
+  spec: string;
   materialId: string;
-  materialDesc: string;
   qty: number;
-  laborRate: number;
-  materialRate: number;
-  extras: string;
+  unit: ItemUnit;
   unitPrice: number;
-  piecePrice: number;
-  subtotal: number;
+  lineAmount: number;
+  estimatedUnitCost: number;
+  estimatedCostAmount: number;
+  lineMarginAmount: number;
+  lineMarginRate: number;
+  isCostItem: boolean;
+  showOnQuote: boolean;
   notes: string;
-}
-
-export interface CompanyInfo {
-  clientName: string;
-  clientContact: string;
-  clientPhone: string;
-  projectName: string;
-  projectAddress: string;
-  notes: string;
+  imageUrl: string;
+  specImageUrl: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ===== 客戶資料庫 =====
@@ -179,6 +310,7 @@ export interface Client {
   taxId: string;
   commissionMode: CommissionMode | "default";
   commissionRate: number;
+  commissionFixedAmount: number;
   paymentTerms: string;
   defaultNotes: string;
   isActive: boolean;
@@ -202,34 +334,11 @@ export interface FlexQuoteItem {
   isCostItem: boolean;
   notes: string;
   imageUrl?: string;
+  specImageUrl?: string;
+  autoPriced?: boolean;
   costPerUnit?: number; // pieceCost (raw cost before channel multiplier)
   laborRate?: number; // labor cost per cai
   materialRate?: number; // material cost per cai (after waste)
   method?: Method; // calculation method used
   materialId?: string; // material ID from database
-}
-
-export interface QuoteDocument {
-  quoteId: string;
-  quoteDate: string;
-  validUntil: string;
-  clientId: string;
-  client: {
-    companyName: string;
-    contactName: string;
-    phone: string;
-    email: string;
-    address: string;
-    taxId: string;
-  };
-  projectName: string;
-  channel: Channel;
-  items: FlexQuoteItem[];
-  description: string;
-  includeTax: boolean;
-  subtotal: number;
-  tax: number;
-  total: number;
-  termsTemplate: string;
-  status: QuoteStatus;
 }

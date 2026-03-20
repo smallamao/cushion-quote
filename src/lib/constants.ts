@@ -5,6 +5,7 @@ import type {
   ClientType,
   ExtraItem,
   FlexQuoteItem,
+  LeadSource,
   Material,
   MethodConfig,
   SystemSettings,
@@ -109,6 +110,30 @@ export const CHANNEL_LABELS: Record<Channel, { label: string; description: strin
   luxury_retail: { label: "豪華屋主價", description: "高端客戶零售價" },
 };
 
+export const LEAD_SOURCE_OPTIONS: LeadSource[] = [
+  "unknown",
+  "google_search",
+  "google_maps",
+  "facebook_instagram",
+  "line",
+  "referral",
+  "repeat_customer",
+  "walk_in",
+  "other",
+];
+
+export const LEAD_SOURCE_LABELS: Record<LeadSource, { label: string; description: string }> = {
+  unknown: { label: "未分類", description: "尚未標記案件來源" },
+  google_search: { label: "Google 搜尋", description: "來自自然搜尋" },
+  google_maps: { label: "Google 地圖", description: "來自地圖或商家頁" },
+  facebook_instagram: { label: "Facebook / Instagram", description: "來自社群或 Meta 廣告" },
+  line: { label: "LINE", description: "來自 LINE 洽詢" },
+  referral: { label: "介紹", description: "朋友或合作夥伴介紹" },
+  repeat_customer: { label: "舊客回購", description: "既有客戶再次下單" },
+  walk_in: { label: "路過來店", description: "現場來店或看板導流" },
+  other: { label: "其他", description: "未涵蓋的其他來源" },
+};
+
 export const CATEGORY_LABELS: Record<Category, string> = {
   fabric: "布料",
   pu_leather: "PU 皮革",
@@ -124,17 +149,19 @@ export const STOCK_STATUS_LABELS = {
 } as const;
 
 export const DEFAULT_SETTINGS: SystemSettings = {
-  qualityPremium: 10,
-  wasteRate: 15,
+  qualityPremium: 0,
+  wasteRate: 0,
+  fabricDiscount: 0.5,
   channelMultipliers: {
-    wholesale: 1.4,
-    designer: 2,
-    retail: 2.8,
-    luxury_retail: 3.2,
+    wholesale: 1.0,
+    designer: 1.25,
+    retail: 1.35,
+    luxury_retail: 1.5,
   },
   taxRate: 5,
   commissionMode: "price_gap",
   commissionRate: 12,
+  commissionFixedAmount: 0,
   quoteValidityDays: 30,
   companyName: "馬鈴薯沙發",
   companyFullName: "馬鈴薯沙發企業社",
@@ -207,11 +234,11 @@ export const QUOTE_TEMPLATES: QuoteTemplate[] = [
   },
 ];
 
-export const DEFAULT_TERMS = `1. 付款方式：匯款
-2. 訂金：製作前需先支付總額之50%訂金
-3. 履約期限：機關簽包後於30個工作天內完成施作及交貨。
-4. 逾期罰則：逾期違約金以日為單位，按逾期日數，每日以契約價金總千分之一計算逾期違約金，所有日數(包括放假日等)均應繳入，不因履約期限以工作天或日曆天計算而有差別，並以契約價金總額之20%為上限。
-5. 本報價已含營業稅金`;
+export const DEFAULT_TERMS = `1.\u00A0付款方式：匯款
+2.\u00A0訂金：製作前需先支付總額之50%訂金
+3.\u00A0履約期限：機關簽包後於30個工作天內完成施作及交貨。
+4.\u00A0逾期罰則：逾期違約金以日為單位，按逾期日數，每日以契約價金總千分之一計算逾期違約金，所有日數(包括放假日等)均應繳入，不因履約期限以工作天或日曆天計算而有差別，並以契約價金總額之20%為上限。
+5.\u00A0本報價已含營業稅金`;
 
 export const SAMPLE_MATERIALS: Material[] = [
   {

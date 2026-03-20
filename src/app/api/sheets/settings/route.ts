@@ -7,6 +7,7 @@ import type { SystemSettings } from "@/lib/types";
 const SETTINGS_MAP: Array<{ key: string; extract: (s: SystemSettings) => string }> = [
   { key: "quality_premium", extract: (s) => String(s.qualityPremium) },
   { key: "default_waste_rate", extract: (s) => String(s.wasteRate) },
+  { key: "fabric_discount", extract: (s) => String(s.fabricDiscount) },
   { key: "wholesale_multiplier", extract: (s) => String(s.channelMultipliers.wholesale) },
   { key: "designer_multiplier", extract: (s) => String(s.channelMultipliers.designer) },
   { key: "retail_multiplier", extract: (s) => String(s.channelMultipliers.retail) },
@@ -14,6 +15,7 @@ const SETTINGS_MAP: Array<{ key: string; extract: (s: SystemSettings) => string 
   { key: "tax_rate", extract: (s) => String(s.taxRate) },
   { key: "commission_mode", extract: (s) => s.commissionMode },
   { key: "commission_rate", extract: (s) => String(s.commissionRate) },
+  { key: "commission_fixed_amount", extract: (s) => String(s.commissionFixedAmount) },
   { key: "quote_validity_days", extract: (s) => String(s.quoteValidityDays) },
   { key: "company_name", extract: (s) => s.companyName },
   { key: "company_full_name", extract: (s) => s.companyFullName },
@@ -48,6 +50,7 @@ export async function GET() {
       settings: {
         qualityPremium: Number(mapped.quality_premium ?? DEFAULT_SETTINGS.qualityPremium),
         wasteRate: Number(mapped.default_waste_rate ?? DEFAULT_SETTINGS.wasteRate),
+        fabricDiscount: Number(mapped.fabric_discount ?? DEFAULT_SETTINGS.fabricDiscount),
         channelMultipliers: {
           wholesale: Number(mapped.wholesale_multiplier ?? DEFAULT_SETTINGS.channelMultipliers.wholesale),
           designer: Number(mapped.designer_multiplier ?? DEFAULT_SETTINGS.channelMultipliers.designer),
@@ -57,6 +60,7 @@ export async function GET() {
         taxRate: Number(mapped.tax_rate ?? DEFAULT_SETTINGS.taxRate),
         commissionMode: mapped.commission_mode || DEFAULT_SETTINGS.commissionMode,
         commissionRate: Number(mapped.commission_rate ?? DEFAULT_SETTINGS.commissionRate),
+        commissionFixedAmount: Number(mapped.commission_fixed_amount ?? DEFAULT_SETTINGS.commissionFixedAmount),
         quoteValidityDays: Number(mapped.quote_validity_days ?? DEFAULT_SETTINGS.quoteValidityDays),
         companyName: mapped.company_name ?? DEFAULT_SETTINGS.companyName,
         companyFullName: mapped.company_full_name ?? DEFAULT_SETTINGS.companyFullName,
