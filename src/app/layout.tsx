@@ -19,10 +19,6 @@ export const metadata: Metadata = {
   keywords: ["沙發", "繃布", "報價", "馬鈴薯沙發"],
   themeColor: "#E85D28",
   manifest: "/manifest.json",
-  icons: {
-    icon: "/icon.png",
-    apple: "/apple-icon.png",
-  },
   openGraph: {
     title: "馬鈴薯沙發報價系統",
     description: "專業沙發繃布報價管理系統",
