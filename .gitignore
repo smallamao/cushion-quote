@@ -29,3 +29,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# claude code
+.claude/
+.omc/
