@@ -9,6 +9,10 @@ out/
 .env
 .env.local
 .env.*.local
+.env.production.template
+.env.deploy
+vercel-env-setup.sh
+deploy.sh
 
 # debug
 npm-debug.log*

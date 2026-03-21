@@ -20,8 +20,8 @@ function toNumber(value: string | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function settlementKey(versionId: string, split: Pick<PartnerSplit, "partnerId" | "name" | "role">): string {
-  return `${versionId}::${split.partnerId || ""}::${split.name || ""}::${split.role}`;
+function settlementKey(versionId: string, split: Pick<PartnerSplit, "partnerId" | "name">): string {
+  return `${versionId}::${split.partnerId || ""}::${split.name || ""}`;
 }
 
 export function rowToSettlement(row: string[]): CommissionSettlement {
@@ -117,7 +117,6 @@ export async function syncAutoCommissionSettlements(client: SheetsClient, versio
     const key = settlementKey(item.versionId, {
       partnerId: item.partnerId,
       name: item.partnerName,
-      role: item.partnerRole,
     });
     if (!existingIndexByKey.has(key)) {
       existingIndexByKey.set(key, index);
