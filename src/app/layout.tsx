@@ -13,7 +13,30 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: "馬鈴薯沙發報價系統",
-  description: "CushionQuote v2.1",
+  description: "CushionQuote v2.1 - 專業沙發繃布報價管理系統",
+  applicationName: "馬鈴薯沙發報價系統",
+  authors: [{ name: "馬鈴薯沙發" }],
+  keywords: ["沙發", "繃布", "報價", "馬鈴薯沙發"],
+  themeColor: "#E85D28",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
+  openGraph: {
+    title: "馬鈴薯沙發報價系統",
+    description: "專業沙發繃布報價管理系統",
+    siteName: "馬鈴薯沙發",
+    type: "website",
+    images: [
+      {
+        url: "/logo.png",
+        width: 1200,
+        height: 1200,
+        alt: "馬鈴薯沙發 Logo",
+      },
+    ],
+  },
 };
 
 export default function RootLayout({
