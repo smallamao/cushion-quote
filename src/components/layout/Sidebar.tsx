@@ -73,7 +73,7 @@ export function Sidebar() {
             className="mt-0.5 text-[11px] text-white transition-opacity duration-200"
             style={{ opacity: collapsed ? 0 : 0.6, height: collapsed ? 0 : "auto" }}
           >
-            報價系統 v0.2.1
+            報價系統 v0.3.2
           </div>
         </div>
 
