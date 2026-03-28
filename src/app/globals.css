@@ -208,6 +208,24 @@ textarea {
 .badge-expired { background: var(--bg-subtle); color: var(--text-tertiary); }
 .badge-deleted { background: var(--warning-light); color: var(--warning); }
 
+/* ===== Table Column Resize ===== */
+
+.resizer {
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.resizer:hover {
+  opacity: 1;
+  background: var(--border-strong);
+}
+
+.resizer.isResizing {
+  opacity: 1;
+  background: var(--accent);
+}
+
 /* ===== Responsive ===== */
 
 @media (max-width: 1080px) {

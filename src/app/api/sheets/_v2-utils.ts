@@ -199,6 +199,7 @@ export function versionRowToRecord(row: string[]): QuoteVersionRecord {
     projectNameSnapshot: row[32] ?? "",
     projectAddressSnapshot: row[33] ?? "",
     channelSnapshot: (row[34] as QuoteVersionRecord["channelSnapshot"]) ?? "wholesale",
+    quoteNameSnapshot: row[42] ?? "",
     createdAt: row[35] ?? "",
     updatedAt: row[36] ?? "",
     commissionMode: (row[37] as QuoteVersionRecord["commissionMode"]) ?? "price_gap",
@@ -253,6 +254,7 @@ export function versionRecordToRow(record: QuoteVersionRecord): string[] {
     String(record.commissionAmount),
     String(record.commissionFixedAmount),
     record.commissionPartners,
+    record.quoteNameSnapshot,
   ];
 }
 
@@ -350,7 +352,7 @@ export async function getQuoteRows(client: SheetsClient): Promise<string[][]> {
 export async function getVersionRows(client: SheetsClient): Promise<string[][]> {
   const response = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: `${VERSION_SHEET}!A2:AP`,
+    range: `${VERSION_SHEET}!A2:AQ`,
   });
   return response.data.values ?? [];
 }

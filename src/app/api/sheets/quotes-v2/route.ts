@@ -149,6 +149,7 @@ export async function POST(request: Request) {
       projectNameSnapshot: firstVersion.projectNameSnapshot ?? caseRecord.caseName,
       projectAddressSnapshot: firstVersion.projectAddressSnapshot ?? caseRecord.projectAddress,
       channelSnapshot: firstVersion.channelSnapshot ?? caseRecord.channelSnapshot,
+      quoteNameSnapshot: quoteRecord.quoteName,
       createdAt: now,
       updatedAt: now,
     };

@@ -109,7 +109,7 @@ export async function PUT(
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `報價版本!A${sheetRow}:AP${sheetRow}`,
+      range: `報價版本!A${sheetRow}:AQ${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(record)] },
     });

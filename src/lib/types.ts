@@ -254,6 +254,7 @@ export interface QuoteVersionRecord {
   projectNameSnapshot: string;
   projectAddressSnapshot: string;
   channelSnapshot: Channel;
+  quoteNameSnapshot: string;
   createdAt: string;
   updatedAt: string;
 }
