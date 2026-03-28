@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useMaterials } from "@/hooks/useMaterials";
 import {
@@ -8,21 +8,34 @@ import {
   EXTRA_DEFS,
   FOAM_CORE_CHANNEL_LABELS,
   FOAM_CORE_VOLUME_FACTORS,
+  INSTALL_HEIGHT_OPTIONS,
+  INSTALL_HEIGHT_TIERS,
   METHODS,
+  PANEL_SIZE_TIERS,
   STOCK_STATUS_LABELS,
 } from "@/lib/constants";
 import { calculateFabric } from "@/lib/fabric-calculator";
 import type { CutPiece } from "@/lib/fabric-calculator";
 import {
+  applyInstallSurcharge,
   calculateCaiCount,
+  calculateInstallSurcharge,
   calculateLaborRate,
+  calculateSurfaceSplit,
+  calculateCaiCountDual,
+  inferHeightTier,
+  inferPanelSizeTier,
 } from "@/lib/pricing-engine";
 import type {
   Channel,
   ExtraItem,
   FlexQuoteItem,
+  InstallHeightTier,
   Method,
   SystemSettings,
+  PanelInputMode,
+  CaiRoundingMode,
+  SplitDirection,
 } from "@/lib/types";
 import { calculateQuotedUnitPrice, caiToYard, formatCurrency, roundPriceToTens, yardToCai } from "@/lib/utils";
 import { Star } from "lucide-react";
@@ -82,6 +95,15 @@ export function CalculatorModal({
   const [useListPrice, setUseListPrice] = useState(false);
   const [extras, setExtras] = useState<ExtraItem[]>([]);
   const [powerHoleCount, setPowerHoleCount] = useState(1);
+  const [installHeightTier, setInstallHeightTier] = useState<InstallHeightTier>("normal");
+
+  // v0.3.2: 多片組合輸入模式
+  const [panelInputMode, setPanelInputMode] = useState<PanelInputMode>("per_piece");
+  const [surfaceWidthCm, setSurfaceWidthCm] = useState(360);
+  const [surfaceHeightCm, setSurfaceHeightCm] = useState(240);
+  const [splitDirection, setSplitDirection] = useState<SplitDirection>("horizontal");
+  const [splitCount, setSplitCount] = useState(3);
+  const [caiRoundingMode, setCaiRoundingMode] = useState<CaiRoundingMode>("per_piece_ceil");
 
   const methodConfig = METHODS[method];
 
@@ -107,10 +129,41 @@ export function CalculatorModal({
     addRecent(value);
   }, [addRecent]);
 
-  const caiCount = useMemo(
-    () => calculateCaiCount(widthCm, heightCm, methodConfig.minCai),
-    [widthCm, heightCm, methodConfig.minCai],
-  );
+  // 整面分片：計算單片尺寸
+  const derivedPanel = useMemo(() => {
+    if (panelInputMode !== "divide_surface") return null;
+    return calculateSurfaceSplit(surfaceWidthCm, surfaceHeightCm, splitDirection, splitCount);
+  }, [panelInputMode, surfaceWidthCm, surfaceHeightCm, splitDirection, splitCount]);
+
+  // 有效尺寸與數量（根據模式動態切換）
+  const effectiveWidthCm = derivedPanel?.panelWidthCm ?? widthCm;
+  const effectiveHeightCm = derivedPanel?.panelHeightCm ?? heightCm;
+  const effectiveQty = panelInputMode === "divide_surface" ? splitCount : qty;
+
+  // v0.3.2+: 整面÷分片模式下，根據整面高度自動判定安裝高度等級
+  useEffect(() => {
+    if (panelInputMode === "divide_surface" && surfaceHeightCm > 0) {
+      const autoTier = inferHeightTier(surfaceHeightCm);
+      setInstallHeightTier(autoTier);
+    }
+  }, [panelInputMode, surfaceHeightCm]);
+
+  // 雙模式才數對比（僅 divide_surface 模式）
+  const dualCai = useMemo(() => {
+    if (panelInputMode !== "divide_surface") return null;
+    return calculateCaiCountDual(effectiveWidthCm, effectiveHeightCm, splitCount, methodConfig.minCai);
+  }, [panelInputMode, effectiveWidthCm, effectiveHeightCm, splitCount, methodConfig.minCai]);
+
+  const caiCount = useMemo(() => {
+    // divide_surface 模式：使用選定的進位模式結果
+    if (panelInputMode === "divide_surface" && dualCai) {
+      return caiRoundingMode === "surface_ceil"
+        ? dualCai.surfaceCeilTotal
+        : dualCai.perPieceCeilTotal;
+    }
+    // per_piece 模式：使用原有計算
+    return calculateCaiCount(effectiveWidthCm, effectiveHeightCm, methodConfig.minCai);
+  }, [panelInputMode, dualCai, caiRoundingMode, effectiveWidthCm, effectiveHeightCm, methodConfig.minCai]);
 
   const isFoamCore = method === "foam_core";
   const isDaybed = method === "single_daybed" || method === "double_daybed";
@@ -119,11 +172,11 @@ export function CalculatorModal({
 
   const foamCoreDims = useMemo(() => {
     if (!isFoamCore) return { w: 0, l: 0, h: 0, volume: 0 };
-    const w = widthCm / 2.54 + 0.5;
-    const l = heightCm / 2.54 + 0.5;
+    const w = effectiveWidthCm / 2.54 + 0.5;
+    const l = effectiveHeightCm / 2.54 + 0.5;
     const h = totalThickness + 0.5;
     return { w, l, h, volume: w * l * h };
-  }, [isFoamCore, widthCm, heightCm, totalThickness]);
+  }, [isFoamCore, effectiveWidthCm, effectiveHeightCm, totalThickness]);
 
   const foamCoreFactor = isFoamCore ? FOAM_CORE_VOLUME_FACTORS[channel] : 0;
   const foamCorePrice = isFoamCore ? Math.round(foamCoreDims.volume * foamCoreFactor) : 0;
@@ -140,9 +193,24 @@ export function CalculatorModal({
     [isFoamCore, methodConfig, totalThickness, settings.qualityPremium],
   );
 
+  const panelSizeTier = useMemo(
+    () => inferPanelSizeTier(effectiveWidthCm, effectiveHeightCm),
+    [effectiveWidthCm, effectiveHeightCm],
+  );
+
+  const surchargePercent = useMemo(
+    () => calculateInstallSurcharge(installHeightTier, panelSizeTier),
+    [installHeightTier, panelSizeTier],
+  );
+
+  const adjustedLaborRate = useMemo(
+    () => applyInstallSurcharge(laborRate, surchargePercent),
+    [laborRate, surchargePercent],
+  );
+
   const fabricResult = useMemo(
-    () => isFoamCore ? null : calculateFabric(method, widthCm, heightCm, totalThickness, qty),
-    [isFoamCore, method, widthCm, heightCm, totalThickness, qty],
+    () => isFoamCore ? null : calculateFabric(method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty),
+    [isFoamCore, method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty],
   );
 
   const listPricePerYard = useMemo(() => {
@@ -157,8 +225,8 @@ export function CalculatorModal({
 
   const fabricCostPerPiece = useMemo(() => {
     if (!fabricResult || fabricResult.roundedYards === 0 || pricePerYard === 0) return 0;
-    return Math.round((fabricResult.roundedYards * pricePerYard) / qty);
-  }, [fabricResult, pricePerYard, qty]);
+    return Math.round((fabricResult.roundedYards * pricePerYard) / effectiveQty);
+  }, [fabricResult, pricePerYard, effectiveQty]);
 
   const costPricePerYard = useMemo(() => {
     if (isFoamCore || !selectedMaterial) return 0;
@@ -190,7 +258,7 @@ export function CalculatorModal({
 
   const pieceCost = isFoamCore
     ? foamCorePrice + extrasPerCai * caiCount + extrasFixed
-    : laborRate * caiCount + fabricCostPerPiece + extrasPerCai * caiCount + extrasFixed;
+    : adjustedLaborRate * caiCount + fabricCostPerPiece + extrasPerCai * caiCount + extrasFixed;
   const multiplier = isFoamCore ? 1 : settings.channelMultipliers[channel];
   const baseUnitPrice = roundPriceToTens(pieceCost * multiplier);
   const unitPrice =
@@ -214,6 +282,14 @@ export function CalculatorModal({
   }
 
   function handleInsert() {
+    console.log("=== handleInsert DEBUG ===");
+    console.log("panelInputMode:", panelInputMode);
+    console.log("widthCm:", widthCm, "heightCm:", heightCm);
+    console.log("surfaceWidthCm:", surfaceWidthCm, "surfaceHeightCm:", surfaceHeightCm);
+    console.log("splitDirection:", splitDirection, "splitCount:", splitCount);
+    console.log("derivedPanel:", derivedPanel);
+    console.log("methodConfig.label:", methodConfig.label);
+
     let name: string;
     let spec: string;
 
@@ -243,23 +319,59 @@ export function CalculatorModal({
         .filter(Boolean)
         .join("\n");
       spec = `${methodConfig.label} / ${materialDesc}`;
+
+      if (surchargePercent > 0) {
+        const heightLabel = INSTALL_HEIGHT_TIERS[installHeightTier].label;
+        const sizeLabel = PANEL_SIZE_TIERS[panelSizeTier].label;
+        spec += ` / 施工加給+${surchargePercent}% (${heightLabel}/${sizeLabel})`;
+      }
     }
+
+    // v0.3.2: 整面÷分片模式，更新 name 顯示
+    if (panelInputMode === "divide_surface" && derivedPanel) {
+      console.log("✅ divide_surface override EXECUTED");
+      const directionLabel = splitDirection === "horizontal" ? "橫切" : "直切";
+      name = [
+        methodConfig.label,
+        `整面 W${surfaceWidthCm} × H${surfaceHeightCm}cm`,
+        `${directionLabel} ${splitCount} 片 (每片 W${Math.round(derivedPanel.panelWidthCm)} × H${Math.round(derivedPanel.panelHeightCm)}cm)`,
+      ].join("\n");
+      console.log("name after override:", name);
+    } else {
+      console.log("❌ divide_surface override SKIPPED", {
+        panelInputMode,
+        derivedPanel,
+        conditionMet: panelInputMode === "divide_surface" && !!derivedPanel,
+      });
+    }
+
+    console.log("Final name before insert:", name);
+    console.log("=== END DEBUG ===\n");
 
     const item: Omit<FlexQuoteItem, "id"> = {
       name,
       spec,
-      qty,
+      qty: effectiveQty,
       unit: "只",
       unitPrice,
-      amount: unitPrice * qty,
+      amount: unitPrice * effectiveQty,
       isCostItem: false,
       notes: "",
       autoPriced: true,
       costPerUnit: pieceCost,
-      laborRate,
+      laborRate: adjustedLaborRate,
       materialRate,
       method,
       materialId: selectedMaterialId === "custom" ? "" : selectedMaterialId,
+      installHeightTier: isFoamCore ? undefined : installHeightTier,
+      panelSizeTier: isFoamCore ? undefined : panelSizeTier,
+      installSurchargeRate: isFoamCore ? undefined : surchargePercent,
+      panelInputMode: panelInputMode === "per_piece" ? undefined : panelInputMode,
+      surfaceWidthCm: panelInputMode === "divide_surface" ? surfaceWidthCm : undefined,
+      surfaceHeightCm: panelInputMode === "divide_surface" ? surfaceHeightCm : undefined,
+      splitDirection: panelInputMode === "divide_surface" ? splitDirection : undefined,
+      splitCount: panelInputMode === "divide_surface" ? splitCount : undefined,
+      caiRoundingMode: panelInputMode === "divide_surface" ? caiRoundingMode : undefined,
     };
 
     onInsertItem(item);
@@ -379,33 +491,269 @@ export function CalculatorModal({
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <Label>寬度 (cm)</Label>
-              <Input
-                type="number"
-                value={widthCm}
-                onChange={(e) => setWidthCm(Number(e.target.value))}
-              />
+          {/* 輸入模式切換器 (v0.3.2) */}
+          {!isFoamCore && (
+            <div className="mb-2">
+              <Label className="mb-2 block">輸入模式</Label>
+              <div className="flex gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPanelInputMode("per_piece")}
+                  className={`flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-medium transition-colors ${
+                    panelInputMode === "per_piece"
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  每片 × 數量
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPanelInputMode("divide_surface")}
+                  className={`flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-medium transition-colors ${
+                    panelInputMode === "divide_surface"
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  整面 ÷ 分片
+                </button>
+              </div>
             </div>
-            <div>
-              <Label>高度 (cm)</Label>
-              <Input
-                type="number"
-                value={heightCm}
-                onChange={(e) => setHeightCm(Number(e.target.value))}
-              />
+          )}
+
+          {/* 每片×數量模式：原有輸入方式 */}
+          {panelInputMode === "per_piece" && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <Label>寬度 (cm)</Label>
+                <Input
+                  type="number"
+                  value={widthCm}
+                  onChange={(e) => setWidthCm(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <Label>高度 (cm)</Label>
+                <Input
+                  type="number"
+                  value={heightCm}
+                  onChange={(e) => setHeightCm(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <Label>數量</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={qty}
+                  onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
+                />
+              </div>
             </div>
-            <div>
-              <Label>數量</Label>
-              <Input
-                type="number"
-                min={1}
-                value={qty}
-                onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
-              />
+          )}
+
+          {/* 整面÷分片模式：新的輸入方式 */}
+          {panelInputMode === "divide_surface" && (
+            <div className="space-y-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label>整面寬度 (cm)</Label>
+                  <Input
+                    type="number"
+                    value={surfaceWidthCm}
+                    onChange={(e) => setSurfaceWidthCm(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <Label>整面高度 (cm)</Label>
+                  <Input
+                    type="number"
+                    value={surfaceHeightCm}
+                    onChange={(e) => setSurfaceHeightCm(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>分片方向</Label>
+                <div className="mt-1 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSplitDirection("horizontal")}
+                    className={`flex-1 rounded-[var(--radius-md)] border px-3 py-2 text-sm transition-colors ${
+                      splitDirection === "horizontal"
+                        ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                        : "border-[var(--border)] hover:bg-[var(--bg-hover)]"
+                    }`}
+                  >
+                    橫切（沿高度）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSplitDirection("vertical")}
+                    className={`flex-1 rounded-[var(--radius-md)] border px-3 py-2 text-sm transition-colors ${
+                      splitDirection === "vertical"
+                        ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                        : "border-[var(--border)] hover:bg-[var(--bg-hover)]"
+                    }`}
+                  >
+                    直切（沿寬度）
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <Label>分片數量</Label>
+                <div className="mt-2 flex items-center justify-center gap-6">
+                  <button
+                    type="button"
+                    onClick={() => setSplitCount((prev) => Math.max(1, prev - 1))}
+                    className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] text-lg font-bold transition-colors hover:bg-[var(--bg-hover)]"
+                  >
+                    −
+                  </button>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">{splitCount} 片</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSplitCount((prev) => prev + 1)}
+                    className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] text-lg font-bold transition-colors hover:bg-[var(--bg-hover)]"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* 計算結果：單片尺寸 */}
+              {derivedPanel && (
+                <div className="rounded-[var(--radius-md)] bg-[var(--bg-subtle)] p-3 text-sm">
+                  <div className="font-medium text-[var(--text-secondary)]">每片尺寸</div>
+                  <div className="mt-1 text-lg font-semibold">
+                    W{Math.round(derivedPanel.panelWidthCm)} × H{Math.round(derivedPanel.panelHeightCm)} cm
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* 才數進位模式對比 (v0.3.2) */}
+          {panelInputMode === "divide_surface" && dualCai && !isFoamCore && (
+            <div className="space-y-3">
+              <Label>才數計算方式</Label>
+
+              {/* 兩種進位模式選擇 */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCaiRoundingMode("per_piece_ceil")}
+                  className={`rounded-[var(--radius-md)] border p-3 text-left transition-colors ${
+                    caiRoundingMode === "per_piece_ceil"
+                      ? "border-[var(--accent)] bg-[var(--accent-light)]"
+                      : "border-[var(--border)] hover:bg-[var(--bg-hover)]"
+                  }`}
+                >
+                  <div className="font-medium">逐片進位</div>
+                  <div className="mt-1 text-2xl font-bold">{dualCai.perPieceCeilTotal} 才</div>
+                  <div className="mt-1 text-xs text-[var(--text-tertiary)]">
+                    每片進位後相加
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCaiRoundingMode("surface_ceil")}
+                  className={`rounded-[var(--radius-md)] border p-3 text-left transition-colors ${
+                    caiRoundingMode === "surface_ceil"
+                      ? "border-[var(--accent)] bg-[var(--accent-light)]"
+                      : "border-[var(--border)] hover:bg-[var(--bg-hover)]"
+                  }`}
+                >
+                  <div className="font-medium">整面進位</div>
+                  <div className="mt-1 text-2xl font-bold">{dualCai.surfaceCeilTotal} 才</div>
+                  <div className="mt-1 text-xs text-[var(--text-tertiary)]">
+                    總才數進位一次
+                  </div>
+                </button>
+              </div>
+
+              {/* 橘色差異說明（僅當有差異時顯示） */}
+              {dualCai.difference > 0 && (
+                <div className="rounded-[var(--radius-md)] border border-orange-200 bg-orange-50 p-3 text-sm">
+                  <div className="font-medium text-orange-900 mb-2">
+                    才數差異 {dualCai.difference} 才
+                  </div>
+                  <div className="space-y-1 text-xs text-orange-700">
+                    <div>• 逐片進位: 每片 {Math.ceil(dualCai.perPieceRaw)} 才 × {splitCount} 片 = {dualCai.perPieceCeilTotal} 才</div>
+                    <div>• 整面進位: 總計 {(dualCai.perPieceRaw * splitCount).toFixed(2)} 才 → {dualCai.surfaceCeilTotal} 才</div>
+                    <div className="pt-1 border-t border-orange-200">
+                      成本差異約 ${Math.round(dualCai.difference * adjustedLaborRate)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 施工加給區塊（僅非泡棉內裡時顯示） */}
+          {!isFoamCore && (
+            <div className="border-t pt-4 mt-4">
+              <h4 className="text-sm font-medium mb-3">施工條件（選填）</h4>
+
+              {/* 安裝高度選擇器 */}
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-xs text-gray-600 mb-1 block">
+                    安裝高度
+                    {panelInputMode === "divide_surface" && (
+                      <span className="ml-1 text-blue-600">（自動偵測）</span>
+                    )}
+                  </label>
+                  {panelInputMode === "divide_surface" ? (
+                    <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                      {INSTALL_HEIGHT_TIERS[installHeightTier].label} ({INSTALL_HEIGHT_TIERS[installHeightTier].description})
+                    </div>
+                  ) : (
+                    <select
+                      value={installHeightTier}
+                      onChange={(e) => setInstallHeightTier(e.target.value as InstallHeightTier)}
+                      className="w-full px-3 py-2 border rounded"
+                    >
+                      {INSTALL_HEIGHT_OPTIONS.map((tier) => (
+                        <option key={tier} value={tier}>
+                          {INSTALL_HEIGHT_TIERS[tier].label} ({INSTALL_HEIGHT_TIERS[tier].description})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* 板片尺寸（自動偵測，唯讀） */}
+                <div>
+                  <label className="text-xs text-gray-600 mb-1 block">板片尺寸</label>
+                  <div className="px-3 py-2 bg-gray-50 border rounded text-sm">
+                    {PANEL_SIZE_TIERS[panelSizeTier].label} &middot; 自動偵測
+                  </div>
+                </div>
+              </div>
+
+              {/* 加給說明 */}
+              {surchargePercent > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded p-3 text-sm">
+                  <div className="font-medium text-orange-900 mb-1">
+                    工資加給 +{surchargePercent}%
+                  </div>
+                  <div className="text-orange-700 text-xs space-y-1">
+                    <div>&bull; 高度加給: {INSTALL_HEIGHT_TIERS[installHeightTier].label} +{INSTALL_HEIGHT_TIERS[installHeightTier].surchargePercent}%</div>
+                    <div>&bull; 尺寸加給: {PANEL_SIZE_TIERS[panelSizeTier].label} +{PANEL_SIZE_TIERS[panelSizeTier].surchargePercent}%</div>
+                    <div className="pt-1 border-t border-orange-200">
+                      基礎工資 ${laborRate}/才 &rarr; 加給後 ${adjustedLaborRate}/才
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {isFoamCore && (
             <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
@@ -669,7 +1017,7 @@ export function CalculatorModal({
                   </div>
                 </div>
                 <div className="mt-3 flex justify-center gap-6 text-[11px] text-[var(--text-tertiary)]">
-                  <span>工資/才 {formatCurrency(laborRate)}</span>
+                  <span>工資/才 {formatCurrency(adjustedLaborRate)}</span>
                   <span>布料/件 {formatCurrency(fabricCostPerPiece)}</span>
                   <span>倍率 ×{multiplier}</span>
                 </div>

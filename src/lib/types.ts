@@ -282,6 +282,16 @@ export interface VersionLineRecord {
   specImageUrl: string;
   createdAt: string;
   updatedAt: string;
+  installHeightTier: string;    // v0.3.1
+  panelSizeTier: string;        // v0.3.1
+  installSurchargeRate: number; // v0.3.1
+  // v0.3.2: 多片組合輸入模式 (indices 26-31, cols AA-AF)
+  panelInputMode: string;
+  surfaceWidthCm: number;
+  surfaceHeightCm: number;
+  splitDirection: string;
+  splitCount: number;
+  caiRoundingMode: string;
 }
 
 // ===== 客戶資料庫 =====
@@ -341,4 +351,51 @@ export interface FlexQuoteItem {
   materialRate?: number; // material cost per cai (after waste)
   method?: Method; // calculation method used
   materialId?: string; // material ID from database
+  installHeightTier?: InstallHeightTier;
+  panelSizeTier?: PanelSizeTier;
+  installSurchargeRate?: number; // 加給百分比合計 (e.g. 45 = 45%)
+  // 多片組合輸入模式 (v0.3.2)
+  panelInputMode?: PanelInputMode;
+  surfaceWidthCm?: number;
+  surfaceHeightCm?: number;
+  splitDirection?: SplitDirection;
+  splitCount?: number;
+  caiRoundingMode?: CaiRoundingMode;
+}
+
+// ===== 施工加給分級 (v0.3.1) =====
+
+export type InstallHeightTier = "normal" | "mid_high" | "high_altitude";
+export type PanelSizeTier = "standard" | "large" | "extra_large";
+
+export interface InstallSurchargeConfig {
+  heightTier: InstallHeightTier;
+  panelSizeTier: PanelSizeTier;
+}
+
+// ===== 多片組合輸入模式 (v0.3.2) =====
+export type PanelInputMode = "per_piece" | "divide_surface";
+export type CaiRoundingMode = "per_piece_ceil" | "surface_ceil";
+export type SplitDirection = "horizontal" | "vertical";
+
+// ===== 報價範本 (Quote Templates) =====
+
+export interface QuoteTemplate {
+  templateId: string; // TPL-001, TPL-002, ...
+  templateName: string; // 範本名稱，如「標準臥室套餐」
+  description: string; // 範本說明
+  items: FlexQuoteItem[]; // 範本包含的品項列表
+  isActive: boolean; // 是否啟用
+  createdAt: string; // 建立時間
+  updatedAt: string; // 更新時間
+}
+
+export interface TemplateRecord {
+  templateId: string; // col A
+  templateName: string; // col B
+  description: string; // col C
+  itemsJson: string; // col D - JSON stringified FlexQuoteItem[]
+  isActive: boolean; // col E
+  createdAt: string; // col F
+  updatedAt: string; // col G
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Briefcase, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, Plus, RefreshCw } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -88,6 +88,30 @@ export function CasesClient() {
     caseName: "",
   });
   const [copying, setCopying] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; caseId: string; caseName: string }>({
+    open: false,
+    caseId: "",
+    caseName: "",
+  });
+  const [deleting, setDeleting] = useState(false);
+  const [editDialog, setEditDialog] = useState<{
+    open: boolean;
+    caseId: string;
+    caseName: string;
+    projectAddress: string;
+    leadSource: LeadSource;
+    leadSourceContact: string;
+    leadSourceNotes: string;
+  }>({
+    open: false,
+    caseId: "",
+    caseName: "",
+    projectAddress: "",
+    leadSource: "unknown",
+    leadSourceContact: "",
+    leadSourceNotes: "",
+  });
+  const [editing, setEditing] = useState(false);
 
   const loadCases = useCallback(async () => {
     setLoading(true);
@@ -218,7 +242,7 @@ export function CasesClient() {
     setCopyDialog({ open: true, sourceVersionId, caseId, quoteId, caseName });
   }
 
-  async function handleCopy(action: "new_version" | "use_as_template") {
+  async function handleCopy(action: "new_version" | "use_as_template" | "new_quote_same_case") {
     if (!copyDialog.sourceVersionId) return;
     setCopying(true);
     try {
@@ -228,13 +252,20 @@ export function CasesClient() {
         body: JSON.stringify(
           action === "new_version"
             ? { action: "new_version", basedOnVersionId: copyDialog.sourceVersionId }
-            : {
-                action: "use_as_template",
-                sourceVersionId: copyDialog.sourceVersionId,
-                caseDraft: {
-                  caseName: `${copyDialog.caseName || "新案件"}（複製）`,
+            : action === "new_quote_same_case"
+              ? {
+                  action: "new_quote_same_case",
+                  sourceVersionId: copyDialog.sourceVersionId,
+                  targetCaseId: copyDialog.caseId,
+                  quoteName: "新方案",
+                }
+              : {
+                  action: "use_as_template",
+                  sourceVersionId: copyDialog.sourceVersionId,
+                  caseDraft: {
+                    caseName: `${copyDialog.caseName || "新案件"}（複製）`,
+                  },
                 },
-              },
         ),
       });
       if (!response.ok) throw new Error("複製失敗");
@@ -260,7 +291,7 @@ export function CasesClient() {
         return;
       }
 
-      if (action === "use_as_template" && payload.caseId && payload.quoteId && payload.versionId) {
+      if ((action === "use_as_template" || action === "new_quote_same_case") && payload.caseId && payload.quoteId && payload.versionId) {
         sessionStorage.setItem(
           "quote-to-load",
           JSON.stringify({
@@ -275,6 +306,101 @@ export function CasesClient() {
       alert(err instanceof Error ? err.message : "複製失敗");
     } finally {
       setCopying(false);
+    }
+  }
+
+  function openEditDialog(caseRecord: CaseRecord) {
+    setEditDialog({
+      open: true,
+      caseId: caseRecord.caseId,
+      caseName: caseRecord.caseName,
+      projectAddress: caseRecord.projectAddress,
+      leadSource: caseRecord.leadSource,
+      leadSourceContact: caseRecord.leadSourceContact,
+      leadSourceNotes: caseRecord.leadSourceNotes,
+    });
+  }
+
+  async function handleEdit() {
+    if (!editDialog.caseId) return;
+    setEditing(true);
+    try {
+      const response = await fetch("/api/sheets/cases", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caseId: editDialog.caseId,
+          caseName: editDialog.caseName.trim(),
+          projectAddress: editDialog.projectAddress.trim(),
+          leadSource: editDialog.leadSource,
+          leadSourceContact: editDialog.leadSourceContact.trim(),
+          leadSourceNotes: editDialog.leadSourceNotes.trim(),
+        }),
+      });
+
+      if (!response.ok) throw new Error("更新失敗");
+
+      const caseId = editDialog.caseId;
+
+      // Close dialog and reload cases
+      setEditDialog({
+        open: false,
+        caseId: "",
+        caseName: "",
+        projectAddress: "",
+        leadSource: "unknown",
+        leadSourceContact: "",
+        leadSourceNotes: "",
+      });
+
+      // Clear cached details for this case to force reload
+      setDetails((prev) => {
+        const next = { ...prev };
+        delete next[caseId];
+        return next;
+      });
+
+      await loadCases();
+
+      // If the case is expanded, reload its details
+      if (expandedCaseIds.has(caseId)) {
+        await loadCaseDetails(caseId);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "更新失敗");
+    } finally {
+      setEditing(false);
+    }
+  }
+
+  function openDeleteDialog(caseId: string, caseName: string) {
+    setDeleteDialog({ open: true, caseId, caseName });
+  }
+
+  async function handleDelete() {
+    if (!deleteDialog.caseId) return;
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/sheets/cases?caseId=${encodeURIComponent(deleteDialog.caseId)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("刪除失敗");
+
+      const result = await response.json();
+      alert(
+        `已刪除案件及相關資料：\n` +
+        `- 案件：1 筆\n` +
+        `- 報價方案：${result.deleted?.quotes ?? 0} 筆\n` +
+        `- 報價版本：${result.deleted?.versions ?? 0} 筆\n` +
+        `- 明細項目：${result.deleted?.lines ?? 0} 筆`
+      );
+
+      setDeleteDialog({ open: false, caseId: "", caseName: "" });
+      await loadCases();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "刪除失敗");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -410,6 +536,7 @@ export function CasesClient() {
                   <th className="px-4 py-2.5">最近送出</th>
                   <th className="px-4 py-2.5">下次追蹤</th>
                   <th className="px-4 py-2.5">建立日期</th>
+                  <th className="w-16 px-4 py-2.5 text-center">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -452,11 +579,35 @@ export function CasesClient() {
                         <td className="px-4 py-2.5 text-sm">{item.latestSentAt || "—"}</td>
                         <td className="px-4 py-2.5 text-sm">{item.nextFollowUpDate || "—"}</td>
                         <td className="px-4 py-2.5 text-sm">{item.createdAt ? item.createdAt.slice(0, 10) : "—"}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditDialog(item);
+                              }}
+                              className="text-[var(--text-tertiary)] hover:text-blue-500 transition-colors"
+                              title="編輯案件"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openDeleteDialog(item.caseId, item.caseName);
+                              }}
+                              className="text-[var(--text-tertiary)] hover:text-red-500 transition-colors"
+                              title="刪除案件"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
 
                       {isExpanded && (
                         <tr>
-                          <td colSpan={8} className="bg-[var(--bg-subtle)] px-4 py-3">
+                          <td colSpan={9} className="bg-[var(--bg-subtle)] px-4 py-3">
                             {detailLoading ? (
                               <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -665,7 +816,7 @@ export function CasesClient() {
           <DialogHeader>
             <DialogTitle>複製版本</DialogTitle>
             <DialogDescription>
-              選擇要建立同案新版本，或以此版本建立新的案件報價。
+              選擇要建立新版本、新報價方案，或建立新案件。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 px-6 py-4">
@@ -677,12 +828,152 @@ export function CasesClient() {
               variant="outline"
               className="w-full justify-start"
               disabled={copying}
+              onClick={() => void handleCopy("new_quote_same_case")}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              新增報價方案（同案件，例如：客廳/臥室）
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              disabled={copying}
               onClick={() => void handleCopy("use_as_template")}
             >
               <ExternalLink className="h-3.5 w-3.5" />
               套用為新報價（新案子）
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editDialog.open}
+        onOpenChange={(open) => {
+          if (!editing) {
+            setEditDialog((prev) => ({ ...prev, open }));
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>編輯案件資訊</DialogTitle>
+            <DialogDescription>
+              修改案件名稱、地址和來源資訊
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>案件名稱 *</Label>
+              <Input
+                value={editDialog.caseName}
+                onChange={(e) => setEditDialog((prev) => ({ ...prev, caseName: e.target.value }))}
+                placeholder="請輸入案件名稱"
+              />
+            </div>
+            <div>
+              <Label>專案地址</Label>
+              <Input
+                value={editDialog.projectAddress}
+                onChange={(e) => setEditDialog((prev) => ({ ...prev, projectAddress: e.target.value }))}
+                placeholder="請輸入專案地址"
+              />
+            </div>
+            <div>
+              <Label>案件來源</Label>
+              <Select
+                value={editDialog.leadSource}
+                onValueChange={(value) => setEditDialog((prev) => ({ ...prev, leadSource: value as LeadSource }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="請選擇案件來源" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LEAD_SOURCE_OPTIONS.map((source) => (
+                    <SelectItem key={source} value={source}>
+                      {LEAD_SOURCE_LABELS[source].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>來源人 / 介紹人</Label>
+              <Input
+                value={editDialog.leadSourceContact}
+                onChange={(e) => setEditDialog((prev) => ({ ...prev, leadSourceContact: e.target.value }))}
+                placeholder="例如：張小姐、李設計師"
+              />
+            </div>
+            <div>
+              <Label>來源備註</Label>
+              <Input
+                value={editDialog.leadSourceNotes}
+                onChange={(e) => setEditDialog((prev) => ({ ...prev, leadSourceNotes: e.target.value }))}
+                placeholder="例如：透過 FB 私訊詢問"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setEditDialog({
+                  open: false,
+                  caseId: "",
+                  caseName: "",
+                  projectAddress: "",
+                  leadSource: "unknown",
+                  leadSourceContact: "",
+                  leadSourceNotes: "",
+                })
+              }
+              disabled={editing}
+            >
+              取消
+            </Button>
+            <Button onClick={() => void handleEdit()} disabled={editing || !editDialog.caseName.trim()}>
+              {editing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+              {editing ? "儲存中..." : "儲存變更"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => {
+          if (!deleting) {
+            setDeleteDialog((prev) => ({ ...prev, open }));
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>確認刪除案件</DialogTitle>
+            <DialogDescription>
+              確定要刪除案件「{deleteDialog.caseName}」嗎？
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
+              <p className="font-semibold">⚠️ 警告：此操作無法復原</p>
+              <p className="mt-1">刪除案件將會同時刪除：</p>
+              <ul className="mt-2 ml-4 list-disc space-y-1">
+                <li>所有報價方案</li>
+                <li>所有報價版本</li>
+                <li>所有報價明細</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialog({ open: false, caseId: "", caseName: "" })} disabled={deleting}>
+              取消
+            </Button>
+            <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting}>
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              {deleting ? "刪除中..." : "確定刪除"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

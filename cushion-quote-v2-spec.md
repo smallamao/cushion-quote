@@ -1,9 +1,10 @@
 # CushionQuote v2 — 春懋繃布工程報價系統
 ## 產品規格書 PRD
 
-**版本**：v0.1 Draft
-**日期**：2026-03-16
+**版本**：v0.3
+**日期**：2026-03-21
 **擁有者**：春懋 / 馬鈴薯沙發工廠
+**變更紀錄**：v0.3 — 新增施工加給分級制、多片組合輸入模式；翻修案改為「正常作法+拆舊手動填金額」處理；拆舊工程改為無預設值手動輸入
 
 ---
 
@@ -26,7 +27,6 @@
 - 主要使用者：懋懋（老闆）、工廠 2-3 位同事
 - 使用場景：辦公室電腦、偶爾手機查看
 - 技術程度：非工程師，需要直覺操作
-- 認證方式：**完全公開**（無登入機制），知道網址即可使用
 
 ---
 
@@ -36,10 +36,11 @@
 
 | 項目 | 選擇 | 理由 |
 |------|------|------|
-| 框架 | Next.js 15 (App Router) | 前端 + API Route 一站式，Vercel 原生支援，檔案系統路由 |
-| UI 套件 | Tailwind CSS + shadcn/ui | 開發速度快，風格統一，官方 Next.js CLI 支援 |
+| 框架 | Next.js (App Router) | 檔案式路由、API Routes 保護金鑰、Vercel 零設定部署 |
+| UI 套件 | Tailwind CSS + shadcn/ui | 開發速度快，風格統一 |
 | 語言 | TypeScript | 型別安全，減少 bug |
-| 部署 | Vercel（免費方案） | 自動部署，HTTPS，自訂域名，Next.js 零設定部署 |
+| 部署 | Vercel（免費方案） | Next.js 原生支援，自動部署，HTTPS，自訂域名 |
+| 認證 | 無（完全公開） | 小團隊內部工具，不設登入門檻。Vercel URL 本身不公開即可。未來如需保護可加簡易密碼中間件 |
 
 ### 2.2 後端 / 資料層
 
@@ -47,10 +48,9 @@
 |------|------|------|
 | 材質資料庫 | Google Sheets | 團隊熟悉，可直接在 Sheets 維護 |
 | 報價紀錄 | Google Sheets | 同上，天然備份 |
-| API 存取 | Google Sheets API v4 | 透過 Service Account，金鑰僅存於 server-side（Next.js Route Handlers） |
-| API 層 | Next.js Route Handlers | `/app/api/*` 代理所有 Google Sheets 呼叫，金鑰不外洩至前端 |
+| API 存取 | Google Sheets API v4 | 透過 Next.js API Routes + Service Account（金鑰在伺服器端，不暴露給前端） |
 | 本地快取 | localStorage | 離線草稿、減少 API 呼叫 |
-| PDF 生成 | @react-pdf/renderer | 前端直接產 PDF，不需後端 |
+| PDF 生成 | @react-pdf/renderer | 前端直接產 PDF；或透過 API Route 在伺服器端生成 |
 
 ### 2.3 Google Sheets 結構
 
@@ -58,8 +58,8 @@
 
 **Sheet 1：`材質資料庫`**
 **Sheet 2：`工資表`**
-**Sheet 3：`報價紀錄`**（報價單 header）
-**Sheet 4：`報價明細`**（報價單 line items，以 quote_id 關聯 Sheet 3）
+**Sheet 3：`報價紀錄`**（一張報價單 = 一列）
+**Sheet 4：`報價明細`**（一個項目 = 一列，用 quote_id 關聯報價紀錄）
 **Sheet 5：`系統設定`**
 
 （各工作表欄位定義見第三章）
@@ -69,27 +69,23 @@
 ```
 cushion-quote/
 ├── src/
-│   ├── app/                        # Next.js App Router
-│   │   ├── layout.tsx              # 根 Layout（Sidebar + Navbar + 通路切換）
-│   │   ├── page.tsx                # 首頁（報價計算器）
-│   │   ├── materials/
-│   │   │   └── page.tsx            # 材質資料庫頁面
-│   │   ├── quotes/
-│   │   │   └── page.tsx            # 報價歷史頁面
-│   │   ├── settings/
-│   │   │   └── page.tsx            # 系統設定頁面
-│   │   └── api/                    # Server-side Route Handlers（代理 Google Sheets）
-│   │       └── sheets/
-│   │           ├── materials/
-│   │           │   └── route.ts    # GET（列表/搜尋）、POST（新增）、PATCH（編輯/停用）
-│   │           ├── quotes/
-│   │           │   └── route.ts    # GET（歷史列表）、POST（儲存報價）
-│   │           ├── labor/
-│   │           │   └── route.ts    # GET（工資表）
-│   │           └── settings/
-│   │               └── route.ts    # GET（讀取設定）、PUT（更新設定）
+│   ├── app/                    # 頁面路由 (Next.js App Router)
+│   │   ├── page.tsx            # 首頁（報價計算器）
+│   │   ├── layout.tsx          # 全域佈局（Sidebar + Navbar）
+│   │   ├── materials/          # 材質資料庫頁面
+│   │   │   └── page.tsx
+│   │   ├── quotes/             # 報價歷史頁面
+│   │   │   └── page.tsx
+│   │   ├── settings/           # 系統設定頁面
+│   │   │   └── page.tsx
+│   │   └── api/                # API Routes（伺服器端，金鑰不暴露）
+│   │       ├── sheets/         # Google Sheets 讀寫
+│   │       │   ├── materials/route.ts
+│   │       │   ├── quotes/route.ts
+│   │       │   └── settings/route.ts
+│   │       └── pdf/route.ts    # PDF 生成（備用方案）
 │   ├── components/
-│   │   ├── calculator/             # 報價計算器元件群
+│   │   ├── calculator/         # 報價計算器元件群
 │   │   │   ├── DimensionInput.tsx
 │   │   │   ├── MethodSelector.tsx
 │   │   │   ├── ThicknessSelector.tsx
@@ -98,30 +94,28 @@ cushion-quote/
 │   │   │   ├── ChannelPricing.tsx
 │   │   │   ├── CostBreakdown.tsx
 │   │   │   └── QuoteItemList.tsx
-│   │   ├── pdf/                    # PDF 報價單元件
+│   │   ├── pdf/                # PDF 報價單元件
 │   │   │   ├── QuotePDF.tsx
 │   │   │   └── QuoteTemplate.tsx
-│   │   ├── materials/              # 材質管理元件
+│   │   ├── materials/          # 材質管理元件
 │   │   │   ├── MaterialTable.tsx
 │   │   │   ├── MaterialForm.tsx
 │   │   │   └── MaterialImport.tsx
-│   │   └── ui/                     # 共用 UI 元件 (shadcn)
+│   │   └── ui/                 # 共用 UI 元件 (shadcn)
 │   ├── lib/
-│   │   ├── sheets-client.ts        # Server-only — Google Sheets API 封裝（含 Service Account 認證）
-│   │   ├── pricing-engine.ts       # Shared — 報價計算核心邏輯（前後端共用）
-│   │   ├── types.ts                # TypeScript 型別定義
-│   │   └── constants.ts            # 常數（作法/通路/預設值）
+│   │   ├── google-sheets.ts    # Google Sheets API 封裝
+│   │   ├── pricing-engine.ts   # 報價計算核心邏輯
+│   │   ├── types.ts            # TypeScript 型別定義
+│   │   └── constants.ts        # 常數（作法/通路/預設值）
 │   ├── hooks/
-│   │   ├── useMaterials.ts         # 材質資料 hook（fetch /api/sheets/materials）
-│   │   ├── useQuote.ts             # 報價狀態管理 hook
-│   │   └── useSettings.ts          # 系統設定 hook（fetch /api/sheets/settings）
+│   │   ├── useMaterials.ts     # 材質資料 hook
+│   │   ├── useQuote.ts         # 報價狀態管理 hook
+│   │   └── useGoogleSheets.ts  # Sheets API hook
 │   └── data/
-│       └── defaults.json           # 離線預設資料
+│       └── defaults.json       # 離線預設資料
 ├── public/
-│   └── logo.png                    # 春懋 Logo
-├── .env.local                      # GOOGLE_SERVICE_ACCOUNT_KEY 等（不進 git，僅 server-side 可讀）
-├── next.config.ts
-├── tailwind.config.ts
+│   └── logo.png                # 春懋 Logo
+├── .env.local                  # Google API 金鑰（不進 git，Vercel 環境變數設定）
 ├── package.json
 └── README.md
 ```
@@ -255,11 +249,7 @@ cushion-quote/
 - 下載為 PDF 檔案
 - （未來）直接透過 LINE 或 Email 分享
 
-**中文字型處理**：`@react-pdf/renderer` 不內建 CJK 字型，需手動載入：
-- 使用 Noto Sans TC 字型（Regular + Bold，約 4MB）
-- 字型檔放在 `public/fonts/` 目錄，透過 Vercel CDN 分發
-- 首次生成 PDF 時載入字型並快取，後續毫秒級生成
-- 預期首張報價單等待 1-2 秒（字型下載），之後即時
+> **技術備註（CJK 字型）**：@react-pdf/renderer 不內建中文字型，需手動載入 Noto Sans TC（~4MB）。做法是將字型檔放在 `public/fonts/` 並在元件初始化時 `Font.register()`。首次生成 PDF 需載入字型約 1-2 秒，之後瀏覽器快取即為毫秒級。部署在 Vercel CDN 上不影響體驗。
 
 #### B.3 報價單欄位說明
 
@@ -272,15 +262,16 @@ cushion-quote/
 | width_cm | 寬度 cm |
 | height_cm | 高度 cm |
 | cai_count | 才數（自動計算） |
-| foam_type | 泡棉密度（中密度/高密度/無） |
-| foam_thickness | 泡棉厚度（英吋） |
+| foam_thickness | 泡棉厚度（英吋，平貼填 0） |
 | material_id | 面料 ID（連結材質資料庫） |
 | material_desc | 面料描述（顯示在報價單上） |
+| qty | 數量（同款 ×N） |
 | labor_rate | 工資/才 |
 | material_rate | 面料/才 |
 | extras | 其他加工項目陣列 |
 | unit_price | 每才單價 |
-| subtotal | 小計 |
+| piece_price | 每片價格 |
+| subtotal | 小計（piece_price × qty） |
 | notes | 備註 |
 
 ---
@@ -290,12 +281,14 @@ cushion-quote/
 #### C.1 定價邏輯
 
 ```
-工廠成本 = 工資/才（含品質溢價）+ 面料/才（含損耗）+ 其他加工/才
+工廠成本 = 工資/才（含品質溢價 + 施工加給）+ 面料/才（含損耗）+ 其他加工/才
+
+工資/才 = 同業基準 × (1+品質溢價%) × (1+安裝高度加給%+板片尺寸加給%)
 
 三通路報價：
-├── 批發價   = 工廠成本 × 批發倍率（預設 1.3-1.5）
-├── 設計師價 = 工廠成本 × 設計師倍率（預設 1.8-2.2）
-└── 屋主價   = 工廠成本 × 屋主倍率（預設 2.5-3.0）
+├── 批發價   = 工廠成本 × 批發倍率（預設 1.30-1.50, step 0.05）
+├── 設計師價 = 工廠成本 × 設計師倍率（預設 1.80-2.20, step 0.05）
+└── 屋主價   = 工廠成本 × 屋主倍率（預設 2.50-3.00, step 0.05）
 ```
 
 #### C.2 通路切換
@@ -304,7 +297,6 @@ cushion-quote/
 - 切換通路 → 所有價格即時更新
 - 報價單 PDF 自動套用所選通路的價格
 - 預設倍率可在設定頁面調整
-- 倍率滑桿精度為 **0.05**（例如 ×1.35、×2.15），滿足精細調控需求
 
 #### C.3 設計師佣金模式
 
@@ -345,7 +337,7 @@ cushion-quote/
 
 #### D.1 報價紀錄工作表欄位
 
-**Google Sheets `報價紀錄` 工作表（報價單 header，一張報價單一列）：**
+**Google Sheets `報價紀錄` 工作表（一張報價單 = 一列）：**
 
 | 欄 | 欄位名稱 | 說明 |
 |----|---------|------|
@@ -360,47 +352,45 @@ cushion-quote/
 | I | total_before_tax | 稅前合計 |
 | J | tax | 稅額 |
 | K | total | 含稅合計 |
-| L | commission_mode | 佣金模式（price_gap/rebate/none） |
-| M | commission_rate | 返佣比例 %（模式 B 時填入） |
-| N | commission_amount | 返佣金額（自動計算） |
+| L | commission_mode | 佣金模式（price_gap / rebate / none） |
+| M | commission_rate | 返佣比例 %（模式B用，模式A填0） |
+| N | commission_amount | 返佣金額（系統自動計算） |
 | O | status | 狀態（draft/sent/accepted/rejected/expired） |
 | P | created_by | 建立者 |
 | Q | notes | 備註 |
 | R | created_at | 建立時間 |
 | S | updated_at | 更新時間 |
 
-> 項目明細拆至獨立工作表 `報價明細`，以 `quote_id` 關聯（見 D.1.1）。
-> 返佣欄位：批發通路填 `none`；設計師通路依系統設定填入 `price_gap` 或 `rebate`。
+**Google Sheets `報價明細` 工作表（一個項目 = 一列，用 quote_id 關聯）：**
 
-#### D.1.1 報價明細工作表欄位
-
-**Google Sheets `報價明細` 工作表（一個品項一列，以 quote_id 關聯報價紀錄）：**
+> 拆成獨立工作表（而非 JSON 塞同一格），好處是可以直接在 Sheets 裡篩選分析，例如「這個月做了幾片床頭板」「哪種面料用最多」。
 
 | 欄 | 欄位名稱 | 說明 |
 |----|---------|------|
 | A | quote_id | 關聯報價單編號 |
-| B | line_number | 項次（1, 2, 3...） |
+| B | line_number | 項目序號（1, 2, 3...） |
 | C | item_name | 品項名稱（如：主臥床頭板） |
-| D | method | 作法（flat/single_headboard/removable_headboard/single_daybed/double_daybed） |
+| D | method | 作法 ID |
 | E | width_cm | 寬度 cm |
 | F | height_cm | 高度 cm |
-| G | cai_count | 才數（自動計算） |
-| H | qty | 數量（同規格幾片） |
-| I | foam_thickness | 泡棉厚度（英吋），平貼時為空 |
-| J | material_id | 面料 ID（連結材質資料庫），自訂面料時為空 |
-| K | material_desc | 面料描述（顯示在報價單上） |
-| L | labor_rate | 工資/才（含品質溢價） |
-| M | material_rate | 面料/才（含損耗） |
-| N | extras | 加工項目（逗號分隔：leather_labor,lining,anti_slip） |
-| O | extras_per_cai | 加工費合計/才 |
-| P | power_hole_count | 電源孔數量 |
-| Q | cost_per_cai | 每才工廠成本（工資+面料+加工） |
-| R | piece_cost | 每片成本 |
-| S | unit_price | 通路報價單價/才 |
-| T | subtotal | 小計（unit_price × cai_count × qty + 固定費用） |
-| U | notes | 備註 |
-
-> 這張表讓 Sheets 可直接篩選分析：本月做了幾片床頭板、哪種面料最常用、平均客單價等。
+| G | cai_count | 才數 |
+| H | foam_thickness | 泡棉厚度（英吋，平貼填 0） |
+| I | material_id | 面料 ID（連結材質資料庫） |
+| J | material_desc | 面料描述（品牌+色號，顯示在報價單上） |
+| K | qty | 數量（同款 ×N） |
+| L | labor_rate | 工資/才 |
+| M | material_rate | 面料/才 |
+| N | extras | 其他加工（逗號分隔：leather_labor,lining...） |
+| O | unit_price | 每才單價 |
+| P | piece_price | 每片價格 |
+| Q | subtotal | 小計（piece_price × qty） |
+| R | install_height_cm | 安裝離地高度 cm（不安裝填空） |
+| S | height_tier | 高度加給等級（normal/medium_high/elevated） |
+| T | size_tier | 尺寸加給等級（standard/large/oversized） |
+| U | surcharge_percent | 施工加給合計 % |
+| V | input_mode | 輸入模式（per_piece/full_wall） |
+| W | cai_calc_mode | 才數算法（per_piece/total） |
+| X | notes | 備註 |
 
 #### D.2 工資表工作表
 
@@ -412,22 +402,24 @@ cushion-quote/
 | B | method_name | 作法名稱 |
 | C | description | 說明 |
 | D | min_cai | 最低才數 |
-| E | base_thickness | 基準厚度（英吋），無泡棉時留空 |
+| E | base_thickness | 基準厚度（英吋，平貼填空） |
 | F | base_rate | 基準工資（元/才） |
-| G | increment_per_half_inch | 每半英吋加價，無泡棉時為 0 |
-| H | thickness_options | 可選厚度（逗號分隔），無泡棉時留空 |
+| G | increment_per_half_inch | 每半英吋加價（平貼填 0） |
+| H | thickness_options | 可選厚度（逗號分隔，平貼填空） |
 
-> `foam_type` 不另存欄位，由程式碼中 `MethodConfig` 定義自動帶出（每種作法固定對應一種泡棉類型）。
+> 注意：泡棉密度（中密度/高密度）不另設欄位，因為每種作法固定對應一種泡棉——單面板/活動板 = 中密度，臥榻 = 高密度，平貼 = 無。前端由 method_id 自動推導，不需要在 Sheets 重複維護。
 
 預設資料（來自同業行情參考）：
 
-| 作法 | 基準厚度 | 基準工資 | 每半吋加價 | 可選厚度 |
-|------|---------|---------|-----------|---------|
-| 平貼 | — | $60 | — | — |
-| 單面床頭板 | 1" | $100 | +$15 | 1,1.5,2,2.5,3 |
-| 活動床頭板 | 1" | $155 | +$20 | 1,1.5,2,2.5,3 |
-| 單面臥榻 | 2" | $180 | +$20 | 2,2.5,3 |
-| 雙面臥榻 | 2" | $210 | +$20 | 2,2.5,3 |
+| 作法 | 泡棉 | 基準厚度 | 基準工資 | 每半吋加價 | 可選厚度 |
+|------|------|---------|---------|-----------|---------|
+| 平貼 | 無 | — | $60 | — | — |
+| 單面床頭板 | 中密度 | 1" | $100 | +$15 | 1,1.5,2,2.5,3 |
+| 活動床頭板 | 中密度 | 1" | $155 | +$20 | 1,1.5,2,2.5,3 |
+| 單面臥榻 | 高密度 | 2" | $180 | +$20 | 2,2.5,3 |
+| 雙面臥榻 | 高密度 | 2" | $210 | +$20 | 2,2.5,3 |
+
+> **翻修案處理方式**：不另設獨立作法。翻修案 = 選擇對應的正常作法（如單面床頭板）計算繃布工資 + 勾選「拆舊工程」手動填入金額。因為拆開前無法確認內部狀況，拆舊金額由報價人員依經驗判斷填寫，保留議價空間。報價單備註欄應加註：「若拆除後發現結構損壞或泡棉需更換，將另行報價。」
 
 #### D.3 同步機制
 
@@ -453,46 +445,55 @@ cushion-quote/
 type Method = 'flat' | 'single_headboard' | 'removable_headboard' 
             | 'single_daybed' | 'double_daybed';
 
-type FoamType = 'none' | 'medium' | 'high';
-
 type Channel = 'wholesale' | 'designer' | 'retail';
 
-// 每才計價的加工項目
-type PerCaiExtra = 'leather_labor' | 'lining' | 'anti_slip';
+type ExtraItem = 'leather_labor' | 'lining' | 'anti_slip' | 'power_hole';
 
-// 按數量計價的加工項目
-type PerUnitExtra = 'power_hole';
+type AddonType = 'demolition' | 'install' | 'floor_surcharge' | 'rush_3day' | 'rush_1day';
 
-// 附加工程（整張報價單層級，非單一品項）
-type AddonType = 'install' | 'demolition' | 'floor_surcharge' | 'rush_3day' | 'rush_1day';
+// ===== 施工加給 =====
+
+type InstallHeightTier = 'normal' | 'medium_high' | 'elevated';
+type PanelSizeTier = 'standard' | 'large' | 'oversized';
+
+const INSTALL_HEIGHT_TIERS: Record<InstallHeightTier, { maxCm: number; percent: number; label: string }> = {
+  normal:      { maxCm: 200, percent: 0,  label: '一般（站地面）' },
+  medium_high: { maxCm: 300, percent: 25, label: '中高（需 A 字梯）' },
+  elevated:    { maxCm: Infinity, percent: 60, label: '高空（需鷹架）' },
+};
+
+const PANEL_SIZE_TIERS: Record<PanelSizeTier, { maxLongSideCm: number; percent: number; label: string }> = {
+  standard:  { maxLongSideCm: 180, percent: 0,  label: '標準（一人搬運）' },
+  large:     { maxLongSideCm: 240, percent: 20, label: '大型（需兩人）' },
+  oversized: { maxLongSideCm: Infinity, percent: 40, label: '超大型（需三人以上）' },
+};
+
+// ===== 多片組合 =====
+
+type InputMode = 'per_piece' | 'full_wall';      // 每片尺寸×數量 / 整面尺寸÷分片數
+type CaiCalcMode = 'per_piece' | 'total';         // 逐片進位 / 整面一次進位
+
+interface MultiPanelConfig {
+  inputMode: InputMode;
+  caiCalcMode: CaiCalcMode;
+  // inputMode = 'full_wall' 時使用：
+  fullWallWidthCm?: number;   // 整面寬度
+  fullWallHeightCm?: number;  // 整面高度
+  splitCount?: number;         // 分幾片
+  splitDirection?: 'horizontal' | 'vertical';  // 橫切（分高度）或直切（分寬度）
+}
+
+// ===== 核心型別 =====
 
 interface MethodConfig {
   id: Method;
   label: string;
   desc: string;
-  foamType: FoamType;        // 由程式碼定義，不存 Sheets（每種作法固定對應一種泡棉）
   minCai: number;
-  baseThickness: number | null;
-  baseRate: number;           // 同業行情基準工資/才
+  baseThickness: number | null;  // 平貼、翻修 = null
+  baseRate: number;
   incrementPerHalfInch: number;
   thicknessOptions: number[];
-}
-
-interface ExtraConfig {
-  id: string;
-  label: string;
-  cost: number;
-  unit: string;               // '才' | '孔'
-  type: 'per_cai' | 'per_unit';
-  desc: string;
-}
-
-interface AddonConfig {
-  id: AddonType;
-  label: string;
-  unit: string;               // '次' | '式' | '%'
-  unitCost: number;
-  type: 'fixed' | 'percentage';
 }
 
 interface Material {
@@ -502,158 +503,216 @@ interface Material {
   colorCode: string;
   colorName: string;
   category: string;
-  costPerCai: number;         // 進貨成本
-  listPricePerCai: number;    // 牌價
+  costPerCai: number;
+  listPricePerCai: number;
 }
 
 interface QuoteLineItem {
   itemName: string;
   method: Method;
-  widthCm: number;
-  heightCm: number;
-  qty: number;                // 數量（同規格幾片）
+  widthCm: number;               // 每片寬度（inputMode=full_wall 時由系統算出）
+  heightCm: number;              // 每片高度
+  qty: number;                   // 數量
   foamThickness: number | null;
   material: Material | null;
   customMaterialCost: number | null;
-  useListPrice: boolean;      // true = 用牌價, false = 用進價
-  extras: PerCaiExtra[];
-  powerHoleCount: number;     // 電源孔數量（per_unit 加工）
+  useListPrice: boolean;
+  extras: ExtraItem[];
+  powerHoleCount: number;
+  // 施工加給
+  installHeightCm: number | null;   // 安裝離地高度 cm，null = 不安裝（工廠製作出貨）
+  // 多片組合
+  multiPanel: MultiPanelConfig | null;  // null = 單片模式
 }
 
-// 附加工程項目（報價單層級）
-interface QuoteAddon {
+interface AddonItem {
   type: AddonType;
-  qty: number;                // 次數（fixed 類型用），percentage 類型固定為 1
+  qty: number;
+  customAmount: number | null;  // 手動填入金額（拆舊工程用，其他項目為 null）
 }
 
 interface PricingConfig {
-  qualityPremium: number;     // 品質溢價 %
-  wasteRate: number;          // 損耗率 %
-  channelMultipliers: Record<Channel, number>;  // 倍率精度 0.05
-  taxRate: number;            // 營業稅 %
+  qualityPremium: number;
+  wasteRate: number;
+  channelMultipliers: Record<Channel, number>;  // step 0.05
+  taxRate: number;
+  commissionMode: 'price_gap' | 'rebate' | 'none';
+  commissionRate: number;
 }
 
-// ===== 常數定義 =====
-
-const EXTRAS: Record<string, ExtraConfig> = {
-  leather_labor: { id: 'leather_labor', label: '皮革加工', cost: 50, unit: '才', type: 'per_cai', desc: '皮革工資加價' },
-  lining:        { id: 'lining',        label: '加車裡布', cost: 60, unit: '才', type: 'per_cai', desc: '正面加車內裡布' },
-  anti_slip:     { id: 'anti_slip',     label: '背車止滑布', cost: 60, unit: '才', type: 'per_cai', desc: '背面車止滑布' },
-  power_hole:    { id: 'power_hole',    label: '代釘電源孔', cost: 50, unit: '孔', type: 'per_unit', desc: '每孔加收' },
-};
-
-const ADDONS: Record<AddonType, AddonConfig> = {
-  install:         { id: 'install',         label: '現場安裝',       unit: '次', unitCost: 3500, type: 'fixed' },
-  demolition:      { id: 'demolition',      label: '拆舊工程',       unit: '式', unitCost: 2000, type: 'fixed' },
-  floor_surcharge: { id: 'floor_surcharge', label: '高樓層搬運加價', unit: '式', unitCost: 2000, type: 'fixed' },
-  rush_3day:       { id: 'rush_3day',       label: '急件（3日內）',   unit: '%',  unitCost: 40,   type: 'percentage' },
-  rush_1day:       { id: 'rush_1day',       label: '超急件（隔日）',  unit: '%',  unitCost: 80,   type: 'percentage' },
+// ===== 附加工程定義 =====
+const ADDON_DEFS: Record<AddonType, { label: string; unit: string; unitCost: number | null; isPercent: boolean }> = {
+  demolition:      { label: '拆舊工程',      unit: '式', unitCost: null, isPercent: false },  // 手動填金額，無預設值
+  install:         { label: '現場安裝',      unit: '次', unitCost: 3500, isPercent: false },
+  floor_surcharge: { label: '高樓層搬運加價', unit: '式', unitCost: 2000, isPercent: false },
+  rush_3day:       { label: '急件（3日內）',  unit: '%',  unitCost: 40,   isPercent: true },
+  rush_1day:       { label: '超急件（隔日）',  unit: '%',  unitCost: 80,   isPercent: true },
 };
 
 // ===== 核心計算函式 =====
 
+// 才數計算（單片）
 function calculateCaiCount(widthCm: number, heightCm: number, minCai: number): number {
   const raw = (widthCm * heightCm) / 900;
   return Math.max(Math.ceil(raw * 10) / 10, minCai);
 }
 
-function calculateLaborRate(method: MethodConfig, thickness: number | null, qualityPremium: number): number {
-  if (method.foamType === 'none') {
+// 才數計算（多片組合 — 支援兩種算法）
+function calculateMultiPanelCai(
+  pieceWidthCm: number, pieceHeightCm: number, qty: number, minCai: number, mode: CaiCalcMode
+): { caiPerPiece: number; totalCai: number } {
+  if (mode === 'per_piece') {
+    // 逐片進位：每片獨立計算再乘數量
+    const caiPerPiece = calculateCaiCount(pieceWidthCm, pieceHeightCm, minCai);
+    return { caiPerPiece, totalCai: caiPerPiece * qty };
+  } else {
+    // 整面進位：總面積一次計算
+    const totalArea = pieceWidthCm * pieceHeightCm * qty;
+    const totalCai = Math.max(Math.ceil((totalArea / 900) * 10) / 10, minCai);
+    const caiPerPiece = Math.round((totalCai / qty) * 10) / 10;
+    return { caiPerPiece, totalCai };
+  }
+}
+
+// 施工加給：安裝高度等級判定
+function getInstallHeightTier(heightCm: number): InstallHeightTier {
+  if (heightCm <= 200) return 'normal';
+  if (heightCm <= 300) return 'medium_high';
+  return 'elevated';
+}
+
+// 施工加給：板片尺寸等級判定
+function getPanelSizeTier(widthCm: number, heightCm: number): PanelSizeTier {
+  const longSide = Math.max(widthCm, heightCm);
+  if (longSide <= 180) return 'standard';
+  if (longSide <= 240) return 'large';
+  return 'oversized';
+}
+
+// 施工加給：計算加給百分比
+function calculateInstallSurcharge(installHeightCm: number | null, widthCm: number, heightCm: number): {
+  heightTier: InstallHeightTier | null;
+  sizeTier: PanelSizeTier;
+  surchargePercent: number;
+} {
+  const sizeTier = getPanelSizeTier(widthCm, heightCm);
+  let surchargePercent = PANEL_SIZE_TIERS[sizeTier].percent;
+  let heightTier: InstallHeightTier | null = null;
+
+  if (installHeightCm !== null) {
+    heightTier = getInstallHeightTier(installHeightCm);
+    surchargePercent += INSTALL_HEIGHT_TIERS[heightTier].percent;
+  }
+
+  return { heightTier, sizeTier, surchargePercent };
+}
+
+// 基準工資計算（含品質溢價，不含施工加給）
+function calculateBaseLaborRate(method: MethodConfig, thickness: number | null, qualityPremium: number): number {
+  if (method.baseThickness === null) {
     return Math.round(method.baseRate * (1 + qualityPremium / 100));
   }
-  const steps = ((thickness ?? method.baseThickness ?? 0) - (method.baseThickness ?? 0)) / 0.5;
+  const steps = ((thickness ?? method.baseThickness) - method.baseThickness) / 0.5;
   const refRate = method.baseRate + steps * method.incrementPerHalfInch;
   return Math.round(refRate * (1 + qualityPremium / 100));
 }
 
-// 計算單一品項（line item）
+// 單一項目計算
 function calculateLineItem(item: QuoteLineItem, method: MethodConfig, config: PricingConfig) {
-  // 1. 才數
-  const caiCount = calculateCaiCount(item.widthCm, item.heightCm, method.minCai);
-  
-  // 2. 工資/才（含品質溢價）
-  const laborRate = calculateLaborRate(method, item.foamThickness, config.qualityPremium);
-  
-  // 3. 面料/才（含損耗）
-  const rawMaterialCost = item.material 
+  // 1. 才數（支援多片組合兩種算法）
+  const caiCalcMode = item.multiPanel?.caiCalcMode ?? 'per_piece';
+  const { caiPerPiece, totalCai } = calculateMultiPanelCai(
+    item.widthCm, item.heightCm, item.qty, method.minCai, caiCalcMode
+  );
+
+  // 2. 基準工資/才（含品質溢價）
+  const baseLaborRate = calculateBaseLaborRate(method, item.foamThickness, config.qualityPremium);
+
+  // 3. 施工加給
+  const surcharge = calculateInstallSurcharge(item.installHeightCm, item.widthCm, item.heightCm);
+  const laborRate = Math.round(baseLaborRate * (1 + surcharge.surchargePercent / 100));
+
+  // 4. 面料/才（含損耗）
+  const rawMaterialCost = item.material
     ? (item.useListPrice ? item.material.listPricePerCai : item.material.costPerCai)
     : (item.customMaterialCost ?? 0);
   const materialRate = Math.round(rawMaterialCost * (1 + config.wasteRate / 100));
-  
-  // 4. 每才加工費（per_cai 類型）
+
+  // 5. 其他加工/才
   let extrasPerCai = 0;
-  if (item.extras.includes('leather_labor')) extrasPerCai += EXTRAS.leather_labor.cost;
-  if (item.extras.includes('lining'))        extrasPerCai += EXTRAS.lining.cost;
-  if (item.extras.includes('anti_slip'))     extrasPerCai += EXTRAS.anti_slip.cost;
-  
-  // 5. 固定加工費（per_unit 類型）
-  const extrasFixed = EXTRAS.power_hole.cost * item.powerHoleCount;
-  
-  // 6. 每才工廠成本
+  let extrasFixed = 0;
+  if (item.extras.includes('leather_labor')) extrasPerCai += 50;
+  if (item.extras.includes('lining')) extrasPerCai += 60;
+  if (item.extras.includes('anti_slip')) extrasPerCai += 60;
+  if (item.extras.includes('power_hole')) extrasFixed += 50 * item.powerHoleCount;
+
+  // 6. 每才合計（工廠成本）
   const costPerCai = laborRate + materialRate + extrasPerCai;
-  
-  // 7. 每片成本
-  const pieceCost = costPerCai * caiCount + extrasFixed;
-  
-  // 8. 品項合計成本（× 數量）
-  const lineCost = pieceCost * item.qty;
-  
-  // 9. 三通路報價（每片）
-  const channelPrices: Record<Channel, { perPiece: number; perCai: number; lineTotal: number; margin: number }> = {} as any;
+
+  // 7. 每片成本 → 項目總計
+  const pieceCost = costPerCai * caiPerPiece + extrasFixed;
+  const lineSubtotal = pieceCost * item.qty;
+
+  // 8. 三通路報價
+  const channelPrices: Record<Channel, { total: number; perPiece: number; perCai: number; margin: number }> = {} as any;
   for (const [ch, mult] of Object.entries(config.channelMultipliers)) {
-    const perPiece = Math.round(pieceCost * mult / 10) * 10;  // 四捨五入至十位
-    const perCai = Math.round(perPiece / caiCount);
-    const lineTotal = perPiece * item.qty;
+    const perPiece = Math.round(pieceCost * mult / 10) * 10;
+    const total = perPiece * item.qty;
+    const perCai = Math.round(perPiece / caiPerPiece);
     const margin = ((perPiece - pieceCost) / perPiece * 100);
-    channelPrices[ch as Channel] = { perPiece, perCai, lineTotal, margin: Math.round(margin * 10) / 10 };
+    channelPrices[ch as Channel] = { total, perPiece, perCai, margin: Math.round(margin * 10) / 10 };
   }
-  
-  return { caiCount, laborRate, materialRate, extrasPerCai, extrasFixed, costPerCai, pieceCost, lineCost, channelPrices };
+
+  return {
+    caiPerPiece, totalCai, caiCalcMode,
+    baseLaborRate, surcharge, laborRate,
+    materialRate, extrasPerCai, extrasFixed,
+    costPerCai, pieceCost, lineSubtotal, channelPrices,
+  };
 }
 
-// 計算整張報價單（含附加工程）
+// 整張報價單計算（含附加工程）
 function calculateQuote(
   items: Array<{ item: QuoteLineItem; method: MethodConfig }>,
-  addons: QuoteAddon[],
-  channel: Channel,
+  addons: AddonItem[],
   config: PricingConfig,
+  channel: Channel,
 ) {
-  // 1. 計算所有品項
   const lineResults = items.map(({ item, method }) => ({
+    ...calculateLineItem(item, method, config),
     item,
-    result: calculateLineItem(item, method, config),
   }));
-  
-  // 2. 品項小計（工廠成本）
-  const itemsCost = lineResults.reduce((sum, lr) => sum + lr.result.lineCost, 0);
-  
-  // 3. 品項通路報價小計
-  const itemsChannelTotal = lineResults.reduce((sum, lr) => sum + lr.result.channelPrices[channel].lineTotal, 0);
-  
-  // 4. 附加工程
-  let addonsFixed = 0;
-  let addonsPercentage = 0;
+
+  const itemsSubtotal = lineResults.reduce((sum, lr) => sum + lr.channelPrices[channel].total, 0);
+
+  let addonFixed = 0;
+  let addonPercent = 0;
   for (const addon of addons) {
-    const cfg = ADDONS[addon.type];
-    if (cfg.type === 'fixed') {
-      addonsFixed += cfg.unitCost * addon.qty;
+    const def = ADDON_DEFS[addon.type];
+    if (def.isPercent) {
+      addonPercent += def.unitCost!;
+    } else if (addon.customAmount !== null) {
+      addonFixed += addon.customAmount;              // 手動填入金額（拆舊工程）
     } else {
-      addonsPercentage += cfg.unitCost;  // 百分比累加
+      addonFixed += (def.unitCost ?? 0) * addon.qty; // 固定金額 × 數量
     }
   }
-  const rushSurcharge = Math.round(itemsChannelTotal * (addonsPercentage / 100));
-  const addonsTotal = addonsFixed + rushSurcharge;
-  
-  // 5. 稅前合計
-  const subtotal = itemsChannelTotal + addonsTotal;
-  
-  // 6. 稅額 & 含稅合計
-  const tax = Math.round(subtotal * (config.taxRate / 100));
-  const total = subtotal + tax;
-  
-  return { lineResults, itemsCost, itemsChannelTotal, addonsFixed, rushSurcharge, addonsTotal, subtotal, tax, total };
+  const rushSurcharge = Math.round(itemsSubtotal * (addonPercent / 100));
+
+  const subtotalBeforeTax = itemsSubtotal + addonFixed + rushSurcharge;
+  const tax = Math.round(subtotalBeforeTax * (config.taxRate / 100));
+  const grandTotal = subtotalBeforeTax + tax;
+
+  let commissionAmount = 0;
+  if (config.commissionMode === 'rebate') {
+    commissionAmount = Math.round(grandTotal * (config.commissionRate / 100));
+  }
+
+  return { lineResults, itemsSubtotal, addonFixed, rushSurcharge, subtotalBeforeTax, tax, grandTotal, commissionAmount };
 }
 ```
+
+> **倍率精度**：通路倍率 slider step = 0.05，支援 ×1.35 等精細調控。
 
 ---
 
@@ -685,28 +744,41 @@ function calculateQuote(
 │   案場名稱/地址          │   批發價  $XXX  (XX%)   │
 │                         │   設計師  $XXX  (XX%)   │
 │ 🔧 作法 & 泡棉           │   屋主價  $XXX  (XX%)   │
-│   [5 種作法卡片]         │                         │
-│   [厚度選擇器]           │ 📦 項目清單              │
-│   [品質溢價滑桿]         │   #1 主臥床頭 180×120   │
-│                         │      24才 × $300 = ...  │
-│ 📐 尺寸                  │   #2 客廳臥榻 184×56    │
-│   寬度 × 高度 → 才數     │      11.5才 × $250 = . │
-│   數量                   │   ──────────── ─        │
-│                         │   + 新增項目              │
-│ 🧵 面料（從資料庫選取）    │   ────────────          │
-│   搜尋/篩選面料          │   小計  $XX,XXX          │
-│   選中材質的資訊卡        │   稅    $X,XXX          │
-│   進價/牌價切換           │   合計  $XX,XXX          │
+│   [5 種作法卡片]         │                         │ 📦 項目清單              │
+│   [厚度選擇器]           │   #1 主臥床頭 180×120   │
+│   [品質溢價滑桿]         │      24才 × $300 = ...  │
+│                         │   #2 牆面繃布 151.5×240  │
+│ 📐 尺寸                  │      ÷6片 逐片算 40.8才  │
+│   輸入模式切換：          │   ──────────── ─        │
+│   [每片×數量|整面÷分片]  │   + 新增項目              │
+│   寬度 × 高度 → 才數     │   ────────────          │
+│   數量 / 分片數           │   小計  $XX,XXX          │
+│   才數算法：              │   稅    $X,XXX          │
+│   [逐片進位|整面進位]     │   合計  $XX,XXX          │
+│   兩種算法才數對比顯示     │                         │
+│                         │ 🖨 操作按鈕              │
+│ 🏗️ 施工加給              │   [ 下載 PDF ]           │
+│   安裝高度 [___] cm離地  │   [ 儲存報價 ]           │
+│   → 等級：一般 +0%       │   [ 新增項目 ]           │
+│   板片尺寸 自動判定       │                         │
+│   → 等級：標準 +0%       │                         │
+│   施工加給合計 +0%        │                         │
 │                         │                         │
-│ ✨ 其他加工               │ 🖨 操作按鈕              │
-│   ☐ 皮革加工 +$50/才    │   [ 下載 PDF ]           │
-│   ☐ 加車裡布 +$60/才    │   [ 儲存報價 ]           │
-│   ☐ 背車止滑布 +$60/才  │   [ 新增項目 ]           │
+│ 🧵 面料（從資料庫選取）    │                         │
+│   搜尋/篩選面料          │                         │
+│   選中材質的資訊卡        │                         │
+│   進價/牌價切換           │                         │
+│                         │                         │
+│ ✨ 其他加工               │                         │
+│   ☐ 皮革加工 +$50/才    │                         │
+│   ☐ 加車裡布 +$60/才    │                         │
+│   ☐ 背車止滑布 +$60/才  │                         │
 │   ☐ 代釘電源孔 +$50/孔  │                         │
 │                         │                         │
 │ 📎 附加工程               │                         │
+│   ☐ 拆舊 $[____] 手動填 │                         │
 │   ☐ 現場安裝 $3,500/次  │                         │
-│   ☐ 拆舊 $2,000/式      │                         │
+│   ☐ 高樓層搬運 $2,000/式│                         │
 │   ☐ 急件 +40%           │                         │
 └─────────────────────────┴─────────────────────────┘
 ```
@@ -735,7 +807,7 @@ function calculateQuote(
 
 ### Phase 1：基礎框架 + 材質資料庫（1-2 週）
 
-- [ ] 初始化 Vite + React + TypeScript + Tailwind 專案
+- [ ] 初始化 Next.js + TypeScript + Tailwind + shadcn/ui 專案
 - [ ] Google Sheets API 連接與認證設定
 - [ ] 材質資料庫 CRUD（新增/讀取/編輯/停用）
 - [ ] 材質列表頁面（搜尋/篩選/排序）
@@ -747,6 +819,8 @@ function calculateQuote(
 - [ ] pricing-engine.ts 計算邏輯
 - [ ] 面料選取改為連結材質資料庫
 - [ ] 多項目報價（項目清單管理）
+- [ ] 多片組合輸入模式（每片×數量 / 整面÷分片）及才數算法切換
+- [ ] 施工加給計算（安裝高度 + 板片尺寸兩維度）
 - [ ] 客戶資料表單
 - [ ] PDF 報價單生成與下載
 
@@ -785,3 +859,4 @@ function calculateQuote(
 5. **報價單格式**：目前有在用的報價單範本嗎？有的話可以沿用版面設計
 6. **CushionQuote 程式碼**：需要從 AI Studio 匯出，看能複用多少前端元件
 7. **部署域名**：要用自訂域名（如 quote.chunmao.com）還是 Vercel 預設？
+8. **施工加給門檻與百分比**：已確認（安裝高度 200/300cm、板片尺寸 180/240cm），上線後依實際案場回饋微調

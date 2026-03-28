@@ -138,6 +138,16 @@ export async function PUT(
       specImageUrl: line.specImageUrl ?? "",
       createdAt: line.createdAt ?? now,
       updatedAt: now,
+      installHeightTier: line.installHeightTier ?? "",
+      panelSizeTier: line.panelSizeTier ?? "",
+      installSurchargeRate: line.installSurchargeRate ?? 0,
+      // v0.3.2 fields
+      panelInputMode: line.panelInputMode ?? "",
+      surfaceWidthCm: line.surfaceWidthCm ?? 0,
+      surfaceHeightCm: line.surfaceHeightCm ?? 0,
+      splitDirection: line.splitDirection ?? "",
+      splitCount: line.splitCount ?? 0,
+      caiRoundingMode: line.caiRoundingMode ?? "",
     }));
 
     await replaceVersionLines(client, versionId, lines);

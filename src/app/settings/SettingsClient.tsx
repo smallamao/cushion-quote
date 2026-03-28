@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { TemplateManager } from "@/components/settings/TemplateManager";
 
 function NumberField({
   label,
@@ -337,6 +338,15 @@ export function SettingsClient() {
                 }
               />
             </div>
+          </div>
+        </div>
+
+        <div className="card-surface rounded-[var(--radius-lg)] lg:col-span-2">
+          <div className="border-b border-[var(--border)] px-6 py-3">
+            <span className="text-sm font-medium">報價範本管理</span>
+          </div>
+          <div className="px-6 py-4">
+            <TemplateManager />
           </div>
         </div>
       </div>

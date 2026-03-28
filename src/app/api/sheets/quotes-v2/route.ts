@@ -178,6 +178,15 @@ export async function POST(request: Request) {
       specImageUrl: line.specImageUrl ?? "",
       createdAt: now,
       updatedAt: now,
+      installHeightTier: "",
+      panelSizeTier: "",
+      installSurchargeRate: 0,
+      panelInputMode: line.panelInputMode ?? "",
+      surfaceWidthCm: line.surfaceWidthCm ?? 0,
+      surfaceHeightCm: line.surfaceHeightCm ?? 0,
+      splitDirection: line.splitDirection ?? "",
+      splitCount: line.splitCount ?? 0,
+      caiRoundingMode: line.caiRoundingMode ?? "",
     }));
 
     await client.sheets.spreadsheets.values.append({
@@ -199,7 +208,7 @@ export async function POST(request: Request) {
     if (lineRecords.length > 0) {
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.spreadsheetId,
-        range: "報價版本明細!A:V",
+        range: "報價版本明細!A:AF",
         valueInputOption: "RAW",
         requestBody: { values: lineRecords.map(lineRecordToRow) },
       });

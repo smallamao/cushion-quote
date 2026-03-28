@@ -30,6 +30,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useClients } from "@/hooks/useClients";
 import { useHistory } from "@/hooks/useHistory";
 import { useSettings } from "@/hooks/useSettings";
+import { useTemplates } from "@/hooks/useTemplates";
 import {
   CHANNEL_LABELS,
   DEFAULT_TERMS,
@@ -46,11 +47,16 @@ import type {
   FlexQuoteItem,
   ItemUnit,
   LeadSource,
+  PanelInputMode,
   PartnerRole,
+  QuotePlanRecord,
+  QuoteTemplate,
   QuoteVersionRecord,
   SystemSettings,
   VersionLineRecord,
   VersionStatus,
+  SplitDirection,
+  CaiRoundingMode,
 } from "@/lib/types";
 import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPriceToTens, slugDate } from "@/lib/utils";
 import { generatePDFBlob } from "@/components/pdf/QuotePDF";
@@ -272,6 +278,12 @@ function toFlexItemsFromVersion(lines: VersionLineRecord[]): FlexQuoteItem[] {
     materialId: line.materialId,
     autoPriced: false,
     costPerUnit: line.estimatedUnitCost,
+    panelInputMode: (line.panelInputMode as PanelInputMode) || undefined,
+    surfaceWidthCm: line.surfaceWidthCm || undefined,
+    surfaceHeightCm: line.surfaceHeightCm || undefined,
+    splitDirection: (line.splitDirection as SplitDirection) || undefined,
+    splitCount: line.splitCount || undefined,
+    caiRoundingMode: (line.caiRoundingMode as CaiRoundingMode) || undefined,
   }));
 }
 
@@ -347,7 +359,7 @@ function SortableQuoteItemRow({
           style={{ width: colWidths.itemName, minWidth: COL_MIN.itemName }}
         >
           <textarea
-            rows={2}
+            rows={3}
             value={item.name}
             onChange={(e) =>
               onUpdateItem(item.id, { name: e.target.value })
@@ -590,6 +602,7 @@ function SortableQuoteItemRow({
 export function QuoteEditor() {
   const { settings } = useSettings();
   const { clients, loading: clientsLoading } = useClients();
+  const { templates: dbTemplates, loadTemplates } = useTemplates();
 
   const [caseId, setCaseId] = useState("");
   const [quoteId, setQuoteId] = useState(generateQuoteId);
@@ -605,6 +618,7 @@ export function QuoteEditor() {
   const [phone, setPhone] = useState("");
   const [taxId, setTaxId] = useState("");
   const [projectName, setProjectName] = useState("");
+  const [quoteName, setQuoteName] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [leadSource, setLeadSource] = useState<LeadSource>("unknown");
@@ -636,6 +650,9 @@ export function QuoteEditor() {
   const [calcOpen, setCalcOpen] = useState(false);
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
   const [quoteTemplateDropdownOpen, setQuoteTemplateDropdownOpen] = useState(false);
+  const [saveTemplateDialogOpen, setSaveTemplateDialogOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateDescription, setNewTemplateDescription] = useState("");
   const [itemImageUploading, setItemImageUploading] = useState<Record<string, boolean>>({});
   const [itemImageErrors, setItemImageErrors] = useState<Record<string, string>>({});
 
@@ -697,6 +714,26 @@ export function QuoteEditor() {
     (sourceItems: FlexQuoteItem[]) => recalculateAutoPricedItems(sourceItems, channel, currentAutoPricing),
     [channel, currentAutoPricing],
   );
+
+  // Merge hardcoded templates with database templates
+  const allQuoteTemplates = useMemo(() => {
+    // Convert database templates to the UI format
+    const convertedDbTemplates = dbTemplates.map((tpl) => ({
+      id: tpl.templateId,
+      label: tpl.templateName,
+      description: tpl.description,
+      items: tpl.items.map(item => {
+        const { id, ...rest } = item as FlexQuoteItem;
+        return rest as Omit<FlexQuoteItem, "id">;
+      }),
+    }));
+
+    return [...QUOTE_TEMPLATES, ...convertedDbTemplates];
+  }, [dbTemplates]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
 
   const applyClientCommissionOverride = useCallback((client: Client | null) => {
     if (!client || client.commissionMode === "default") {
@@ -812,14 +849,15 @@ export function QuoteEditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           caseId: targetCaseId,
+          projectAddress: address,
           leadSource,
           leadSourceContact: leadSourceContact.trim(),
           leadSourceNotes: leadSourceNotes.trim(),
         } satisfies Partial<CaseRecord> & { caseId: string }),
       });
-      if (!response.ok) throw new Error("更新案件來源資料失敗");
+      if (!response.ok) throw new Error("更新案件資料失敗");
     },
-    [leadSource, leadSourceContact, leadSourceNotes],
+    [address, leadSource, leadSourceContact, leadSourceNotes],
   );
 
   const loadVersionDocument = useCallback(
@@ -834,9 +872,25 @@ export function QuoteEditor() {
       };
       const { version, lines } = payload;
       const resolvedCaseId = targetCaseId || version.caseId;
+      const resolvedQuoteId = targetQuoteId || version.quoteId;
+
+      // Fetch quote plan to get quoteName and current case name
+      const quoteResponse = await fetch(`/api/sheets/cases/${encodeURIComponent(resolvedCaseId)}`, {
+        cache: "no-store",
+      });
+      let loadedQuoteName = "";
+      let currentCaseName = "";
+      if (quoteResponse.ok) {
+        const caseData = (await quoteResponse.json()) as { case: CaseRecord; quotes: Array<{ quote: QuotePlanRecord; versions: QuoteVersionRecord[] }> };
+        const quotePlan = caseData.quotes.find((q) => q.quote.quoteId === resolvedQuoteId);
+        loadedQuoteName = quotePlan?.quote.quoteName || "";
+        currentCaseName = caseData.case.caseName || "";
+      }
+
       const sourceDetails = await loadCaseSourceDetails(resolvedCaseId);
       setCaseId(resolvedCaseId);
-      setQuoteId(targetQuoteId || version.quoteId);
+      setQuoteId(resolvedQuoteId);
+      setQuoteName(loadedQuoteName);
       setVersionId(version.versionId);
       setVersionNo(version.versionNo);
       setVersionLabel(version.versionLabel);
@@ -847,7 +901,7 @@ export function QuoteEditor() {
       setContactName(version.contactNameSnapshot || "");
       setPhone(version.clientPhoneSnapshot || "");
       setAddress(version.projectAddressSnapshot || "");
-      setProjectName(version.projectNameSnapshot || "");
+      setProjectName(currentCaseName || version.projectNameSnapshot || "");
       setChannel(version.channel || "retail");
       setLeadSource(sourceDetails.leadSource);
       setLeadSourceContact(sourceDetails.leadSourceContact);
@@ -1279,7 +1333,7 @@ export function QuoteEditor() {
   );
 
   const applyQuoteTemplate = useCallback(
-    (template: (typeof QUOTE_TEMPLATES)[number]) => {
+    (template: { id: string; label: string; description: string; items: Array<Omit<FlexQuoteItem, "id">>; defaultTerms?: string }) => {
       const confirmed = confirm(
         `套用範本「${template.label}」將替換目前所有品項，確定嗎？`,
       );
@@ -1294,6 +1348,49 @@ export function QuoteEditor() {
     },
     [applyAutoPricing, setItems],
   );
+
+  const handleSaveAsTemplate = useCallback(async () => {
+    if (!newTemplateName.trim()) {
+      alert("請輸入範本名稱");
+      return;
+    }
+
+    if (items.length === 0) {
+      alert("目前沒有品項可以儲存");
+      return;
+    }
+
+    const newTemplate: QuoteTemplate = {
+      templateId: "",
+      templateName: newTemplateName.trim(),
+      description: newTemplateDescription.trim(),
+      items: items.map(({ id, ...rest }) => rest) as FlexQuoteItem[],
+      isActive: true,
+      createdAt: "",
+      updatedAt: "",
+    };
+
+    try {
+      const response = await fetch("/api/sheets/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template: newTemplate }),
+      });
+
+      const result = await response.json();
+      if (result.ok) {
+        alert(`範本「${newTemplateName}」已儲存成功！`);
+        setNewTemplateName("");
+        setNewTemplateDescription("");
+        setSaveTemplateDialogOpen(false);
+        loadTemplates();
+      } else {
+        alert(`儲存失敗：${result.error}`);
+      }
+    } catch (error) {
+      alert(`儲存失敗：${error instanceof Error ? error.message : "未知錯誤"}`);
+    }
+  }, [items, newTemplateName, newTemplateDescription, loadTemplates]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -1443,6 +1540,9 @@ export function QuoteEditor() {
         specImageUrl: item.specImageUrl ?? "",
         createdAt: now,
         updatedAt: now,
+        installHeightTier: item.installHeightTier ?? "",
+        panelSizeTier: item.panelSizeTier ?? "",
+        installSurchargeRate: item.installSurchargeRate ?? 0,
       };
     });
   }
@@ -1470,6 +1570,15 @@ export function QuoteEditor() {
         notes: item.notes,
         imageUrl: item.imageUrl ?? "",
         specImageUrl: item.specImageUrl ?? "",
+        installHeightTier: item.installHeightTier ?? "",
+        panelSizeTier: item.panelSizeTier ?? "",
+        installSurchargeRate: item.installSurchargeRate ?? 0,
+        panelInputMode: item.panelInputMode ?? "",
+        surfaceWidthCm: item.surfaceWidthCm ?? 0,
+        surfaceHeightCm: item.surfaceHeightCm ?? 0,
+        splitDirection: item.splitDirection ?? "",
+        splitCount: item.splitCount ?? 0,
+        caiRoundingMode: item.caiRoundingMode ?? "",
       };
     });
   }
@@ -1563,7 +1672,29 @@ export function QuoteEditor() {
           body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error("版本更新失敗");
-        await persistCaseSourceDetails(payload.version.caseId);
+
+        // Update quote name if provided
+        if (quoteName && quoteId) {
+          await fetch("/api/sheets/quotes-v2", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quoteId, quoteName: quoteName.trim() }),
+          });
+        }
+
+        // Update case details including case name
+        await fetch("/api/sheets/cases", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            caseId: payload.version.caseId,
+            caseName: projectName || `${companyName || "未命名客戶"} 案件`,
+            projectAddress: address,
+            leadSource,
+            leadSourceContact: leadSourceContact.trim(),
+            leadSourceNotes: leadSourceNotes.trim(),
+          }),
+        });
         setActiveVersion(payload.version);
         setVersionLabel(payload.version.versionLabel);
         setVersionNo(payload.version.versionNo);
@@ -1615,6 +1746,21 @@ export function QuoteEditor() {
         });
         if (!response.ok) throw new Error("儲存新版本失敗");
         const payload = (await response.json()) as { quoteId: string; versionId: string };
+
+        // Update case details including case name
+        await fetch("/api/sheets/cases", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            caseId: targetCaseId,
+            caseName: projectName || `${companyName || "未命名客戶"} 案件`,
+            projectAddress: address,
+            leadSource,
+            leadSourceContact: leadSourceContact.trim(),
+            leadSourceNotes: leadSourceNotes.trim(),
+          }),
+        });
+
         await loadVersionDocument(payload.versionId, targetCaseId, payload.quoteId);
         clearAutoDraft();
         alert(`報價 ${payload.quoteId}（${payload.versionId}）已儲存`);
@@ -1627,7 +1773,7 @@ export function QuoteEditor() {
     }
   }
 
-  async function handleCopyAction(action: "new_version" | "use_as_template") {
+  async function handleCopyAction(action: "new_version" | "use_as_template" | "new_quote_same_case") {
     if (!versionId) return;
 
     setCopyingVersion(true);
@@ -1641,21 +1787,28 @@ export function QuoteEditor() {
                 action: "new_version",
                 basedOnVersionId: versionId,
               }
-            : {
-                action: "use_as_template",
-                sourceVersionId: versionId,
-                caseDraft: {
-                  caseName: `${projectName || companyName || "新案件"}（複製）`,
-                  projectAddress: address,
-                  clientNameSnapshot: companyName,
-                  contactNameSnapshot: contactName,
-                  phoneSnapshot: phone,
-                  channelSnapshot: channel,
-                  leadSource,
-                  leadSourceContact: leadSourceContact.trim(),
-                  leadSourceNotes: leadSourceNotes.trim(),
+            : action === "new_quote_same_case"
+              ? {
+                  action: "new_quote_same_case",
+                  sourceVersionId: versionId,
+                  targetCaseId: caseId,
+                  quoteName: "新方案",
+                }
+              : {
+                  action: "use_as_template",
+                  sourceVersionId: versionId,
+                  caseDraft: {
+                    caseName: `${projectName || companyName || "新案件"}（複製）`,
+                    projectAddress: address,
+                    clientNameSnapshot: companyName,
+                    contactNameSnapshot: contactName,
+                    phoneSnapshot: phone,
+                    channelSnapshot: channel,
+                    leadSource,
+                    leadSourceContact: leadSourceContact.trim(),
+                    leadSourceNotes: leadSourceNotes.trim(),
+                  },
                 },
-              },
         ),
       });
       if (!response.ok) throw new Error("複製版本失敗");
@@ -1673,7 +1826,7 @@ export function QuoteEditor() {
         return;
       }
 
-      if (action === "use_as_template" && payload.caseId && payload.quoteId && payload.versionId) {
+      if ((action === "use_as_template" || action === "new_quote_same_case") && payload.caseId && payload.quoteId && payload.versionId) {
         sessionStorage.setItem(
           "quote-to-load",
           JSON.stringify({
@@ -1922,6 +2075,15 @@ export function QuoteEditor() {
                 <Input
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
+                  placeholder="整體專案名稱（例如：台中愛臻邸）"
+                />
+              </div>
+              <div>
+                <Label>方案名稱</Label>
+                <Input
+                  value={quoteName}
+                  onChange={(e) => setQuoteName(e.target.value)}
+                  placeholder="場域名稱（例如：客廳、主臥室）"
                 />
               </div>
               <div>
@@ -2109,7 +2271,7 @@ export function QuoteEditor() {
                   onClick={() => setQuoteTemplateDropdownOpen(false)}
                 />
                 <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]">
-                  {QUOTE_TEMPLATES.map((template) => (
+                  {allQuoteTemplates.map((template) => (
                     <button
                       key={template.id}
                       type="button"
@@ -2128,8 +2290,105 @@ export function QuoteEditor() {
               </>
             )}
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSaveTemplateDialogOpen(true)}
+            disabled={items.length === 0}
+          >
+            <Save className="h-3 w-3" />
+            存為範本
+          </Button>
         </div>
       </div>
+
+      {saveTemplateDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-xl)]">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                儲存為範本
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setSaveTemplateDialogOpen(false);
+                  setNewTemplateName("");
+                  setNewTemplateDescription("");
+                }}
+                className="rounded-[var(--radius-sm)] p-1 hover:bg-[var(--bg-subtle)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[var(--text-secondary)]">
+                  範本名稱 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  placeholder="例：標準臥室套餐"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[var(--text-secondary)]">
+                  範本說明
+                </label>
+                <textarea
+                  value={newTemplateDescription}
+                  onChange={(e) => setNewTemplateDescription(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  placeholder="簡單描述這個範本的用途..."
+                />
+              </div>
+
+              <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+                <p className="mb-1 text-xs font-medium text-[var(--text-secondary)]">
+                  將儲存 {items.length} 個品項
+                </p>
+                <ul className="space-y-0.5">
+                  {items.slice(0, 3).map((item, idx) => (
+                    <li key={idx} className="text-xs text-[var(--text-tertiary)]">
+                      • {item.name} {item.spec && `(${item.spec})`}
+                    </li>
+                  ))}
+                  {items.length > 3 && (
+                    <li className="text-xs text-[var(--text-tertiary)]">
+                      ... 及其他 {items.length - 3} 個品項
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSaveTemplateDialogOpen(false);
+                    setNewTemplateName("");
+                    setNewTemplateDescription("");
+                  }}
+                >
+                  取消
+                </Button>
+                <Button size="sm" onClick={handleSaveAsTemplate}>
+                  <Save className="h-4 w-4" />
+                  儲存範本
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="card-surface rounded-[var(--radius-lg)] px-6 py-4">
         <Label>補充說明</Label>
@@ -2459,7 +2718,7 @@ export function QuoteEditor() {
             <DialogTitle>複製報價</DialogTitle>
             <DialogDescription>
               {versionId
-                ? "可建立同報價新版本，或將目前版本套用成新案件。"
+                ? "可建立同報價新版本、新報價方案，或套用成新案件。"
                 : "目前為舊版報價流程，將使用另存新檔建立新單號。"}
             </DialogDescription>
           </DialogHeader>
@@ -2471,6 +2730,15 @@ export function QuoteEditor() {
             >
               <Copy className="h-3.5 w-3.5" />
               建立新版本（議價調整）
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              disabled={copyingVersion || saving}
+              onClick={() => void handleCopyAction("new_quote_same_case")}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              新增報價方案（同案件，例如：客廳/臥室）
             </Button>
             <Button
               variant="outline"

@@ -1,5 +1,14 @@
-import { ADDON_DEFS, EXTRA_DEFS } from "@/lib/constants";
-import type { AddonItem, Channel, MethodConfig, PricingConfig, QuoteLineItem } from "@/lib/types";
+import { ADDON_DEFS, EXTRA_DEFS, INSTALL_HEIGHT_TIERS, PANEL_SIZE_TIERS } from "@/lib/constants";
+import type {
+  AddonItem,
+  Channel,
+  InstallHeightTier,
+  MethodConfig,
+  PanelSizeTier,
+  PricingConfig,
+  QuoteLineItem,
+  SplitDirection,
+} from "@/lib/types";
 
 export interface ChannelPrice {
   total: number;
@@ -11,6 +20,7 @@ export interface ChannelPrice {
 export interface LineCalculationResult {
   caiCount: number;
   laborRate: number;
+  baseLaborRate?: number;
   materialRate: number;
   extrasPerCai: number;
   extrasFixed: number;
@@ -18,6 +28,7 @@ export interface LineCalculationResult {
   pieceCost: number;
   lineSubtotal: number;
   allocatedCommission: number;
+  installSurchargePercent?: number;
   channelPrices: Record<Channel, ChannelPrice>;
 }
 
@@ -48,9 +59,56 @@ export function calculateLaborRate(method: MethodConfig, thickness: number | nul
   return Math.round(refRate * (1 + qualityPremium / 100));
 }
 
+export function inferHeightTier(heightCm: number): InstallHeightTier {
+  if (heightCm <= 200) {
+    return "normal";
+  }
+  if (heightCm <= 300) {
+    return "mid_high";
+  }
+  return "high_altitude";
+}
+
+export function inferPanelSizeTier(widthCm: number, heightCm: number): PanelSizeTier {
+  const longSide = Math.max(widthCm, heightCm);
+  if (longSide <= 180) {
+    return "standard";
+  }
+  if (longSide <= 240) {
+    return "large";
+  }
+  return "extra_large";
+}
+
+export function calculateInstallSurcharge(heightTier: InstallHeightTier, panelSizeTier: PanelSizeTier): number {
+  const heightPercent = INSTALL_HEIGHT_TIERS[heightTier]?.surchargePercent ?? 0;
+  const panelPercent = PANEL_SIZE_TIERS[panelSizeTier]?.surchargePercent ?? 0;
+  return heightPercent + panelPercent;
+}
+
+export function applyInstallSurcharge(baseLaborRate: number, surchargePercent: number): number {
+  return Math.round(baseLaborRate * (1 + surchargePercent / 100));
+}
+
+type QuoteLineItemWithSurcharge = QuoteLineItem & {
+  installHeightTier?: InstallHeightTier;
+  panelSizeTier?: PanelSizeTier;
+};
+
 export function calculateLineItem(item: QuoteLineItem, method: MethodConfig, config: PricingConfig): LineCalculationResult {
   const caiCount = calculateCaiCount(item.widthCm, item.heightCm, method.minCai);
-  const laborRate = calculateLaborRate(method, item.foamThickness, config.qualityPremium);
+  const baseLaborRate = calculateLaborRate(method, item.foamThickness, config.qualityPremium);
+
+  let laborRate = baseLaborRate;
+  let installSurchargePercent: number | undefined = undefined;
+
+  const itemWithSurcharge = item as QuoteLineItemWithSurcharge;
+  if (itemWithSurcharge.installHeightTier && itemWithSurcharge.panelSizeTier) {
+    const heightTier = itemWithSurcharge.installHeightTier;
+    const panelSizeTier = itemWithSurcharge.panelSizeTier;
+    installSurchargePercent = calculateInstallSurcharge(heightTier, panelSizeTier);
+    laborRate = applyInstallSurcharge(baseLaborRate, installSurchargePercent);
+  }
 
   const rawMaterialCost = item.material
     ? item.useListPrice
@@ -95,7 +153,7 @@ export function calculateLineItem(item: QuoteLineItem, method: MethodConfig, con
     },
   );
 
-  return {
+  const result: LineCalculationResult = {
     caiCount,
     laborRate,
     materialRate,
@@ -107,6 +165,13 @@ export function calculateLineItem(item: QuoteLineItem, method: MethodConfig, con
     allocatedCommission: 0,
     channelPrices,
   };
+
+  if (installSurchargePercent !== undefined) {
+    result.baseLaborRate = baseLaborRate;
+    result.installSurchargePercent = installSurchargePercent;
+  }
+
+  return result;
 }
 
 export function calculateQuote(
@@ -188,4 +253,75 @@ export function calculateQuote(
   }
 
   return { lineResults, itemsSubtotal, addonFixed, rushSurcharge, subtotalBeforeTax, tax, grandTotal, commissionAmount };
+}
+
+/**
+ * 整面÷分片：根據整面尺寸與分片配置，計算單片尺寸
+ * @param surfaceWidthCm 整面寬度 (cm)
+ * @param surfaceHeightCm 整面高度 (cm)
+ * @param splitDirection 分片方向：horizontal（橫切）或 vertical（直切）
+ * @param splitCount 分片數量
+ * @returns 單片寬度與高度
+ */
+export function calculateSurfaceSplit(
+  surfaceWidthCm: number,
+  surfaceHeightCm: number,
+  splitDirection: SplitDirection,
+  splitCount: number,
+): { panelWidthCm: number; panelHeightCm: number } {
+  if (splitCount <= 0) {
+    return { panelWidthCm: surfaceWidthCm, panelHeightCm: surfaceHeightCm };
+  }
+
+  if (splitDirection === "horizontal") {
+    // 橫切：沿著高度方向切割，每片保持全寬，高度÷分片數
+    return {
+      panelWidthCm: surfaceWidthCm,
+      panelHeightCm: surfaceHeightCm / splitCount,
+    };
+  }
+
+  // 直切：沿著寬度方向切割，每片保持全高，寬度÷分片數
+  return {
+    panelWidthCm: surfaceWidthCm / splitCount,
+    panelHeightCm: surfaceHeightCm,
+  };
+}
+
+/**
+ * 雙模式才數計算：同時計算「逐片進位」與「整面進位」的才數
+ * @param panelWidthCm 單片寬度 (cm)
+ * @param panelHeightCm 單片高度 (cm)
+ * @param splitCount 分片數量
+ * @param minCai 最低才數（每片或整面的最小值）
+ * @returns 兩種進位模式的才數對比
+ */
+export function calculateCaiCountDual(
+  panelWidthCm: number,
+  panelHeightCm: number,
+  splitCount: number,
+  minCai: number,
+): {
+  perPieceCeilTotal: number;
+  surfaceCeilTotal: number;
+  perPieceRaw: number;
+  difference: number;
+} {
+  // 單片原始才數（未進位）
+  const rawPerPanel = (panelWidthCm * panelHeightCm) / 900;
+
+  // 模式 1: 逐片進位 - 每片進位後 × 分片數
+  const ceiledPerPanel = Math.max(Math.ceil(rawPerPanel), minCai);
+  const perPieceCeilTotal = ceiledPerPanel * splitCount;
+
+  // 模式 2: 整面進位 - 總才數進位一次
+  const rawTotal = rawPerPanel * splitCount;
+  const surfaceCeilTotal = Math.max(Math.ceil(rawTotal), minCai);
+
+  return {
+    perPieceCeilTotal,
+    surfaceCeilTotal,
+    perPieceRaw: rawPerPanel,
+    difference: perPieceCeilTotal - surfaceCeilTotal,
+  };
 }

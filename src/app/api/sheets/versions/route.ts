@@ -28,7 +28,7 @@ import {
 } from "../_v2-utils";
 import { syncAutoCommissionSettlements } from "../_settlement-utils";
 
-type CreateVersionAction = "new_version" | "use_as_template";
+type CreateVersionAction = "new_version" | "use_as_template" | "new_quote_same_case";
 
 interface NewVersionPayload {
   action: "new_version";
@@ -48,7 +48,16 @@ interface UseAsTemplatePayload {
   versionDraft?: Partial<QuoteVersionRecord>;
 }
 
-type CreateVersionPayload = NewVersionPayload | UseAsTemplatePayload;
+interface NewQuoteSameCasePayload {
+  action: "new_quote_same_case";
+  sourceVersionId: string;
+  targetCaseId: string;
+  quoteName?: string;
+  quoteDraft?: Partial<QuotePlanRecord>;
+  versionDraft?: Partial<QuoteVersionRecord>;
+}
+
+type CreateVersionPayload = NewVersionPayload | UseAsTemplatePayload | NewQuoteSameCasePayload;
 
 function copyLinesToVersion(
   sourceLines: VersionLineRecord[],
@@ -263,6 +272,130 @@ export async function POST(request: Request) {
 
       await syncVersionToParents(client, draft);
       return NextResponse.json({ ok: true, versionId: draft.versionId }, { status: 201 });
+    }
+
+    if (payload.action === "new_quote_same_case") {
+      const sourceVersionId = payload.sourceVersionId?.trim() ?? "";
+      const targetCaseId = payload.targetCaseId?.trim() ?? "";
+
+      if (!sourceVersionId) {
+        return NextResponse.json({ ok: false, error: "sourceVersionId is required" }, { status: 400 });
+      }
+      if (!targetCaseId) {
+        return NextResponse.json({ ok: false, error: "targetCaseId is required" }, { status: 400 });
+      }
+
+      const [caseRows, versionRows, lineRows, quoteRows] = await Promise.all([
+        getCaseRows(client),
+        getVersionRows(client),
+        getVersionLineRows(client),
+        getQuoteRows(client),
+      ]);
+
+      const targetCase = caseRows
+        .map(caseRowToRecord)
+        .find((record) => record.caseId === targetCaseId);
+      if (!targetCase) {
+        return NextResponse.json({ ok: false, error: "target case not found" }, { status: 404 });
+      }
+
+      const sourceVersion = versionRows
+        .map(versionRowToRecord)
+        .find((version) => version.versionId === sourceVersionId);
+      if (!sourceVersion) {
+        return NextResponse.json({ ok: false, error: "source version not found" }, { status: 404 });
+      }
+
+      const sourceQuote = quoteRows
+        .map(quoteRowToRecord)
+        .find((quote) => quote.quoteId === sourceVersion.quoteId);
+      const sourceLines = lineRows
+        .map(lineRowToRecord)
+        .filter((line) => line.versionId === sourceVersionId);
+
+      const now = isoNow();
+      const today = isoDateNow();
+      const { quoteId, quoteSeq } = await generateQuoteId(client, targetCaseId);
+      const versionId = `${quoteId}-V01`;
+
+      const quoteDraft = payload.quoteDraft ?? {};
+      const quoteRecord: QuotePlanRecord = {
+        quoteId,
+        caseId: targetCaseId,
+        quoteSeq,
+        quoteName: payload.quoteName ?? quoteDraft.quoteName ?? sourceQuote?.quoteName ?? "新方案",
+        quoteType: quoteDraft.quoteType ?? sourceQuote?.quoteType ?? "",
+        scopeNote: quoteDraft.scopeNote ?? sourceQuote?.scopeNote ?? "",
+        quoteStatus: quoteDraft.quoteStatus ?? "draft",
+        currentVersionId: versionId,
+        selectedVersionId: "",
+        versionCount: 1,
+        latestSentAt: "",
+        nextFollowUpDate: "",
+        sortOrder: quoteDraft.sortOrder ?? quoteSeq,
+        internalNotes: quoteDraft.internalNotes ?? "",
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const versionDraft = payload.versionDraft ?? {};
+      const draftVersion = normalizeVersionUpdate(
+        {
+          ...sourceVersion,
+          ...versionDraft,
+          versionId,
+          quoteId,
+          caseId: targetCaseId,
+          versionNo: 1,
+          basedOnVersionId: sourceVersionId,
+          versionLabel: versionDraft.versionLabel ?? "V01 初版",
+          versionStatus: versionDraft.versionStatus ?? "draft",
+          quoteDate: versionDraft.quoteDate ?? today,
+          sentAt: "",
+          nextFollowUpDate: "",
+          lastFollowUpAt: "",
+          reminderStatus: "not_sent",
+          snapshotLocked: false,
+          snapshotLockedAt: "",
+          clientNameSnapshot: targetCase.clientNameSnapshot,
+          contactNameSnapshot: targetCase.contactNameSnapshot,
+          clientPhoneSnapshot: targetCase.phoneSnapshot,
+          projectNameSnapshot: targetCase.caseName,
+          projectAddressSnapshot: targetCase.projectAddress,
+          channelSnapshot: targetCase.channelSnapshot,
+          createdAt: now,
+          updatedAt: now,
+        },
+        now,
+      );
+
+      const copiedLines = copyLinesToVersion(sourceLines, draftVersion, now);
+
+      await client.sheets.spreadsheets.values.append({
+        spreadsheetId: client.spreadsheetId,
+        range: "報價!A:P",
+        valueInputOption: "RAW",
+        requestBody: { values: [quoteRecordToRow(quoteRecord)] },
+      });
+      await client.sheets.spreadsheets.values.append({
+        spreadsheetId: client.spreadsheetId,
+        range: "報價版本!A:AP",
+        valueInputOption: "RAW",
+        requestBody: { values: [versionRecordToRow(draftVersion)] },
+      });
+      if (copiedLines.length > 0) {
+        await client.sheets.spreadsheets.values.append({
+          spreadsheetId: client.spreadsheetId,
+          range: "報價版本明細!A:W",
+          valueInputOption: "RAW",
+          requestBody: { values: copiedLines.map(lineRecordToRow) },
+        });
+      }
+
+      await syncAutoCommissionSettlements(client, draftVersion);
+      await syncVersionToParents(client, draftVersion);
+
+      return NextResponse.json({ ok: true, caseId: targetCaseId, quoteId, versionId }, { status: 201 });
     }
 
     const sourceVersionId = payload.sourceVersionId?.trim() ?? "";

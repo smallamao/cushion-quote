@@ -5,9 +5,11 @@ import type {
   ClientType,
   ExtraItem,
   FlexQuoteItem,
+  InstallHeightTier,
   LeadSource,
   Material,
   MethodConfig,
+  PanelSizeTier,
   SystemSettings,
 } from "@/lib/types";
 
@@ -281,4 +283,32 @@ export const SAMPLE_MATERIALS: Material[] = [
     createdAt: "2026-03-16",
     updatedAt: "2026-03-16",
   },
+];
+
+// ===== 施工加給分級 (v0.3.1) =====
+
+export const INSTALL_HEIGHT_TIERS: Record<
+  InstallHeightTier,
+  { label: string; description: string; maxCm: number | null; surchargePercent: number }
+> = {
+  normal: { label: "一般", description: "≤200cm", maxCm: 200, surchargePercent: 0 },
+  mid_high: { label: "中高", description: "200-300cm", maxCm: 300, surchargePercent: 25 },
+  high_altitude: { label: "高空", description: ">300cm", maxCm: null, surchargePercent: 60 },
+};
+
+export const PANEL_SIZE_TIERS: Record<
+  PanelSizeTier,
+  { label: string; description: string; maxLongSideCm: number | null; surchargePercent: number }
+> = {
+  standard: { label: "標準", description: "≤180cm", maxLongSideCm: 180, surchargePercent: 0 },
+  large: { label: "大型", description: "180-240cm", maxLongSideCm: 240, surchargePercent: 20 },
+  extra_large: { label: "超大型", description: ">240cm", maxLongSideCm: null, surchargePercent: 40 },
+};
+
+export const INSTALL_HEIGHT_OPTIONS: InstallHeightTier[] = [
+  "normal", "mid_high", "high_altitude",
+];
+
+export const PANEL_SIZE_OPTIONS: PanelSizeTier[] = [
+  "standard", "large", "extra_large",
 ];

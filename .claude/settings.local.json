@@ -5,7 +5,25 @@
       "Bash(npx next build:*)",
       "Bash(curl:*)",
       "Bash(python3:*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm run build:*)",
+      "Bash(chmod:*)",
+      "Bash(vercel whoami:*)",
+      "Bash(/Users/Mao/SynologyDrive/馬鈴薯沙發/雜項/繃布報價/.env.deploy.example << 'EOF'\n# 複製此檔案並重新命名為 .env.deploy\n# 填入您的憑證資訊後，執行：source .env.deploy && ./deploy.sh\n\nexport GOOGLE_SHEETS_SPREADSHEET_ID=\"你的試算表ID\"\nexport GOOGLE_SERVICE_ACCOUNT_KEY='{\"type\":\"service_account\",\"project_id\":\"...完整JSON...\"}'\nexport CLOUDINARY_CLOUD_NAME=\"你的cloud_name\"\nexport CLOUDINARY_API_KEY=\"你的API_key\"\nexport CLOUDINARY_API_SECRET=\"你的API_secret\"\nEOF)",
+      "Bash(./deploy-now.sh:*)",
+      "Bash(vercel login:*)",
+      "Bash(git remote get-url:*)",
+      "Bash(git remote add:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(/tmp/create-github-repo.md << 'EOF'\n📋 建立 GitHub 倉庫的兩種方式\n================================\n\n方式 1: 使用 GitHub CLI \\(gh\\)\n---------------------------\n# 1. 安裝 gh CLI（如果沒有）\nbrew install gh\n\n# 2. 登入 GitHub\ngh auth login\n\n# 3. 建立倉庫\ngh repo create cushion-quote --public --source=. --push\n\n# 完成！自動推送並設定 remote\n\n\n方式 2: 在 GitHub 網站上建立\n-----------------------------\n1. 前往 https://github.com/new\n2. Repository name: cushion-quote\n3. 選擇 Public 或 Private\n4. **不要**勾選「Initialize this repository with a README」\n5. 點擊「Create repository」\n6. 複製倉庫 URL（例如：https://github.com/remotra87/cushion-quote.git）\n7. 回到終端機執行：\n\n   git remote set-url origin <你的倉庫URL>\n   git push -u origin main\n\n\n方式 3: 直接部署到 Vercel（不需要 GitHub）\n------------------------------------------\n使用 deploy-with-token.sh:\n\n1. 取得 Vercel Token: https://vercel.com/account/tokens\n2. 執行:\n   export VERCEL_TOKEN=你的token\n   ./deploy-with-token.sh\nEOF)",
+      "Bash(gh auth status:*)",
+      "Bash(vercel ls:*)",
+      "Bash(sips:*)",
+      "Bash(npm test:*)",
+      "Bash(node:*)"
     ]
   }
 }

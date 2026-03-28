@@ -148,6 +148,15 @@ function makeLineRecord(overrides: Partial<VersionLineRecord> = {}): VersionLine
     specImageUrl: "",
     createdAt: "2026-03-20T10:00:00.000Z",
     updatedAt: "2026-03-20T10:00:00.000Z",
+    installHeightTier: "",
+    panelSizeTier: "",
+    installSurchargeRate: 0,
+    panelInputMode: "",
+    surfaceWidthCm: 0,
+    surfaceHeightCm: 0,
+    splitDirection: "",
+    splitCount: 0,
+    caiRoundingMode: "",
     ...overrides,
   };
 }
@@ -324,9 +333,9 @@ describe("Line Row ↔ Record 雙向轉換", () => {
     expect(restored).toEqual(original);
   });
 
-  it("row 長度應為 23 欄", () => {
+  it("row 長度應為 32 欄", () => {
     const row = lineRecordToRow(makeLineRecord());
-    expect(row).toHaveLength(23);
+    expect(row).toHaveLength(32);
   });
 
   it("isCostItem=true 和 showOnQuote=false 應正確轉換", () => {
@@ -347,6 +356,61 @@ describe("Line Row ↔ Record 雙向轉換", () => {
   it("unit 預設為 '式'", () => {
     const record = lineRowToRecord([]);
     expect(record.unit).toBe("式");
+  });
+
+  it("施工加給欄位 roundtrip 應正確", () => {
+    const original = makeLineRecord({
+      installHeightTier: "mid_high",
+      panelSizeTier: "large",
+      installSurchargeRate: 45,
+    });
+    const row = lineRecordToRow(original);
+    const restored = lineRowToRecord(row);
+    expect(restored.installHeightTier).toBe("mid_high");
+    expect(restored.panelSizeTier).toBe("large");
+    expect(restored.installSurchargeRate).toBe(45);
+  });
+
+  it("舊格式 row（23 欄）應安全讀取施工加給欄位", () => {
+    // Simulate a legacy row with only 23 columns (no surcharge fields)
+    const legacyRow = lineRecordToRow(makeLineRecord()).slice(0, 23);
+    expect(legacyRow).toHaveLength(23);
+    const record = lineRowToRecord(legacyRow);
+    expect(record.installHeightTier).toBe("");
+    expect(record.panelSizeTier).toBe("");
+    expect(record.installSurchargeRate).toBe(0);
+  });
+
+  it("多片組合輸入模式欄位 roundtrip 應正確", () => {
+    const original = makeLineRecord({
+      panelInputMode: "divide_surface",
+      surfaceWidthCm: 180,
+      surfaceHeightCm: 240,
+      splitDirection: "horizontal",
+      splitCount: 3,
+      caiRoundingMode: "surface_ceil",
+    });
+    const row = lineRecordToRow(original);
+    const restored = lineRowToRecord(row);
+    expect(restored.panelInputMode).toBe("divide_surface");
+    expect(restored.surfaceWidthCm).toBe(180);
+    expect(restored.surfaceHeightCm).toBe(240);
+    expect(restored.splitDirection).toBe("horizontal");
+    expect(restored.splitCount).toBe(3);
+    expect(restored.caiRoundingMode).toBe("surface_ceil");
+  });
+
+  it("舊格式 row（26 欄）應安全讀取多片組合欄位", () => {
+    // Simulate a legacy row with only 26 columns (no v0.3.2 fields)
+    const legacyRow = lineRecordToRow(makeLineRecord()).slice(0, 26);
+    expect(legacyRow).toHaveLength(26);
+    const record = lineRowToRecord(legacyRow);
+    expect(record.panelInputMode).toBe("");
+    expect(record.surfaceWidthCm).toBe(0);
+    expect(record.surfaceHeightCm).toBe(0);
+    expect(record.splitDirection).toBe("");
+    expect(record.splitCount).toBe(0);
+    expect(record.caiRoundingMode).toBe("");
   });
 });
 
