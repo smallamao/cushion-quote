@@ -49,4 +49,12 @@ describe("fabric-calculator daybed formulas", () => {
     expect(result.roundedYards).toBeGreaterThan(0);
     expect(result.pricingMode).toBe("layout");
   });
+
+  it("uses provided fabric width when calculating yards", () => {
+    const narrowWidthResult = calculateFabric("flat", 222, 62, 1, 4, 137);
+    const wideWidthResult = calculateFabric("flat", 222, 62, 1, 4, 280);
+
+    expect(wideWidthResult.roundedYards).toBeLessThanOrEqual(narrowWidthResult.roundedYards);
+    expect(wideWidthResult.totalLengthCm).toBeLessThanOrEqual(narrowWidthResult.totalLengthCm);
+  });
 });

@@ -260,6 +260,8 @@ export function CalculatorModal({
     [laborRate, surchargePercent, usesConstructionConditions],
   );
 
+  const fabricWidthCm = selectedMaterial?.widthCm && selectedMaterial.widthCm > 0 ? selectedMaterial.widthCm : 137;
+
   const fabricResult = useMemo(
     () => {
       if (isFoamCore) return null;
@@ -270,11 +272,12 @@ export function CalculatorModal({
               method,
               derivedPanels.map((panel) => ({ widthCm: panel.panelWidthCm, lengthCm: panel.panelHeightCm })),
               totalThickness,
+              fabricWidthCm,
             )
-          : calculateFabric(method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty);
+          : calculateFabric(method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty, fabricWidthCm);
       }
 
-      return calculateFabric(method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty);
+      return calculateFabric(method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty, fabricWidthCm);
     },
     [
       isFoamCore,
@@ -286,6 +289,7 @@ export function CalculatorModal({
       effectiveHeightCm,
       totalThickness,
       effectiveQty,
+      fabricWidthCm,
     ],
   );
 
@@ -1060,7 +1064,7 @@ export function CalculatorModal({
               </table>
               <div className="mt-3 flex items-center justify-between border-t border-[var(--border)] pt-2 text-xs">
                 <span className="text-[var(--text-secondary)]">
-                  布幅寬 137cm · 排版預估
+                  布幅寬 {Math.round(fabricWidthCm)}cm · 排版預估
                 </span>
                 <div className="flex gap-3 font-medium">
                   <span>{fabricResult.exactYards} 碼</span>
