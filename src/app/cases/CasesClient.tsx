@@ -404,10 +404,15 @@ export function CasesClient() {
     }
   }
 
+  // 過濾掉沒有案件名稱的記錄（這些是散客報價，只應出現在報價紀錄，不應出現在案件管理）
+  const casesWithNames = useMemo(() => {
+    return cases.filter((item) => item.caseName?.trim());
+  }, [cases]);
+
   const filtered = useMemo(() => {
     const query = searchText.trim().toLowerCase();
-    if (!query) return cases;
-    return cases.filter((item) => {
+    if (!query) return casesWithNames;
+    return casesWithNames.filter((item) => {
       return [
         item.caseName,
         item.clientNameSnapshot,
@@ -421,7 +426,7 @@ export function CasesClient() {
         .toLowerCase()
         .includes(query);
     });
-  }, [cases, searchText]);
+  }, [casesWithNames, searchText]);
 
   const filteredBySource = useMemo(() => {
     if (leadSourceFilter === "all") return filtered;
