@@ -355,6 +355,7 @@ export function CalculatorModal({
     settings.commissionMode === "fixed"
       ? baseUnitPrice
       : calculateQuotedUnitPrice(pieceCost, multiplier, settings.commissionMode, settings.commissionRate);
+  const totalPrice = unitPrice * effectiveQty;
 
   function toggleExtra(extra: ExtraItem, checked: boolean) {
     setExtras((prev) =>
@@ -1106,6 +1107,9 @@ export function CalculatorModal({
                     <div className="mt-1 text-lg font-bold text-[var(--accent)]">
                       {formatCurrency(unitPrice)}
                     </div>
+                    <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                      總價 {formatCurrency(totalPrice)}
+                    </div>
                   </div>
                 </div>
                 <div className="mt-3 flex justify-center gap-6 text-[11px] text-[var(--text-tertiary)]">
@@ -1142,6 +1146,9 @@ export function CalculatorModal({
                     </div>
                     <div className="mt-1 text-lg font-bold text-[var(--accent)]">
                       {formatCurrency(unitPrice)}
+                    </div>
+                    <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                      總價 {formatCurrency(totalPrice)}
                     </div>
                   </div>
                 </div>
