@@ -96,6 +96,7 @@ const COL_DEFAULT = { itemName: 200, spec: 160 } as const;
 
 interface AutoDraft {
   savedAt: string;
+  signature?: string;
   caseId: string;
   quoteId: string;
   versionId: string;
@@ -108,6 +109,7 @@ interface AutoDraft {
   phone: string;
   taxId: string;
   projectName: string;
+  quoteName: string;
   email: string;
   address: string;
   channel: Channel;
@@ -121,6 +123,41 @@ interface AutoDraft {
   termsTemplate: string;
   commissionOverride: CommissionOverride | null;
   commissionPartners: CommissionPartnerSplit[];
+}
+
+interface AutoDraftComparable {
+  selectedClientId: string;
+  companyName: string;
+  contactName: string;
+  phone: string;
+  taxId: string;
+  projectName: string;
+  quoteName: string;
+  email: string;
+  address: string;
+  channel: Channel;
+  leadSource: LeadSource;
+  leadSourceContact: string;
+  leadSourceNotes: string;
+  items: FlexQuoteItem[];
+  description: string;
+  descriptionImageUrl: string;
+  includeTax: boolean;
+  termsTemplate: string;
+  commissionOverride: CommissionOverride | null;
+  commissionPartners: CommissionPartnerSplit[];
+}
+
+function stripItemIdentity(item: FlexQuoteItem): Omit<FlexQuoteItem, "id"> {
+  const { id, ...rest } = item;
+  return rest;
+}
+
+function buildAutoDraftSignature(comparable: AutoDraftComparable): string {
+  return JSON.stringify({
+    ...comparable,
+    items: comparable.items.map(stripItemIdentity),
+  });
 }
 
 interface CommissionOverride {
@@ -651,15 +688,64 @@ export function QuoteEditor() {
 
   const [colWidths, setColWidths] = useState<{ itemName: number; spec: number }>({ ...COL_DEFAULT });
   const autoDraftReadyRef = useRef(false);
+  const autoDraftBaselineSignatureRef = useRef("");
   const autoPricingSignatureRef = useRef("");
   const suppressNextAutoPricingRef = useRef(false);
   const pendingSessionLoadRef = useRef(false);
 
   const clearAutoDraft = useCallback(() => {
+    autoDraftBaselineSignatureRef.current = "";
     try {
       localStorage.removeItem(AUTO_DRAFT_KEY);
     } catch {}
   }, []);
+
+  const buildCurrentAutoDraftComparable = useCallback(
+    (): AutoDraftComparable => ({
+      selectedClientId,
+      companyName,
+      contactName,
+      phone,
+      taxId,
+      projectName,
+      quoteName,
+      email,
+      address,
+      channel,
+      leadSource,
+      leadSourceContact,
+      leadSourceNotes,
+      items,
+      description,
+      descriptionImageUrl,
+      includeTax,
+      termsTemplate,
+      commissionOverride,
+      commissionPartners,
+    }),
+    [
+      selectedClientId,
+      companyName,
+      contactName,
+      phone,
+      taxId,
+      projectName,
+      quoteName,
+      email,
+      address,
+      channel,
+      leadSource,
+      leadSourceContact,
+      leadSourceNotes,
+      items,
+      description,
+      descriptionImageUrl,
+      includeTax,
+      termsTemplate,
+      commissionOverride,
+      commissionPartners,
+    ],
+  );
 
   const handleCommissionModeChange = useCallback(
     (value: CommissionMode | "default") => {
@@ -970,6 +1056,45 @@ export function QuoteEditor() {
 
       if (!Number.isFinite(savedAtMs) || Date.now() - savedAtMs > 24 * 60 * 60 * 1000) {
         localStorage.removeItem(AUTO_DRAFT_KEY);
+        autoDraftBaselineSignatureRef.current = buildAutoDraftSignature(buildCurrentAutoDraftComparable());
+        autoDraftReadyRef.current = true;
+        return;
+      }
+
+      const draftComparable: AutoDraftComparable = {
+        selectedClientId: draft.selectedClientId,
+        companyName: draft.companyName,
+        contactName: draft.contactName,
+        phone: draft.phone,
+        taxId: draft.taxId,
+        projectName: draft.projectName,
+        quoteName: draft.quoteName ?? "",
+        email: draft.email,
+        address: draft.address,
+        channel: draft.channel,
+        leadSource: draft.leadSource ?? "unknown",
+        leadSourceContact: draft.leadSourceContact ?? "",
+        leadSourceNotes: draft.leadSourceNotes ?? "",
+        items: draft.items.length > 0 ? draft.items : [createEmptyItem()],
+        description: draft.description,
+        descriptionImageUrl: draft.descriptionImageUrl,
+        includeTax: draft.includeTax,
+        termsTemplate: draft.termsTemplate,
+        commissionOverride: draft.commissionOverride
+          ? {
+              mode: draft.commissionOverride.mode,
+              rate: clampCommissionRate(draft.commissionOverride.rate),
+              fixedAmount: Math.max(0, Number(draft.commissionOverride.fixedAmount ?? 0)),
+            }
+          : null,
+        commissionPartners: draft.commissionPartners ?? [],
+      };
+      const draftSignature = draft.signature ?? buildAutoDraftSignature(draftComparable);
+      const currentSignature = buildAutoDraftSignature(buildCurrentAutoDraftComparable());
+
+      if (draftSignature === currentSignature) {
+        localStorage.removeItem(AUTO_DRAFT_KEY);
+        autoDraftBaselineSignatureRef.current = currentSignature;
         autoDraftReadyRef.current = true;
         return;
       }
@@ -999,42 +1124,31 @@ export function QuoteEditor() {
         setPhone(draft.phone);
         setTaxId(draft.taxId);
         setProjectName(draft.projectName);
+        setQuoteName(draft.quoteName ?? "");
         setEmail(draft.email);
         setAddress(draft.address);
         setChannel(draft.channel);
         setLeadSource(draft.leadSource ?? "unknown");
         setLeadSourceContact(draft.leadSourceContact ?? "");
         setLeadSourceNotes(draft.leadSourceNotes ?? "");
-        setHistoryInitialItems(
-          recalculateAutoPricedItems(
-            draft.items.length > 0 ? draft.items : [createEmptyItem()],
-            draft.channel,
-            draftAutoPricing,
-          ),
-        );
-        setDescription(draft.description);
-        setDescriptionImageUrl(draft.descriptionImageUrl);
-        setIncludeTax(draft.includeTax);
-        setTermsTemplate(draft.termsTemplate);
-        setCommissionOverride(
-          draft.commissionOverride
-            ? {
-                mode: draft.commissionOverride.mode,
-                rate: clampCommissionRate(draft.commissionOverride.rate),
-                fixedAmount: Math.max(0, Number(draft.commissionOverride.fixedAmount ?? 0)),
-              }
-            : null,
-        );
-        setCommissionPartners(draft.commissionPartners ?? []);
+        setHistoryInitialItems(recalculateAutoPricedItems(draftComparable.items, draft.channel, draftAutoPricing));
+        setDescription(draftComparable.description);
+        setDescriptionImageUrl(draftComparable.descriptionImageUrl);
+        setIncludeTax(draftComparable.includeTax);
+        setTermsTemplate(draftComparable.termsTemplate);
+        setCommissionOverride(draftComparable.commissionOverride);
+        setCommissionPartners(draftComparable.commissionPartners);
+        autoDraftBaselineSignatureRef.current = draftSignature;
       } else {
         localStorage.removeItem(AUTO_DRAFT_KEY);
+        autoDraftBaselineSignatureRef.current = currentSignature;
       }
     } catch {
       clearAutoDraft();
     } finally {
       autoDraftReadyRef.current = true;
     }
-  }, [clearAutoDraft, settings.channelMultipliers, settings.commissionFixedAmount, settings.commissionMode, settings.commissionRate]);
+  }, [buildCurrentAutoDraftComparable, clearAutoDraft, settings.channelMultipliers, settings.commissionFixedAmount, settings.commissionMode, settings.commissionRate]);
 
   useEffect(() => {
     const nextSignature = JSON.stringify({
@@ -1062,9 +1176,25 @@ export function QuoteEditor() {
   useEffect(() => {
     if (!autoDraftReadyRef.current) return;
 
+    const currentComparable = buildCurrentAutoDraftComparable();
+    const currentSignature = buildAutoDraftSignature(currentComparable);
+
+    if (!autoDraftBaselineSignatureRef.current) {
+      autoDraftBaselineSignatureRef.current = currentSignature;
+      return;
+    }
+
+    if (currentSignature === autoDraftBaselineSignatureRef.current) {
+      try {
+        localStorage.removeItem(AUTO_DRAFT_KEY);
+      } catch {}
+      return;
+    }
+
     const timeoutId = window.setTimeout(() => {
       const draft: AutoDraft = {
         savedAt: new Date().toISOString(),
+        signature: currentSignature,
         caseId,
         quoteId,
         versionId,
@@ -1077,6 +1207,7 @@ export function QuoteEditor() {
         phone,
         taxId,
         projectName,
+        quoteName,
         email,
         address,
         channel,
@@ -1102,6 +1233,7 @@ export function QuoteEditor() {
     return () => window.clearTimeout(timeoutId);
   }, [
     address,
+    buildCurrentAutoDraftComparable,
     caseId,
     channel,
     companyName,
@@ -1119,6 +1251,7 @@ export function QuoteEditor() {
     leadSourceNotes,
     phone,
     projectName,
+    quoteName,
     quoteId,
     selectedClientId,
     taxId,

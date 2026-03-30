@@ -201,6 +201,7 @@ export function QuotesClient() {
       if (!query) return true;
       return [
         item.clientNameSnapshot,
+        item.contactNameSnapshot,
         item.projectNameSnapshot,
         item.quoteNameSnapshot,
         item.versionId,

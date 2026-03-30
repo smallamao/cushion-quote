@@ -411,6 +411,7 @@ export function CasesClient() {
       return [
         item.caseName,
         item.clientNameSnapshot,
+        item.contactNameSnapshot,
         item.caseId,
         LEAD_SOURCE_LABELS[item.leadSource ?? "unknown"]?.label ?? "",
         item.leadSourceContact ?? "",
