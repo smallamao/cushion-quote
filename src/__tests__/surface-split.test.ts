@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateSurfaceSplit,
+  calculateSurfaceSplitPieces,
   calculateCaiCountDual,
+  calculateCaiCountDualForPieces,
 } from "../lib/pricing-engine";
 
 describe("Surface Split Calculations (v0.3.2)", () => {
@@ -85,6 +87,28 @@ describe("Surface Split Calculations (v0.3.2)", () => {
     it("should calculate raw per-piece cai correctly", () => {
       const result = calculateCaiCountDual(60, 60, 1, 1);
       expect(result.perPieceRaw).toBeCloseTo(4, 1); // 3600/900 = 4
+    });
+  });
+
+  describe("custom split panels", () => {
+    it("should preserve custom horizontal split sizes", () => {
+      const result = calculateSurfaceSplitPieces(217, 174, "horizontal", 4, [30, 57, 57, 30]);
+      expect(result).toEqual([
+        { panelWidthCm: 217, panelHeightCm: 30, splitSizeCm: 30 },
+        { panelWidthCm: 217, panelHeightCm: 57, splitSizeCm: 57 },
+        { panelWidthCm: 217, panelHeightCm: 57, splitSizeCm: 57 },
+        { panelWidthCm: 217, panelHeightCm: 30, splitSizeCm: 30 },
+      ]);
+    });
+
+    it("should calculate mixed-size cai totals", () => {
+      const panels = calculateSurfaceSplitPieces(217, 174, "horizontal", 4, [30, 57, 57, 30]);
+      const result = calculateCaiCountDualForPieces(panels, 1);
+
+      expect(result.perPieceCeilTotal).toBe(44);
+      expect(result.surfaceCeilTotal).toBe(42);
+      expect(result.difference).toBe(2);
+      expect(result.rawTotal).toBeCloseTo(41.95, 1);
     });
   });
 });

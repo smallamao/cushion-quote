@@ -293,6 +293,7 @@ export interface VersionLineRecord {
   splitDirection: string;
   splitCount: number;
   caiRoundingMode: string;
+  customSplitSizesCsv: string;
 }
 
 // ===== 客戶資料庫 =====
@@ -362,6 +363,7 @@ export interface FlexQuoteItem {
   splitDirection?: SplitDirection;
   splitCount?: number;
   caiRoundingMode?: CaiRoundingMode;
+  customSplitSizes?: number[];
 }
 
 // ===== 施工加給分級 (v0.3.1) =====

@@ -188,6 +188,7 @@ export async function POST(request: Request) {
       splitDirection: line.splitDirection ?? "",
       splitCount: line.splitCount ?? 0,
       caiRoundingMode: line.caiRoundingMode ?? "",
+      customSplitSizesCsv: line.customSplitSizesCsv ?? "",
     }));
 
     await client.sheets.spreadsheets.values.append({
@@ -209,7 +210,7 @@ export async function POST(request: Request) {
     if (lineRecords.length > 0) {
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.spreadsheetId,
-        range: "報價版本明細!A:AF",
+        range: "報價版本明細!A:AG",
         valueInputOption: "RAW",
         requestBody: { values: lineRecords.map(lineRecordToRow) },
       });

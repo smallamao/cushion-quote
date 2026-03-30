@@ -14,11 +14,109 @@ export interface FabricLayoutResult {
   totalLengthCm: number;
   exactYards: number;
   roundedYards: number;
+  pricingLengthCm: number;
+  pricingExactYards: number;
+  pricingRoundedYards: number;
+  pricingMode: "layout" | "reserve";
+}
+
+export interface FabricPanelSize {
+  widthCm: number;
+  lengthCm: number;
 }
 
 const CM_PER_YARD = 91.44;
 const DEFAULT_FABRIC_WIDTH = 137;
 const SEAM = 5;
+const DAYBED_SEAM_ALLOWANCE_PER_SIDE = 1.2;
+const DAYBED_TOTAL_SEAM = DAYBED_SEAM_ALLOWANCE_PER_SIDE * 2;
+const ZIPPER_COVER_WIDTH_CM = 5;
+const ZIPPER_COVER_QTY = 2;
+const DAYBED_RESERVE_MARGIN_RATE = 0.05;
+
+function createDaybedZipperCover(widthCm: number, lengthCm: number): CutPiece {
+  return {
+    name: "拉鍊蓋片",
+    widthCm: ZIPPER_COVER_WIDTH_CM,
+    lengthCm: Math.max(widthCm, lengthCm) + DAYBED_TOTAL_SEAM,
+    qty: ZIPPER_COVER_QTY,
+    material: "primary",
+  };
+}
+
+function createDaybedContinuousBorder(widthCm: number, lengthCm: number, thicknessCm: number): CutPiece {
+  return {
+    name: "側邊條（一整圈）",
+    widthCm: thicknessCm + DAYBED_TOTAL_SEAM,
+    lengthCm: (widthCm + lengthCm) * 2 + DAYBED_TOTAL_SEAM,
+    qty: 1,
+    material: "primary",
+  };
+}
+
+function createDaybedSplitBorders(widthCm: number, lengthCm: number, thicknessCm: number): CutPiece[] {
+  return [
+    {
+      name: "側邊條（前後）",
+      widthCm: thicknessCm + DAYBED_TOTAL_SEAM,
+      lengthCm: widthCm + DAYBED_TOTAL_SEAM,
+      qty: 2,
+      material: "primary",
+    },
+    {
+      name: "側邊條（左右）",
+      widthCm: thicknessCm + DAYBED_TOTAL_SEAM,
+      lengthCm: lengthCm + DAYBED_TOTAL_SEAM,
+      qty: 2,
+      material: "primary",
+    },
+  ];
+}
+
+function chooseEfficientDaybedBorders(widthCm: number, lengthCm: number, thicknessCm: number): CutPiece[] {
+  const zipperCover = createDaybedZipperCover(widthCm, lengthCm);
+  const continuousOption = [createDaybedContinuousBorder(widthCm, lengthCm, thicknessCm), zipperCover];
+  const splitOption = [...createDaybedSplitBorders(widthCm, lengthCm, thicknessCm), zipperCover];
+
+  const continuousUsage = calculateFabricUsage(continuousOption, 1).totalLengthCm;
+  const splitUsage = calculateFabricUsage(splitOption, 1).totalLengthCm;
+
+  return splitUsage < continuousUsage ? splitOption : continuousOption;
+}
+
+function roundToTwo(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function calculateDaybedReserveFabricUsage(
+  method: Method,
+  widthCm: number,
+  lengthCm: number,
+  thicknessCm: number,
+  itemQty: number,
+  fabricWidth: number,
+): Pick<FabricLayoutResult, "pricingLengthCm" | "pricingExactYards" | "pricingRoundedYards" | "pricingMode"> {
+  const topFaceCount = method === "double_daybed" ? 2 : 1;
+  const longEdge = Math.max(widthCm, lengthCm) + DAYBED_TOTAL_SEAM;
+  const shortEdge = Math.min(widthCm, lengthCm) + DAYBED_TOTAL_SEAM;
+  const boxingWidth = thicknessCm + DAYBED_TOTAL_SEAM;
+  const perimeter = (longEdge + shortEdge) * 2;
+  const stripsNeeded = Math.max(1, Math.ceil(perimeter / fabricWidth));
+  const topFaceLength = shortEdge * topFaceCount <= fabricWidth ? longEdge : longEdge * topFaceCount;
+  const boxingLength = stripsNeeded * boxingWidth;
+  const zipperLength = Math.max(widthCm, lengthCm) + DAYBED_TOTAL_SEAM;
+  const zipperLengthEquivalent = (ZIPPER_COVER_WIDTH_CM * ZIPPER_COVER_QTY * zipperLength) / fabricWidth;
+  const baseLengthCm = (topFaceLength + boxingLength + zipperLengthEquivalent) * itemQty;
+  const pricingLengthCm = roundToTwo(baseLengthCm * (1 + DAYBED_RESERVE_MARGIN_RATE));
+  const pricingExactYards = roundToTwo(pricingLengthCm / CM_PER_YARD);
+
+  return {
+    pricingLengthCm,
+    pricingExactYards,
+    pricingRoundedYards: Math.ceil(pricingExactYards),
+    pricingMode: "reserve",
+  };
+}
 
 // W=寬度cm, L=深度cm, H=泡棉厚度cm
 export function getCutPieces(method: Method, W: number, L: number, H: number): CutPiece[] {
@@ -42,15 +140,13 @@ export function getCutPieces(method: Method, W: number, L: number, H: number): C
     case "single_daybed":
       pieces.push({ name: "正面", widthCm: W + SEAM, lengthCm: L + SEAM, qty: 1, material: "primary" });
       pieces.push({ name: "底面 (天鵝絨)", widthCm: W + SEAM, lengthCm: L + SEAM, qty: 1, material: "secondary" });
-      pieces.push({ name: "側邊條", widthCm: H + SEAM, lengthCm: (W + L) * 2 + SEAM, qty: 1, material: "primary" });
-      pieces.push({ name: "拉鍊蓋片", widthCm: 5, lengthCm: W + 10, qty: 2, material: "primary" });
+      pieces.push(...chooseEfficientDaybedBorders(W, L, H));
       break;
 
     case "double_daybed":
       pieces.push({ name: "正面", widthCm: W + SEAM, lengthCm: L + SEAM, qty: 1, material: "primary" });
       pieces.push({ name: "底面", widthCm: W + SEAM, lengthCm: L + SEAM, qty: 1, material: "primary" });
-      pieces.push({ name: "側邊條", widthCm: H + SEAM, lengthCm: (W + L) * 2 + SEAM, qty: 1, material: "primary" });
-      pieces.push({ name: "拉鍊蓋片", widthCm: 5, lengthCm: W + 10, qty: 2, material: "primary" });
+      pieces.push(...chooseEfficientDaybedBorders(W, L, H));
       break;
 
     case "foam_core":
@@ -105,7 +201,17 @@ export function calculateFabricUsage(
   const primaryPieces = cutPieces.filter((p) => p.material === "primary");
 
   if (primaryPieces.length === 0) {
-    return { cutPieces, primaryPieces, totalLengthCm: 0, exactYards: 0, roundedYards: 0 };
+    return {
+      cutPieces,
+      primaryPieces,
+      totalLengthCm: 0,
+      exactYards: 0,
+      roundedYards: 0,
+      pricingLengthCm: 0,
+      pricingExactYards: 0,
+      pricingRoundedYards: 0,
+      pricingMode: "layout",
+    };
   }
 
   const layoutPieces: LayoutPiece[] = [];
@@ -133,10 +239,20 @@ export function calculateFabricUsage(
   }
 
   const totalLengthCm = shelfPack(layoutPieces, fabricWidth);
-  const exactYards = Math.round((totalLengthCm / CM_PER_YARD) * 100) / 100;
+  const exactYards = roundToTwo(totalLengthCm / CM_PER_YARD);
   const roundedYards = Math.ceil(exactYards);
 
-  return { cutPieces, primaryPieces, totalLengthCm, exactYards, roundedYards };
+  return {
+    cutPieces,
+    primaryPieces,
+    totalLengthCm,
+    exactYards,
+    roundedYards,
+    pricingLengthCm: totalLengthCm,
+    pricingExactYards: exactYards,
+    pricingRoundedYards: roundedYards,
+    pricingMode: "layout",
+  };
 }
 
 export function calculateFabric(
@@ -149,5 +265,43 @@ export function calculateFabric(
 ): FabricLayoutResult {
   const thicknessCm = thicknessIn * 2.54;
   const cutPieces = getCutPieces(method, widthCm, lengthCm, thicknessCm);
-  return calculateFabricUsage(cutPieces, qty, fabricWidth);
+  const layoutResult = calculateFabricUsage(cutPieces, qty, fabricWidth);
+
+  if (method !== "single_daybed" && method !== "double_daybed") {
+    return layoutResult;
+  }
+
+  return {
+    ...layoutResult,
+    ...calculateDaybedReserveFabricUsage(method, widthCm, lengthCm, thicknessCm, qty, fabricWidth),
+  };
+}
+
+export function calculateFabricForPanels(
+  method: Method,
+  panels: FabricPanelSize[],
+  thicknessIn: number,
+  fabricWidth: number = DEFAULT_FABRIC_WIDTH,
+): FabricLayoutResult {
+  const thicknessCm = thicknessIn * 2.54;
+  const cutPieces = panels.flatMap((panel) => getCutPieces(method, panel.widthCm, panel.lengthCm, thicknessCm));
+  const layoutResult = calculateFabricUsage(cutPieces, 1, fabricWidth);
+
+  if (method !== "single_daybed" && method !== "double_daybed") {
+    return layoutResult;
+  }
+
+  const pricingLengthCm = panels.reduce(
+    (sum, panel) => sum + calculateDaybedReserveFabricUsage(method, panel.widthCm, panel.lengthCm, thicknessCm, 1, fabricWidth).pricingLengthCm,
+    0,
+  );
+  const pricingExactYards = roundToTwo(pricingLengthCm / CM_PER_YARD);
+
+  return {
+    ...layoutResult,
+    pricingLengthCm,
+    pricingExactYards,
+    pricingRoundedYards: Math.ceil(pricingExactYards),
+    pricingMode: "reserve",
+  };
 }

@@ -96,6 +96,7 @@ export async function PUT(
       splitDirection: line.splitDirection ?? "",
       splitCount: line.splitCount ?? 0,
       caiRoundingMode: line.caiRoundingMode ?? "",
+      customSplitSizesCsv: line.customSplitSizesCsv ?? "",
     }));
 
     await replaceVersionLines(client, versionId, lines);

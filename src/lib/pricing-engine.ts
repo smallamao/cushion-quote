@@ -10,6 +10,20 @@ import type {
   SplitDirection,
 } from "@/lib/types";
 
+export interface SurfaceSplitPiece {
+  panelWidthCm: number;
+  panelHeightCm: number;
+  splitSizeCm: number;
+}
+
+export interface MultiPanelCaiResult {
+  perPieceCeilTotal: number;
+  surfaceCeilTotal: number;
+  rawTotal: number;
+  rawPerPanels: number[];
+  difference: number;
+}
+
 export interface ChannelPrice {
   total: number;
   perCai: number;
@@ -288,6 +302,44 @@ export function calculateSurfaceSplit(
   };
 }
 
+export function calculateSurfaceSplitPieces(
+  surfaceWidthCm: number,
+  surfaceHeightCm: number,
+  splitDirection: SplitDirection,
+  splitCount: number,
+  customSplitSizesCm: number[] = [],
+): SurfaceSplitPiece[] {
+  const normalizedCustomSizes = customSplitSizesCm
+    .map((size) => Number(size))
+    .filter((size) => Number.isFinite(size) && size > 0);
+
+  if (normalizedCustomSizes.length > 0) {
+    return normalizedCustomSizes.map((splitSizeCm) => (
+      splitDirection === "horizontal"
+        ? {
+            panelWidthCm: surfaceWidthCm,
+            panelHeightCm: splitSizeCm,
+            splitSizeCm,
+          }
+        : {
+            panelWidthCm: splitSizeCm,
+            panelHeightCm: surfaceHeightCm,
+            splitSizeCm,
+          }
+    ));
+  }
+
+  const safeSplitCount = splitCount > 0 ? splitCount : 1;
+  const panel = calculateSurfaceSplit(surfaceWidthCm, surfaceHeightCm, splitDirection, safeSplitCount);
+  const splitSizeCm = splitDirection === "horizontal" ? panel.panelHeightCm : panel.panelWidthCm;
+
+  return Array.from({ length: safeSplitCount }, () => ({
+    panelWidthCm: panel.panelWidthCm,
+    panelHeightCm: panel.panelHeightCm,
+    splitSizeCm,
+  }));
+}
+
 /**
  * 雙模式才數計算：同時計算「逐片進位」與「整面進位」的才數
  * @param panelWidthCm 單片寬度 (cm)
@@ -322,6 +374,27 @@ export function calculateCaiCountDual(
     perPieceCeilTotal,
     surfaceCeilTotal,
     perPieceRaw: rawPerPanel,
+    difference: perPieceCeilTotal - surfaceCeilTotal,
+  };
+}
+
+export function calculateCaiCountDualForPieces(
+  panels: Array<Pick<SurfaceSplitPiece, "panelWidthCm" | "panelHeightCm">>,
+  minCai: number,
+): MultiPanelCaiResult {
+  const rawPerPanels = panels.map((panel) => (panel.panelWidthCm * panel.panelHeightCm) / 900);
+  const perPieceCeilTotal = rawPerPanels.reduce(
+    (sum, rawPerPanel) => sum + Math.max(Math.ceil(rawPerPanel), minCai),
+    0,
+  );
+  const rawTotal = rawPerPanels.reduce((sum, rawPerPanel) => sum + rawPerPanel, 0);
+  const surfaceCeilTotal = panels.length > 0 ? Math.max(Math.ceil(rawTotal), minCai) : 0;
+
+  return {
+    perPieceCeilTotal,
+    surfaceCeilTotal,
+    rawTotal,
+    rawPerPanels,
     difference: perPieceCeilTotal - surfaceCeilTotal,
   };
 }

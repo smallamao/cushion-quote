@@ -14,15 +14,16 @@ import {
   PANEL_SIZE_TIERS,
   STOCK_STATUS_LABELS,
 } from "@/lib/constants";
-import { calculateFabric } from "@/lib/fabric-calculator";
+import { calculateFabric, calculateFabricForPanels } from "@/lib/fabric-calculator";
 import type { CutPiece } from "@/lib/fabric-calculator";
 import {
   applyInstallSurcharge,
   calculateCaiCount,
   calculateInstallSurcharge,
   calculateLaborRate,
-  calculateSurfaceSplit,
+  calculateSurfaceSplitPieces,
   calculateCaiCountDual,
+  calculateCaiCountDualForPieces,
   inferHeightTier,
   inferPanelSizeTier,
 } from "@/lib/pricing-engine";
@@ -37,7 +38,7 @@ import type {
   CaiRoundingMode,
   SplitDirection,
 } from "@/lib/types";
-import { calculateQuotedUnitPrice, caiToYard, formatCurrency, roundPriceToTens, yardToCai } from "@/lib/utils";
+import { calculateQuotedUnitPrice, caiToYard, formatCurrency, roundPriceToTens } from "@/lib/utils";
 import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -58,6 +59,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+
+function parseCustomSplitSizes(value: string): number[] {
+  return value
+    .split(/[\n,，、\s]+/)
+    .map((segment) => Number(segment.trim()))
+    .filter((segment) => Number.isFinite(segment) && segment > 0);
+}
+
+function formatSplitSize(size: number): string {
+  return Number.isInteger(size) ? `${size}` : size.toFixed(1);
+}
 
 interface CalculatorModalProps {
   open: boolean;
@@ -92,7 +105,6 @@ export function CalculatorModal({
   const [extraThickness, setExtraThickness] = useState(0);
   const [selectedMaterialId, setSelectedMaterialId] = useState("custom");
   const [customMaterialCostYard, setCustomMaterialCostYard] = useState(0);
-  const [useListPrice, setUseListPrice] = useState(false);
   const [extras, setExtras] = useState<ExtraItem[]>([]);
   const [powerHoleCount, setPowerHoleCount] = useState(1);
   const [installHeightTier, setInstallHeightTier] = useState<InstallHeightTier>("normal");
@@ -104,6 +116,7 @@ export function CalculatorModal({
   const [splitDirection, setSplitDirection] = useState<SplitDirection>("horizontal");
   const [splitCount, setSplitCount] = useState(3);
   const [caiRoundingMode, setCaiRoundingMode] = useState<CaiRoundingMode>("per_piece_ceil");
+  const [customSplitInput, setCustomSplitInput] = useState("");
 
   const methodConfig = METHODS[method];
 
@@ -130,29 +143,73 @@ export function CalculatorModal({
   }, [addRecent]);
 
   // 整面分片：計算單片尺寸
-  const derivedPanel = useMemo(() => {
-    if (panelInputMode !== "divide_surface") return null;
-    return calculateSurfaceSplit(surfaceWidthCm, surfaceHeightCm, splitDirection, splitCount);
-  }, [panelInputMode, surfaceWidthCm, surfaceHeightCm, splitDirection, splitCount]);
+  const customSplitSizes = useMemo(() => parseCustomSplitSizes(customSplitInput), [customSplitInput]);
+  const hasCustomSplitSizes = customSplitSizes.length > 0;
+  const splitTargetCm = splitDirection === "horizontal" ? surfaceHeightCm : surfaceWidthCm;
+  const customSplitTotalCm = useMemo(
+    () => customSplitSizes.reduce((sum, size) => sum + size, 0),
+    [customSplitSizes],
+  );
+  const isCustomSplitValid = !hasCustomSplitSizes || Math.abs(customSplitTotalCm - splitTargetCm) < 0.5;
+
+  const derivedPanels = useMemo(() => {
+    if (panelInputMode !== "divide_surface") return [];
+    if (hasCustomSplitSizes && !isCustomSplitValid) return [];
+    return calculateSurfaceSplitPieces(surfaceWidthCm, surfaceHeightCm, splitDirection, splitCount, customSplitSizes);
+  }, [
+    panelInputMode,
+    surfaceWidthCm,
+    surfaceHeightCm,
+    splitDirection,
+    splitCount,
+    customSplitSizes,
+    hasCustomSplitSizes,
+    isCustomSplitValid,
+  ]);
+  const derivedPanel = derivedPanels[0] ?? null;
+  const effectiveSplitCount = panelInputMode === "divide_surface"
+    ? (hasCustomSplitSizes ? customSplitSizes.length : splitCount)
+    : qty;
+  const maxPanelWidthCm = derivedPanels.reduce((max, panel) => Math.max(max, panel.panelWidthCm), 0);
+  const maxPanelHeightCm = derivedPanels.reduce((max, panel) => Math.max(max, panel.panelHeightCm), 0);
 
   // 有效尺寸與數量（根據模式動態切換）
-  const effectiveWidthCm = derivedPanel?.panelWidthCm ?? widthCm;
-  const effectiveHeightCm = derivedPanel?.panelHeightCm ?? heightCm;
-  const effectiveQty = panelInputMode === "divide_surface" ? splitCount : qty;
+  const effectiveWidthCm = panelInputMode === "divide_surface" ? maxPanelWidthCm || widthCm : widthCm;
+  const effectiveHeightCm = panelInputMode === "divide_surface" ? maxPanelHeightCm || heightCm : heightCm;
+  const effectiveQty = panelInputMode === "divide_surface" ? effectiveSplitCount : qty;
+  const isFoamCore = method === "foam_core";
+  const isDaybed = method === "single_daybed" || method === "double_daybed";
+  const usesConstructionConditions =
+    method === "flat" || method === "single_headboard" || method === "removable_headboard";
+  const hasExtraThickness = isDaybed || isFoamCore;
+  const totalThickness = thickness + extraThickness;
 
   // v0.3.2+: 整面÷分片模式下，根據整面高度自動判定安裝高度等級
   useEffect(() => {
-    if (panelInputMode === "divide_surface" && surfaceHeightCm > 0) {
+    if (usesConstructionConditions && panelInputMode === "divide_surface" && surfaceHeightCm > 0) {
       const autoTier = inferHeightTier(surfaceHeightCm);
       setInstallHeightTier(autoTier);
     }
-  }, [panelInputMode, surfaceHeightCm]);
+  }, [panelInputMode, surfaceHeightCm, usesConstructionConditions]);
 
   // 雙模式才數對比（僅 divide_surface 模式）
   const dualCai = useMemo(() => {
     if (panelInputMode !== "divide_surface") return null;
-    return calculateCaiCountDual(effectiveWidthCm, effectiveHeightCm, splitCount, methodConfig.minCai);
-  }, [panelInputMode, effectiveWidthCm, effectiveHeightCm, splitCount, methodConfig.minCai]);
+    if (hasCustomSplitSizes) {
+      const result = calculateCaiCountDualForPieces(derivedPanels, methodConfig.minCai);
+      return {
+        ...result,
+        detailMode: "custom" as const,
+      };
+    }
+    const result = calculateCaiCountDual(effectiveWidthCm, effectiveHeightCm, splitCount, methodConfig.minCai);
+    return {
+      ...result,
+      rawTotal: result.perPieceRaw * splitCount,
+      rawPerPanels: Array.from({ length: splitCount }, () => result.perPieceRaw),
+      detailMode: "equal" as const,
+    };
+  }, [panelInputMode, hasCustomSplitSizes, derivedPanels, methodConfig.minCai, effectiveWidthCm, effectiveHeightCm, splitCount]);
 
   const caiCount = useMemo(() => {
     // divide_surface 模式：使用選定的進位模式結果
@@ -164,11 +221,6 @@ export function CalculatorModal({
     // per_piece 模式：使用原有計算
     return calculateCaiCount(effectiveWidthCm, effectiveHeightCm, methodConfig.minCai);
   }, [panelInputMode, dualCai, caiRoundingMode, effectiveWidthCm, effectiveHeightCm, methodConfig.minCai]);
-
-  const isFoamCore = method === "foam_core";
-  const isDaybed = method === "single_daybed" || method === "double_daybed";
-  const hasExtraThickness = isDaybed || isFoamCore;
-  const totalThickness = thickness + extraThickness;
 
   const foamCoreDims = useMemo(() => {
     if (!isFoamCore) return { w: 0, l: 0, h: 0, volume: 0 };
@@ -199,18 +251,42 @@ export function CalculatorModal({
   );
 
   const surchargePercent = useMemo(
-    () => calculateInstallSurcharge(installHeightTier, panelSizeTier),
-    [installHeightTier, panelSizeTier],
+    () => (usesConstructionConditions ? calculateInstallSurcharge(installHeightTier, panelSizeTier) : 0),
+    [installHeightTier, panelSizeTier, usesConstructionConditions],
   );
 
   const adjustedLaborRate = useMemo(
-    () => applyInstallSurcharge(laborRate, surchargePercent),
-    [laborRate, surchargePercent],
+    () => (usesConstructionConditions ? applyInstallSurcharge(laborRate, surchargePercent) : laborRate),
+    [laborRate, surchargePercent, usesConstructionConditions],
   );
 
   const fabricResult = useMemo(
-    () => isFoamCore ? null : calculateFabric(method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty),
-    [isFoamCore, method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty],
+    () => {
+      if (isFoamCore) return null;
+      if (panelInputMode === "divide_surface") {
+        if (derivedPanels.length === 0) return null;
+        return hasCustomSplitSizes
+          ? calculateFabricForPanels(
+              method,
+              derivedPanels.map((panel) => ({ widthCm: panel.panelWidthCm, lengthCm: panel.panelHeightCm })),
+              totalThickness,
+            )
+          : calculateFabric(method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty);
+      }
+
+      return calculateFabric(method, effectiveWidthCm, effectiveHeightCm, totalThickness, effectiveQty);
+    },
+    [
+      isFoamCore,
+      panelInputMode,
+      derivedPanels,
+      hasCustomSplitSizes,
+      method,
+      effectiveWidthCm,
+      effectiveHeightCm,
+      totalThickness,
+      effectiveQty,
+    ],
   );
 
   const listPricePerYard = useMemo(() => {
@@ -222,11 +298,14 @@ export function CalculatorModal({
   }, [isFoamCore, selectedMaterial, customMaterialCostYard]);
 
   const pricePerYard = Math.round(listPricePerYard * settings.fabricDiscount);
+  const pricingRoundedYards = fabricResult?.pricingRoundedYards ?? 0;
+  const pricingExactYards = fabricResult?.pricingExactYards ?? 0;
+  const usesReserveFabricPricing = fabricResult?.pricingMode === "reserve";
 
   const fabricCostPerPiece = useMemo(() => {
-    if (!fabricResult || fabricResult.roundedYards === 0 || pricePerYard === 0) return 0;
-    return Math.round((fabricResult.roundedYards * pricePerYard) / effectiveQty);
-  }, [fabricResult, pricePerYard, effectiveQty]);
+    if (!fabricResult || pricingRoundedYards === 0 || pricePerYard === 0) return 0;
+    return Math.round((pricingRoundedYards * pricePerYard) / effectiveQty);
+  }, [effectiveQty, fabricResult, pricePerYard, pricingRoundedYards]);
 
   const costPricePerYard = useMemo(() => {
     if (isFoamCore || !selectedMaterial) return 0;
@@ -234,9 +313,13 @@ export function CalculatorModal({
   }, [isFoamCore, selectedMaterial]);
 
   const materialRate = useMemo(() => {
-    if (isFoamCore || caiCount === 0) return 0;
-    return Math.round(fabricCostPerPiece / caiCount);
-  }, [isFoamCore, fabricCostPerPiece, caiCount]);
+    const caiCountPerUnit = panelInputMode === "divide_surface" && effectiveQty > 0
+      ? caiCount / effectiveQty
+      : caiCount;
+
+    if (isFoamCore || caiCountPerUnit === 0) return 0;
+    return Math.round(fabricCostPerPiece / caiCountPerUnit);
+  }, [isFoamCore, fabricCostPerPiece, caiCount, panelInputMode, effectiveQty]);
 
   const extrasPerCai = useMemo(() => {
     let total = 0;
@@ -256,9 +339,12 @@ export function CalculatorModal({
     return total;
   }, [extras, powerHoleCount]);
 
+  const effectiveCaiPerUnit = panelInputMode === "divide_surface" && effectiveQty > 0
+    ? caiCount / effectiveQty
+    : caiCount;
   const pieceCost = isFoamCore
-    ? foamCorePrice + extrasPerCai * caiCount + extrasFixed
-    : adjustedLaborRate * caiCount + fabricCostPerPiece + extrasPerCai * caiCount + extrasFixed;
+    ? foamCorePrice + extrasPerCai * effectiveCaiPerUnit + extrasFixed
+    : adjustedLaborRate * effectiveCaiPerUnit + fabricCostPerPiece + extrasPerCai * effectiveCaiPerUnit + extrasFixed;
   const multiplier = isFoamCore ? 1 : settings.channelMultipliers[channel];
   const baseUnitPrice = roundPriceToTens(pieceCost * multiplier);
   const unitPrice =
@@ -282,14 +368,6 @@ export function CalculatorModal({
   }
 
   function handleInsert() {
-    console.log("=== handleInsert DEBUG ===");
-    console.log("panelInputMode:", panelInputMode);
-    console.log("widthCm:", widthCm, "heightCm:", heightCm);
-    console.log("surfaceWidthCm:", surfaceWidthCm, "surfaceHeightCm:", surfaceHeightCm);
-    console.log("splitDirection:", splitDirection, "splitCount:", splitCount);
-    console.log("derivedPanel:", derivedPanel);
-    console.log("methodConfig.label:", methodConfig.label);
-
     let name: string;
     let spec: string;
 
@@ -320,7 +398,7 @@ export function CalculatorModal({
         .join("\n");
       spec = `${methodConfig.label} / ${materialDesc}`;
 
-      if (surchargePercent > 0) {
+      if (usesConstructionConditions && surchargePercent > 0) {
         const heightLabel = INSTALL_HEIGHT_TIERS[installHeightTier].label;
         const sizeLabel = PANEL_SIZE_TIERS[panelSizeTier].label;
         spec += ` / 施工加給+${surchargePercent}% (${heightLabel}/${sizeLabel})`;
@@ -329,24 +407,16 @@ export function CalculatorModal({
 
     // v0.3.2: 整面÷分片模式，更新 name 顯示
     if (panelInputMode === "divide_surface" && derivedPanel) {
-      console.log("✅ divide_surface override EXECUTED");
       const directionLabel = splitDirection === "horizontal" ? "橫切" : "直切";
+      const customSplitLabel = hasCustomSplitSizes
+        ? `${customSplitSizes.map(formatSplitSize).join(" / ")}cm`
+        : `每片 W${Math.round(derivedPanel.panelWidthCm)} × H${Math.round(derivedPanel.panelHeightCm)}cm`;
       name = [
         methodConfig.label,
         `整面 W${surfaceWidthCm} × H${surfaceHeightCm}cm`,
-        `${directionLabel} ${splitCount} 片 (每片 W${Math.round(derivedPanel.panelWidthCm)} × H${Math.round(derivedPanel.panelHeightCm)}cm)`,
+        `${directionLabel} ${effectiveSplitCount} 片 (${customSplitLabel})`,
       ].join("\n");
-      console.log("name after override:", name);
-    } else {
-      console.log("❌ divide_surface override SKIPPED", {
-        panelInputMode,
-        derivedPanel,
-        conditionMet: panelInputMode === "divide_surface" && !!derivedPanel,
-      });
     }
-
-    console.log("Final name before insert:", name);
-    console.log("=== END DEBUG ===\n");
 
     const item: Omit<FlexQuoteItem, "id"> = {
       name,
@@ -363,15 +433,16 @@ export function CalculatorModal({
       materialRate,
       method,
       materialId: selectedMaterialId === "custom" ? "" : selectedMaterialId,
-      installHeightTier: isFoamCore ? undefined : installHeightTier,
-      panelSizeTier: isFoamCore ? undefined : panelSizeTier,
-      installSurchargeRate: isFoamCore ? undefined : surchargePercent,
+      installHeightTier: usesConstructionConditions ? installHeightTier : undefined,
+      panelSizeTier: usesConstructionConditions ? panelSizeTier : undefined,
+      installSurchargeRate: usesConstructionConditions ? surchargePercent : undefined,
       panelInputMode: panelInputMode === "per_piece" ? undefined : panelInputMode,
       surfaceWidthCm: panelInputMode === "divide_surface" ? surfaceWidthCm : undefined,
       surfaceHeightCm: panelInputMode === "divide_surface" ? surfaceHeightCm : undefined,
       splitDirection: panelInputMode === "divide_surface" ? splitDirection : undefined,
-      splitCount: panelInputMode === "divide_surface" ? splitCount : undefined,
+      splitCount: panelInputMode === "divide_surface" ? effectiveSplitCount : undefined,
       caiRoundingMode: panelInputMode === "divide_surface" ? caiRoundingMode : undefined,
+      customSplitSizes: panelInputMode === "divide_surface" && hasCustomSplitSizes ? customSplitSizes : undefined,
     };
 
     onInsertItem(item);
@@ -604,35 +675,73 @@ export function CalculatorModal({
               </div>
 
               <div>
-                <Label>分片數量</Label>
-                <div className="mt-2 flex items-center justify-center gap-6">
-                  <button
-                    type="button"
-                    onClick={() => setSplitCount((prev) => Math.max(1, prev - 1))}
-                    className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] text-lg font-bold transition-colors hover:bg-[var(--bg-hover)]"
-                  >
-                    −
-                  </button>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{splitCount} 片</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSplitCount((prev) => prev + 1)}
-                    className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] text-lg font-bold transition-colors hover:bg-[var(--bg-hover)]"
-                  >
-                    +
-                  </button>
+                <Label>自訂分片尺寸（選填）</Label>
+                <Textarea
+                  value={customSplitInput}
+                  onChange={(e) => setCustomSplitInput(e.target.value)}
+                  placeholder={splitDirection === "horizontal" ? "例如：30,57,57,30" : "例如：50,60,60,47"}
+                  className="mt-1 min-h-[84px]"
+                />
+                <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                  留空時使用均分；輸入逗號或換行分隔的尺寸後，會以清單片數為準。
                 </div>
               </div>
 
+              <div>
+                <Label>分片數量</Label>
+                {hasCustomSplitSizes ? (
+                  <div className="mt-2 rounded-[var(--radius-md)] bg-[var(--bg-subtle)] p-3 text-center">
+                    <div className="text-2xl font-bold">{customSplitSizes.length} 片</div>
+                    <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">依自訂尺寸自動判定</div>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex items-center justify-center gap-6">
+                    <button
+                      type="button"
+                      onClick={() => setSplitCount((prev) => Math.max(1, prev - 1))}
+                      className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] text-lg font-bold transition-colors hover:bg-[var(--bg-hover)]"
+                    >
+                      −
+                    </button>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold">{splitCount} 片</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSplitCount((prev) => prev + 1)}
+                      className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] text-lg font-bold transition-colors hover:bg-[var(--bg-hover)]"
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* 計算結果：單片尺寸 */}
+              {hasCustomSplitSizes && !isCustomSplitValid && (
+                <div className="rounded-[var(--radius-md)] border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  自訂尺寸總和為 {formatSplitSize(customSplitTotalCm)} cm，與整面{splitDirection === "horizontal" ? "高度" : "寬度"} {formatSplitSize(splitTargetCm)} cm 不一致。
+                </div>
+              )}
               {derivedPanel && (
                 <div className="rounded-[var(--radius-md)] bg-[var(--bg-subtle)] p-3 text-sm">
-                  <div className="font-medium text-[var(--text-secondary)]">每片尺寸</div>
-                  <div className="mt-1 text-lg font-semibold">
-                    W{Math.round(derivedPanel.panelWidthCm)} × H{Math.round(derivedPanel.panelHeightCm)} cm
-                  </div>
+                  <div className="font-medium text-[var(--text-secondary)]">{hasCustomSplitSizes ? "分片尺寸" : "每片尺寸"}</div>
+                  {hasCustomSplitSizes ? (
+                    <div className="mt-2 space-y-1 text-xs">
+                      {derivedPanels.map((panel, index) => (
+                        <div key={`${panel.splitSizeCm}-${index}`} className="flex items-center justify-between">
+                          <span>第 {index + 1} 片</span>
+                          <span className="font-medium">
+                            W{Math.round(panel.panelWidthCm)} × H{Math.round(panel.panelHeightCm)} cm
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-lg font-semibold">
+                      W{Math.round(derivedPanel.panelWidthCm)} × H{Math.round(derivedPanel.panelHeightCm)} cm
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -684,8 +793,17 @@ export function CalculatorModal({
                     才數差異 {dualCai.difference} 才
                   </div>
                   <div className="space-y-1 text-xs text-orange-700">
-                    <div>• 逐片進位: 每片 {Math.ceil(dualCai.perPieceRaw)} 才 × {splitCount} 片 = {dualCai.perPieceCeilTotal} 才</div>
-                    <div>• 整面進位: 總計 {(dualCai.perPieceRaw * splitCount).toFixed(2)} 才 → {dualCai.surfaceCeilTotal} 才</div>
+                    {dualCai.detailMode === "equal" ? (
+                      <>
+                        <div>• 逐片進位: 每片 {Math.ceil(dualCai.perPieceRaw)} 才 × {effectiveSplitCount} 片 = {dualCai.perPieceCeilTotal} 才</div>
+                        <div>• 整面進位: 總計 {dualCai.rawTotal.toFixed(2)} 才 → {dualCai.surfaceCeilTotal} 才</div>
+                      </>
+                    ) : (
+                      <>
+                        <div>• 逐片進位: {dualCai.rawPerPanels.map((raw, index) => `第${index + 1}片 ${Math.ceil(raw)}才`).join(" / ")} = {dualCai.perPieceCeilTotal} 才</div>
+                        <div>• 整面進位: 總計 {dualCai.rawTotal.toFixed(2)} 才 → {dualCai.surfaceCeilTotal} 才</div>
+                      </>
+                    )}
                     <div className="pt-1 border-t border-orange-200">
                       成本差異約 ${Math.round(dualCai.difference * adjustedLaborRate)}
                     </div>
@@ -694,9 +812,7 @@ export function CalculatorModal({
               )}
             </div>
           )}
-
-          {/* 施工加給區塊（僅非泡棉內裡時顯示） */}
-          {!isFoamCore && (
+          {usesConstructionConditions && (
             <div className="border-t pt-4 mt-4">
               <h4 className="text-sm font-medium mb-3">施工條件（選填）</h4>
 
@@ -705,11 +821,11 @@ export function CalculatorModal({
                 <div>
                   <label className="text-xs text-gray-600 mb-1 block">
                     安裝高度
-                    {panelInputMode === "divide_surface" && (
+                    {usesConstructionConditions && panelInputMode === "divide_surface" && (
                       <span className="ml-1 text-blue-600">（自動偵測）</span>
                     )}
                   </label>
-                  {panelInputMode === "divide_surface" ? (
+                  {usesConstructionConditions && panelInputMode === "divide_surface" ? (
                     <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
                       {INSTALL_HEIGHT_TIERS[installHeightTier].label} ({INSTALL_HEIGHT_TIERS[installHeightTier].description})
                     </div>
@@ -951,10 +1067,19 @@ export function CalculatorModal({
                   <span className="text-[var(--accent)]">→ 計價 {fabricResult.roundedYards} 碼</span>
                 </div>
               </div>
+              {usesReserveFabricPricing && (
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="text-[var(--text-secondary)]">報價採用備布估算</span>
+                  <div className="flex gap-3 font-medium">
+                    <span>{pricingExactYards} 碼</span>
+                    <span className="text-[var(--accent)]">→ 報價 {pricingRoundedYards} 碼</span>
+                  </div>
+                </div>
+              )}
               {pricePerYard > 0 && (
                 <div className="mt-1 flex items-center justify-between text-xs">
                   <span className="text-[var(--text-tertiary)]">
-                    {formatCurrency(pricePerYard)}/碼（{settings.fabricDiscount * 10}折）× {fabricResult.roundedYards} 碼 ÷ {qty} 件
+                    {formatCurrency(pricePerYard)}/碼（{settings.fabricDiscount * 10}折）× {pricingRoundedYards} 碼 ÷ {effectiveQty} 件
                   </span>
                   <span className="font-medium">{formatCurrency(fabricCostPerPiece)}/件</span>
                 </div>
@@ -1035,7 +1160,7 @@ export function CalculatorModal({
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button size="sm" onClick={handleInsert}>
+          <Button size="sm" onClick={handleInsert} disabled={panelInputMode === "divide_surface" && hasCustomSplitSizes && !isCustomSplitValid}>
             插入品項
           </Button>
         </DialogFooter>

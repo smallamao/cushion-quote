@@ -47,7 +47,6 @@ import type {
   FlexQuoteItem,
   ItemUnit,
   LeadSource,
-  PanelInputMode,
   PartnerRole,
   QuotePlanRecord,
   QuoteTemplate,
@@ -55,11 +54,10 @@ import type {
   SystemSettings,
   VersionLineRecord,
   VersionStatus,
-  SplitDirection,
-  CaiRoundingMode,
 } from "@/lib/types";
+import { buildSplitItemFields, buildSplitLineFields } from "@/lib/split-panel-metadata";
 import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPriceToTens, slugDate } from "@/lib/utils";
-import { generatePDFBlob } from "@/components/pdf/QuotePDF";
+import { buildPdfFileName, generatePDFBlob } from "@/components/pdf/QuotePDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { CalculatorModal } from "@/components/quote-editor/CalculatorModal";
 import { Button } from "@/components/ui/button";
@@ -278,12 +276,7 @@ function toFlexItemsFromVersion(lines: VersionLineRecord[]): FlexQuoteItem[] {
     materialId: line.materialId,
     autoPriced: false,
     costPerUnit: line.estimatedUnitCost,
-    panelInputMode: (line.panelInputMode as PanelInputMode) || undefined,
-    surfaceWidthCm: line.surfaceWidthCm || undefined,
-    surfaceHeightCm: line.surfaceHeightCm || undefined,
-    splitDirection: (line.splitDirection as SplitDirection) || undefined,
-    splitCount: line.splitCount || undefined,
-    caiRoundingMode: (line.caiRoundingMode as CaiRoundingMode) || undefined,
+    ...buildSplitItemFields(line),
   }));
 }
 
@@ -1543,6 +1536,7 @@ export function QuoteEditor() {
         installHeightTier: item.installHeightTier ?? "",
         panelSizeTier: item.panelSizeTier ?? "",
         installSurchargeRate: item.installSurchargeRate ?? 0,
+        ...buildSplitLineFields(item),
       };
     });
   }
@@ -1573,12 +1567,7 @@ export function QuoteEditor() {
         installHeightTier: item.installHeightTier ?? "",
         panelSizeTier: item.panelSizeTier ?? "",
         installSurchargeRate: item.installSurchargeRate ?? 0,
-        panelInputMode: item.panelInputMode ?? "",
-        surfaceWidthCm: item.surfaceWidthCm ?? 0,
-        surfaceHeightCm: item.surfaceHeightCm ?? 0,
-        splitDirection: item.splitDirection ?? "",
-        splitCount: item.splitCount ?? 0,
-        caiRoundingMode: item.caiRoundingMode ?? "",
+        ...buildSplitLineFields(item),
       };
     });
   }
@@ -1863,6 +1852,7 @@ export function QuoteEditor() {
           taxId,
         },
         projectName,
+        quoteName,
         channel,
         items,
         description,
@@ -2765,7 +2755,7 @@ export function QuoteEditor() {
         open={pdfPreviewOpen}
         onOpenChange={setPdfPreviewOpen}
         pdfBlob={pdfBlob}
-        fileName={`${quoteId}.pdf`}
+        fileName={buildPdfFileName({ quoteId, projectName, quoteName })}
         loading={pdfLoading}
       />
     </div>

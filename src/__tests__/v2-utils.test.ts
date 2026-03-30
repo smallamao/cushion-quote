@@ -17,8 +17,8 @@ import {
   calculateReminderStatus,
   calculateNextFollowUpDate,
   makeItemId,
-  isoDateNow,
 } from "@/app/api/sheets/_v2-utils";
+import { buildSplitItemFields, buildSplitLineFields } from "@/lib/split-panel-metadata";
 
 // ---------------------------------------------------------------------------
 // Helper: 建立完整的測試 record
@@ -119,6 +119,7 @@ function makeVersionRecord(overrides: Partial<QuoteVersionRecord> = {}): QuoteVe
     commissionAmount: 5000,
     commissionFixedAmount: 0,
     commissionPartners: "",
+    quoteNameSnapshot: "客廳沙發方案",
     ...overrides,
   };
 }
@@ -157,6 +158,7 @@ function makeLineRecord(overrides: Partial<VersionLineRecord> = {}): VersionLine
     splitDirection: "",
     splitCount: 0,
     caiRoundingMode: "",
+    customSplitSizesCsv: "",
     ...overrides,
   };
 }
@@ -239,9 +241,9 @@ describe("Version Row ↔ Record 雙向轉換", () => {
     expect(restored).toEqual(original);
   });
 
-  it("row 長度應為 42 欄", () => {
+  it("row 長度應為 43 欄", () => {
     const row = versionRecordToRow(makeVersionRecord());
-    expect(row).toHaveLength(42);
+    expect(row).toHaveLength(43);
   });
 
   it("boolean 欄位 snapshotLocked=true 應正確轉換", () => {
@@ -333,9 +335,9 @@ describe("Line Row ↔ Record 雙向轉換", () => {
     expect(restored).toEqual(original);
   });
 
-  it("row 長度應為 32 欄", () => {
+  it("row 長度應為 33 欄", () => {
     const row = lineRecordToRow(makeLineRecord());
-    expect(row).toHaveLength(32);
+    expect(row).toHaveLength(33);
   });
 
   it("isCostItem=true 和 showOnQuote=false 應正確轉換", () => {
@@ -389,6 +391,7 @@ describe("Line Row ↔ Record 雙向轉換", () => {
       splitDirection: "horizontal",
       splitCount: 3,
       caiRoundingMode: "surface_ceil",
+      customSplitSizesCsv: "30,57,57,30",
     });
     const row = lineRecordToRow(original);
     const restored = lineRowToRecord(row);
@@ -398,6 +401,7 @@ describe("Line Row ↔ Record 雙向轉換", () => {
     expect(restored.splitDirection).toBe("horizontal");
     expect(restored.splitCount).toBe(3);
     expect(restored.caiRoundingMode).toBe("surface_ceil");
+    expect(restored.customSplitSizesCsv).toBe("30,57,57,30");
   });
 
   it("舊格式 row（26 欄）應安全讀取多片組合欄位", () => {
@@ -411,6 +415,23 @@ describe("Line Row ↔ Record 雙向轉換", () => {
     expect(record.splitDirection).toBe("");
     expect(record.splitCount).toBe(0);
     expect(record.caiRoundingMode).toBe("");
+  });
+
+  it("custom split metadata save/reload/save 應保留", () => {
+    const firstSave = buildSplitLineFields({
+      panelInputMode: "divide_surface",
+      surfaceWidthCm: 217,
+      surfaceHeightCm: 174,
+      splitDirection: "horizontal",
+      splitCount: 4,
+      caiRoundingMode: "surface_ceil",
+      customSplitSizes: [30, 57, 57, 30],
+    });
+
+    const restoredItem = buildSplitItemFields(firstSave);
+    const secondSave = buildSplitLineFields(restoredItem);
+
+    expect(secondSave).toEqual(firstSave);
   });
 });
 

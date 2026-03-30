@@ -286,13 +286,13 @@ export function lineRowToRecord(row: string[]): VersionLineRecord {
     installHeightTier: row[23] ?? "",
     panelSizeTier: row[24] ?? "",
     installSurchargeRate: toNumber(row[25]),
-    // v0.3.2: 多片組合輸入模式 (indices 26-31)
     panelInputMode: row[26] ?? "",
     surfaceWidthCm: toNumber(row[27]),
     surfaceHeightCm: toNumber(row[28]),
     splitDirection: row[29] ?? "",
     splitCount: toNumber(row[30]),
     caiRoundingMode: row[31] ?? "",
+    customSplitSizesCsv: row[32] ?? "",
   };
 }
 
@@ -330,6 +330,7 @@ export function lineRecordToRow(record: VersionLineRecord): string[] {
     record.splitDirection,
     String(record.splitCount),
     record.caiRoundingMode,
+    record.customSplitSizesCsv,
   ];
 }
 
@@ -360,7 +361,7 @@ export async function getVersionRows(client: SheetsClient): Promise<string[][]> 
 export async function getVersionLineRows(client: SheetsClient): Promise<string[][]> {
   const response = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: `${VERSION_LINE_SHEET}!A2:AF`,
+    range: `${VERSION_LINE_SHEET}!A2:AG`,
   });
   return response.data.values ?? [];
 }
@@ -424,13 +425,13 @@ export async function replaceVersionLines(client: SheetsClient, versionId: strin
 
   await client.sheets.spreadsheets.values.clear({
     spreadsheetId: client.spreadsheetId,
-    range: `${VERSION_LINE_SHEET}!A2:AF`,
+    range: `${VERSION_LINE_SHEET}!A2:AG`,
   });
 
   if (mergedRows.length > 0) {
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `${VERSION_LINE_SHEET}!A2:AF${mergedRows.length + 1}`,
+      range: `${VERSION_LINE_SHEET}!A2:AG${mergedRows.length + 1}`,
       valueInputOption: "RAW",
       requestBody: { values: mergedRows },
     });
