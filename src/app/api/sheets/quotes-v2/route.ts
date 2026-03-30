@@ -199,7 +199,7 @@ export async function POST(request: Request) {
 
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-      range: "報價版本!A:AP",
+        range: "報價版本!A:AQ",
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(versionRecord)] },
     });

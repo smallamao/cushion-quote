@@ -243,14 +243,14 @@ export async function POST(request: Request) {
       const baseSheetRow = baseRowIndex + 2;
       await client.sheets.spreadsheets.values.update({
         spreadsheetId: client.spreadsheetId,
-        range: `報價版本!A${baseSheetRow}:AP${baseSheetRow}`,
+        range: `報價版本!A${baseSheetRow}:AQ${baseSheetRow}`,
         valueInputOption: "RAW",
         requestBody: { values: [versionRecordToRow(superseded)] },
       });
 
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.spreadsheetId,
-        range: "報價版本!A:AP",
+          range: "報價版本!A:AQ",
         valueInputOption: "RAW",
         requestBody: { values: [versionRecordToRow(draft)] },
       });
@@ -380,7 +380,7 @@ export async function POST(request: Request) {
       });
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.spreadsheetId,
-        range: "報價版本!A:AP",
+        range: "報價版本!A:AQ",
         valueInputOption: "RAW",
         requestBody: { values: [versionRecordToRow(draftVersion)] },
       });
@@ -528,7 +528,7 @@ export async function POST(request: Request) {
     });
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-        range: "報價版本!A:AP",
+        range: "報價版本!A:AQ",
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(draftVersion)] },
     });
@@ -587,7 +587,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-        range: `報價版本!A${sheetRow}:AP${sheetRow}`,
+        range: `報價版本!A${sheetRow}:AQ${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(merged)] },
     });
