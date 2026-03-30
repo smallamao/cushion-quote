@@ -6,7 +6,7 @@ import {
   calculateCaiCountDualForPieces,
 } from "../lib/pricing-engine";
 
-describe("Surface Split Calculations (v0.3.2)", () => {
+describe("Surface Split Calculations (v0.3.3)", () => {
   describe("calculateSurfaceSplit", () => {
     it("should split horizontally (along height)", () => {
       const result = calculateSurfaceSplit(180, 240, "horizontal", 3);
