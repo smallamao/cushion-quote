@@ -227,6 +227,7 @@ export interface QuotePDFProps {
     taxId: string;
   };
   projectName: string;
+  quoteName?: string;
   channel: Channel;
   items: FlexQuoteItem[];
   description: string;
@@ -253,6 +254,32 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatQuoteProjectName(projectName: string, quoteName?: string): string {
+  const trimmedProjectName = projectName.trim();
+  const trimmedQuoteName = quoteName?.trim() ?? "";
+
+  if (!trimmedProjectName) return trimmedQuoteName;
+  if (!trimmedQuoteName) return trimmedProjectName;
+
+  return `${trimmedProjectName} - ${trimmedQuoteName}`;
+}
+
+function sanitizeFileNameSegment(value: string): string {
+  return value.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export function buildPdfFileName(props: Pick<QuotePDFProps, "quoteId" | "projectName" | "quoteName">): string {
+  const quoteProjectName = sanitizeFileNameSegment(
+    formatQuoteProjectName(props.projectName, props.quoteName),
+  );
+
+  if (!quoteProjectName) {
+    return `${props.quoteId}.pdf`;
+  }
+
+  return `${props.quoteId} - ${quoteProjectName}.pdf`;
+}
+
 function QuotePDFDocument(props: QuotePDFProps) {
   const {
     quoteId,
@@ -260,6 +287,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
     validityDays,
     client,
     projectName,
+    quoteName,
     channel,
     items,
     description,
@@ -275,6 +303,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
   const fw = (s: string) => s.replace(/：/g, ": ").replace(/，/g, ", ").replace(/；/g, "; ");
 
   const validUntil = addDays(quoteDate, validityDays);
+  const quoteProjectName = formatQuoteProjectName(projectName, quoteName);
 
   return (
     <Document title={`報價單 ${quoteId}`} author={settings.companyName}>
@@ -346,10 +375,10 @@ function QuotePDFDocument(props: QuotePDFProps) {
               <Text style={s.infoLabel}>有效期限</Text>
               <Text style={s.infoValue}>{validUntil}</Text>
             </View>
-            {projectName ? (
+            {quoteProjectName ? (
               <View style={s.infoRow}>
                 <Text style={s.infoLabel}>報價案名</Text>
-                <Text style={s.infoValue}>{projectName}</Text>
+                <Text style={s.infoValue}>{quoteProjectName}</Text>
               </View>
             ) : null}
 
@@ -479,7 +508,7 @@ export async function generateAndDownloadPDF(props: QuotePDFProps): Promise<void
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${props.quoteId}.pdf`;
+  link.download = buildPdfFileName(props);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
