@@ -689,6 +689,7 @@ export function QuoteEditor() {
   const [colWidths, setColWidths] = useState<{ itemName: number; spec: number }>({ ...COL_DEFAULT });
   const autoDraftReadyRef = useRef(false);
   const autoDraftBaselineSignatureRef = useRef("");
+  const autoDraftRestoreCheckedRef = useRef(false);
   const autoPricingSignatureRef = useRef("");
   const suppressNextAutoPricingRef = useRef(false);
   const pendingSessionLoadRef = useRef(false);
@@ -1043,6 +1044,8 @@ export function QuoteEditor() {
 
   useEffect(() => {
     if (pendingSessionLoadRef.current) return;
+    if (autoDraftRestoreCheckedRef.current) return;
+    autoDraftRestoreCheckedRef.current = true;
 
     try {
       const raw = localStorage.getItem(AUTO_DRAFT_KEY);
