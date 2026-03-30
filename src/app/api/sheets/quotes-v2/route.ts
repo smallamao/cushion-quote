@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       quoteId,
       caseId,
       quoteSeq,
-      quoteName: payload.quoteName ?? `方案 ${String(quoteSeq).padStart(2, "0")}`,
+      quoteName: payload.quoteName ?? "",
       quoteType: payload.quoteType ?? "",
       scopeNote: payload.scopeNote ?? "",
       quoteStatus: "draft",
