@@ -121,6 +121,8 @@ export const LEAD_SOURCE_OPTIONS: LeadSource[] = [
   "referral",
   "repeat_customer",
   "walk_in",
+  "bni",
+  "rotary",
   "other",
 ];
 
@@ -133,6 +135,8 @@ export const LEAD_SOURCE_LABELS: Record<LeadSource, { label: string; description
   referral: { label: "介紹", description: "朋友或合作夥伴介紹" },
   repeat_customer: { label: "舊客回購", description: "既有客戶再次下單" },
   walk_in: { label: "路過來店", description: "現場來店或看板導流" },
+  bni: { label: "BNI", description: "BNI 商會介紹" },
+  rotary: { label: "扶輪社", description: "扶輪社社員介紹" },
   other: { label: "其他", description: "未涵蓋的其他來源" },
 };
 

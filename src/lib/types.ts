@@ -17,6 +17,8 @@ export type LeadSource =
   | "referral"
   | "repeat_customer"
   | "walk_in"
+  | "bni"
+  | "rotary"
   | "other";
 
 export type ExtraItem = "leather_labor" | "lining" | "anti_slip" | "power_hole";
