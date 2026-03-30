@@ -1816,6 +1816,9 @@ export function QuoteEditor() {
           body: JSON.stringify({
             caseId: payload.version.caseId,
             ...(trimmedProjectName ? { caseName: trimmedProjectName } : {}),
+            clientNameSnapshot: companyName,
+            contactNameSnapshot: contactName,
+            phoneSnapshot: phone,
             projectAddress: address,
             leadSource,
             leadSourceContact: leadSourceContact.trim(),
@@ -1882,6 +1885,9 @@ export function QuoteEditor() {
           body: JSON.stringify({
             caseId: targetCaseId,
             ...(trimmedProjectName ? { caseName: trimmedProjectName } : {}),
+            clientNameSnapshot: companyName,
+            contactNameSnapshot: contactName,
+            phoneSnapshot: phone,
             projectAddress: address,
             leadSource,
             leadSourceContact: leadSourceContact.trim(),
