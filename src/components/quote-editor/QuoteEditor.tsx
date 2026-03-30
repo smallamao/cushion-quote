@@ -1707,11 +1707,12 @@ export function QuoteEditor() {
 
   async function ensureCaseIdForV2() {
     if (caseId) return caseId;
+    const trimmedProjectName = projectName.trim();
     const response = await fetch("/api/sheets/cases", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        caseName: projectName || `${companyName || "未命名客戶"} 案件`,
+        caseName: trimmedProjectName,
         clientId: selectedClientId === "__new__" ? "" : selectedClientId,
         clientNameSnapshot: companyName,
         contactNameSnapshot: contactName,
@@ -1805,12 +1806,13 @@ export function QuoteEditor() {
         }
 
         // Update case details including case name
+        const trimmedProjectName = projectName.trim();
         await fetch("/api/sheets/cases", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             caseId: payload.version.caseId,
-            caseName: projectName || `${companyName || "未命名客戶"} 案件`,
+            ...(trimmedProjectName ? { caseName: trimmedProjectName } : {}),
             projectAddress: address,
             leadSource,
             leadSourceContact: leadSourceContact.trim(),
@@ -1870,12 +1872,13 @@ export function QuoteEditor() {
         const payload = (await response.json()) as { quoteId: string; versionId: string };
 
         // Update case details including case name
+        const trimmedProjectName = projectName.trim();
         await fetch("/api/sheets/cases", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             caseId: targetCaseId,
-            caseName: projectName || `${companyName || "未命名客戶"} 案件`,
+            ...(trimmedProjectName ? { caseName: trimmedProjectName } : {}),
             projectAddress: address,
             leadSource,
             leadSourceContact: leadSourceContact.trim(),
