@@ -181,6 +181,7 @@ interface AutoPricingConfig {
 }
 
 function isAutoPricedItem(item: FlexQuoteItem) {
+  if (item.unitPriceLocked) return false;
   if (item.autoPriced != null) return item.autoPriced;
   return item.costPerUnit != null && (item.method != null || item.materialRate != null || item.laborRate != null);
 }
@@ -1304,6 +1305,9 @@ export function QuoteEditor() {
           const updated = { ...item, ...patch };
           if ("qty" in patch || "unitPrice" in patch) {
             updated.amount = updated.qty * updated.unitPrice;
+          }
+          if ("unitPrice" in patch) {
+            updated.unitPriceLocked = true;
           }
           if (
             ("qty" in patch || "costPerUnit" in patch) &&

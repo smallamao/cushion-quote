@@ -350,6 +350,7 @@ export interface FlexQuoteItem {
   imageUrl?: string;
   specImageUrl?: string;
   autoPriced?: boolean;
+  unitPriceLocked?: boolean; // 手動修改過單價後鎖定，不再被自動重算覆蓋
   costPerUnit?: number; // pieceCost (raw cost before channel multiplier)
   laborRate?: number; // labor cost per cai
   materialRate?: number; // material cost per cai (after waste)
