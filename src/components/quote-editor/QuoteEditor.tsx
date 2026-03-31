@@ -1843,7 +1843,7 @@ export function QuoteEditor() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             caseId: targetCaseId,
-            quoteName: projectName || "方案 01",
+            quoteName: quoteName.trim(),
             firstVersion: {
               versionLabel: versionLabel || "V01 初版",
               quoteDate: new Date().toISOString().slice(0, 10),
