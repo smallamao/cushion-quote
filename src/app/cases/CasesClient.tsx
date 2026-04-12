@@ -1,8 +1,8 @@
 "use client";
 
 import { Briefcase, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
 import { LEAD_SOURCE_LABELS, LEAD_SOURCE_OPTIONS } from "@/lib/constants";
@@ -52,6 +52,33 @@ interface CaseDetailPayload {
     quote: QuotePlanRecord;
     versions: QuoteVersionRecord[];
   }>;
+  purchaseSummary: {
+    orderCount: number;
+    itemCount: number;
+    totalItemAmount: number;
+    totalOrderAmount: number;
+  };
+  purchases: Array<{
+    order: {
+      orderId: string;
+      orderDate: string;
+      totalAmount: number;
+      status: string;
+    };
+    items: Array<{
+      itemId: string;
+      quantity: number;
+      amount: number;
+      productSnapshot: {
+        productCode: string;
+        productName: string;
+        specification: string;
+        unit: string;
+      };
+    }>;
+    supplierName: string;
+    itemSubtotal: number;
+  }>;
 }
 
 interface CopyDialogState {
@@ -64,6 +91,7 @@ interface CopyDialogState {
 
 export function CasesClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { clients, loading: clientsLoading } = useClients();
 
   const [cases, setCases] = useState<CaseRecord[]>([]);
@@ -72,6 +100,7 @@ export function CasesClient() {
   const [expandedCaseIds, setExpandedCaseIds] = useState<Set<string>>(new Set());
   const [details, setDetails] = useState<Record<string, CaseDetailPayload>>({});
   const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
+  const handledSearchCaseIdRef = useRef<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newCaseName, setNewCaseName] = useState("");
   const [newCaseClientId, setNewCaseClientId] = useState("none");
@@ -131,8 +160,8 @@ export function CasesClient() {
     void loadCases();
   }, [loadCases]);
 
-  async function loadCaseDetails(caseId: string) {
-    if (details[caseId] || loadingDetails[caseId]) return;
+  const loadCaseDetails = useCallback(async (caseId: string) => {
+    if (loadingDetails[caseId] || details[caseId]) return;
     setLoadingDetails((prev) => ({ ...prev, [caseId]: true }));
     try {
       const response = await fetch(`/api/sheets/cases/${encodeURIComponent(caseId)}`, {
@@ -142,43 +171,40 @@ export function CasesClient() {
       const payload = (await response.json()) as CaseDetailPayload;
       setDetails((prev) => ({ ...prev, [caseId]: payload }));
     } catch {
-      setDetails((prev) => ({
-        ...prev,
-        [caseId]: {
-          case:
-            cases.find((item) => item.caseId === caseId) ??
-            cases[0] ?? {
-              caseId,
-              caseName: "",
-              clientId: "",
-              clientNameSnapshot: "",
-              contactNameSnapshot: "",
-              phoneSnapshot: "",
-              projectAddress: "",
-              channelSnapshot: "retail",
-              leadSource: "unknown",
-              leadSourceContact: "",
-              leadSourceNotes: "",
-              caseStatus: "new",
-              inquiryDate: "",
-              latestQuoteId: "",
-              latestVersionId: "",
-              latestSentAt: "",
-              nextFollowUpDate: "",
-              lastFollowUpAt: "",
-              wonVersionId: "",
-              lostReason: "",
-              internalNotes: "",
-              createdAt: "",
-              updatedAt: "",
-            },
-          quotes: [],
-        },
-      }));
+      setDetails((prev) => {
+        const next = { ...prev };
+        delete next[caseId];
+        return next;
+      });
     } finally {
       setLoadingDetails((prev) => ({ ...prev, [caseId]: false }));
     }
-  }
+  }, [details, loadingDetails]);
+
+  useEffect(() => {
+    const targetCaseId = searchParams.get("caseId");
+    if (!targetCaseId || loading || cases.length === 0) return;
+    if (handledSearchCaseIdRef.current === targetCaseId) return;
+
+    const matchedCase = cases.find((item) => item.caseId === targetCaseId);
+    if (!matchedCase) return;
+    handledSearchCaseIdRef.current = targetCaseId;
+
+    setExpandedCaseIds((prev) => {
+      if (prev.has(targetCaseId)) return prev;
+      const next = new Set(prev);
+      next.add(targetCaseId);
+      return next;
+    });
+    void loadCaseDetails(targetCaseId);
+
+    requestAnimationFrame(() => {
+      document.getElementById(`case-row-${targetCaseId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [cases, loading, loadCaseDetails, searchParams]);
 
   function toggleCase(caseId: string) {
     setExpandedCaseIds((prev) => {
@@ -404,7 +430,6 @@ export function CasesClient() {
     }
   }
 
-  // 過濾掉沒有案件名稱的記錄（這些是散客報價，只應出現在報價紀錄，不應出現在案件管理）
   const casesWithNames = useMemo(() => {
     return cases.filter((item) => item.caseName?.trim());
   }, [cases]);
@@ -555,6 +580,7 @@ export function CasesClient() {
                   return (
                     <Fragment key={item.caseId}>
                       <tr
+                        id={`case-row-${item.caseId}`}
                         className="cursor-pointer"
                         onClick={() => toggleCase(item.caseId)}
                       >
@@ -619,8 +645,8 @@ export function CasesClient() {
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 讀取方案與版本中...
                               </div>
-                            ) : !detail || detail.quotes.length === 0 ? (
-                              <div className="text-sm text-[var(--text-secondary)]">此案件尚無報價方案</div>
+                            ) : !detail ? (
+                              <div className="text-sm text-[var(--text-secondary)]">讀取案件詳情失敗，請再試一次</div>
                             ) : (
                               <div className="space-y-3">
                                 <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-sm">
@@ -647,7 +673,134 @@ export function CasesClient() {
                                     </div>
                                   )}
                                 </div>
-                                {detail.quotes.map(({ quote, versions }) => (
+                                <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-sm">
+                                  {(() => {
+                                    // Find best version for comparison: accepted > sent > latest
+                                    const allVersions = detail.quotes.flatMap(q => q.versions);
+                                    const compareVersion =
+                                      allVersions.find(v => v.versionStatus === "accepted") ??
+                                      allVersions.find(v => v.versionStatus === "sent") ??
+                                      allVersions[0];
+
+                                    const actualCost = detail.purchaseSummary.totalOrderAmount;
+                                    const hasComparison = compareVersion && actualCost > 0;
+                                    const estimatedCost = compareVersion?.estimatedCostTotal ?? 0;
+                                    const quotedPrice = compareVersion?.totalAmount ?? 0;
+                                    const costDiff = actualCost - estimatedCost;
+                                    const actualMargin = quotedPrice - actualCost;
+                                    const estimatedMargin = quotedPrice - estimatedCost;
+                                    const marginDiff = actualMargin - estimatedMargin;
+
+                                    return hasComparison ? (
+                                      <div className="mb-3 rounded-[var(--radius-sm)] bg-blue-50 border border-blue-200 p-3">
+                                        <div className="text-xs font-semibold text-blue-900 mb-2">
+                                          成本對比 <span className="font-normal text-blue-700">（vs {compareVersion.versionId}）</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 text-xs">
+                                          <div>
+                                            <div className="text-blue-700">預估成本</div>
+                                            <div className="font-mono font-semibold text-blue-900">${estimatedCost.toLocaleString()}</div>
+                                          </div>
+                                          <div>
+                                            <div className="text-blue-700">實際成本</div>
+                                            <div className="font-mono font-semibold text-blue-900">${actualCost.toLocaleString()}</div>
+                                          </div>
+                                          <div>
+                                            <div className="text-blue-700">差異</div>
+                                            <div className={`font-mono font-semibold ${costDiff > 0 ? "text-red-600" : costDiff < 0 ? "text-green-600" : "text-blue-900"}`}>
+                                              {costDiff > 0 ? "+" : ""}{costDiff.toLocaleString()}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="mt-2 pt-2 border-t border-blue-200 grid grid-cols-3 gap-2 text-xs">
+                                          <div>
+                                            <div className="text-blue-700">預估毛利</div>
+                                            <div className="font-mono font-semibold text-green-700">${estimatedMargin.toLocaleString()}</div>
+                                          </div>
+                                          <div>
+                                            <div className="text-blue-700">實際毛利</div>
+                                            <div className="font-mono font-semibold text-green-700">${actualMargin.toLocaleString()}</div>
+                                          </div>
+                                          <div>
+                                            <div className="text-blue-700">毛利差</div>
+                                            <div className={`font-mono font-semibold ${marginDiff >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                              {marginDiff > 0 ? "+" : ""}{marginDiff.toLocaleString()}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : null;
+                                  })()}
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <div className="text-sm font-semibold text-[var(--text-primary)]">採購成本</div>
+                                      <div className="mt-0.5 text-xs text-[var(--text-secondary)]">依關聯採購單彙整</div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-xs text-[var(--text-secondary)]">採購總額</div>
+                                      <div className="text-base font-semibold text-[var(--text-primary)]">
+                                        {detail.purchaseSummary.totalOrderAmount.toLocaleString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                    <div className="rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] px-3 py-2">
+                                      <div className="text-xs text-[var(--text-secondary)]">採購單數</div>
+                                      <div className="mt-1 font-medium text-[var(--text-primary)]">{detail.purchaseSummary.orderCount}</div>
+                                    </div>
+                                    <div className="rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] px-3 py-2">
+                                      <div className="text-xs text-[var(--text-secondary)]">採購品項數</div>
+                                      <div className="mt-1 font-medium text-[var(--text-primary)]">{detail.purchaseSummary.itemCount}</div>
+                                    </div>
+                                    <div className="rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] px-3 py-2">
+                                      <div className="text-xs text-[var(--text-secondary)]">材料小計</div>
+                                      <div className="mt-1 font-medium text-[var(--text-primary)]">
+                                        {detail.purchaseSummary.totalItemAmount.toLocaleString()}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {detail.purchases.length > 0 ? (
+                                    <div className="mt-3 overflow-x-auto">
+                                      <table className="w-full border-collapse text-sm">
+                                        <thead>
+                                          <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
+                                            <th className="px-2 py-2 text-left">採購單</th>
+                                            <th className="px-2 py-2 text-left">廠商</th>
+                                            <th className="px-2 py-2 text-left">狀態</th>
+                                            <th className="px-2 py-2 text-right">材料小計</th>
+                                            <th className="px-2 py-2 text-right">採購總額</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {detail.purchases.map((purchase) => (
+                                            <tr key={purchase.order.orderId} className="border-b border-[var(--border)] last:border-b-0">
+                                              <td className="px-2 py-2">
+                                                <div className="font-medium text-[var(--text-primary)]">{purchase.order.orderId}</div>
+                                                <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                                                  {purchase.order.orderDate || "—"}
+                                                </div>
+                                              </td>
+                                              <td className="px-2 py-2 text-[var(--text-primary)]">{purchase.supplierName || "—"}</td>
+                                              <td className="px-2 py-2 text-[var(--text-primary)]">{purchase.order.status || "—"}</td>
+                                              <td className="px-2 py-2 text-right font-medium text-[var(--text-primary)]">
+                                                {purchase.itemSubtotal.toLocaleString()}
+                                              </td>
+                                              <td className="px-2 py-2 text-right font-medium text-[var(--text-primary)]">
+                                                {purchase.order.totalAmount.toLocaleString()}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-3 text-sm text-[var(--text-secondary)]">此案件尚無關聯採購單</div>
+                                  )}
+                                </div>
+                                {detail.quotes.length === 0 ? (
+                                  <div className="text-sm text-[var(--text-secondary)]">此案件尚無報價方案</div>
+                                ) : detail.quotes.map(({ quote, versions }) => (
                                   <div key={quote.quoteId} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
                                     <div className="flex items-center justify-between gap-3">
                                       <div>

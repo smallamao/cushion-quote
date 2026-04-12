@@ -168,6 +168,7 @@ export interface SystemSettings extends PricingConfig {
   companyTaxId: string;
   companyContact: string;
   companyEmail: string;
+  factoryAddress: string;
 }
 
 export interface CaseRecord {
@@ -404,4 +405,210 @@ export interface TemplateRecord {
   isActive: boolean; // col E
   createdAt: string; // col F
   updatedAt: string; // col G
+}
+
+// ===== 採購系統 (Purchase System, v0.4) =====
+
+export type PurchaseOrderStatus =
+  | "draft" // 草稿
+  | "sent" // 已送出
+  | "confirmed" // 已確認
+  | "received" // 已到貨
+  | "cancelled"; // 已取消
+
+export type PurchaseProductCategory =
+  | "面料" // 布料
+  | "椅腳" // 椅腳/支腳
+  | "泡棉" // 泡棉/海綿
+  | "木料" // 木材/木架
+  | "皮革" // 皮革
+  | "五金" // 五金配件
+  | "其他"; // 其他材料
+
+export type PurchaseUnit = "碼" | "才" | "米" | "只" | "片" | "件" | "組" | "包" | "個";
+
+export type InventoryTransactionType =
+  | "opening"
+  | "purchase_receipt"
+  | "manual_adjustment"
+  | "return_out"
+  | "return_in"
+  | "issue_out";
+
+/**
+ * 廠商 (Supplier)
+ * 簡化自 Ragic 廠商表（24 欄 → 13 欄）
+ */
+export interface Supplier {
+  supplierId: string; // PS006
+  name: string; // 阿布實業有限公司 (全名)
+  shortName: string; // 阿布ABU (簡稱)
+  contactPerson: string; // 曾根倚(阿賢)
+  phone: string; // 03-3501-578
+  mobile: string; // 0939-923-133
+  fax: string; // 03-3502-465
+  email: string; // abu.sofacloth@gmail.com
+  taxId: string; // 28549325 (統一編號)
+  address: string; // 333桃園市龜山區忠義路一段1196-35號 (完整地址)
+  paymentMethod: string; // 電匯 (T/T) / 支票 (Cheque) / 現金
+  paymentTerms: string; // 月結 30 (Net 30)
+  notes: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 採購商品 (PurchaseProduct)
+ * 合併自 Ragic 採購商品 + 商品廠商價格 (25 欄 → 12 欄)
+ * 一個商品對應一家廠商的價格；若同商品多家廠商，建多筆
+ */
+export interface PurchaseProduct {
+  id: string; // ABU100009-PS006 (productCode + supplierId)
+  productCode: string; // ABU100009 (原始商品編號)
+  productName: string; // ABU 1000系列 透氣貓抓布
+  specification: string; // 100009 (規格/色號/型號)
+  category: PurchaseProductCategory; // 面料
+  unit: PurchaseUnit; // 碼
+  supplierId: string; // PS006 (關聯廠商)
+  unitPrice: number; // 350
+  imageUrl: string; // 商品圖片 URL
+  notes: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 採購單主檔 (PurchaseOrder)
+ * 簡化自 Ragic 採購單 (22 欄 → 12 欄)
+ * 廠商資訊透過 supplierId 關聯取得，並保存快照保留歷史
+ */
+export interface PurchaseOrder {
+  orderId: string; // PS-20260409-02
+  orderDate: string; // 2026/04/09 (採購日期)
+  supplierId: string; // PS006 (關聯廠商)
+  caseId: string;
+  caseNameSnapshot: string;
+  // 廠商快照（建立時拍照，確保歷史不可變）
+  supplierSnapshot: {
+    name: string;
+    shortName: string;
+    contactPerson: string;
+    phone: string;
+    fax: string;
+    email: string;
+    taxId: string;
+    address: string;
+    paymentMethod: string;
+    paymentTerms: string;
+  };
+  subtotal: number; // 小計
+  shippingFee: number; // 運費
+  taxAmount: number; // 稅額（預設 0）
+  totalAmount: number; // 合計金額
+  notes: string; // 附註 (如 "P6009,P5990")
+  status: PurchaseOrderStatus;
+  deliveryAddress: string; // 交貨地址（預設從系統設定取，可覆寫）
+  expectedDeliveryDate: string; // 到貨日期
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 採購單明細 (PurchaseOrderItem)
+ * 簡化自 Ragic 採購細項 (11 欄 → 9 欄)
+ */
+export interface PurchaseOrderItem {
+  itemId: string;
+  orderId: string; // PS-20260409-02
+  sortOrder: number; // 1, 2, 3...
+  productId: string; // ABU100009-PS006 (關聯採購商品)
+  // 商品資訊快照（建立時拍照）
+  productSnapshot: {
+    productCode: string; // ABU100009
+    productName: string; // ABU 1000系列 透氣貓抓布
+    specification: string; // 100009
+    unit: PurchaseUnit; // 碼
+  };
+  quantity: number; // 9
+  receivedQuantity: number;
+  unitPrice: number; // 350 (可手動覆寫)
+  amount: number; // 3150 (= quantity × unitPrice)
+  notes: string; // 備註（選填，每項可不同）
+}
+
+export interface InventorySummary {
+  inventoryId: string;
+  productId: string;
+  supplierId: string;
+  productSnapshot: {
+    productCode: string;
+    productName: string;
+    specification: string;
+    category: PurchaseProductCategory;
+    unit: PurchaseUnit;
+  };
+  quantityOnHand: number;
+  lastUnitCost: number;
+  lastReceivedAt: string;
+  lastTransactionAt: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryTransaction {
+  transactionId: string;
+  inventoryId: string;
+  productId: string;
+  supplierId: string;
+  orderId: string;
+  orderItemId: string;
+  transactionType: InventoryTransactionType;
+  quantityDelta: number;
+  unit: PurchaseUnit;
+  unitCost: number;
+  occurredAt: string;
+  referenceNumber: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchaseProductHistoryItem {
+  orderDate: string;
+  orderId: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+  caseId: string;
+  caseName: string;
+}
+
+export interface PurchaseProductHistorySummary {
+  totalPurchases: number;
+  totalQuantity: number;
+  averagePrice: number;
+  lastPurchaseDate: string;
+  minPrice: number;
+  maxPrice: number;
+}
+
+export interface PurchaseProductHistoryProduct {
+  productId: string;
+  productCode: string;
+  productName: string;
+  specification: string;
+  unit: string;
+  supplierId: string;
+  supplierName: string;
+}
+
+export interface PurchaseProductHistoryResponse {
+  ok: boolean;
+  product: PurchaseProductHistoryProduct;
+  summary: PurchaseProductHistorySummary;
+  history: PurchaseProductHistoryItem[];
+  error?: string;
 }
