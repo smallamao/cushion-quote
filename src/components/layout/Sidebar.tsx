@@ -11,8 +11,11 @@ import {
   ChevronRight,
   FileText,
   HandCoins,
+  Package,
   Palette,
   Settings,
+  ShoppingCart,
+  Truck,
   Users,
 } from "lucide-react";
 
@@ -25,6 +28,9 @@ const links = [
   { href: "/materials", label: "材質資料庫", icon: Palette },
   { href: "/quotes", label: "報價紀錄", icon: FileText },
   { href: "/commissions", label: "佣金結算", icon: HandCoins },
+  { href: "/purchases", label: "採購單", icon: ShoppingCart },
+  { href: "/suppliers", label: "廠商管理", icon: Truck },
+  { href: "/purchase-products", label: "採購商品", icon: Package },
   { href: "/settings", label: "系統設定", icon: Settings },
   { href: "/help", label: "使用說明", icon: CircleHelp },
 ] as const;
