@@ -1093,25 +1093,28 @@ export function CalculatorModal({
           )}
 
           <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
-            {isFoamCore ? (
-              <>
-                <div className="grid grid-cols-2 gap-4 text-center text-xs">
-                  <div>
-                    <div className="text-[var(--text-tertiary)]">泡棉費用</div>
-                    <div className="mt-1 text-lg font-semibold">{formatCurrency(foamCorePrice)}</div>
+              {isFoamCore ? (
+                <>
+                  <div className="grid grid-cols-3 gap-4 text-center text-xs">
+                    <div>
+                      <div className="text-[var(--text-tertiary)]">泡棉費用</div>
+                      <div className="mt-1 text-lg font-semibold">{formatCurrency(foamCorePrice)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[var(--text-tertiary)]">
+                        報價/片 ({FOAM_CORE_CHANNEL_LABELS[channel]})
+                      </div>
+                      <div className="mt-1 text-lg font-bold text-[var(--accent)]">
+                        {formatCurrency(unitPrice)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[var(--text-tertiary)]">總價</div>
+                      <div className="mt-1 text-lg font-bold text-[var(--accent)]">
+                        {formatCurrency(totalPrice)}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-[var(--text-tertiary)]">
-                      報價/片 ({FOAM_CORE_CHANNEL_LABELS[channel]})
-                    </div>
-                    <div className="mt-1 text-lg font-bold text-[var(--accent)]">
-                      {formatCurrency(unitPrice)}
-                    </div>
-                    <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
-                      總價 {formatCurrency(totalPrice)}
-                    </div>
-                  </div>
-                </div>
                 <div className="mt-3 flex justify-center gap-6 text-[11px] text-[var(--text-tertiary)]">
                   <span>體積 {foamCoreDims.volume.toFixed(1)} in³</span>
                   <span>係數 ×{foamCoreFactor}</span>
@@ -1123,9 +1126,9 @@ export function CalculatorModal({
                   </div>
                 )}
               </>
-            ) : (
+              ) : (
               <>
-                <div className="grid grid-cols-4 gap-3 text-center text-xs">
+                <div className="grid grid-cols-5 gap-3 text-center text-xs">
                   <div>
                     <div className="text-[var(--text-tertiary)]">才數</div>
                     <div className="mt-1 text-lg font-semibold">{caiCount}</div>
@@ -1147,8 +1150,11 @@ export function CalculatorModal({
                     <div className="mt-1 text-lg font-bold text-[var(--accent)]">
                       {formatCurrency(unitPrice)}
                     </div>
-                    <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
-                      總價 {formatCurrency(totalPrice)}
+                  </div>
+                  <div>
+                    <div className="text-[var(--text-tertiary)]">總價</div>
+                    <div className="mt-1 text-lg font-bold text-[var(--accent)]">
+                      {formatCurrency(totalPrice)}
                     </div>
                   </div>
                 </div>

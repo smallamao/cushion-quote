@@ -338,6 +338,19 @@ export function SettingsClient() {
                 }
               />
             </div>
+            <div className="md:col-span-2">
+              <Label>工廠 / 採購交貨地址</Label>
+              <Input
+                value={current.factoryAddress}
+                onChange={(e) =>
+                  update({ factoryAddress: e.target.value })
+                }
+                placeholder="236新北市土城區廣福街77巷6-6號"
+              />
+              <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                新增採購單時會自動填入作為預設交貨地址
+              </p>
+            </div>
           </div>
         </div>
 

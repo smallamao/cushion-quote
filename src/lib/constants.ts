@@ -178,6 +178,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   companyTaxId: "85164778",
   companyContact: "周春懋",
   companyEmail: "",
+  factoryAddress: "236新北市土城區廣福街77巷6-6號",
 };
 
 export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {

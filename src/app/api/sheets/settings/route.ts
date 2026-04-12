@@ -26,6 +26,7 @@ const SETTINGS_MAP: Array<{ key: string; extract: (s: SystemSettings) => string 
   { key: "company_tax_id", extract: (s) => s.companyTaxId },
   { key: "company_contact", extract: (s) => s.companyContact },
   { key: "company_email", extract: (s) => s.companyEmail },
+  { key: "factory_address", extract: (s) => s.factoryAddress },
 ];
 
 export async function GET() {
@@ -71,6 +72,7 @@ export async function GET() {
         companyTaxId: mapped.company_tax_id ?? DEFAULT_SETTINGS.companyTaxId,
         companyContact: mapped.company_contact ?? DEFAULT_SETTINGS.companyContact,
         companyEmail: mapped.company_email ?? DEFAULT_SETTINGS.companyEmail,
+        factoryAddress: mapped.factory_address ?? DEFAULT_SETTINGS.factoryAddress,
       },
       source: "sheets" as const,
     });

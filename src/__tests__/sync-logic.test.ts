@@ -43,6 +43,7 @@ function makeVersion(overrides: Partial<QuoteVersionRecord> = {}): QuoteVersionR
     projectNameSnapshot: "信義案",
     projectAddressSnapshot: "台北市信義區",
     channelSnapshot: "wholesale",
+    quoteNameSnapshot: "",
     createdAt: "2026-03-20T10:00:00.000Z",
     updatedAt: "2026-03-20T10:00:00.000Z",
     commissionMode: "price_gap",
