@@ -2102,10 +2102,20 @@ export function QuoteEditor() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={handleNewQuote}>
+          {/* 主要動作:新建報價 (綠色 primary,視覺最突出) */}
+          <Button
+            size="sm"
+            onClick={handleNewQuote}
+            className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+          >
             <FilePlus className="h-3.5 w-3.5" />
             新建報價
           </Button>
+
+          {/* 分隔線 */}
+          <div className="mx-1 h-6 w-px bg-[var(--border)]" />
+
+          {/* 儲存/更新 (高頻,次要強度) */}
           <Button
             variant="outline"
             size="sm"
@@ -2119,8 +2129,10 @@ export function QuoteEditor() {
             )}
             {saving ? "儲存中..." : isEditMode ? "更新" : "儲存"}
           </Button>
+
+          {/* 輔助動作 (低頻,ghost 減少視覺噪音) */}
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             disabled={saving || copyingVersion}
             onClick={() => setCopyDialogOpen(true)}
@@ -2128,11 +2140,16 @@ export function QuoteEditor() {
             <Copy className="h-3.5 w-3.5" />
             複製
           </Button>
-          <Button size="sm" variant="outline" onClick={handleCopyText}>
+          <Button size="sm" variant="ghost" onClick={handleCopyText}>
             <MessageSquare className="h-3.5 w-3.5" />
             複製文字版
           </Button>
-          <Button size="sm" disabled={pdfLoading} onClick={handlePreviewPDF}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pdfLoading}
+            onClick={handlePreviewPDF}
+          >
             {pdfLoading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (

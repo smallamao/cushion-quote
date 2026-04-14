@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Eye, PackagePlus, Plus, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Eye, PackagePlus, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -39,11 +39,14 @@ import {
   summarizeCaseRefs,
   detectPrimaryCaseId,
 } from "@/lib/purchase-paste-parser";
+import { detectSupplierFromCodes } from "@/lib/supplier-detector";
+import { QuickCreateProductDialog } from "@/components/purchases/QuickCreateProductDialog";
 import type {
   CaseRecord,
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderStatus,
+  PurchaseProduct,
   PurchaseUnit,
   Supplier,
 } from "@/lib/types";
@@ -150,7 +153,7 @@ interface Props {
 export function PurchaseEditorClient({ orderId }: Props) {
   const router = useRouter();
   const { suppliers, loading: loadingSuppliers } = useSuppliers();
-  const { products, loading: loadingProducts } = usePurchaseProducts();
+  const { products, loading: loadingProducts, addProduct } = usePurchaseProducts();
   const { settings } = useSettings();
   const { orders, createOrder, updateOrder, receiveOrderItems } = usePurchases();
 
@@ -182,6 +185,8 @@ export function PurchaseEditorClient({ orderId }: Props) {
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickCreateItemIdx, setQuickCreateItemIdx] = useState<number | null>(null);
   const [receiveOccurredAt, setReceiveOccurredAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [receiveReferenceNumber, setReceiveReferenceNumber] = useState("");
   const [receiveNotes, setReceiveNotes] = useState("");
@@ -289,12 +294,43 @@ export function PurchaseEditorClient({ orderId }: Props) {
 
   function handleParse() {
     if (!pasteText.trim()) return;
-    if (!supplierId) {
-      alert("請先選擇廠商");
-      return;
-    }
+
     const lines = parsePurchasePasteText(pasteText);
-    const resolved = resolveParsedLines(lines, supplierProducts);
+    const codes = lines.map((l) => l.productCode).filter(Boolean);
+
+    // === 自動偵測廠商 ===
+    let effectiveSupplierId = supplierId;
+    let detectionMessage = "";
+    if (!supplierId) {
+      const detection = detectSupplierFromCodes(codes, products);
+      if (detection.detected) {
+        effectiveSupplierId = detection.detected.supplierId;
+        setSupplierId(effectiveSupplierId);
+        const supplierName =
+          suppliers.find((s) => s.supplierId === effectiveSupplierId)?.shortName ?? effectiveSupplierId;
+        if (detection.detected.conflict) {
+          const conflictNames = (detection.detected.conflictDetail ?? [])
+            .map((d) => {
+              const name = suppliers.find((s) => s.supplierId === d.supplierId)?.shortName ?? d.supplierId;
+              return `${name}(${d.votes} 票)`;
+            })
+            .join("、");
+          detectionMessage = `自動選擇廠商:${supplierName}\n⚠️ 偵測到多個廠商:${conflictNames}\n若不對請手動切換`;
+        } else {
+          detectionMessage = `自動選擇廠商:${supplierName}`;
+        }
+      } else {
+        alert("無法自動偵測廠商,請手動選擇後再解析");
+        return;
+      }
+    }
+
+    // 用偵測後的廠商重新計算 supplierProducts
+    const effectiveSupplierProducts = products.filter(
+      (p) => p.supplierId === effectiveSupplierId,
+    );
+
+    const resolved = resolveParsedLines(lines, effectiveSupplierProducts);
 
     const newItems: EditableItem[] = resolved.map((r) => ({
       itemId: "",
@@ -324,7 +360,6 @@ export function PurchaseEditorClient({ orderId }: Props) {
     // Smart case detection: auto-select if only one case detected or most common
     const detectedCaseId = detectPrimaryCaseId(lines);
     if (detectedCaseId && linkedCaseId === "none") {
-      // Check if detected case exists in available cases
       const caseExists = cases.some((c) => c.caseId === detectedCaseId);
       if (caseExists) {
         setLinkedCaseId(detectedCaseId);
@@ -333,6 +368,11 @@ export function PurchaseEditorClient({ orderId }: Props) {
 
     setPasteText("");
     setShowPaste(false);
+
+    if (detectionMessage) {
+      // 用 setTimeout 避免被 setState 重渲蓋掉
+      setTimeout(() => alert(detectionMessage), 50);
+    }
   }
 
   function updateItem(index: number, patch: Partial<EditableItem>) {
@@ -362,6 +402,45 @@ export function PurchaseEditorClient({ orderId }: Props) {
       matched: true,
       warning: undefined,
     });
+  }
+
+  /** 開啟快速建商品 modal */
+  function openQuickCreate(index: number) {
+    if (!supplierId) {
+      alert("請先選擇廠商");
+      return;
+    }
+    setQuickCreateItemIdx(index);
+    setQuickCreateOpen(true);
+  }
+
+  /**
+   * 商品建好後的回填邏輯。
+   * 把採購單裡所有 productCode 相同且 productId 為空的列,
+   * 全部回填 productId / productName / unitPrice (一次處理多筆相同編號)。
+   */
+  function handleQuickCreated(product: PurchaseProduct) {
+    setItems((prev) =>
+      prev.map((it) => {
+        const sameCode =
+          it.productCode.toLowerCase() === product.productCode.toLowerCase();
+        const notLinked = !it.productId;
+        if (sameCode && notLinked) {
+          return {
+            ...it,
+            productId: product.id,
+            productCode: product.productCode,
+            productName: product.productName,
+            specification: product.specification,
+            unit: it.unit || product.unit,
+            unitPrice: it.unitPrice || product.unitPrice,
+            matched: true,
+            warning: undefined,
+          };
+        }
+        return it;
+      }),
+    );
   }
 
   async function handleSave() {
@@ -857,9 +936,12 @@ export function PurchaseEditorClient({ orderId }: Props) {
                         <SelectValue>
                           <span className="font-mono">{it.productCode}</span>
                           {it.productName && (
-                            <span className="ml-1 text-[var(--text-tertiary)]">
-                              {it.productName}
-                            </span>
+                            <>
+                              <span className="mx-1.5 text-[var(--text-tertiary)]">·</span>
+                              <span className="text-[var(--text-tertiary)]">
+                                {it.productName}
+                              </span>
+                            </>
                           )}
                         </SelectValue>
                       </SelectTrigger>
@@ -875,14 +957,29 @@ export function PurchaseEditorClient({ orderId }: Props) {
                     </Select>
                   ) : (
                     <div className="space-y-0.5">
-                      <Input
-                        placeholder="商品編號"
-                        value={it.productCode}
-                        onChange={(e) =>
-                          updateItem(idx, { productCode: e.target.value })
-                        }
-                        className="h-7 text-xs font-mono"
-                      />
+                      <div className="flex items-center gap-1">
+                        <Input
+                          placeholder="商品編號"
+                          value={it.productCode}
+                          onChange={(e) =>
+                            updateItem(idx, { productCode: e.target.value })
+                          }
+                          className="h-7 flex-1 text-xs font-mono"
+                        />
+                        {it.productCode && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 shrink-0 px-2 text-[10px]"
+                            onClick={() => openQuickCreate(idx)}
+                            title="新增到商品庫"
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            新增
+                          </Button>
+                        )}
+                      </div>
                       {it.warning && (
                         <div className="text-[10px] text-amber-600">⚠ {it.warning}</div>
                       )}
@@ -1025,6 +1122,29 @@ export function PurchaseEditorClient({ orderId }: Props) {
         pdfBlob={pdfBlob}
         fileName={pdfFileName}
         loading={pdfLoading}
+      />
+
+      <QuickCreateProductDialog
+        open={quickCreateOpen}
+        onOpenChange={setQuickCreateOpen}
+        initial={{
+          productCode:
+            quickCreateItemIdx !== null
+              ? items[quickCreateItemIdx]?.productCode ?? ""
+              : "",
+          supplierId,
+          unit:
+            quickCreateItemIdx !== null
+              ? items[quickCreateItemIdx]?.unit ?? "碼"
+              : "碼",
+          unitPrice:
+            quickCreateItemIdx !== null
+              ? items[quickCreateItemIdx]?.unitPrice
+              : 0,
+        }}
+        suppliers={suppliers}
+        onSubmit={async (product) => addProduct(product)}
+        onCreated={handleQuickCreated}
       />
 
       <Dialog open={receiveDialogOpen} onOpenChange={setReceiveDialogOpen}>

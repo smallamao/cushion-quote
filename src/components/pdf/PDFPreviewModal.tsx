@@ -55,7 +55,7 @@ export function PDFPreviewModal({
         className="absolute inset-0 bg-black/50"
         onClick={() => onOpenChange(false)}
       />
-      <div className="relative flex h-[90vh] w-[90vw] max-w-4xl flex-col rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] shadow-[var(--shadow-lg)]">
+      <div className="relative flex h-[95vh] w-[95vw] max-w-[1400px] flex-col rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] shadow-[var(--shadow-lg)]">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
           <span className="text-sm font-semibold text-[var(--text-primary)]">
             PDF 預覽 — {fileName}

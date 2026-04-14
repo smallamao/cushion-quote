@@ -66,15 +66,23 @@ export function usePurchaseProducts() {
   }, [load]);
 
   const addProduct = useCallback(
-    async (p: PurchaseProduct | PurchaseProduct[]) => {
+    async (
+      p: PurchaseProduct | PurchaseProduct[],
+    ): Promise<PurchaseProduct[]> => {
       const res = await fetch("/api/sheets/purchase-products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(p),
       });
       if (!res.ok) throw new Error("新增商品失敗");
+      const payload = (await res.json()) as {
+        ok: boolean;
+        products?: PurchaseProduct[];
+        count?: number;
+      };
       localStorage.removeItem(CACHE_KEY);
       await load(true);
+      return payload.products ?? (Array.isArray(p) ? p : [p]);
     },
     [load]
   );
