@@ -17,6 +17,7 @@ import {
   makeItemId,
   quoteRecordToRow,
   quoteRowToRecord,
+  sortSheetRows,
   versionRecordToRow,
 } from "../_v2-utils";
 import { syncAutoCommissionSettlements } from "../_settlement-utils";
@@ -229,6 +230,28 @@ export async function POST(request: Request) {
       range: `案件!A${caseSheetRow}:W${caseSheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(updatedCase)] },
+    });
+
+    await sortSheetRows(client, {
+      sheetName: "報價",
+      dataRange: "報價!A2:P",
+      totalColumnCount: 16,
+      primarySortColumnIndex: 14,
+      secondarySortColumnIndex: 0,
+    });
+    await sortSheetRows(client, {
+      sheetName: "報價版本",
+      dataRange: "報價版本!A2:AQ",
+      totalColumnCount: 43,
+      primarySortColumnIndex: 35,
+      secondarySortColumnIndex: 0,
+    });
+    await sortSheetRows(client, {
+      sheetName: "案件",
+      dataRange: "案件!A2:W",
+      totalColumnCount: 23,
+      primarySortColumnIndex: 18,
+      secondarySortColumnIndex: 0,
     });
 
     return NextResponse.json({ ok: true, quoteId, versionId }, { status: 201 });

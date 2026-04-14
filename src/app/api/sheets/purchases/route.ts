@@ -8,6 +8,8 @@ import type {
   PurchaseUnit,
 } from "@/lib/types";
 
+import { sortSheetRows } from "../_v2-utils";
+
 const ORDER_SHEET = "採購單";
 const ITEM_SHEET = "採購單明細";
 const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:P`;
@@ -311,6 +313,14 @@ export async function POST(request: Request) {
         requestBody: { values: body.items.map(itemToRow) },
       });
     }
+
+    await sortSheetRows(sheetsClient, {
+      sheetName: ORDER_SHEET,
+      dataRange: ORDER_RANGE_DATA,
+      totalColumnCount: 16,
+      primarySortColumnIndex: 14,
+      secondarySortColumnIndex: 0,
+    });
 
     return NextResponse.json(
       { ok: true, order: body.order, items: body.items },

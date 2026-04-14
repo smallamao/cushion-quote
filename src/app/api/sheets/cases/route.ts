@@ -8,11 +8,13 @@ import {
   caseRowToRecord,
   generateCaseId,
   getCaseRows,
+  getSheetId,
   getQuoteRows,
   getVersionRows,
   getVersionLineRows,
   isoDateNow,
   isoNow,
+  sortSheetRows,
 } from "../_v2-utils";
 
 export async function GET() {
@@ -73,6 +75,14 @@ export async function POST(request: Request) {
       range: "案件!A:W",
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(record)] },
+    });
+
+    await sortSheetRows(client, {
+      sheetName: "案件",
+      dataRange: "案件!A2:W",
+      totalColumnCount: 23,
+      primarySortColumnIndex: 18,
+      secondarySortColumnIndex: 0,
     });
 
     return NextResponse.json({ ok: true, caseId }, { status: 201 });
@@ -272,15 +282,4 @@ export async function DELETE(request: Request) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
-
-async function getSheetId(
-  client: NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>,
-  sheetName: string
-): Promise<number> {
-  const response = await client.sheets.spreadsheets.get({
-    spreadsheetId: client.spreadsheetId,
-  });
-  const sheet = response.data.sheets?.find((s) => s.properties?.title === sheetName);
-  return sheet?.properties?.sheetId ?? 0;
 }

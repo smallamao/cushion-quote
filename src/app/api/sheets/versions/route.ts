@@ -4,8 +4,6 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import type { CaseRecord, QuotePlanRecord, QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
 
 import {
-  calculateNextFollowUpDate,
-  calculateReminderStatus,
   caseRecordToRow,
   caseRowToRecord,
   generateCaseId,
@@ -23,6 +21,7 @@ import {
   normalizeVersionUpdate,
   quoteRecordToRow,
   quoteRowToRecord,
+  sortSheetRows,
   versionRecordToRow,
   versionRowToRecord,
 } from "../_v2-utils";
@@ -271,6 +270,27 @@ export async function POST(request: Request) {
       await syncAutoCommissionSettlements(client, draft);
 
       await syncVersionToParents(client, draft);
+      await sortSheetRows(client, {
+        sheetName: "報價版本",
+        dataRange: "報價版本!A2:AQ",
+        totalColumnCount: 43,
+        primarySortColumnIndex: 35,
+        secondarySortColumnIndex: 0,
+      });
+      await sortSheetRows(client, {
+        sheetName: "報價",
+        dataRange: "報價!A2:P",
+        totalColumnCount: 16,
+        primarySortColumnIndex: 14,
+        secondarySortColumnIndex: 0,
+      });
+      await sortSheetRows(client, {
+        sheetName: "案件",
+        dataRange: "案件!A2:W",
+        totalColumnCount: 23,
+        primarySortColumnIndex: 18,
+        secondarySortColumnIndex: 0,
+      });
       return NextResponse.json({ ok: true, versionId: draft.versionId }, { status: 201 });
     }
 
@@ -395,6 +415,27 @@ export async function POST(request: Request) {
 
       await syncAutoCommissionSettlements(client, draftVersion);
       await syncVersionToParents(client, draftVersion);
+      await sortSheetRows(client, {
+        sheetName: "報價版本",
+        dataRange: "報價版本!A2:AQ",
+        totalColumnCount: 43,
+        primarySortColumnIndex: 35,
+        secondarySortColumnIndex: 0,
+      });
+      await sortSheetRows(client, {
+        sheetName: "報價",
+        dataRange: "報價!A2:P",
+        totalColumnCount: 16,
+        primarySortColumnIndex: 14,
+        secondarySortColumnIndex: 0,
+      });
+      await sortSheetRows(client, {
+        sheetName: "案件",
+        dataRange: "案件!A2:W",
+        totalColumnCount: 23,
+        primarySortColumnIndex: 18,
+        secondarySortColumnIndex: 0,
+      });
 
       return NextResponse.json({ ok: true, caseId: targetCaseId, quoteId, versionId }, { status: 201 });
     }
@@ -542,6 +583,27 @@ export async function POST(request: Request) {
     }
 
     await syncAutoCommissionSettlements(client, draftVersion);
+    await sortSheetRows(client, {
+      sheetName: "案件",
+      dataRange: "案件!A2:W",
+      totalColumnCount: 23,
+      primarySortColumnIndex: 18,
+      secondarySortColumnIndex: 0,
+    });
+    await sortSheetRows(client, {
+      sheetName: "報價",
+      dataRange: "報價!A2:P",
+      totalColumnCount: 16,
+      primarySortColumnIndex: 14,
+      secondarySortColumnIndex: 0,
+    });
+    await sortSheetRows(client, {
+      sheetName: "報價版本",
+      dataRange: "報價版本!A2:AQ",
+      totalColumnCount: 43,
+      primarySortColumnIndex: 35,
+      secondarySortColumnIndex: 0,
+    });
 
     return NextResponse.json({ ok: true, caseId, quoteId, versionId }, { status: 201 });
   } catch (err) {

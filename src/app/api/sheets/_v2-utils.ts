@@ -14,6 +14,16 @@ const QUOTE_SHEET = "報價";
 const VERSION_SHEET = "報價版本";
 const VERSION_LINE_SHEET = "報價版本明細";
 
+interface SortSheetOptions {
+  sheetName: string;
+  dataRange: string;
+  totalColumnCount: number;
+  primarySortColumnIndex: number;
+  primarySortOrder?: "ASCENDING" | "DESCENDING";
+  secondarySortColumnIndex?: number;
+  secondarySortOrder?: "ASCENDING" | "DESCENDING";
+}
+
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -364,6 +374,74 @@ export async function getVersionLineRows(client: SheetsClient): Promise<string[]
     range: `${VERSION_LINE_SHEET}!A2:AG`,
   });
   return response.data.values ?? [];
+}
+
+export async function getSheetId(client: SheetsClient, sheetName: string): Promise<number | null> {
+  const response = await client.sheets.spreadsheets.get({
+    spreadsheetId: client.spreadsheetId,
+  });
+  const sheet = response.data.sheets?.find((candidate) => candidate.properties?.title === sheetName);
+  return sheet?.properties?.sheetId ?? null;
+}
+
+export async function sortSheetRows(client: SheetsClient, options: SortSheetOptions): Promise<void> {
+  const {
+    sheetName,
+    dataRange,
+    totalColumnCount,
+    primarySortColumnIndex,
+    primarySortOrder = "DESCENDING",
+    secondarySortColumnIndex,
+    secondarySortOrder = "ASCENDING",
+  } = options;
+
+  const rowsResponse = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: dataRange,
+  });
+  const rowCount = rowsResponse.data.values?.length ?? 0;
+  if (rowCount <= 1) {
+    return;
+  }
+
+  const sheetId = await getSheetId(client, sheetName);
+  if (sheetId === null) {
+    return;
+  }
+
+  const sortSpecs: Array<{ dimensionIndex: number; sortOrder: "ASCENDING" | "DESCENDING" }> = [
+    {
+      dimensionIndex: primarySortColumnIndex,
+      sortOrder: primarySortOrder,
+    },
+  ];
+
+  if (secondarySortColumnIndex !== undefined) {
+    sortSpecs.push({
+      dimensionIndex: secondarySortColumnIndex,
+      sortOrder: secondarySortOrder,
+    });
+  }
+
+  await client.sheets.spreadsheets.batchUpdate({
+    spreadsheetId: client.spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          sortRange: {
+            range: {
+              sheetId,
+              startRowIndex: 1,
+              endRowIndex: rowCount + 1,
+              startColumnIndex: 0,
+              endColumnIndex: totalColumnCount,
+            },
+            sortSpecs,
+          },
+        },
+      ],
+    },
+  });
 }
 
 export async function generateCaseId(client: SheetsClient, now = new Date()): Promise<string> {
