@@ -154,7 +154,10 @@ export function resolveParsedLines(
 ): ResolvedItem[] {
   const byCode = new Map<string, PurchaseProduct>();
   for (const p of catalog) {
-    byCode.set(p.productCode.toLowerCase(), p);
+    // 跳過空 productCode 的髒資料,避免 "".includes() 造成全比對命中
+    const pcode = p.productCode.trim().toLowerCase();
+    if (!pcode) continue;
+    byCode.set(pcode, p);
   }
 
   const result: ResolvedItem[] = [];
@@ -163,15 +166,19 @@ export function resolveParsedLines(
     const codeLower = code.toLowerCase();
 
     let match = byCode.get(codeLower);
-    if (!match) {
-      // Try contains match
-      match = catalog.find(
-        (p) =>
-          p.productCode.toLowerCase().includes(codeLower) ||
-          codeLower.includes(p.productCode.toLowerCase()) ||
-          p.specification.toLowerCase().includes(codeLower) ||
-          p.productName.toLowerCase().includes(codeLower)
-      );
+    if (!match && codeLower.length > 0) {
+      // 模糊比對,但兩邊字串都必須非空 (避免空字串 includes 永遠 true 的陷阱)
+      match = catalog.find((p) => {
+        const pCode = p.productCode.trim().toLowerCase();
+        const pSpec = p.specification.trim().toLowerCase();
+        const pName = p.productName.trim().toLowerCase();
+        return (
+          (pCode.length > 0 &&
+            (pCode.includes(codeLower) || codeLower.includes(pCode))) ||
+          (pSpec.length > 0 && pSpec.includes(codeLower)) ||
+          (pName.length > 0 && pName.includes(codeLower))
+        );
+      });
     }
 
     if (line.subItems.length === 0) {
