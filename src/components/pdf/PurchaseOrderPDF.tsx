@@ -102,14 +102,15 @@ const s = StyleSheet.create({
   tCell: { fontSize: 8.5 },
   tCellR: { fontSize: 8.5, textAlign: "right" },
 
-  colIdx: { width: 24 },
-  colCode: { width: 70 },
-  colName: { flex: 1.6 },
-  colSpec: { flex: 1 },
-  colQty: { width: 36, textAlign: "right" },
-  colUnit: { width: 28, textAlign: "center" },
-  colPrice: { width: 56, textAlign: "right" },
-  colAmount: { width: 64, textAlign: "right" },
+  colIdx: { width: 22 },
+  colCode: { width: 64 },
+  colName: { flex: 1.4 },
+  colSpec: { flex: 0.9 },
+  colQty: { width: 32, textAlign: "right" },
+  colUnit: { width: 24, textAlign: "center" },
+  colPrice: { width: 50, textAlign: "right" },
+  colAmount: { width: 56, textAlign: "right" },
+  colNotes: { width: 56, fontSize: 8, color: C.muted, paddingLeft: 4 },
 
   totalsBlock: { alignItems: "flex-end", marginBottom: 14 },
   totalRow: {
@@ -326,6 +327,7 @@ function PurchaseOrderDocument({ order, items, settings }: PurchaseOrderPDFProps
             <Text style={[s.tHeadText, s.colUnit]}>單位</Text>
             <Text style={[s.tHeadText, s.colPrice]}>單價</Text>
             <Text style={[s.tHeadText, s.colAmount]}>金額</Text>
+            <Text style={[s.tHeadText, s.colNotes]}>備註</Text>
           </View>
           {items.map((item, idx) => {
             const snapshot = item.productSnapshot ?? {
@@ -338,16 +340,9 @@ function PurchaseOrderDocument({ order, items, settings }: PurchaseOrderPDFProps
               <View key={item.itemId || idx} style={s.tRow} wrap={false}>
                 <Text style={[s.tCell, s.colIdx]}>{idx + 1}</Text>
                 <Text style={[s.tCell, s.colCode]}>{snapshot.productCode}</Text>
-                <View style={s.colName}>
-                  <Text style={[s.tCell, { fontWeight: 700 }]}>
-                    {snapshot.productName}
-                  </Text>
-                  {item.notes ? (
-                    <Text style={[s.tCell, { color: C.muted, marginTop: 1 }]}>
-                      {item.notes}
-                    </Text>
-                  ) : null}
-                </View>
+                <Text style={[s.tCell, s.colName, { fontWeight: 700 }]}>
+                  {snapshot.productName}
+                </Text>
                 <Text style={[s.tCell, s.colSpec]}>{snapshot.specification}</Text>
                 <Text style={[s.tCellR, s.colQty]}>{item.quantity}</Text>
                 <Text style={[s.tCell, s.colUnit]}>{snapshot.unit}</Text>
@@ -357,6 +352,7 @@ function PurchaseOrderDocument({ order, items, settings }: PurchaseOrderPDFProps
                 <Text style={[s.tCellR, s.colAmount]}>
                   {fmtCurrency(item.amount)}
                 </Text>
+                <Text style={s.colNotes}>{item.notes ?? ""}</Text>
               </View>
             );
           })}
