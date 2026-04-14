@@ -41,6 +41,7 @@ import {
 } from "@/lib/purchase-paste-parser";
 import { detectSupplierFromCodes } from "@/lib/supplier-detector";
 import { QuickCreateProductDialog } from "@/components/purchases/QuickCreateProductDialog";
+import { BulkCreateProductDialog } from "@/components/purchases/BulkCreateProductDialog";
 import type {
   CaseRecord,
   PurchaseOrder,
@@ -187,6 +188,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateItemIdx, setQuickCreateItemIdx] = useState<number | null>(null);
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [receiveOccurredAt, setReceiveOccurredAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [receiveReferenceNumber, setReceiveReferenceNumber] = useState("");
   const [receiveNotes, setReceiveNotes] = useState("");
@@ -442,6 +444,48 @@ export function PurchaseEditorClient({ orderId }: Props) {
       }),
     );
   }
+
+  /**
+   * 批次建立商品成功後的回填:
+   * 把採購單裡所有 productCode 命中新建商品的列,全部回填 productId / 名稱 / 單價。
+   */
+  function handleBulkCreated(created: PurchaseProduct[]) {
+    if (created.length === 0) return;
+    const byCode = new Map(
+      created.map((p) => [p.productCode.toLowerCase(), p]),
+    );
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.productId) return it; // 已對應的不動
+        const hit = byCode.get(it.productCode.toLowerCase());
+        if (!hit) return it;
+        return {
+          ...it,
+          productId: hit.id,
+          productCode: hit.productCode,
+          productName: hit.productName,
+          specification: hit.specification,
+          unit: it.unit || hit.unit,
+          unitPrice: it.unitPrice || hit.unitPrice,
+          matched: true,
+          warning: undefined,
+        };
+      }),
+    );
+  }
+
+  /** 從未對應的品項收集編號 (給 BulkCreateDialog 預填) */
+  const unmatchedCodes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          items
+            .filter((it) => !it.productId && it.productCode.trim().length > 0)
+            .map((it) => it.productCode.trim()),
+        ),
+      ),
+    [items],
+  );
 
   async function handleSave() {
     if (!supplierId) {
@@ -901,10 +945,23 @@ export function PurchaseEditorClient({ orderId }: Props) {
               </span>
             )}
           </div>
-          <Button variant="ghost" size="sm" onClick={addBlankItem}>
-            <Plus className="h-3.5 w-3.5" />
-            新增空白列
-          </Button>
+          <div className="flex items-center gap-2">
+            {unmatchedCodes.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkCreateOpen(true)}
+                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                批次建立 {unmatchedCodes.length} 筆未對應
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={addBlankItem}>
+              <Plus className="h-3.5 w-3.5" />
+              新增空白列
+            </Button>
+          </div>
         </div>
         <table className="w-full text-sm">
           <thead className="bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
@@ -1145,6 +1202,17 @@ export function PurchaseEditorClient({ orderId }: Props) {
         suppliers={suppliers}
         onSubmit={async (product) => addProduct(product)}
         onCreated={handleQuickCreated}
+      />
+
+      <BulkCreateProductDialog
+        open={bulkCreateOpen}
+        onOpenChange={setBulkCreateOpen}
+        initialCodes={unmatchedCodes}
+        initialSupplierId={supplierId}
+        suppliers={suppliers}
+        existingProducts={products}
+        onSubmit={async (drafts) => addProduct(drafts)}
+        onCreated={handleBulkCreated}
       />
 
       <Dialog open={receiveDialogOpen} onOpenChange={setReceiveDialogOpen}>
