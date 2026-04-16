@@ -286,8 +286,8 @@ export async function POST(request: Request) {
       });
       await sortSheetRows(client, {
         sheetName: "案件",
-        dataRange: "案件!A2:W",
-        totalColumnCount: 23,
+        dataRange: "案件!A2:X",
+        totalColumnCount: 24,
         primarySortColumnIndex: 18,
         secondarySortColumnIndex: 0,
       });
@@ -431,8 +431,8 @@ export async function POST(request: Request) {
       });
       await sortSheetRows(client, {
         sheetName: "案件",
-        dataRange: "案件!A2:W",
-        totalColumnCount: 23,
+        dataRange: "案件!A2:X",
+        totalColumnCount: 24,
         primarySortColumnIndex: 18,
         secondarySortColumnIndex: 0,
       });
@@ -485,6 +485,7 @@ export async function POST(request: Request) {
       projectAddress: caseDraft.projectAddress ?? sourceVersion.projectAddressSnapshot,
       channelSnapshot: caseDraft.channelSnapshot ?? sourceVersion.channelSnapshot,
       leadSource: caseDraft.leadSource ?? sourceCase?.leadSource ?? "unknown",
+      leadSourceDetail: caseDraft.leadSourceDetail ?? sourceCase?.leadSourceDetail ?? "",
       leadSourceContact: caseDraft.leadSourceContact ?? sourceCase?.leadSourceContact ?? "",
       leadSourceNotes: caseDraft.leadSourceNotes ?? sourceCase?.leadSourceNotes ?? "",
       caseStatus: caseDraft.caseStatus ?? "quoting",
@@ -557,7 +558,7 @@ export async function POST(request: Request) {
 
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-      range: "案件!A:W",
+      range: "案件!A:X",
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(caseRecord)] },
     });
@@ -585,8 +586,8 @@ export async function POST(request: Request) {
     await syncAutoCommissionSettlements(client, draftVersion);
     await sortSheetRows(client, {
       sheetName: "案件",
-      dataRange: "案件!A2:W",
-      totalColumnCount: 23,
+      dataRange: "案件!A2:X",
+      totalColumnCount: 24,
       primarySortColumnIndex: 18,
       secondarySortColumnIndex: 0,
     });

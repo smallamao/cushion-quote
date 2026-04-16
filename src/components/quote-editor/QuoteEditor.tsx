@@ -15,6 +15,7 @@ import {
   Download,
   FilePlus,
   GripVertical,
+  Image as ImageIcon,
   ImagePlus,
   Loader2,
   MessageSquare,
@@ -32,10 +33,23 @@ import { useHistory } from "@/hooks/useHistory";
 import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
 import {
+  buildQuoteDraftSignature,
+  clearQuoteLoadRequest,
+  clearQuoteDraftSession,
+  consumeQuoteDraftSession,
+  createQuoteDraftSession,
+  createQuoteLoadRequest,
+  generateQuoteDraftSessionId,
+  readQuoteLoadRequest,
+  writeQuoteDraftSession,
+  writeQuoteLoadRequest,
+} from "@/lib/quote-draft-session";
+import {
   CHANNEL_LABELS,
   DEFAULT_TERMS,
   ITEM_TEMPLATES,
   LEAD_SOURCE_LABELS,
+  LEAD_SOURCE_DETAIL_ENABLED,
   LEAD_SOURCE_OPTIONS,
   QUOTE_TEMPLATES,
 } from "@/lib/constants";
@@ -43,11 +57,15 @@ import type {
   CaseRecord,
   Channel,
   Client,
+  CommissionOverride,
   CommissionMode,
+  CommissionPartnerSplit,
   FlexQuoteItem,
   ItemUnit,
   LeadSource,
   PartnerRole,
+  QuoteDraftComparable,
+  QuoteDraftSessionSource,
   QuotePlanRecord,
   QuoteTemplate,
   QuoteVersionRecord,
@@ -57,7 +75,11 @@ import type {
 } from "@/lib/types";
 import { buildSplitItemFields, buildSplitLineFields } from "@/lib/split-panel-metadata";
 import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPriceToTens, slugDate } from "@/lib/utils";
-import { buildPdfFileName, generatePDFBlob } from "@/components/pdf/QuotePDF";
+import {
+  buildPdfFileName,
+  generateAndDownloadJpg,
+  generatePDFBlob,
+} from "@/components/pdf/QuotePDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { CalculatorModal } from "@/components/quote-editor/CalculatorModal";
 import { Button } from "@/components/ui/button";
@@ -90,88 +112,10 @@ const ROLE_LABELS: Record<PartnerRole, string> = {
 };
 
 const COL_WIDTH_KEY = "quote-table-column-widths";
-const AUTO_DRAFT_KEY = "quote-auto-draft";
 const COL_MIN = { itemName: 150, spec: 120 } as const;
 const COL_DEFAULT = { itemName: 200, spec: 160 } as const;
 
-interface AutoDraft {
-  savedAt: string;
-  signature?: string;
-  caseId: string;
-  quoteId: string;
-  versionId: string;
-  versionNo: number;
-  versionLabel: string;
-  isEditMode: boolean;
-  selectedClientId: string;
-  companyName: string;
-  contactName: string;
-  phone: string;
-  taxId: string;
-  projectName: string;
-  quoteName: string;
-  email: string;
-  address: string;
-  channel: Channel;
-  leadSource: LeadSource;
-  leadSourceContact: string;
-  leadSourceNotes: string;
-  items: FlexQuoteItem[];
-  description: string;
-  descriptionImageUrl: string;
-  includeTax: boolean;
-  termsTemplate: string;
-  commissionOverride: CommissionOverride | null;
-  commissionPartners: CommissionPartnerSplit[];
-}
-
-interface AutoDraftComparable {
-  selectedClientId: string;
-  companyName: string;
-  contactName: string;
-  phone: string;
-  taxId: string;
-  projectName: string;
-  quoteName: string;
-  email: string;
-  address: string;
-  channel: Channel;
-  leadSource: LeadSource;
-  leadSourceContact: string;
-  leadSourceNotes: string;
-  items: FlexQuoteItem[];
-  description: string;
-  descriptionImageUrl: string;
-  includeTax: boolean;
-  termsTemplate: string;
-  commissionOverride: CommissionOverride | null;
-  commissionPartners: CommissionPartnerSplit[];
-}
-
-function stripItemIdentity(item: FlexQuoteItem): Omit<FlexQuoteItem, "id"> {
-  const { id, ...rest } = item;
-  return rest;
-}
-
-function buildAutoDraftSignature(comparable: AutoDraftComparable): string {
-  return JSON.stringify({
-    ...comparable,
-    items: comparable.items.map(stripItemIdentity),
-  });
-}
-
-interface CommissionOverride {
-  mode: CommissionMode;
-  rate: number;
-  fixedAmount: number;
-}
-
-interface CommissionPartnerSplit {
-  name: string;
-  partnerId: string;
-  role: PartnerRole;
-  amount: number;
-}
+type LocalDraftSaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
 interface AutoPricingConfig {
   channelMultipliers: SystemSettings["channelMultipliers"];
@@ -278,6 +222,21 @@ function createEmptyItem(): FlexQuoteItem {
 
 function generateQuoteId(): string {
   return `PQ${slugDate()}-01`;
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysIso(dateStr: string, days: number): string {
+  const base = dateStr ? new Date(dateStr) : new Date();
+  if (Number.isNaN(base.getTime())) return todayIso();
+  base.setDate(base.getDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+function defaultValidUntil(validityDays: number): string {
+  return addDaysIso(todayIso(), Math.max(0, validityDays || 0));
 }
 
 function parseCommissionPartners(raw: string): CommissionPartnerSplit[] {
@@ -653,6 +612,7 @@ export function QuoteEditor() {
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [leadSource, setLeadSource] = useState<LeadSource>("unknown");
+  const [leadSourceDetail, setLeadSourceDetail] = useState("");
   const [leadSourceContact, setLeadSourceContact] = useState("");
   const [leadSourceNotes, setLeadSourceNotes] = useState("");
   const [commissionOverride, setCommissionOverride] = useState<CommissionOverride | null>(null);
@@ -672,12 +632,17 @@ export function QuoteEditor() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [jpgLoading, setJpgLoading] = useState(false);
+  const [pdfPageMode, setPdfPageMode] = useState<"a4" | "long">("a4");
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [saving, setSaving] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyingVersion, setCopyingVersion] = useState(false);
   const [activeVersion, setActiveVersion] = useState<QuoteVersionRecord | null>(null);
+  const [validUntil, setValidUntil] = useState<string>(() =>
+    defaultValidUntil(settings.quoteValidityDays),
+  );
   const [calcOpen, setCalcOpen] = useState(false);
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
   const [quoteTemplateDropdownOpen, setQuoteTemplateDropdownOpen] = useState(false);
@@ -686,6 +651,10 @@ export function QuoteEditor() {
   const [newTemplateDescription, setNewTemplateDescription] = useState("");
   const [itemImageUploading, setItemImageUploading] = useState<Record<string, boolean>>({});
   const [itemImageErrors, setItemImageErrors] = useState<Record<string, string>>({});
+  const [draftSessionId, setDraftSessionId] = useState(() => generateQuoteDraftSessionId());
+  const [draftSessionSource, setDraftSessionSource] = useState<QuoteDraftSessionSource>("new-quote");
+  const [localDraftSaveState, setLocalDraftSaveState] = useState<LocalDraftSaveState>("idle");
+  const [localDraftSavedAt, setLocalDraftSavedAt] = useState("");
 
   const [colWidths, setColWidths] = useState<{ itemName: number; spec: number }>({ ...COL_DEFAULT });
   const autoDraftReadyRef = useRef(false);
@@ -694,16 +663,25 @@ export function QuoteEditor() {
   const autoPricingSignatureRef = useRef("");
   const suppressNextAutoPricingRef = useRef(false);
   const pendingSessionLoadRef = useRef(false);
+  const restoredLocalDraftRef = useRef(false);
 
   const clearAutoDraft = useCallback(() => {
     autoDraftBaselineSignatureRef.current = "";
+    restoredLocalDraftRef.current = false;
+    setLocalDraftSaveState("idle");
+    setLocalDraftSavedAt("");
     try {
-      localStorage.removeItem(AUTO_DRAFT_KEY);
+      clearQuoteDraftSession(window.localStorage);
     } catch {}
   }, []);
 
+  const shouldShowLeadSourceDetail = useCallback(
+    (source: LeadSource) => LEAD_SOURCE_DETAIL_ENABLED.includes(source),
+    [],
+  );
+
   const buildCurrentAutoDraftComparable = useCallback(
-    (): AutoDraftComparable => ({
+    (): QuoteDraftComparable => ({
       selectedClientId,
       companyName,
       contactName,
@@ -715,6 +693,7 @@ export function QuoteEditor() {
       address,
       channel,
       leadSource,
+      leadSourceDetail,
       leadSourceContact,
       leadSourceNotes,
       items,
@@ -737,6 +716,7 @@ export function QuoteEditor() {
       address,
       channel,
       leadSource,
+      leadSourceDetail,
       leadSourceContact,
       leadSourceNotes,
       items,
@@ -747,6 +727,72 @@ export function QuoteEditor() {
       commissionOverride,
       commissionPartners,
     ],
+  );
+
+  const buildCurrentDraftSession = useCallback(
+    (
+      signature: string,
+      comparable: QuoteDraftComparable,
+      source: QuoteDraftSessionSource = draftSessionSource,
+    ) =>
+      createQuoteDraftSession({
+        sessionId: draftSessionId,
+        source,
+        caseId,
+        quoteId,
+        versionId,
+        versionNo,
+        versionLabel,
+        isEditMode,
+        comparable,
+        signature,
+      }),
+    [caseId, draftSessionId, draftSessionSource, isEditMode, quoteId, versionId, versionLabel, versionNo],
+  );
+
+  const hasUnsavedChanges = useCallback(() => {
+    if (restoredLocalDraftRef.current) return true;
+    if (!autoDraftReadyRef.current || !autoDraftBaselineSignatureRef.current) return false;
+
+    const currentComparable = buildCurrentAutoDraftComparable();
+    const currentSignature = buildQuoteDraftSignature(currentComparable);
+    return currentSignature !== autoDraftBaselineSignatureRef.current;
+  }, [buildCurrentAutoDraftComparable]);
+
+  const flushAutoDraftNow = useCallback(
+    (source: QuoteDraftSessionSource = draftSessionSource) => {
+      if (!autoDraftReadyRef.current) return false;
+
+      const currentComparable = buildCurrentAutoDraftComparable();
+      const currentSignature = buildQuoteDraftSignature(currentComparable);
+
+      if (!autoDraftBaselineSignatureRef.current) {
+        autoDraftBaselineSignatureRef.current = currentSignature;
+        setLocalDraftSaveState("idle");
+        return false;
+      }
+
+      if (currentSignature === autoDraftBaselineSignatureRef.current) {
+        if (!restoredLocalDraftRef.current) {
+          clearAutoDraft();
+        }
+        return false;
+      }
+
+      try {
+        writeQuoteDraftSession(
+          window.localStorage,
+          buildCurrentDraftSession(currentSignature, currentComparable, source),
+        );
+        setLocalDraftSaveState("saved");
+        setLocalDraftSavedAt(new Date().toISOString());
+        return true;
+      } catch {
+        setLocalDraftSaveState("error");
+        return false;
+      }
+    },
+    [buildCurrentAutoDraftComparable, buildCurrentDraftSession, clearAutoDraft, draftSessionSource],
   );
 
   const handleCommissionModeChange = useCallback(
@@ -892,6 +938,7 @@ export function QuoteEditor() {
     if (!targetCaseId) {
       return {
         leadSource: "unknown" as LeadSource,
+        leadSourceDetail: "",
         leadSourceContact: "",
         leadSourceNotes: "",
       };
@@ -903,6 +950,7 @@ export function QuoteEditor() {
       if (!response.ok) {
         return {
           leadSource: "unknown" as LeadSource,
+          leadSourceDetail: "",
           leadSourceContact: "",
           leadSourceNotes: "",
         };
@@ -910,12 +958,14 @@ export function QuoteEditor() {
       const payload = (await response.json()) as { case?: CaseRecord };
       return {
         leadSource: payload.case?.leadSource ?? "unknown",
+        leadSourceDetail: payload.case?.leadSourceDetail ?? "",
         leadSourceContact: payload.case?.leadSourceContact ?? "",
         leadSourceNotes: payload.case?.leadSourceNotes ?? "",
       };
     } catch {
       return {
         leadSource: "unknown" as LeadSource,
+        leadSourceDetail: "",
         leadSourceContact: "",
         leadSourceNotes: "",
       };
@@ -932,13 +982,14 @@ export function QuoteEditor() {
           caseId: targetCaseId,
           projectAddress: address,
           leadSource,
+          leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
           leadSourceContact: leadSourceContact.trim(),
           leadSourceNotes: leadSourceNotes.trim(),
         } satisfies Partial<CaseRecord> & { caseId: string }),
       });
       if (!response.ok) throw new Error("更新案件資料失敗");
     },
-    [address, leadSource, leadSourceContact, leadSourceNotes],
+    [address, leadSource, leadSourceContact, leadSourceDetail, leadSourceNotes, shouldShowLeadSourceDetail],
   );
 
   const loadVersionDocument = useCallback(
@@ -977,6 +1028,10 @@ export function QuoteEditor() {
       setVersionLabel(version.versionLabel);
       setIsEditMode(true);
       setActiveVersion(version);
+      setValidUntil(
+        version.validUntil ||
+          addDaysIso(version.quoteDate || todayIso(), settings.quoteValidityDays),
+      );
       setSelectedClientId("");
       setCompanyName(version.clientNameSnapshot || "");
       setContactName(version.contactNameSnapshot || "");
@@ -985,6 +1040,7 @@ export function QuoteEditor() {
       setProjectName(currentCaseName || version.projectNameSnapshot || "");
       setChannel(version.channel || "retail");
       setLeadSource(sourceDetails.leadSource);
+      setLeadSourceDetail(sourceDetails.leadSourceDetail);
       setLeadSourceContact(sourceDetails.leadSourceContact);
       setLeadSourceNotes(sourceDetails.leadSourceNotes);
       setDescription(version.publicDescription || "");
@@ -1004,6 +1060,9 @@ export function QuoteEditor() {
       suppressNextAutoPricingRef.current = true;
       setHistoryInitialItems(lines.length > 0 ? toFlexItemsFromVersion(lines) : [createEmptyItem()]);
       setExpandedItems(new Set());
+      setDraftSessionId(generateQuoteDraftSessionId());
+      setDraftSessionSource("loaded-version");
+      restoredLocalDraftRef.current = false;
     },
     [loadCaseSourceDetails],
   );
@@ -1013,19 +1072,15 @@ export function QuoteEditor() {
 
     async function restoreFromSession() {
       try {
-        const stored = sessionStorage.getItem("quote-to-load");
-        if (!stored) return;
-
-        const data = JSON.parse(stored) as {
-          caseId?: string;
-          quoteId?: string;
-          versionId?: string;
-        };
-        sessionStorage.removeItem("quote-to-load");
+        const data = readQuoteLoadRequest(window.sessionStorage);
+        if (!data) return;
 
         if (data.versionId) {
           pendingSessionLoadRef.current = true;
           await loadVersionDocument(data.versionId, data.caseId, data.quoteId);
+          clearQuoteLoadRequest(window.sessionStorage);
+          restoredLocalDraftRef.current = false;
+          setDraftSessionSource(data.source);
         }
       } catch (err) {
         if (!disposed) {
@@ -1049,23 +1104,13 @@ export function QuoteEditor() {
     autoDraftRestoreCheckedRef.current = true;
 
     try {
-      const raw = localStorage.getItem(AUTO_DRAFT_KEY);
-      if (!raw) {
+      const draft = consumeQuoteDraftSession(window.localStorage);
+      if (!draft) {
         autoDraftReadyRef.current = true;
         return;
       }
 
-      const draft = JSON.parse(raw) as AutoDraft;
-      const savedAtMs = new Date(draft.savedAt).getTime();
-
-      if (!Number.isFinite(savedAtMs) || Date.now() - savedAtMs > 24 * 60 * 60 * 1000) {
-        localStorage.removeItem(AUTO_DRAFT_KEY);
-        autoDraftBaselineSignatureRef.current = buildAutoDraftSignature(buildCurrentAutoDraftComparable());
-        autoDraftReadyRef.current = true;
-        return;
-      }
-
-      const draftComparable: AutoDraftComparable = {
+      const draftComparable: QuoteDraftComparable = {
         selectedClientId: draft.selectedClientId,
         companyName: draft.companyName,
         contactName: draft.contactName,
@@ -1077,6 +1122,7 @@ export function QuoteEditor() {
         address: draft.address,
         channel: draft.channel,
         leadSource: draft.leadSource ?? "unknown",
+        leadSourceDetail: draft.leadSourceDetail ?? "",
         leadSourceContact: draft.leadSourceContact ?? "",
         leadSourceNotes: draft.leadSourceNotes ?? "",
         items: draft.items.length > 0 ? draft.items : [createEmptyItem()],
@@ -1093,11 +1139,11 @@ export function QuoteEditor() {
           : null,
         commissionPartners: draft.commissionPartners ?? [],
       };
-      const draftSignature = draft.signature ?? buildAutoDraftSignature(draftComparable);
-      const currentSignature = buildAutoDraftSignature(buildCurrentAutoDraftComparable());
+      const draftSignature = draft.signature ?? buildQuoteDraftSignature(draftComparable);
+      const currentSignature = buildQuoteDraftSignature(buildCurrentAutoDraftComparable());
 
       if (draftSignature === currentSignature) {
-        localStorage.removeItem(AUTO_DRAFT_KEY);
+        clearAutoDraft();
         autoDraftBaselineSignatureRef.current = currentSignature;
         autoDraftReadyRef.current = true;
         return;
@@ -1133,6 +1179,7 @@ export function QuoteEditor() {
         setAddress(draft.address);
         setChannel(draft.channel);
         setLeadSource(draft.leadSource ?? "unknown");
+        setLeadSourceDetail(draft.leadSourceDetail ?? "");
         setLeadSourceContact(draft.leadSourceContact ?? "");
         setLeadSourceNotes(draft.leadSourceNotes ?? "");
         setHistoryInitialItems(recalculateAutoPricedItems(draftComparable.items, draft.channel, draftAutoPricing));
@@ -1142,9 +1189,14 @@ export function QuoteEditor() {
         setTermsTemplate(draftComparable.termsTemplate);
         setCommissionOverride(draftComparable.commissionOverride);
         setCommissionPartners(draftComparable.commissionPartners);
+        setDraftSessionId(draft.sessionId);
+        setDraftSessionSource(draft.source);
+        setLocalDraftSaveState("saved");
+        setLocalDraftSavedAt(draft.savedAt);
+        restoredLocalDraftRef.current = true;
         autoDraftBaselineSignatureRef.current = draftSignature;
       } else {
-        localStorage.removeItem(AUTO_DRAFT_KEY);
+        clearAutoDraft();
         autoDraftBaselineSignatureRef.current = currentSignature;
       }
     } catch {
@@ -1181,56 +1233,35 @@ export function QuoteEditor() {
     if (!autoDraftReadyRef.current) return;
 
     const currentComparable = buildCurrentAutoDraftComparable();
-    const currentSignature = buildAutoDraftSignature(currentComparable);
+    const currentSignature = buildQuoteDraftSignature(currentComparable);
 
     if (!autoDraftBaselineSignatureRef.current) {
       autoDraftBaselineSignatureRef.current = currentSignature;
+      setLocalDraftSaveState("idle");
       return;
     }
 
     if (currentSignature === autoDraftBaselineSignatureRef.current) {
-      try {
-        localStorage.removeItem(AUTO_DRAFT_KEY);
-      } catch {}
+      if (!restoredLocalDraftRef.current) {
+        clearAutoDraft();
+      }
       return;
     }
 
+    restoredLocalDraftRef.current = false;
+    setLocalDraftSaveState("dirty");
     const timeoutId = window.setTimeout(() => {
-      const draft: AutoDraft = {
-        savedAt: new Date().toISOString(),
-        signature: currentSignature,
-        caseId,
-        quoteId,
-        versionId,
-        versionNo,
-        versionLabel,
-        isEditMode,
-        selectedClientId,
-        companyName,
-        contactName,
-        phone,
-        taxId,
-        projectName,
-        quoteName,
-        email,
-        address,
-        channel,
-        leadSource,
-        leadSourceContact,
-        leadSourceNotes,
-        items,
-        description,
-        descriptionImageUrl,
-        includeTax,
-        termsTemplate,
-        commissionOverride,
-        commissionPartners,
-      };
+      setLocalDraftSaveState("saving");
 
       try {
-        localStorage.setItem(AUTO_DRAFT_KEY, JSON.stringify(draft));
+        writeQuoteDraftSession(
+          window.localStorage,
+          buildCurrentDraftSession(currentSignature, currentComparable),
+        );
+        setLocalDraftSaveState("saved");
+        setLocalDraftSavedAt(new Date().toISOString());
       } catch {
-        // Ignore quota errors from large base64 images.
+        setLocalDraftSaveState("error");
       }
     }, 2000);
 
@@ -1238,9 +1269,11 @@ export function QuoteEditor() {
   }, [
     address,
     buildCurrentAutoDraftComparable,
+    buildCurrentDraftSession,
     caseId,
     channel,
     companyName,
+    clearAutoDraft,
     commissionOverride,
     commissionPartners,
     contactName,
@@ -1596,7 +1629,13 @@ export function QuoteEditor() {
   );
 
   function handleNewQuote() {
+    if (hasUnsavedChanges() && !confirm("目前有未儲存變更，確定要放棄並新建報價嗎？")) {
+      return;
+    }
+
     clearAutoDraft();
+    setDraftSessionId(generateQuoteDraftSessionId());
+    setDraftSessionSource("new-quote");
     setCaseId("");
     setIsEditMode(false);
     setQuoteId(generateQuoteId());
@@ -1604,6 +1643,7 @@ export function QuoteEditor() {
     setVersionNo(1);
     setVersionLabel("");
     setActiveVersion(null);
+    setValidUntil(defaultValidUntil(settings.quoteValidityDays));
     setSelectedClientId("");
     setCompanyName("");
     setContactName("");
@@ -1613,6 +1653,7 @@ export function QuoteEditor() {
     setEmail("");
     setAddress("");
     setLeadSource("unknown");
+    setLeadSourceDetail("");
     setLeadSourceContact("");
     setLeadSourceNotes("");
     setHistoryInitialItems([createEmptyItem()]);
@@ -1727,6 +1768,7 @@ export function QuoteEditor() {
         projectAddress: address,
         channelSnapshot: channel,
         leadSource,
+        leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
         leadSourceContact: leadSourceContact.trim(),
         leadSourceNotes: leadSourceNotes.trim(),
       } satisfies Partial<CaseRecord>),
@@ -1755,6 +1797,7 @@ export function QuoteEditor() {
       ...version,
       versionLabel: versionLabel || version.versionLabel,
       quoteDate: new Date().toISOString().slice(0, 10),
+      validUntil: validUntil || defaultValidUntil(settings.quoteValidityDays),
       subtotalBeforeTax: subtotal,
       taxRate: includeTax ? settings.taxRate : 0,
       taxAmount: tax,
@@ -1825,6 +1868,7 @@ export function QuoteEditor() {
             phoneSnapshot: phone,
             projectAddress: address,
             leadSource,
+            leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
             leadSourceContact: leadSourceContact.trim(),
             leadSourceNotes: leadSourceNotes.trim(),
           }),
@@ -1851,6 +1895,7 @@ export function QuoteEditor() {
             firstVersion: {
               versionLabel: versionLabel || "V01 初版",
               quoteDate: new Date().toISOString().slice(0, 10),
+              validUntil: validUntil || defaultValidUntil(settings.quoteValidityDays),
               channel,
               taxRate: includeTax ? settings.taxRate : 0,
               subtotalBeforeTax: subtotal,
@@ -1894,6 +1939,7 @@ export function QuoteEditor() {
             phoneSnapshot: phone,
             projectAddress: address,
             leadSource,
+            leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
             leadSourceContact: leadSourceContact.trim(),
             leadSourceNotes: leadSourceNotes.trim(),
           }),
@@ -1914,8 +1960,17 @@ export function QuoteEditor() {
   async function handleCopyAction(action: "new_version" | "use_as_template" | "new_quote_same_case") {
     if (!versionId) return;
 
+    if (
+      hasUnsavedChanges() &&
+      !confirm("目前有未儲存變更。複製只會依最後一次正式儲存的版本建立，確定要繼續嗎？")
+    ) {
+      return;
+    }
+
     setCopyingVersion(true);
     try {
+      flushAutoDraftNow("quote-editor-copy");
+
       const response = await fetch("/api/sheets/versions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1943,6 +1998,7 @@ export function QuoteEditor() {
                     phoneSnapshot: phone,
                     channelSnapshot: channel,
                     leadSource,
+                    leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
                     leadSourceContact: leadSourceContact.trim(),
                     leadSourceNotes: leadSourceNotes.trim(),
                   },
@@ -1965,9 +2021,10 @@ export function QuoteEditor() {
       }
 
       if ((action === "use_as_template" || action === "new_quote_same_case") && payload.caseId && payload.quoteId && payload.versionId) {
-        sessionStorage.setItem(
-          "quote-to-load",
-          JSON.stringify({
+        writeQuoteLoadRequest(
+          window.sessionStorage,
+          createQuoteLoadRequest({
+            source: "quote-editor-copy",
             caseId: payload.caseId,
             quoteId: payload.quoteId,
             versionId: payload.versionId,
@@ -1982,6 +2039,44 @@ export function QuoteEditor() {
     }
   }
 
+  async function handleDownloadJpg() {
+    if (jpgLoading) return;
+    setJpgLoading(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await generateAndDownloadJpg({
+        quoteId,
+        quoteDate: today,
+        validityDays: settings.quoteValidityDays,
+        validUntil: validUntil || undefined,
+        client: {
+          companyName,
+          contactName,
+          phone,
+          email,
+          address,
+          taxId,
+        },
+        projectName,
+        quoteName,
+        channel,
+        items,
+        description,
+        descriptionImageUrl: descriptionImageUrl || undefined,
+        includeTax,
+        subtotal,
+        tax,
+        total,
+        termsTemplate: termsTemplate.replace(/(\d+\.)\s/g, "$1\u00A0"),
+        settings,
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "產生 JPG 失敗");
+    } finally {
+      setJpgLoading(false);
+    }
+  }
+
   async function handlePreviewPDF() {
     setPdfLoading(true);
     setPdfPreviewOpen(true);
@@ -1992,6 +2087,8 @@ export function QuoteEditor() {
         quoteId,
         quoteDate: today,
         validityDays: settings.quoteValidityDays,
+        validUntil: validUntil || undefined,
+        pdfMode: pdfPageMode,
         client: {
           companyName,
           contactName,
@@ -2047,7 +2144,7 @@ export function QuoteEditor() {
     }
     lines.push(`合計：$${total.toLocaleString()}`);
     lines.push("");
-    lines.push(`有效期限：${settings.quoteValidityDays} 天`);
+    lines.push(`有效期限：${validUntil || `${settings.quoteValidityDays} 天`}`);
     lines.push(`${settings.companyName} ${settings.companyPhone}`);
 
     navigator.clipboard.writeText(lines.join("\n"));
@@ -2063,59 +2160,34 @@ export function QuoteEditor() {
     superseded: "已取代",
   };
 
+  const localDraftStatusLabel = useMemo(() => {
+    if (localDraftSaveState === "saving") return "正在自動暫存...";
+    if (localDraftSaveState === "saved") {
+      if (!localDraftSavedAt) return "已自動暫存";
+      return `已自動暫存 ${new Date(localDraftSavedAt).toLocaleTimeString("zh-TW", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })}`;
+    }
+    if (localDraftSaveState === "error") return "自動暫存失敗";
+    if (localDraftSaveState === "dirty") return "有未儲存變更";
+    return "目前無未儲存變更";
+  }, [localDraftSaveState, localDraftSavedAt]);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1.5">
-          <div className="text-xs text-[var(--text-secondary)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold text-[var(--text-primary)]">報價編輯</h1>
+          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
             案件：{projectName || "未命名案件"} | 報價：{quoteId || "未建立"} | 版本：
             {versionId ? `V${versionNo}` : "未建立"}
             {versionLabel ? ` ${versionLabel}` : ""}
-          </div>
-          <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-[var(--text-secondary)]">報價單</span>
-            <Input
-              value={quoteId}
-              onChange={(e) => setQuoteId(e.target.value)}
-              className="h-7 w-48 text-sm font-semibold"
-              placeholder="CQ-YYYYMMDD-01"
-              disabled={Boolean(versionId)}
-            />
-          </div>
-          <span className="badge badge-draft">{STATUS_LABELS[status]}</span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-[var(--text-secondary)]">通路</span>
-            <Select value={channel} onValueChange={(v) => setChannel(v as Channel)}>
-              <SelectTrigger className="h-7 w-auto min-w-[7rem] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(["wholesale", "designer", "retail", "luxury_retail"] as const).map((ch) => (
-                  <SelectItem key={ch} value={ch}>
-                    {CHANNEL_LABELS[ch].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          </div>
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* 主要動作:新建報價 (綠色 primary,視覺最突出) */}
-          <Button
-            size="sm"
-            onClick={handleNewQuote}
-            className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
-          >
-            <FilePlus className="h-3.5 w-3.5" />
-            新建報價
-          </Button>
-
-          {/* 分隔線 */}
-          <div className="mx-1 h-6 w-px bg-[var(--border)]" />
-
-          {/* 儲存/更新 (高頻,次要強度) */}
+        <div className="flex flex-wrap items-center justify-end gap-2 self-start">
           <Button
             variant="outline"
             size="sm"
@@ -2129,8 +2201,6 @@ export function QuoteEditor() {
             )}
             {saving ? "儲存中..." : isEditMode ? "更新" : "儲存"}
           </Button>
-
-          {/* 輔助動作 (低頻,ghost 減少視覺噪音) */}
           <Button
             variant="ghost"
             size="sm"
@@ -2146,17 +2216,95 @@ export function QuoteEditor() {
           </Button>
           <Button
             size="sm"
-            variant="outline"
-            disabled={pdfLoading}
-            onClick={handlePreviewPDF}
+            disabled={jpgLoading}
+            onClick={handleDownloadJpg}
           >
-            {pdfLoading ? (
+            {jpgLoading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Download className="h-3.5 w-3.5" />
+              <ImageIcon className="h-3.5 w-3.5" />
             )}
-            {pdfLoading ? "生成中..." : "預覽 PDF"}
+            {jpgLoading ? "生成中..." : "下載 JPG"}
           </Button>
+          <div className="flex items-center">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pdfLoading}
+              onClick={handlePreviewPDF}
+              className="rounded-r-none"
+            >
+              {pdfLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              {pdfLoading ? "生成中..." : "預覽 PDF"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-l-none border-l-0 px-2 text-[10px]"
+              onClick={() => setPdfPageMode((m) => (m === "a4" ? "long" : "a4"))}
+            >
+              {pdfPageMode === "a4" ? "A4" : "長版"}
+            </Button>
+          </div>
+          <Button size="sm" onClick={handleNewQuote}>
+            <FilePlus className="h-3.5 w-3.5" />
+            新建報價
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-[var(--text-secondary)]">報價單</span>
+          <Input
+            value={quoteId}
+            onChange={(e) => setQuoteId(e.target.value)}
+            className="h-8 w-48 text-sm font-semibold"
+            placeholder="CQ-YYYYMMDD-01"
+            disabled={Boolean(versionId)}
+          />
+        </div>
+        <span className="badge badge-draft">{STATUS_LABELS[status]}</span>
+        <span className="text-xs text-[var(--text-secondary)]">{localDraftStatusLabel}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--text-secondary)]">通路</span>
+          <Select value={channel} onValueChange={(v) => setChannel(v as Channel)}>
+            <SelectTrigger className="h-8 w-auto min-w-[7rem] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(["wholesale", "designer", "retail", "luxury_retail"] as const).map((ch) => (
+                <SelectItem key={ch} value={ch}>
+                  {CHANNEL_LABELS[ch].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--text-secondary)]">有效至</span>
+          <Input
+            type="date"
+            value={validUntil}
+            onChange={(e) => setValidUntil(e.target.value)}
+            className="h-8 w-40 text-xs"
+          />
+          {[7, 14, 30].map((d) => (
+            <Button
+              key={d}
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-xs"
+              onClick={() => setValidUntil(addDaysIso(todayIso(), d))}
+            >
+              {d}天
+            </Button>
+          ))}
         </div>
       </div>
 
@@ -2251,7 +2399,16 @@ export function QuoteEditor() {
               </div>
               <div>
                 <Label>案件來源</Label>
-                <Select value={leadSource} onValueChange={(value) => setLeadSource(value as LeadSource)}>
+                <Select
+                  value={leadSource}
+                  onValueChange={(value) => {
+                    const nextSource = value as LeadSource;
+                    setLeadSource(nextSource);
+                    if (!shouldShowLeadSourceDetail(nextSource)) {
+                      setLeadSourceDetail("");
+                    }
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="選擇案件來源" />
                   </SelectTrigger>
@@ -2264,6 +2421,16 @@ export function QuoteEditor() {
                   </SelectContent>
                 </Select>
               </div>
+              {shouldShowLeadSourceDetail(leadSource) && (
+                <div>
+                  <Label>來源細項</Label>
+                  <Input
+                    value={leadSourceDetail}
+                    onChange={(e) => setLeadSourceDetail(e.target.value)}
+                    placeholder="例如：BNI、扶輪社、綠裝修協會"
+                  />
+                </div>
+              )}
               <div>
                 <Label>來源人 / 介紹人</Label>
                 <Input

@@ -59,6 +59,7 @@ function rowToProduct(row: string[], rowIndex: number): PurchaseProduct & { rowI
     rowIndex,
     id: row[0] ?? "",
     productCode: row[1] ?? "",
+    supplierProductCode: row[13] ?? "",
     productName: row[2] ?? "",
     specification: row[3] ?? "",
     category: (row[4] as PurchaseProduct["category"]) ?? "面料",

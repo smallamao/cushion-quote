@@ -39,6 +39,7 @@ const UNITS: PurchaseUnit[] = ["碼", "才", "米", "只", "片", "件", "組", 
 const EMPTY_PRODUCT: PurchaseProduct = {
   id: "",
   productCode: "",
+  supplierProductCode: "",
   productName: "",
   specification: "",
   category: "面料",
@@ -294,6 +295,7 @@ export function PurchaseProductsClient() {
     const payload: PurchaseProduct[] = validRows.map((r) => ({
       id: `${r.productCode.trim()}-${bulkCommon.supplierId}`,
       productCode: r.productCode.trim(),
+      supplierProductCode: "",
       productName: r.productName.trim(),
       specification: r.specification.trim(),
       category: bulkCommon.category,

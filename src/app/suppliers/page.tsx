@@ -1,5 +1,5 @@
-import { SuppliersClient } from "@/app/suppliers/SuppliersClient";
+import { redirect } from "next/navigation";
 
 export default function SuppliersPage() {
-  return <SuppliersClient />;
+  redirect("/settings?tab=suppliers");
 }

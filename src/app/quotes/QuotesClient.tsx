@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-table";
 
 import type { QuoteVersionRecord, VersionStatus } from "@/lib/types";
+import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -111,7 +112,10 @@ export function QuotesClient() {
   }, [columnSizing]);
 
   function openVersion(versionId: string, caseId: string, quoteId: string) {
-    sessionStorage.setItem("quote-to-load", JSON.stringify({ caseId, quoteId, versionId }));
+    writeQuoteLoadRequest(
+      window.sessionStorage,
+      createQuoteLoadRequest({ source: "quotes-list", caseId, quoteId, versionId }),
+    );
     router.push("/");
   }
 

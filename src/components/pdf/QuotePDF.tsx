@@ -112,8 +112,7 @@ const s = StyleSheet.create({
   colIdx: { width: 24 },
   colName: { flex: 1.4 },
   colSpec: { flex: 1 },
-  colQty: { width: 32, textAlign: "right" },
-  colUnit: { width: 28, textAlign: "center" },
+  colQty: { width: 50, textAlign: "right" },
   colPrice: { width: 56, textAlign: "right" },
   colAmount: { width: 64, textAlign: "right" },
 
@@ -218,6 +217,9 @@ export interface QuotePDFProps {
   quoteId: string;
   quoteDate: string;
   validityDays: number;
+  validUntil?: string;
+  pdfMode?: "a4" | "long";
+  longPageHeight?: number;
   client: {
     companyName: string;
     contactName: string;
@@ -285,6 +287,9 @@ function QuotePDFDocument(props: QuotePDFProps) {
     quoteId,
     quoteDate,
     validityDays,
+    validUntil: validUntilProp,
+    pdfMode = "a4",
+    longPageHeight,
     client,
     projectName,
     quoteName,
@@ -302,12 +307,25 @@ function QuotePDFDocument(props: QuotePDFProps) {
 
   const fw = (s: string) => s.replace(/：/g, ": ").replace(/，/g, ", ").replace(/；/g, "; ");
 
-  const validUntil = addDays(quoteDate, validityDays);
+  const validUntil = validUntilProp && validUntilProp.trim() ? validUntilProp : addDays(quoteDate, validityDays);
   const quoteProjectName = formatQuoteProjectName(projectName, quoteName);
+
+  const visibleItems = items.filter((i) => !i.isCostItem);
+  const itemsWithImg = visibleItems.filter((i) => i.imageUrl).length;
+  const itemsNoImg = visibleItems.length - itemsWithImg;
+  const termsLines = termsTemplate ? termsTemplate.split("\n").length : 0;
+  const descLines = description ? description.split("\n").length : 0;
+  const longHeight = Math.max(
+    842,
+    650 + itemsWithImg * 135 + itemsNoImg * 45 + termsLines * 16 + descLines * 16,
+  );
 
   return (
     <Document title={`報價單 ${quoteId}`} author={settings.companyName}>
-      <Page size="A4" style={s.page}>
+      <Page
+        size={pdfMode === "long" ? ([595.28, longPageHeight ?? longHeight] as [number, number]) : "A4"}
+        style={pdfMode === "long" ? { ...s.page, paddingBottom: 15 } : s.page}
+      >
         <View style={s.header}>
           <View style={s.headerLeft}>
             <Image src="/logo.png" style={s.logo} />
@@ -391,7 +409,6 @@ function QuotePDFDocument(props: QuotePDFProps) {
             <Text style={[s.tHeadText, s.colName]}>商品名稱</Text>
             <Text style={[s.tHeadText, s.colSpec]}>規格</Text>
             <Text style={[s.tHeadText, s.colQty]}>數量</Text>
-            <Text style={[s.tHeadText, s.colUnit]}>單位</Text>
             <Text style={[s.tHeadText, s.colPrice]}>單價</Text>
             <Text style={[s.tHeadText, s.colAmount]}>金額</Text>
           </View>
@@ -415,8 +432,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
                   <Image src={item.specImageUrl} style={s.specImage} />
                 ) : null}
               </View>
-              <Text style={[s.tCellR, s.colQty]}>{item.qty}</Text>
-              <Text style={[s.tCell, s.colUnit]}>{item.unit}</Text>
+              <Text style={[s.tCellR, s.colQty]}>{item.qty} {item.unit}</Text>
               <Text style={[s.tCellR, s.colPrice]}>{fmtCurrency(item.unitPrice)}</Text>
               <Text style={[s.tCellR, s.colAmount]}>{fmtCurrency(item.amount)}</Text>
             </View>
@@ -463,7 +479,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
           </View>
         ) : null}
 
-        <View style={s.spacer} />
+        {pdfMode !== "long" && <View style={s.spacer} />}
 
         <View style={s.footer}>
           <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start", flex: 1 }}>
@@ -500,7 +516,166 @@ function QuotePDFDocument(props: QuotePDFProps) {
 }
 
 export async function generatePDFBlob(props: QuotePDFProps): Promise<Blob> {
-  return pdf(<QuotePDFDocument {...props} />).toBlob();
+  if (props.pdfMode !== "long") {
+    return pdf(<QuotePDFDocument {...props} />).toBlob();
+  }
+
+  const draftBlob = await pdf(
+    <QuotePDFDocument {...props} longPageHeight={4000} />,
+  ).toBlob();
+  const measuredHeight = await measurePdfContentHeight(draftBlob);
+  const exactHeight = Math.max(842, measuredHeight + 30);
+
+  return pdf(
+    <QuotePDFDocument {...props} longPageHeight={exactHeight} />,
+  ).toBlob();
+}
+
+async function measurePdfContentHeight(blob: Blob): Promise<number> {
+  const pdfjs = await loadPdfjs();
+  const data = new Uint8Array(await blob.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data }).promise;
+  const page = await doc.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return viewport.height;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+
+  return findContentBottom(ctx, canvas.width, canvas.height);
+}
+
+interface PdfjsLib {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument(params: { data: Uint8Array }): { promise: Promise<PdfjsDocument> };
+}
+interface PdfjsDocument {
+  getPage(num: number): Promise<PdfjsPage>;
+}
+interface PdfjsPage {
+  getViewport(params: { scale: number }): { width: number; height: number };
+  render(params: {
+    canvasContext: CanvasRenderingContext2D;
+    viewport: { width: number; height: number };
+    canvas: HTMLCanvasElement;
+  }): { promise: Promise<void> };
+}
+
+let pdfjsCache: PdfjsLib | null = null;
+
+async function loadPdfjs(): Promise<PdfjsLib> {
+  if (pdfjsCache) return pdfjsCache;
+
+  // @ts-expect-error runtime import from public/, bypasses webpack
+  const pdfjs = await import(/* webpackIgnore: true */ "/pdf.min.mjs") as PdfjsLib;
+
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  pdfjsCache = pdfjs;
+  return pdfjs;
+}
+
+export function buildJpgFileName(
+  props: Pick<QuotePDFProps, "quoteId" | "projectName" | "quoteName">,
+): string {
+  return buildPdfFileName(props).replace(/\.pdf$/i, ".jpg");
+}
+
+export async function generateJpgBlob(
+  props: QuotePDFProps,
+  options: { quality?: number; scale?: number } = {},
+): Promise<Blob> {
+  const { quality = 0.92, scale = 2 } = options;
+
+  const pdfBlob = await pdf(
+    <QuotePDFDocument {...props} pdfMode="long" />,
+  ).toBlob();
+  const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+
+  const pdfjs = await loadPdfjs();
+
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfArrayBuffer) });
+  const pdfDoc = await loadingTask.promise;
+  const page = await pdfDoc.getPage(1);
+
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas 2d context not available");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+
+  const contentBottom = await findContentBottom(ctx, canvas.width, canvas.height);
+  const cropped = contentBottom > 0 && contentBottom < canvas.height
+    ? cropCanvas(canvas, contentBottom)
+    : canvas;
+
+  return await new Promise<Blob>((resolve, reject) => {
+    cropped.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("canvas toBlob failed"));
+      },
+      "image/jpeg",
+      quality,
+    );
+  });
+}
+
+function findContentBottom(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): number {
+  const { data } = ctx.getImageData(0, 0, width, height);
+  const padding = Math.round(width * 0.04);
+  for (let y = height - 1; y >= 0; y--) {
+    const rowStart = y * width * 4;
+    for (let x = 0; x < width; x++) {
+      const idx = rowStart + x * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      if (r < 250 || g < 250 || b < 250) {
+        return Math.min(height, y + padding);
+      }
+    }
+  }
+  return height;
+}
+
+function cropCanvas(source: HTMLCanvasElement, newHeight: number): HTMLCanvasElement {
+  const cropped = document.createElement("canvas");
+  cropped.width = source.width;
+  cropped.height = newHeight;
+  const cctx = cropped.getContext("2d");
+  if (!cctx) return source;
+  cctx.fillStyle = "#ffffff";
+  cctx.fillRect(0, 0, cropped.width, cropped.height);
+  cctx.drawImage(source, 0, 0);
+  return cropped;
+}
+
+export async function generateAndDownloadJpg(props: QuotePDFProps): Promise<void> {
+  const blob = await generateJpgBlob(props);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = buildJpgFileName(props);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 export async function generateAndDownloadPDF(props: QuotePDFProps): Promise<void> {

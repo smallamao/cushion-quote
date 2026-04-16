@@ -54,6 +54,7 @@ export async function POST(request: Request) {
       projectAddress: payload.projectAddress ?? "",
       channelSnapshot: payload.channelSnapshot ?? "wholesale",
       leadSource: payload.leadSource ?? "unknown",
+      leadSourceDetail: payload.leadSourceDetail ?? "",
       leadSourceContact: payload.leadSourceContact ?? "",
       leadSourceNotes: payload.leadSourceNotes ?? "",
       caseStatus: payload.caseStatus ?? "new",
@@ -72,15 +73,15 @@ export async function POST(request: Request) {
 
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-      range: "案件!A:W",
+      range: "案件!A:X",
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(record)] },
     });
 
     await sortSheetRows(client, {
       sheetName: "案件",
-      dataRange: "案件!A2:W",
-      totalColumnCount: 23,
+      dataRange: "案件!A2:X",
+      totalColumnCount: 24,
       primarySortColumnIndex: 18,
       secondarySortColumnIndex: 0,
     });
@@ -124,7 +125,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `案件!A${sheetRow}:W${sheetRow}`,
+        range: `案件!A${sheetRow}:X${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(merged)] },
     });

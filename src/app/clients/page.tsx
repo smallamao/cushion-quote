@@ -1,5 +1,5 @@
-import { ClientsClient } from "@/app/clients/ClientsClient";
+import { redirect } from "next/navigation";
 
 export default function ClientsPage() {
-  return <ClientsClient />;
+  redirect("/settings?tab=clients");
 }

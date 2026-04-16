@@ -47,6 +47,7 @@ function makeCaseRecord(overrides: Partial<CaseRecord> = {}): CaseRecord {
     createdAt: "2026-03-20T10:00:00.000Z",
     updatedAt: "2026-03-20T10:00:00.000Z",
     leadSource: "google_search",
+    leadSourceDetail: "",
     leadSourceContact: "搜尋",
     leadSourceNotes: "",
     ...overrides,
@@ -175,9 +176,9 @@ describe("Case Row ↔ Record 雙向轉換", () => {
     expect(restored).toEqual(original);
   });
 
-  it("row 長度應為 23 欄", () => {
+  it("row 長度應為 24 欄", () => {
     const row = caseRecordToRow(makeCaseRecord());
-    expect(row).toHaveLength(23);
+    expect(row).toHaveLength(24);
   });
 
   it("空 row 應有安全預設值", () => {
@@ -193,6 +194,56 @@ describe("Case Row ↔ Record 雙向轉換", () => {
     expect(record.caseId).toBe("CA-001");
     expect(record.caseName).toBe("測試");
     expect(record.clientId).toBe("");
+  });
+
+  it("legacy bni row 應正規化為商會／協會加來源細項", () => {
+    const row = caseRecordToRow(makeCaseRecord({ leadSource: "association_network", leadSourceDetail: "BNI" }));
+    row[20] = "bni";
+    row[21] = "";
+    row[22] = "王先生";
+    row[23] = "早餐會";
+
+    const record = caseRowToRecord(row);
+
+    expect(record.leadSource).toBe("association_network");
+    expect(record.leadSourceDetail).toBe("BNI");
+    expect(record.leadSourceContact).toBe("王先生");
+    expect(record.leadSourceNotes).toBe("早餐會");
+  });
+
+  it("legacy rotary row 應保留舊欄位位置並帶出細項", () => {
+    const legacyRow = [
+      "CA-001",
+      "舊案件",
+      "CL-001",
+      "客戶",
+      "聯絡人",
+      "0912",
+      "地址",
+      "retail",
+      "new",
+      "2026-01-01",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-01T00:00:00.000Z",
+      "rotary",
+      "陳先生",
+      "例會認識",
+    ];
+
+    const record = caseRowToRecord(legacyRow);
+
+    expect(record.leadSource).toBe("association_network");
+    expect(record.leadSourceDetail).toBe("扶輪社");
+    expect(record.leadSourceContact).toBe("陳先生");
+    expect(record.leadSourceNotes).toBe("例會認識");
   });
 });
 

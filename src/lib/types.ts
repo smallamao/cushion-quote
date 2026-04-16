@@ -17,8 +17,7 @@ export type LeadSource =
   | "referral"
   | "repeat_customer"
   | "walk_in"
-  | "bni"
-  | "rotary"
+  | "association_network"
   | "other";
 
 export type ExtraItem = "leather_labor" | "lining" | "anti_slip" | "power_hole";
@@ -73,6 +72,105 @@ export type CommissionMode = "price_gap" | "rebate" | "fixed" | "none";
 export type SettlementStatus = "pending" | "paid" | "cancelled";
 
 export type PartnerRole = "designer" | "installer" | "referrer" | "other";
+
+export type QuoteLoadRequestSource =
+  | "client-history"
+  | "quotes-list"
+  | "cases-list"
+  | "quote-editor-copy";
+
+export type QuoteDraftSessionSource =
+  | "new-quote"
+  | "loaded-version"
+  | "restored-legacy-draft"
+  | QuoteLoadRequestSource;
+
+export type UserRole = "admin" | "technician" | "sales";
+
+export type AfterSalesStatus =
+  | "pending"
+  | "scheduled"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+export interface Session {
+  userId: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  iat: number;
+  exp: number;
+}
+
+export interface User {
+  userId: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AfterSalesService {
+  serviceId: string;
+  receivedDate: string;
+  relatedOrderNo: string;
+  shipmentDate: string;
+  clientName: string;
+  clientPhone: string;
+  clientContact2: string;
+  clientPhone2: string;
+  deliveryAddress: string;
+  modelCode: string;
+  modelNameSnapshot: string;
+  issueDescription: string;
+  issuePhotos: string[];
+  status: AfterSalesStatus;
+  assignedTo: string;
+  scheduledDate: string;
+  dispatchNotes: string;
+  completedDate: string;
+  completionNotes: string;
+  completionPhotos: string[];
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+export interface AfterSalesReply {
+  replyId: string;
+  serviceId: string;
+  occurredAt: string;
+  author: string;
+  content: string;
+  attachments: string[];
+  createdAt: string;
+}
+
+export interface EquipmentModel {
+  modelCode: string;
+  modelName: string;
+  category: string;
+  notes: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommissionOverride {
+  mode: CommissionMode;
+  rate: number;
+  fixedAmount: number;
+}
+
+export interface CommissionPartnerSplit {
+  name: string;
+  partnerId: string;
+  role: PartnerRole;
+  amount: number;
+}
 
 export interface CommissionSettlement {
   settlementId: string;
@@ -181,6 +279,7 @@ export interface CaseRecord {
   projectAddress: string;
   channelSnapshot: Channel;
   leadSource: LeadSource;
+  leadSourceDetail: string;
   leadSourceContact: string;
   leadSourceNotes: string;
   caseStatus: CaseStatus;
@@ -370,6 +469,52 @@ export interface FlexQuoteItem {
   customSplitSizes?: number[];
 }
 
+export interface QuoteDraftComparable {
+  selectedClientId: string;
+  companyName: string;
+  contactName: string;
+  phone: string;
+  taxId: string;
+  projectName: string;
+  quoteName: string;
+  email: string;
+  address: string;
+  channel: Channel;
+  leadSource: LeadSource;
+  leadSourceDetail: string;
+  leadSourceContact: string;
+  leadSourceNotes: string;
+  items: FlexQuoteItem[];
+  description: string;
+  descriptionImageUrl: string;
+  includeTax: boolean;
+  termsTemplate: string;
+  commissionOverride: CommissionOverride | null;
+  commissionPartners: CommissionPartnerSplit[];
+}
+
+export interface QuoteDraftSession extends QuoteDraftComparable {
+  sessionId: string;
+  savedAt: string;
+  signature: string;
+  caseId: string;
+  quoteId: string;
+  versionId: string;
+  versionNo: number;
+  versionLabel: string;
+  isEditMode: boolean;
+  source: QuoteDraftSessionSource;
+}
+
+export interface QuoteLoadRequest {
+  requestId: string;
+  createdAt: string;
+  source: QuoteLoadRequestSource;
+  caseId: string;
+  quoteId: string;
+  versionId: string;
+}
+
 // ===== 施工加給分級 (v0.3.1) =====
 
 export type InstallHeightTier = "normal" | "mid_high" | "high_altitude";
@@ -464,15 +609,16 @@ export interface Supplier {
  * 一個商品對應一家廠商的價格；若同商品多家廠商，建多筆
  */
 export interface PurchaseProduct {
-  id: string; // ABU100009-PS006 (productCode + supplierId)
-  productCode: string; // ABU100009 (原始商品編號)
-  productName: string; // ABU 1000系列 透氣貓抓布
-  specification: string; // 100009 (規格/色號/型號)
-  category: PurchaseProductCategory; // 面料
-  unit: PurchaseUnit; // 碼
-  supplierId: string; // PS006 (關聯廠商)
-  unitPrice: number; // 350
-  imageUrl: string; // 商品圖片 URL
+  id: string;
+  productCode: string;
+  supplierProductCode: string;
+  productName: string;
+  specification: string;
+  category: PurchaseProductCategory;
+  unit: PurchaseUnit;
+  supplierId: string;
+  unitPrice: number;
+  imageUrl: string;
   notes: string;
   isActive: boolean;
   createdAt: string;

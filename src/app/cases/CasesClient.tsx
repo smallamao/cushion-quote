@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
-import { LEAD_SOURCE_LABELS, LEAD_SOURCE_OPTIONS } from "@/lib/constants";
+import { LEAD_SOURCE_DETAIL_ENABLED, LEAD_SOURCE_LABELS, LEAD_SOURCE_OPTIONS } from "@/lib/constants";
+import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import type { CaseRecord, LeadSource, QuotePlanRecord, QuoteVersionRecord } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,6 +106,7 @@ export function CasesClient() {
   const [newCaseName, setNewCaseName] = useState("");
   const [newCaseClientId, setNewCaseClientId] = useState("none");
   const [newCaseLeadSource, setNewCaseLeadSource] = useState<LeadSource>("unknown");
+  const [newCaseLeadSourceDetail, setNewCaseLeadSourceDetail] = useState("");
   const [newCaseLeadSourceContact, setNewCaseLeadSourceContact] = useState("");
   const [newCaseLeadSourceNotes, setNewCaseLeadSourceNotes] = useState("");
   const [creating, setCreating] = useState(false);
@@ -129,6 +131,7 @@ export function CasesClient() {
     caseName: string;
     projectAddress: string;
     leadSource: LeadSource;
+    leadSourceDetail: string;
     leadSourceContact: string;
     leadSourceNotes: string;
   }>({
@@ -137,9 +140,15 @@ export function CasesClient() {
     caseName: "",
     projectAddress: "",
     leadSource: "unknown",
+    leadSourceDetail: "",
     leadSourceContact: "",
     leadSourceNotes: "",
   });
+
+  const shouldShowLeadSourceDetail = useCallback(
+    (source: LeadSource) => LEAD_SOURCE_DETAIL_ENABLED.includes(source),
+    [],
+  );
   const [editing, setEditing] = useState(false);
 
   const loadCases = useCallback(async () => {
@@ -240,6 +249,7 @@ export function CasesClient() {
           projectAddress: picked?.address ?? "",
           channelSnapshot: picked?.channel ?? "retail",
           leadSource: newCaseLeadSource,
+          leadSourceDetail: shouldShowLeadSourceDetail(newCaseLeadSource) ? newCaseLeadSourceDetail.trim() : "",
           leadSourceContact: newCaseLeadSourceContact.trim(),
           leadSourceNotes: newCaseLeadSourceNotes.trim(),
         }),
@@ -249,6 +259,7 @@ export function CasesClient() {
       setNewCaseName("");
       setNewCaseClientId("none");
       setNewCaseLeadSource("unknown");
+      setNewCaseLeadSourceDetail("");
       setNewCaseLeadSourceContact("");
       setNewCaseLeadSourceNotes("");
       await loadCases();
@@ -260,7 +271,10 @@ export function CasesClient() {
   }
 
   function openVersion(versionId: string, caseId: string, quoteId: string) {
-    sessionStorage.setItem("quote-to-load", JSON.stringify({ caseId, quoteId, versionId }));
+    writeQuoteLoadRequest(
+      window.sessionStorage,
+      createQuoteLoadRequest({ source: "cases-list", caseId, quoteId, versionId }),
+    );
     router.push("/");
   }
 
@@ -305,9 +319,10 @@ export function CasesClient() {
       setCopyDialog({ open: false, sourceVersionId: "", caseId: "", quoteId: "", caseName: "" });
 
       if (action === "new_version" && payload.versionId) {
-        sessionStorage.setItem(
-          "quote-to-load",
-          JSON.stringify({
+        writeQuoteLoadRequest(
+          window.sessionStorage,
+          createQuoteLoadRequest({
+            source: "cases-list",
             caseId: copyDialog.caseId,
             quoteId: copyDialog.quoteId,
             versionId: payload.versionId,
@@ -318,9 +333,10 @@ export function CasesClient() {
       }
 
       if ((action === "use_as_template" || action === "new_quote_same_case") && payload.caseId && payload.quoteId && payload.versionId) {
-        sessionStorage.setItem(
-          "quote-to-load",
-          JSON.stringify({
+        writeQuoteLoadRequest(
+          window.sessionStorage,
+          createQuoteLoadRequest({
+            source: "cases-list",
             caseId: payload.caseId,
             quoteId: payload.quoteId,
             versionId: payload.versionId,
@@ -342,6 +358,7 @@ export function CasesClient() {
       caseName: caseRecord.caseName,
       projectAddress: caseRecord.projectAddress,
       leadSource: caseRecord.leadSource,
+      leadSourceDetail: caseRecord.leadSourceDetail,
       leadSourceContact: caseRecord.leadSourceContact,
       leadSourceNotes: caseRecord.leadSourceNotes,
     });
@@ -359,6 +376,7 @@ export function CasesClient() {
           caseName: editDialog.caseName.trim(),
           projectAddress: editDialog.projectAddress.trim(),
           leadSource: editDialog.leadSource,
+          leadSourceDetail: shouldShowLeadSourceDetail(editDialog.leadSource) ? editDialog.leadSourceDetail.trim() : "",
           leadSourceContact: editDialog.leadSourceContact.trim(),
           leadSourceNotes: editDialog.leadSourceNotes.trim(),
         }),
@@ -375,6 +393,7 @@ export function CasesClient() {
         caseName: "",
         projectAddress: "",
         leadSource: "unknown",
+        leadSourceDetail: "",
         leadSourceContact: "",
         leadSourceNotes: "",
       });
@@ -444,6 +463,7 @@ export function CasesClient() {
         item.contactNameSnapshot,
         item.caseId,
         LEAD_SOURCE_LABELS[item.leadSource ?? "unknown"]?.label ?? "",
+        item.leadSourceDetail ?? "",
         item.leadSourceContact ?? "",
         item.leadSourceNotes ?? "",
       ]
@@ -478,7 +498,7 @@ export function CasesClient() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">案件管理</h1>
+          <h1 className="text-lg font-semibold text-[var(--text-primary)]">案件紀錄</h1>
           <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
             {loading ? "載入中..." : `${sorted.length} 筆案件`}
           </p>
@@ -599,6 +619,11 @@ export function CasesClient() {
                         </td>
                         <td className="px-4 py-2.5 text-sm text-[var(--text-primary)]">
                           <div>{LEAD_SOURCE_LABELS[item.leadSource ?? "unknown"]?.label ?? "未分類"}</div>
+                          {item.leadSourceDetail && (
+                            <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                              {item.leadSourceDetail}
+                            </div>
+                          )}
                           {item.leadSourceContact && (
                             <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
                               {item.leadSourceContact}
@@ -655,6 +680,12 @@ export function CasesClient() {
                                       <div className="text-xs text-[var(--text-secondary)]">案件來源</div>
                                       <div className="font-medium text-[var(--text-primary)]">
                                         {LEAD_SOURCE_LABELS[detail.case.leadSource ?? "unknown"]?.label ?? "未分類"}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="text-xs text-[var(--text-secondary)]">來源細項</div>
+                                      <div className="font-medium text-[var(--text-primary)]">
+                                        {detail.case.leadSourceDetail || "—"}
                                       </div>
                                     </div>
                                     <div>
@@ -921,7 +952,16 @@ export function CasesClient() {
             </div>
             <div>
               <Label>案件來源</Label>
-              <Select value={newCaseLeadSource} onValueChange={(value) => setNewCaseLeadSource(value as LeadSource)}>
+              <Select
+                value={newCaseLeadSource}
+                onValueChange={(value) => {
+                  const nextSource = value as LeadSource;
+                  setNewCaseLeadSource(nextSource);
+                  if (!shouldShowLeadSourceDetail(nextSource)) {
+                    setNewCaseLeadSourceDetail("");
+                  }
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="選擇案件來源" />
                 </SelectTrigger>
@@ -934,6 +974,16 @@ export function CasesClient() {
                 </SelectContent>
               </Select>
             </div>
+            {shouldShowLeadSourceDetail(newCaseLeadSource) && (
+              <div>
+                <Label>來源細項</Label>
+                <Input
+                  value={newCaseLeadSourceDetail}
+                  onChange={(e) => setNewCaseLeadSourceDetail(e.target.value)}
+                  placeholder="例如：BNI、扶輪社、綠裝修協會"
+                />
+              </div>
+            )}
             <div>
               <Label>來源人 / 介紹人</Label>
               <Input
@@ -1041,7 +1091,13 @@ export function CasesClient() {
               <Label>案件來源</Label>
               <Select
                 value={editDialog.leadSource}
-                onValueChange={(value) => setEditDialog((prev) => ({ ...prev, leadSource: value as LeadSource }))}
+                onValueChange={(value) =>
+                  setEditDialog((prev) => ({
+                    ...prev,
+                    leadSource: value as LeadSource,
+                    leadSourceDetail: shouldShowLeadSourceDetail(value as LeadSource) ? prev.leadSourceDetail : "",
+                  }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="請選擇案件來源" />
@@ -1055,6 +1111,16 @@ export function CasesClient() {
                 </SelectContent>
               </Select>
             </div>
+            {shouldShowLeadSourceDetail(editDialog.leadSource) && (
+              <div>
+                <Label>來源細項</Label>
+                <Input
+                  value={editDialog.leadSourceDetail}
+                  onChange={(e) => setEditDialog((prev) => ({ ...prev, leadSourceDetail: e.target.value }))}
+                  placeholder="例如：BNI、扶輪社、綠裝修協會"
+                />
+              </div>
+            )}
             <div>
               <Label>來源人 / 介紹人</Label>
               <Input
@@ -1079,12 +1145,13 @@ export function CasesClient() {
                 setEditDialog({
                   open: false,
                   caseId: "",
-                  caseName: "",
-                  projectAddress: "",
-                  leadSource: "unknown",
-                  leadSourceContact: "",
-                  leadSourceNotes: "",
-                })
+                   caseName: "",
+                   projectAddress: "",
+                   leadSource: "unknown",
+                   leadSourceDetail: "",
+                   leadSourceContact: "",
+                   leadSourceNotes: "",
+                 })
               }
               disabled={editing}
             >

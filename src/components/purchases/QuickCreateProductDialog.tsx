@@ -130,6 +130,7 @@ export function QuickCreateProductDialog({
       const draft: PurchaseProduct = {
         id,
         productCode: productCode.trim(),
+        supplierProductCode: "",
         productName: productName.trim(),
         specification: specification.trim(),
         category,

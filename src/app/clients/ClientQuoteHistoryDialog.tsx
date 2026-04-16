@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import type { QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 
@@ -76,11 +77,15 @@ export function ClientQuoteHistoryDialog({
 
   function handleGoToVersion(version: QuoteVersionRecord) {
     setJumpingVersionId(version.versionId);
-    sessionStorage.setItem("quote-to-load", JSON.stringify({
-      caseId: version.caseId,
-      quoteId: version.quoteId,
-      versionId: version.versionId,
-    }));
+    writeQuoteLoadRequest(
+      window.sessionStorage,
+      createQuoteLoadRequest({
+        source: "client-history",
+        caseId: version.caseId,
+        quoteId: version.quoteId,
+        versionId: version.versionId,
+      }),
+    );
     router.push("/");
     setOpen(false);
   }

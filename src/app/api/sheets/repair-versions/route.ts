@@ -36,7 +36,7 @@ export async function GET() {
     const [caseRes, versionRes] = await Promise.all([
       client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
-        range: "案件!A2:W",
+        range: "案件!A2:X",
       }),
       client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
@@ -108,7 +108,7 @@ export async function POST() {
     const [caseRes, versionRes] = await Promise.all([
       client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
-        range: "案件!A2:W",
+        range: "案件!A2:X",
       }),
       client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,

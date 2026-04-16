@@ -248,8 +248,8 @@ export async function POST(request: Request) {
     });
     await sortSheetRows(client, {
       sheetName: "案件",
-      dataRange: "案件!A2:W",
-      totalColumnCount: 23,
+      dataRange: "案件!A2:X",
+      totalColumnCount: 24,
       primarySortColumnIndex: 18,
       secondarySortColumnIndex: 0,
     });

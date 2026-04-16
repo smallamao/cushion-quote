@@ -256,6 +256,7 @@ export function parsePurchaseProductsCsv(
     result.push({
       id,
       productCode,
+      supplierProductCode: "",
       productName: base?.productName || pr["商品名稱"] || "",
       specification: base?.specification || pr["規格"] || "",
       category: base?.category ?? mapCategory(pr["種類"] ?? ""),
@@ -280,6 +281,7 @@ export function parsePurchaseProductsCsv(
     result.push({
       id,
       productCode: code,
+      supplierProductCode: "",
       productName: base.productName,
       specification: base.specification,
       category: base.category,

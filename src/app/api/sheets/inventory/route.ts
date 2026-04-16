@@ -62,6 +62,7 @@ function rowToPurchaseProduct(row: string[]): PurchaseProduct {
   return {
     id: row[0] ?? "",
     productCode: row[1] ?? "",
+    supplierProductCode: row[13] ?? "",
     productName: row[2] ?? "",
     specification: row[3] ?? "",
     category: (row[4] as PurchaseProductCategory) ?? "其他",

@@ -172,8 +172,9 @@ export function BulkCreateProductDialog({
       const drafts: PurchaseProduct[] = newRows.map((r) => ({
         id: `${r.productCode}-${supplierId}`,
         productCode: r.productCode,
+        supplierProductCode: "",
         productName: productName.trim(),
-        specification: r.productCode, // 慣例: spec = code
+        specification: r.productCode,
         category,
         unit,
         supplierId,

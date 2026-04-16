@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  BarChart3,
   Briefcase,
   CircleHelp,
   Calculator,
@@ -11,34 +12,49 @@ import {
   ChevronRight,
   FileText,
   HandCoins,
+  LogOut,
   Package,
   Palette,
   Settings,
   ShoppingCart,
-  Truck,
-  Users,
+  Stethoscope,
 } from "lucide-react";
+
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import type { UserRole } from "@/lib/types";
 
 const STORAGE_KEY = "cq-sidebar-collapsed";
 
-const links = [
-  { href: "/", label: "報價工作台", icon: Calculator },
-  { href: "/clients", label: "客戶管理", icon: Users },
-  { href: "/cases", label: "案件管理", icon: Briefcase },
-  { href: "/materials", label: "材質資料庫", icon: Palette },
-  { href: "/quotes", label: "報價紀錄", icon: FileText },
-  { href: "/commissions", label: "佣金結算", icon: HandCoins },
-  { href: "/purchases", label: "採購單", icon: ShoppingCart },
-  { href: "/suppliers", label: "廠商管理", icon: Truck },
-  { href: "/purchase-products", label: "採購商品", icon: Package },
-  { href: "/settings", label: "系統設定", icon: Settings },
-  { href: "/help", label: "使用說明", icon: CircleHelp },
-] as const;
+type LinkDef = {
+  href: string;
+  label: string;
+  icon: typeof Calculator;
+  roles: UserRole[];
+};
+
+const links: LinkDef[] = [
+  { href: "/", label: "報價工作台", icon: Calculator, roles: ["admin"] },
+  { href: "/cases", label: "案件紀錄", icon: Briefcase, roles: ["admin"] },
+  { href: "/materials", label: "材質資料庫", icon: Palette, roles: ["admin"] },
+  { href: "/quotes", label: "報價紀錄", icon: FileText, roles: ["admin"] },
+  { href: "/commissions", label: "佣金結算", icon: HandCoins, roles: ["admin"] },
+  { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"] },
+  { href: "/purchase-products", label: "採購商品", icon: Package, roles: ["admin"] },
+  { href: "/reports", label: "採購報表", icon: BarChart3, roles: ["admin"] },
+  { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"] },
+  { href: "/settings", label: "系統設定", icon: Settings, roles: ["admin"] },
+  { href: "/help", label: "使用說明", icon: CircleHelp, roles: ["admin"] },
+];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useCurrentUser();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  const visibleLinks = user
+    ? links.filter((l) => l.roles.includes(user.role))
+    : [];
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -79,12 +95,12 @@ export function Sidebar() {
             className="mt-0.5 text-[11px] text-white transition-opacity duration-200"
             style={{ opacity: collapsed ? 0 : 0.6, height: collapsed ? 0 : "auto" }}
           >
-            報價系統 v0.3.3
+            報價系統 v0.4.0
           </div>
         </div>
 
         <nav className="space-y-0.5" style={{ padding: collapsed ? "0 6px" : "0 12px" }}>
-          {links.map((link) => {
+          {visibleLinks.map((link) => {
             const Icon = link.icon;
             const isActive =
               link.href === "/"
@@ -94,7 +110,8 @@ export function Sidebar() {
             return (
               <Link
                 key={link.href}
-                href={link.href}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                href={link.href as any}
                 title={collapsed ? link.label : undefined}
                 style={{ color: "#FFFFFF" }}
                 className={[
@@ -146,6 +163,32 @@ export function Sidebar() {
             style={{ opacity: 0.6 }}
           >
             Google Sheets 已連線
+          </div>
+        )}
+
+        {user && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            {!collapsed && (
+              <div className="mb-1 px-3 text-[11px] text-white" style={{ opacity: 0.7 }}>
+                <div className="truncate">{user.displayName}</div>
+                <div className="truncate text-[10px]" style={{ opacity: 0.6 }}>
+                  {user.role === "admin" ? "管理員" : "技師"}
+                </div>
+              </div>
+            )}
+            <a
+              href="/api/auth/logout"
+              className={[
+                "flex items-center rounded-[var(--radius-md)] py-2 text-[12px] font-medium text-white transition-colors",
+                "hover:bg-[var(--sidebar-hover)]",
+                collapsed ? "justify-center px-0" : "gap-2 px-3",
+              ].join(" ")}
+              style={{ opacity: 0.7 }}
+              title={collapsed ? "登出" : undefined}
+            >
+              <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+              {!collapsed && <span>登出</span>}
+            </a>
           </div>
         )}
       </div>

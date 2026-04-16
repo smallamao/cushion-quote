@@ -1,6 +1,7 @@
 import { getSheetsClient } from "@/lib/sheets-client";
 import type {
   CaseRecord,
+  LeadSource,
   QuotePlanRecord,
   QuoteVersionRecord,
   ReminderStatus,
@@ -75,6 +76,11 @@ export function calculateReminderStatus(version: Pick<QuoteVersionRecord, "versi
 }
 
 export function caseRowToRecord(row: string[]): CaseRecord {
+  const legacyLeadSource = row[20] ?? "";
+  const normalizedLeadSource = normalizeLeadSource(legacyLeadSource);
+  const rawLeadSourceDetail = row.length >= 24 ? row[21] ?? "" : "";
+  const normalizedLeadSourceDetail = normalizeLeadSourceDetail(legacyLeadSource, rawLeadSourceDetail);
+
   return {
     caseId: row[0] ?? "",
     caseName: row[1] ?? "",
@@ -96,9 +102,10 @@ export function caseRowToRecord(row: string[]): CaseRecord {
     internalNotes: row[17] ?? "",
     createdAt: row[18] ?? "",
     updatedAt: row[19] ?? "",
-    leadSource: (row[20] as CaseRecord["leadSource"]) ?? "unknown",
-    leadSourceContact: row[21] ?? "",
-    leadSourceNotes: row[22] ?? "",
+    leadSource: normalizedLeadSource,
+    leadSourceDetail: normalizedLeadSourceDetail,
+    leadSourceContact: row.length >= 24 ? row[22] ?? "" : row[21] ?? "",
+    leadSourceNotes: row.length >= 24 ? row[23] ?? "" : row[22] ?? "",
   };
 }
 
@@ -125,9 +132,40 @@ export function caseRecordToRow(record: CaseRecord): string[] {
     record.createdAt,
     record.updatedAt,
     record.leadSource,
+    record.leadSourceDetail,
     record.leadSourceContact,
     record.leadSourceNotes,
   ];
+}
+
+function normalizeLeadSource(value: string | undefined): LeadSource {
+  if (value === "bni" || value === "rotary") {
+    return "association_network";
+  }
+
+  if (
+    value === "unknown" ||
+    value === "google_search" ||
+    value === "google_maps" ||
+    value === "facebook_instagram" ||
+    value === "line" ||
+    value === "referral" ||
+    value === "repeat_customer" ||
+    value === "walk_in" ||
+    value === "association_network" ||
+    value === "other"
+  ) {
+    return value;
+  }
+
+  return "unknown";
+}
+
+function normalizeLeadSourceDetail(legacySource: string | undefined, detail: string): string {
+  if (detail) return detail;
+  if (legacySource === "bni") return "BNI";
+  if (legacySource === "rotary") return "扶輪社";
+  return "";
 }
 
 export function quoteRowToRecord(row: string[]): QuotePlanRecord {
@@ -347,7 +385,7 @@ export function lineRecordToRow(record: VersionLineRecord): string[] {
 export async function getCaseRows(client: SheetsClient): Promise<string[][]> {
   const response = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: `${CASE_SHEET}!A2:W`,
+    range: `${CASE_SHEET}!A2:X`,
   });
   return response.data.values ?? [];
 }
