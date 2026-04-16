@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useUnreadReplies } from "@/hooks/useUnreadReplies";
 
 export function HeaderUserMenu() {
   const { user } = useCurrentUser();
+  const { unreadCount } = useUnreadReplies();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -31,7 +33,7 @@ export function HeaderUserMenu() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-3 transition-colors hover:bg-[var(--bg-subtle)]"
+        className="relative flex items-center gap-2.5 rounded-full py-1 pl-1 pr-3 transition-colors hover:bg-[var(--bg-subtle)]"
         aria-label="使用者選單"
       >
         {user.picture ? (
@@ -44,6 +46,11 @@ export function HeaderUserMenu() {
         ) : (
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--sidebar-bg)] text-sm font-semibold text-white">
             {initial}
+          </span>
+        )}
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 left-6 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
         <span className="hidden text-sm font-medium text-[var(--text-primary)] sm:inline">

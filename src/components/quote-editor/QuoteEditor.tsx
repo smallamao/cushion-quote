@@ -2181,7 +2181,7 @@ export function QuoteEditor() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="space-y-2">
         <div>
           <h1 className="text-lg font-semibold text-[var(--text-primary)]">報價編輯</h1>
           <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
@@ -2190,7 +2190,7 @@ export function QuoteEditor() {
             {versionLabel ? ` ${versionLabel}` : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 self-start">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"

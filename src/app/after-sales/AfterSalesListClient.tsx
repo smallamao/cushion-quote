@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Search, Stethoscope } from "lucide-react";
 
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAfterSales } from "@/hooks/useAfterSales";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useUnreadReplies } from "@/hooks/useUnreadReplies";
 import type { AfterSalesStatus } from "@/lib/types";
 
 const STATUS_LABEL: Record<AfterSalesStatus, string> = {
@@ -31,9 +33,16 @@ function getSafeStatus(status: AfterSalesStatus | string | undefined): AfterSale
 }
 
 export function AfterSalesListClient() {
+  const router = useRouter();
   const { user } = useCurrentUser();
   const { services, loading, error } = useAfterSales();
+  const { markAsRead } = useUnreadReplies();
   const isAdmin = user?.role === "admin";
+
+  // 進入售後列表頁時標記已讀
+  useEffect(() => {
+    void markAsRead();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<AfterSalesStatus | "all">("all");
   const [page, setPage] = useState(1);
@@ -175,7 +184,8 @@ export function AfterSalesListClient() {
               return (
                 <tr
                   key={s.serviceId}
-                  className="border-t border-[var(--border)] hover:bg-[var(--bg-hover)]"
+                  className="border-t border-[var(--border)] hover:bg-[var(--bg-hover)] cursor-pointer"
+                  onClick={() => router.push(`/after-sales/${s.serviceId}`)}
                 >
                   <td className="px-3 py-2">
                     <Link

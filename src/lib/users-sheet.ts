@@ -4,8 +4,8 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import type { User, UserRole } from "@/lib/types";
 
 const SHEET = "使用者";
-const RANGE_FULL = `${SHEET}!A:G`;
-const RANGE_DATA = `${SHEET}!A2:G`;
+const RANGE_FULL = `${SHEET}!A:H`;
+const RANGE_DATA = `${SHEET}!A2:H`;
 const RANGE_IDS = `${SHEET}!A2:A`;
 
 function rowToUser(row: string[]): User {
@@ -17,6 +17,7 @@ function rowToUser(row: string[]): User {
     isActive: row[4] !== "FALSE",
     createdAt: row[5] ?? "",
     updatedAt: row[6] ?? "",
+    lastReadRepliesAt: row[7] ?? "",
   };
 }
 
@@ -29,6 +30,7 @@ function userToRow(u: User): string[] {
     u.isActive ? "TRUE" : "FALSE",
     u.createdAt,
     u.updatedAt,
+    u.lastReadRepliesAt ?? "",
   ];
 }
 
@@ -97,7 +99,7 @@ export async function createUser(input: {
 
 export async function updateUser(
   userId: string,
-  patch: Partial<Pick<User, "displayName" | "email" | "role" | "isActive">>,
+  patch: Partial<Pick<User, "displayName" | "email" | "role" | "isActive" | "lastReadRepliesAt">>,
 ): Promise<User | null> {
   const client = await getSheetsClient();
   if (!client) return null;
@@ -131,7 +133,7 @@ export async function updateUser(
 
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${SHEET}!A${sheetRow}:G${sheetRow}`,
+    range: `${SHEET}!A${sheetRow}:H${sheetRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [userToRow(updated)] },
   });

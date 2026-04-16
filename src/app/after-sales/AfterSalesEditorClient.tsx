@@ -410,6 +410,68 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
         </div>
       </div>
 
+      {/* 技師快捷資訊卡 */}
+      {readOnly && mode === "edit" && (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-[var(--text-secondary)]">快捷資訊</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {draft.clientName && (
+              <div>
+                <div className="text-[11px] text-[var(--text-tertiary)]">客戶</div>
+                <div className="text-sm font-medium">{draft.clientName}</div>
+              </div>
+            )}
+            {draft.clientPhone && (
+              <div>
+                <div className="text-[11px] text-[var(--text-tertiary)]">電話</div>
+                <a href={`tel:${draft.clientPhone}`} className="text-sm font-medium text-[var(--accent)] underline">
+                  {draft.clientPhone}
+                </a>
+              </div>
+            )}
+            {draft.clientContact2 && (
+              <div>
+                <div className="text-[11px] text-[var(--text-tertiary)]">次要聯絡人</div>
+                <div className="text-sm">{draft.clientContact2}</div>
+              </div>
+            )}
+            {draft.clientPhone2 && (
+              <div>
+                <div className="text-[11px] text-[var(--text-tertiary)]">次要電話</div>
+                <a href={`tel:${draft.clientPhone2}`} className="text-sm font-medium text-[var(--accent)] underline">
+                  {draft.clientPhone2}
+                </a>
+              </div>
+            )}
+            {draft.deliveryAddress && (
+              <div className="sm:col-span-2">
+                <div className="text-[11px] text-[var(--text-tertiary)]">地址</div>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(draft.deliveryAddress)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-medium text-[var(--accent)] underline"
+                >
+                  {draft.deliveryAddress}
+                </a>
+              </div>
+            )}
+            {draft.modelCode && (
+              <div>
+                <div className="text-[11px] text-[var(--text-tertiary)]">款式</div>
+                <div className="text-sm"><span className="font-mono">{draft.modelCode}</span> {draft.modelNameSnapshot}</div>
+              </div>
+            )}
+            {draft.issueDescription && (
+              <div className="sm:col-span-2">
+                <div className="text-[11px] text-[var(--text-tertiary)]">問題描述</div>
+                <div className="whitespace-pre-wrap text-sm">{draft.issueDescription}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 客戶報修區 */}
       <div className={`rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5 ${readOnly ? "pointer-events-none opacity-60" : ""}`}>
         <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">

@@ -195,7 +195,7 @@ export async function updateService(
 
 // ==================== replies ====================
 
-export async function listReplies(serviceId: string): Promise<AfterSalesReply[]> {
+export async function listAllReplies(): Promise<AfterSalesReply[]> {
   const client = await getSheetsClient();
   if (!client) return [];
   try {
@@ -203,13 +203,17 @@ export async function listReplies(serviceId: string): Promise<AfterSalesReply[]>
       spreadsheetId: client.spreadsheetId,
       range: REPLY_RANGE_DATA,
     });
-    const all = (res.data.values ?? []).map(rowToReply).filter((r) => r.replyId);
-    return all
-      .filter((r) => r.serviceId === serviceId)
-      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+    return (res.data.values ?? []).map(rowToReply).filter((r) => r.replyId);
   } catch {
     return [];
   }
+}
+
+export async function listReplies(serviceId: string): Promise<AfterSalesReply[]> {
+  const all = await listAllReplies();
+  return all
+    .filter((r) => r.serviceId === serviceId)
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 }
 
 function generateReplyId(existing: AfterSalesReply[], serviceId: string): string {

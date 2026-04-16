@@ -41,9 +41,10 @@ const SelectContent = React.forwardRef<
         className,
       )}
       position="popper"
+      sideOffset={4}
       {...props}
     >
-      <SelectPrimitive.Viewport className="p-1">
+      <SelectPrimitive.Viewport className="max-h-[min(var(--radix-select-content-available-height),300px)] p-1">
         {children}
       </SelectPrimitive.Viewport>
     </SelectPrimitive.Content>
