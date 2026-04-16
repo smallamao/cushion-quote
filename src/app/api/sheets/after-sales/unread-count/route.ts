@@ -46,6 +46,11 @@ export async function GET(request: Request) {
 
   const lastRead = userRow[7] ?? "";
   if (!lastRead) {
+    // 首次使用：自動初始化為現在，之後的新留言才會算未讀
+    const userId = userRow[0] ?? "";
+    if (userId) {
+      void updateUser(userId, { lastReadRepliesAt: new Date().toISOString() }).catch(() => {});
+    }
     return NextResponse.json({ ok: true, unreadCount: 0 });
   }
 
