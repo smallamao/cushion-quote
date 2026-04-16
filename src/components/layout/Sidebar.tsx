@@ -12,7 +12,6 @@ import {
   ChevronRight,
   FileText,
   HandCoins,
-  LogOut,
   Package,
   Palette,
   Settings,
@@ -163,32 +162,6 @@ export function Sidebar() {
             style={{ opacity: 0.6 }}
           >
             Google Sheets 已連線
-          </div>
-        )}
-
-        {user && (
-          <div className="mt-3 border-t border-white/10 pt-3">
-            {!collapsed && (
-              <div className="mb-1 px-3 text-[11px] text-white" style={{ opacity: 0.7 }}>
-                <div className="truncate">{user.displayName}</div>
-                <div className="truncate text-[10px]" style={{ opacity: 0.6 }}>
-                  {user.role === "admin" ? "管理員" : "技師"}
-                </div>
-              </div>
-            )}
-            <a
-              href="/api/auth/logout"
-              className={[
-                "flex items-center rounded-[var(--radius-md)] py-2 text-[12px] font-medium text-white transition-colors",
-                "hover:bg-[var(--sidebar-hover)]",
-                collapsed ? "justify-center px-0" : "gap-2 px-3",
-              ].join(" ")}
-              style={{ opacity: 0.7 }}
-              title={collapsed ? "登出" : undefined}
-            >
-              <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-              {!collapsed && <span>登出</span>}
-            </a>
           </div>
         )}
       </div>

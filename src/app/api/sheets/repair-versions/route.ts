@@ -135,7 +135,7 @@ export async function POST() {
         const sheetRow = i + 2;
         await client.sheets.spreadsheets.values.update({
           spreadsheetId: client.spreadsheetId,
-          range: `案件!A${sheetRow}:W${sheetRow}`,
+          range: `案件!A${sheetRow}:X${sheetRow}`,
           valueInputOption: "RAW",
           requestBody: { values: [row] },
         });

@@ -7,6 +7,7 @@ import { Plus, Search, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAfterSales } from "@/hooks/useAfterSales";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { AfterSalesStatus } from "@/lib/types";
 
 const STATUS_LABEL: Record<AfterSalesStatus, string> = {
@@ -30,7 +31,9 @@ function getSafeStatus(status: AfterSalesStatus | string | undefined): AfterSale
 }
 
 export function AfterSalesListClient() {
+  const { user } = useCurrentUser();
   const { services, loading, error } = useAfterSales();
+  const isAdmin = user?.role === "admin";
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<AfterSalesStatus | "all">("all");
   const [page, setPage] = useState(1);
@@ -84,12 +87,14 @@ export function AfterSalesListClient() {
             管理客戶報修、派工與維修記錄 {services.length} 筆
           </p>
         </div>
-        <Link href={"/after-sales/new" as never}>
-          <Button>
-            <Plus className="mr-1 h-4 w-4" />
-            新增報修單
-          </Button>
-        </Link>
+        {isAdmin && (
+          <Link href={"/after-sales/new" as never}>
+            <Button>
+              <Plus className="mr-1 h-4 w-4" />
+              新增報修單
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

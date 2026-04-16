@@ -6,6 +6,7 @@ import {
   exchangeGoogleCode,
   getBootstrapAdminEmail,
   signSession,
+  verifySignedState,
 } from "@/lib/auth";
 import {
   countActiveAdmins,
@@ -28,25 +29,12 @@ export async function GET(request: Request) {
     return errorRedirect(request, "missing_code");
   }
 
-  // 驗證 state (CSRF)
-  const cookieState = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith("cq_oauth_state="))
-    ?.split("=")[1];
-
-  let returnTo = "/";
-  try {
-    const decoded = JSON.parse(
-      Buffer.from(stateParam, "base64url").toString("utf-8"),
-    ) as { state: string; returnTo?: string };
-    if (!cookieState || decoded.state !== cookieState) {
-      return errorRedirect(request, "invalid_state");
-    }
-    if (decoded.returnTo) returnTo = decoded.returnTo;
-  } catch {
+  // 驗證 signed state (CSRF) — 不再依賴 cookie
+  const stateResult = verifySignedState(stateParam);
+  if (!stateResult) {
     return errorRedirect(request, "invalid_state");
   }
+  const { returnTo } = stateResult;
 
   // 交換 code → 取得 email
   const googleProfile = await exchangeGoogleCode(code);
@@ -82,12 +70,13 @@ export async function GET(request: Request) {
     return errorRedirect(request, "unauthorized");
   }
 
-  // 簽 session cookie
+  // 簽 session cookie（含 Google 大頭照）
   const token = signSession({
     userId: user.userId,
     email: user.email,
     displayName: user.displayName,
     role: user.role,
+    picture: googleProfile.picture || undefined,
   });
 
   const response = NextResponse.redirect(new URL(returnTo, request.url));
@@ -98,7 +87,5 @@ export async function GET(request: Request) {
     maxAge: SESSION_DURATION_DAYS * 86400,
     path: "/",
   });
-  // 清掉 state cookie
-  response.cookies.set("cq_oauth_state", "", { maxAge: 0, path: "/" });
   return response;
 }

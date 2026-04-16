@@ -128,7 +128,7 @@ async function syncVersionToParents(client: NonNullable<Awaited<ReturnType<typeo
     const sheetRow = caseRowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `案件!A${sheetRow}:W${sheetRow}`,
+      range: `案件!A${sheetRow}:X${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(nextCase)] },
     });

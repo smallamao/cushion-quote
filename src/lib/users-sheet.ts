@@ -97,7 +97,7 @@ export async function createUser(input: {
 
 export async function updateUser(
   userId: string,
-  patch: Partial<Pick<User, "displayName" | "role" | "isActive">>,
+  patch: Partial<Pick<User, "displayName" | "email" | "role" | "isActive">>,
 ): Promise<User | null> {
   const client = await getSheetsClient();
   if (!client) return null;
@@ -114,6 +114,15 @@ export async function updateUser(
   const all = await listUsers();
   const current = all.find((u) => u.userId === userId);
   if (!current) return null;
+
+  if (patch.email) {
+    const normalised = patch.email.trim().toLowerCase();
+    if (all.some((u) => u.email === normalised && u.userId !== userId)) {
+      throw new Error("email 已被其他使用者使用");
+    }
+    patch = { ...patch, email: normalised };
+  }
+
   const updated: User = {
     ...current,
     ...patch,

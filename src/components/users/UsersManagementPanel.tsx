@@ -141,6 +141,26 @@ export function UsersManagementPanel() {
     }
   }
 
+  async function changeEmail(user: User) {
+    const newEmail = prompt(`新的 Email (目前: ${user.email})`, user.email);
+    if (!newEmail || newEmail.trim().toLowerCase() === user.email) return;
+    try {
+      const res = await fetch("/api/sheets/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.userId, email: newEmail.trim() }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) {
+        alert(json.error ?? "更新失敗");
+        return;
+      }
+      await reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "更新失敗");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -222,6 +242,9 @@ export function UsersManagementPanel() {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => changeEmail(u)}>
+                          改信箱
+                        </Button>
                         <Button size="sm" variant="ghost" onClick={() => renameUser(u)}>
                           改名
                         </Button>

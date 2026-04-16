@@ -19,6 +19,7 @@ export async function GET(request: Request) {
       email: session.email,
       displayName: session.displayName,
       role: session.role,
+      picture: session.picture ?? null,
     },
   });
 }

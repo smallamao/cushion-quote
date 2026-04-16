@@ -227,7 +227,7 @@ export async function POST(request: Request) {
     const caseSheetRow = caseRowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `案件!A${caseSheetRow}:W${caseSheetRow}`,
+      range: `案件!A${caseSheetRow}:X${caseSheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(updatedCase)] },
     });

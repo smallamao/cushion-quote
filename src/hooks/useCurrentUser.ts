@@ -9,6 +9,7 @@ export interface CurrentUser {
   email: string;
   displayName: string;
   role: UserRole;
+  picture?: string | null;
 }
 
 export function useCurrentUser(): {

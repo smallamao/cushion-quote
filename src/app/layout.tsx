@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 
+import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
 import { Sidebar } from "@/components/layout/Sidebar";
 import "@/app/globals.css";
 
@@ -48,9 +49,7 @@ export default function RootLayout({
               <div className="text-sm font-semibold text-[var(--text-primary)]">
                 馬鈴薯沙發
               </div>
-              <div className="text-xs text-[var(--text-tertiary)]">
-                CushionQuote
-              </div>
+              <HeaderUserMenu />
             </header>
             <main className="page-container">{children}</main>
           </div>

@@ -96,7 +96,7 @@ interface GoogleIdTokenPayload {
 /** 用 code 換 tokens,並驗證 id_token */
 export async function exchangeGoogleCode(
   code: string,
-): Promise<{ email: string; name: string } | null> {
+): Promise<{ email: string; name: string; picture: string } | null> {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     throw new Error("Google OAuth credentials not configured");
   }
@@ -135,15 +135,73 @@ export async function exchangeGoogleCode(
     ) as GoogleIdTokenPayload;
     if (!payload.email) return null;
     if (payload.email_verified === false) return null;
-    return { email: payload.email.toLowerCase(), name: payload.name ?? "" };
+    return {
+      email: payload.email.toLowerCase(),
+      name: payload.name ?? "",
+      picture: payload.picture ?? "",
+    };
   } catch {
     return null;
   }
 }
 
-/** 產生 state 字串 + 驗證 (防止 CSRF) */
-export function generateState(): string {
-  return crypto.randomBytes(16).toString("base64url");
+/**
+ * 產生帶 HMAC 簽章的 OAuth state payload（base64url 編碼）。
+ * 簽章內嵌於 URL state 參數中，callback 端可直接驗證，
+ * 不再依賴 cookie 傳遞 state，避免跨站 redirect 遺失 cookie 的問題。
+ */
+export function buildSignedState(returnTo: string): string {
+  if (!AUTH_SECRET) throw new Error("AUTH_SECRET not configured");
+  const nonce = crypto.randomBytes(16).toString("base64url");
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = crypto
+    .createHmac("sha256", AUTH_SECRET)
+    .update(`${ts}:${nonce}:${returnTo}`)
+    .digest("base64url");
+  return Buffer.from(
+    JSON.stringify({ nonce, ts, sig, returnTo }),
+  ).toString("base64url");
+}
+
+const STATE_MAX_AGE_SECONDS = 600; // 10 分鐘
+
+/**
+ * 驗證 signed state 並回傳 returnTo；失敗回 null。
+ */
+export function verifySignedState(
+  stateParam: string,
+): { returnTo: string } | null {
+  if (!AUTH_SECRET) return null;
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(stateParam, "base64url").toString("utf-8"),
+    ) as { nonce?: string; ts?: number; sig?: string; returnTo?: string };
+    if (!decoded.nonce || !decoded.ts || !decoded.sig) return null;
+
+    // 檢查時效
+    const now = Math.floor(Date.now() / 1000);
+    if (decoded.ts > now + 60) return null;
+    if (now - decoded.ts > STATE_MAX_AGE_SECONDS) return null;
+
+    // 驗證簽章（含 returnTo，防止竄改重導目標）
+    const expectedSig = crypto
+      .createHmac("sha256", AUTH_SECRET)
+      .update(`${decoded.ts}:${decoded.nonce}:${decoded.returnTo ?? ""}`)
+      .digest("base64url");
+    if (
+      decoded.sig.length !== expectedSig.length ||
+      !crypto.timingSafeEqual(
+        Buffer.from(decoded.sig),
+        Buffer.from(expectedSig),
+      )
+    ) {
+      return null;
+    }
+
+    return { returnTo: decoded.returnTo || "/" };
+  } catch {
+    return null;
+  }
 }
 
 export function getBootstrapAdminEmail(): string {

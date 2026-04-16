@@ -93,9 +93,17 @@ async function uploadImage(file: File): Promise<string> {
 
 export function AfterSalesEditorClient({ mode, serviceId }: Props) {
   const router = useRouter();
-  const { user } = useCurrentUser();
+  const { user, loading: userLoading } = useCurrentUser();
   const { equipment } = useEquipment();
   const { settings } = useSettings();
+  const readOnly = user?.role === "technician";
+
+  // 技師不能新增工單，導回列表
+  useEffect(() => {
+    if (!userLoading && readOnly && mode === "create") {
+      router.replace("/after-sales");
+    }
+  }, [userLoading, readOnly, mode, router]);
 
   const [draft, setDraft] = useState<DraftService>(emptyDraft());
   const [meta, setMeta] = useState<Pick<
@@ -373,7 +381,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           <div>
             <h1 className="flex items-center gap-2 text-xl font-bold">
               <Stethoscope className="h-5 w-5" />
-              {mode === "create" ? "新增售後服務單" : `編輯 ${meta?.serviceId ?? ""}`}
+              {mode === "create" ? "新增售後服務單" : readOnly ? `檢視 ${meta?.serviceId ?? ""}` : `編輯 ${meta?.serviceId ?? ""}`}
             </h1>
             {meta && (
               <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
@@ -389,19 +397,21 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
               預覽 PDF
             </Button>
           )}
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-1 h-4 w-4" />
-            )}
-            {mode === "create" ? "建立" : "儲存變更"}
-          </Button>
+          {!readOnly && (
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-1 h-4 w-4" />
+              )}
+              {mode === "create" ? "建立" : "儲存變更"}
+            </Button>
+          )}
         </div>
       </div>
 
       {/* 客戶報修區 */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
+      <div className={`rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5 ${readOnly ? "pointer-events-none opacity-60" : ""}`}>
         <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">
           客戶報修資訊
         </h2>
@@ -556,7 +566,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
       </div>
 
       {/* 派工區 */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
+      <div className={`rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5 ${readOnly ? "pointer-events-none opacity-60" : ""}`}>
         <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">
           派工 / 維修記錄
         </h2>

@@ -77,6 +77,7 @@ export async function PATCH(request: Request) {
   }
   let body: {
     userId?: string;
+    email?: string;
     displayName?: string;
     role?: UserRole;
     isActive?: boolean;
@@ -105,17 +106,24 @@ export async function PATCH(request: Request) {
     }
   }
   const patch: Partial<{
+    email: string;
     displayName: string;
     role: UserRole;
     isActive: boolean;
   }> = {};
+  if (body.email !== undefined) patch.email = body.email.trim().toLowerCase();
   if (body.displayName !== undefined) patch.displayName = body.displayName.trim();
   if (body.role !== undefined) patch.role = body.role;
   if (body.isActive !== undefined) patch.isActive = body.isActive;
 
-  const user = await updateUser(body.userId, patch);
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "使用者不存在" }, { status: 404 });
+  try {
+    const user = await updateUser(body.userId, patch);
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "使用者不存在" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, user });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "更新失敗";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
   }
-  return NextResponse.json({ ok: true, user });
 }

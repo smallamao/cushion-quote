@@ -99,6 +99,7 @@ export interface Session {
   email: string;
   displayName: string;
   role: UserRole;
+  picture?: string;
   iat: number;
   exp: number;
 }

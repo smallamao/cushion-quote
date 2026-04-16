@@ -1923,7 +1923,10 @@ export function QuoteEditor() {
             },
           }),
         });
-        if (!response.ok) throw new Error("儲存新版本失敗");
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(errBody?.error ? `儲存新版本失敗: ${errBody.error}` : "儲存新版本失敗");
+        }
         const payload = (await response.json()) as { quoteId: string; versionId: string };
 
         // Update case details including case name

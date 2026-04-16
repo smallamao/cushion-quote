@@ -42,6 +42,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
+  if (session.role === "technician") {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
   const { serviceId } = await context.params;
 
   interface PatchBody {
