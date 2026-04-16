@@ -13,7 +13,14 @@ function getSession(request: Request) {
   return verifySession(token);
 }
 
-/** GET — 回傳目前使用者的未讀回覆數（單次 batchGet 讀取兩張表） */
+interface UnreadItem {
+  serviceId: string;
+  author: string;
+  content: string;
+  occurredAt: string;
+}
+
+/** GET — 回傳未讀回覆數 + 最新 20 筆未讀明細 */
 export async function GET(request: Request) {
   const session = getSession(request);
   if (!session) {
@@ -22,10 +29,9 @@ export async function GET(request: Request) {
 
   const client = await getSheetsClient();
   if (!client) {
-    return NextResponse.json({ ok: true, unreadCount: 0 });
+    return NextResponse.json({ ok: true, unreadCount: 0, items: [] });
   }
 
-  // 一次 batchGet 同時讀使用者表和回覆表
   const res = await client.sheets.spreadsheets.values.batchGet({
     spreadsheetId: client.spreadsheetId,
     ranges: ["使用者!A2:H", "售後服務回應!A2:G"],
@@ -35,39 +41,46 @@ export async function GET(request: Request) {
   const userRows = (usersData?.values ?? []) as string[][];
   const replyRows = (repliesData?.values ?? []) as string[][];
 
-  // 找當前使用者的 lastReadRepliesAt (col H = index 7)
   const emailLower = session.email.toLowerCase();
   const userRow = userRows.find(
     (r) => (r[1] ?? "").toLowerCase() === emailLower && r[4] !== "FALSE",
   );
   if (!userRow) {
-    return NextResponse.json({ ok: true, unreadCount: 0 });
+    return NextResponse.json({ ok: true, unreadCount: 0, items: [] });
   }
 
   const lastRead = userRow[7] ?? "";
   if (!lastRead) {
-    // 首次使用：自動初始化為現在，之後的新留言才會算未讀
     const userId = userRow[0] ?? "";
     if (userId) {
       void updateUser(userId, { lastReadRepliesAt: new Date().toISOString() }).catch(() => {});
     }
-    return NextResponse.json({ ok: true, unreadCount: 0 });
+    return NextResponse.json({ ok: true, unreadCount: 0, items: [] });
   }
 
-  // 計算未讀：occurredAt(col C=2) > lastRead 且 author(col D=3) 不是自己
-  let unreadCount = 0;
+  // row: [0]=replyId [1]=serviceId [2]=occurredAt [3]=author [4]=content [5]=attachments [6]=createdAt
+  const unreadItems: UnreadItem[] = [];
   for (const row of replyRows) {
     const occurredAt = row[2] ?? "";
     const author = row[3] ?? "";
     if (occurredAt > lastRead && author !== session.displayName) {
-      unreadCount++;
+      unreadItems.push({
+        serviceId: row[1] ?? "",
+        author,
+        content: (row[4] ?? "").slice(0, 80),
+        occurredAt,
+      });
     }
   }
 
-  return NextResponse.json({ ok: true, unreadCount });
+  // 按時間倒序，最多回傳 20 筆
+  unreadItems.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+  const items = unreadItems.slice(0, 20);
+
+  return NextResponse.json({ ok: true, unreadCount: unreadItems.length, items });
 }
 
-/** POST — 標記全部已讀（更新 lastReadRepliesAt） */
+/** POST — 標記全部已讀 */
 export async function POST(request: Request) {
   const session = getSession(request);
   if (!session) {

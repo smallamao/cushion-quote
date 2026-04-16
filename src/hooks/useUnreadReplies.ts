@@ -2,10 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const POLL_INTERVAL = 60_000; // 60 秒
+const POLL_INTERVAL = 60_000;
+
+export interface UnreadItem {
+  serviceId: string;
+  author: string;
+  content: string;
+  occurredAt: string;
+}
 
 export function useUnreadReplies() {
   const [unreadCount, setUnreadCount] = useState(0);
+  const [items, setItems] = useState<UnreadItem[]>([]);
   const [loading, setLoading] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -14,9 +22,14 @@ export function useUnreadReplies() {
       const res = await fetch("/api/sheets/after-sales/unread-count", {
         cache: "no-store",
       });
-      const json = (await res.json()) as { ok: boolean; unreadCount?: number };
+      const json = (await res.json()) as {
+        ok: boolean;
+        unreadCount?: number;
+        items?: UnreadItem[];
+      };
       if (json.ok) {
         setUnreadCount(json.unreadCount ?? 0);
+        setItems(json.items ?? []);
       }
     } catch {
       // ignore
@@ -29,6 +42,7 @@ export function useUnreadReplies() {
     try {
       await fetch("/api/sheets/after-sales/unread-count", { method: "POST" });
       setUnreadCount(0);
+      setItems([]);
     } catch {
       // ignore
     }
@@ -68,5 +82,5 @@ export function useUnreadReplies() {
     };
   }, [fetchCount]);
 
-  return { unreadCount, loading, markAsRead, refresh: fetchCount };
+  return { unreadCount, items, loading, markAsRead, refresh: fetchCount };
 }
