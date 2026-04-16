@@ -39,9 +39,10 @@ export function AfterSalesListClient() {
   const { markAsRead } = useUnreadReplies();
   const isAdmin = user?.role === "admin";
 
-  // 進入售後列表頁時標記已讀
+  // 進入售後列表頁時延遲標記已讀，避免跟頁面載入搶 API 配額
   useEffect(() => {
-    void markAsRead();
+    const t = setTimeout(() => void markAsRead(), 3000);
+    return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<AfterSalesStatus | "all">("all");
