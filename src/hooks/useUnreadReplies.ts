@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const POLL_INTERVAL = 60_000;
+const POLL_INTERVAL = 15_000; // 15 秒，小團隊在 Sheets API 配額內
 
 export interface UnreadItem {
   serviceId: string;
