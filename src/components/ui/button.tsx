@@ -22,10 +22,10 @@ const buttonVariants = cva(
           "rounded-[var(--radius-md)] bg-[var(--error)] px-4 py-2 text-white hover:opacity-90",
       },
       size: {
-        default: "h-9",
-        sm: "h-8 px-3 text-xs",
-        lg: "h-10 px-5",
-        icon: "h-8 w-8 p-0",
+        default: "h-11 md:h-9",
+        sm: "h-10 md:h-8 px-3 text-xs",
+        lg: "h-12 md:h-10 px-5",
+        icon: "h-10 w-10 md:h-8 md:w-8 p-0",
       },
     },
     defaultVariants: {
