@@ -135,7 +135,7 @@ export function ProductCombobox({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-[calc(100%+2px)] z-50 w-[380px] rounded-md border border-[var(--border)] bg-white shadow-lg">
+        <div className="absolute left-0 top-[calc(100%+2px)] z-50 w-[380px] max-w-[calc(100vw-2rem)] rounded-md border border-[var(--border)] bg-white shadow-lg">
           <div className="flex items-center gap-1.5 border-b border-[var(--border)] px-2 py-1.5">
             <Search className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
             <input
@@ -169,7 +169,7 @@ export function ProductCombobox({
                     key={p.id}
                     onMouseEnter={() => setHighlight(idx)}
                     onClick={() => pick(p)}
-                    className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs ${
+                    className={`flex w-full items-center gap-2 px-2 py-2.5 text-left text-xs ${
                       isActive ? "bg-[var(--bg-subtle)]" : ""
                     }`}
                   >
