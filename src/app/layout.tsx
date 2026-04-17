@@ -3,6 +3,7 @@ import { DM_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
+import { MobileDrawer } from "@/components/layout/MobileDrawer";
 import { Sidebar } from "@/components/layout/Sidebar";
 import "@/app/globals.css";
 
@@ -45,9 +46,12 @@ export default function RootLayout({
         <div className="app-shell">
           <Sidebar />
           <div className="main-area">
-            <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-elevated)] px-8 py-3">
-              <div className="text-sm font-semibold text-[var(--text-primary)]">
-                馬鈴薯沙發
+            <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 md:px-8">
+              <div className="flex items-center">
+                <MobileDrawer />
+                <div className="text-sm font-semibold text-[var(--text-primary)]">
+                  馬鈴薯沙發
+                </div>
               </div>
               <HeaderUserMenu />
             </header>
