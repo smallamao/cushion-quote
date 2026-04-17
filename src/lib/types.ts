@@ -760,3 +760,7 @@ export interface PurchaseProductHistoryResponse {
   history: PurchaseProductHistoryItem[];
   error?: string;
 }
+
+// Re-export Company/Contact types
+export type { Company, Contact, CompanyWithContacts, CompanyWithPrimaryContact } from "./types/company";
+export { companyToClient } from "./types/company";

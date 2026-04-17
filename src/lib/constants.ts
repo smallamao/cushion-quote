@@ -191,6 +191,16 @@ export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
   other: "其他",
 };
 
+export const CONTACT_ROLE_SUGGESTIONS = [
+  "老闆",
+  "採購",
+  "設計師",
+  "工程",
+  "業務",
+  "會計",
+  "其他",
+] as const;
+
 export interface QuoteTemplate {
   id: string;
   label: string;
