@@ -41,3 +41,17 @@ export async function getSheetsClient(): Promise<{ sheets: sheets_v4.Sheets; spr
     spreadsheetId,
   };
 }
+
+export async function getDriveClient() {
+  const credentials = getCredentials();
+  if (!credentials) return null;
+
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: [
+      "https://www.googleapis.com/auth/drive.file",
+    ],
+  });
+
+  return google.drive({ version: "v3", auth });
+}
