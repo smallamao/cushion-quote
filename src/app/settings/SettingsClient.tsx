@@ -20,7 +20,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TemplateManager } from "@/components/settings/TemplateManager";
-import { ClientsManagementPanel } from "@/components/clients/ClientsManagementPanel";
+import { CompanyListPanel } from "@/components/clients/CompanyListPanel";
 import { EquipmentCatalogPanel } from "@/components/equipment/EquipmentCatalogPanel";
 import { SuppliersManagementPanel } from "@/components/suppliers/SuppliersManagementPanel";
 import { UsersManagementPanel } from "@/components/users/UsersManagementPanel";
@@ -418,7 +418,7 @@ export function SettingsClient() {
               <span className="text-sm font-medium">客戶主檔</span>
             </div>
             <div className="px-6 py-4">
-              <ClientsManagementPanel />
+              <CompanyListPanel />
             </div>
           </div>
         </TabsContent>
