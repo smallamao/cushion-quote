@@ -33,7 +33,7 @@ function NotificationPanel({
   onClose: () => void;
 }) {
   return (
-    <div className="absolute right-0 top-full mt-1 w-80 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-lg)]">
+    <div className="fixed inset-x-4 top-auto mt-1 w-auto rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-lg)] md:absolute md:inset-auto md:right-0 md:top-full md:w-80">
       <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <span className="text-sm font-semibold text-[var(--text-primary)]">
           通知 {unreadCount > 0 && `(${unreadCount})`}
@@ -130,7 +130,7 @@ export function HeaderUserMenu() {
         <button
           type="button"
           onClick={() => { setNotiOpen((v) => !v); setMenuOpen(false); }}
-          className="relative flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--bg-subtle)]"
+          className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[var(--bg-subtle)]"
           aria-label="通知"
         >
           <Bell className="h-4.5 w-4.5 text-[var(--text-secondary)]" strokeWidth={1.5} />
@@ -176,7 +176,7 @@ export function HeaderUserMenu() {
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-full mt-1 w-52 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]">
+          <div className="fixed inset-x-4 top-auto mt-1 w-auto rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)] md:absolute md:inset-auto md:right-0 md:top-full md:w-52">
             <div className="border-b border-[var(--border)] px-4 py-3">
               <div className="text-sm font-medium text-[var(--text-primary)] truncate">
                 {user.displayName}
