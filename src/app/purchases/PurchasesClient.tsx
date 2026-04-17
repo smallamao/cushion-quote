@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePurchases } from "@/hooks/usePurchases";
 import { useSuppliers } from "@/hooks/useSuppliers";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import type { PurchaseOrderStatus } from "@/lib/types";
 
 const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
@@ -40,6 +41,7 @@ function getSafeStatus(status: PurchaseOrderStatus | string | null | undefined):
 export function PurchasesClient() {
   const { orders, loading } = usePurchases();
   const { suppliers } = useSuppliers();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | "all">("all");
 
@@ -93,7 +95,7 @@ export function PurchasesClient() {
             className="pl-8"
           />
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="overflow-x-auto flex-nowrap flex items-center gap-1.5">
           {(["all", "draft", "sent", "confirmed", "received", "cancelled"] as const).map(
             (status) => (
               <button
@@ -101,7 +103,7 @@ export function PurchasesClient() {
                 type="button"
                 onClick={() => setStatusFilter(status)}
                 className={[
-                  "rounded-full px-3 py-1 text-xs transition-colors",
+                  "rounded-full px-3 py-1 text-xs transition-colors whitespace-nowrap",
                   statusFilter === status
                     ? "bg-[var(--accent)] text-white"
                     : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
@@ -114,82 +116,121 @@ export function PurchasesClient() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium">採購單號</th>
-              <th className="px-3 py-2 text-left font-medium">日期</th>
-              <th className="px-3 py-2 text-left font-medium">廠商</th>
-              <th className="px-3 py-2 text-right font-medium">合計金額</th>
-              <th className="px-3 py-2 text-left font-medium">狀態</th>
-              <th className="px-3 py-2 text-left font-medium">附註</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--border)]">
-            {loading && (
-              <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
-                  載入中…
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
-                  尚無採購單
-                </td>
-              </tr>
-            )}
-            {filtered.map((o) => (
-              <tr key={o.orderId} className="hover:bg-[var(--bg-hover)]">
-                <td className="px-3 py-2">
-                  <Link
-                    href={`/purchases/${o.orderId}`}
-                    className="block font-mono text-xs text-[var(--accent)] hover:underline"
+      {isMobile ? (
+        <div className="space-y-2">
+          {loading && (
+            <p className="py-8 text-center text-xs text-[var(--text-tertiary)]">載入中…</p>
+          )}
+          {!loading && filtered.length === 0 && (
+            <p className="py-8 text-center text-xs text-[var(--text-tertiary)]">尚無採購單</p>
+          )}
+          {filtered.map((o) => {
+            const safeStatus = getSafeStatus(o.status);
+            return (
+              <Link
+                key={o.orderId}
+                href={`/purchases/${o.orderId}`}
+                className="block rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 active:bg-[var(--bg-hover)]"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs text-[var(--accent)]">{o.orderId}</span>
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
                   >
-                    {o.orderId}
-                  </Link>
-                </td>
-                <td className="px-3 py-2 text-xs">
-                  <Link href={`/purchases/${o.orderId}`} className="block">
-                    {o.orderDate}
-                  </Link>
-                </td>
-                <td className="px-3 py-2 text-xs">
-                  <Link href={`/purchases/${o.orderId}`} className="block">
-                    {supplierMap.get(o.supplierId) || o.supplierSnapshot?.shortName || o.supplierSnapshot?.name || o.supplierId}
-                  </Link>
-                </td>
-                <td className="px-3 py-2 text-right font-mono text-xs">
-                  <Link href={`/purchases/${o.orderId}`} className="block">
+                    {STATUS_LABEL[safeStatus]}
+                  </span>
+                </div>
+                <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                  {supplierMap.get(o.supplierId) || o.supplierSnapshot?.shortName || o.supplierSnapshot?.name || o.supplierId}
+                </div>
+                <div className="mt-1 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+                  <span>{o.orderDate}</span>
+                  <span className="font-mono font-medium text-[var(--text-primary)]">
                     ${fmtMoney(o.totalAmount)}
-                  </Link>
-                </td>
-                <td className="px-3 py-2">
-                  {(() => {
-                    const safeStatus = getSafeStatus(o.status);
-                    return (
-                      <Link href={`/purchases/${o.orderId}`} className="block">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
-                        >
-                          {STATUS_LABEL[safeStatus]}
-                        </span>
-                      </Link>
-                    );
-                  })()}
-                </td>
-                <td className="px-3 py-2 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
-                  <Link href={`/purchases/${o.orderId}`} className="block truncate">
-                    {o.notes}
-                  </Link>
-                </td>
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+          <table className="w-full text-sm">
+            <thead className="bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">採購單號</th>
+                <th className="px-3 py-2 text-left font-medium">日期</th>
+                <th className="px-3 py-2 text-left font-medium">廠商</th>
+                <th className="px-3 py-2 text-right font-medium">合計金額</th>
+                <th className="px-3 py-2 text-left font-medium">狀態</th>
+                <th className="px-3 py-2 text-left font-medium">附註</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {loading && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
+                    載入中…
+                  </td>
+                </tr>
+              )}
+              {!loading && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
+                    尚無採購單
+                  </td>
+                </tr>
+              )}
+              {filtered.map((o) => (
+                <tr key={o.orderId} className="hover:bg-[var(--bg-hover)]">
+                  <td className="px-3 py-2">
+                    <Link
+                      href={`/purchases/${o.orderId}`}
+                      className="block font-mono text-xs text-[var(--accent)] hover:underline"
+                    >
+                      {o.orderId}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    <Link href={`/purchases/${o.orderId}`} className="block">
+                      {o.orderDate}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    <Link href={`/purchases/${o.orderId}`} className="block">
+                      {supplierMap.get(o.supplierId) || o.supplierSnapshot?.shortName || o.supplierSnapshot?.name || o.supplierId}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">
+                    <Link href={`/purchases/${o.orderId}`} className="block">
+                      ${fmtMoney(o.totalAmount)}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2">
+                    {(() => {
+                      const safeStatus = getSafeStatus(o.status);
+                      return (
+                        <Link href={`/purchases/${o.orderId}`} className="block">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
+                          >
+                            {STATUS_LABEL[safeStatus]}
+                          </span>
+                        </Link>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
+                    <Link href={`/purchases/${o.orderId}`} className="block truncate">
+                      {o.notes}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
