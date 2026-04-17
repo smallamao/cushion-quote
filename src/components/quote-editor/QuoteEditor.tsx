@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Copy,
   Download,
+  Ellipsis,
   FilePlus,
   GripVertical,
   Image as ImageIcon,
@@ -640,6 +641,7 @@ export function QuoteEditor() {
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [saving, setSaving] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyingVersion, setCopyingVersion] = useState(false);
   const [activeVersion, setActiveVersion] = useState<QuoteVersionRecord | null>(null);
@@ -2193,89 +2195,169 @@ export function QuoteEditor() {
             {versionLabel ? ` ${versionLabel}` : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={saving}
-            onClick={handleSave}
-          >
-            {saving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Save className="h-3.5 w-3.5" />
-            )}
-            {saving ? "儲存中..." : isEditMode ? "更新" : "儲存"}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={saving || copyingVersion}
-            onClick={() => setCopyDialogOpen(true)}
-          >
-            <Copy className="h-3.5 w-3.5" />
-            複製
-          </Button>
-          <Button size="sm" variant="ghost" onClick={handleCopyText}>
-            <MessageSquare className="h-3.5 w-3.5" />
-            複製文字版
-          </Button>
-          <Button
-            size="sm"
-            disabled={jpgLoading}
-            onClick={handleDownloadJpg}
-          >
-            {jpgLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <ImageIcon className="h-3.5 w-3.5" />
-            )}
-            {jpgLoading ? "生成中..." : "下載 JPG"}
-          </Button>
-          <div className="flex items-center">
+        {isMobile ? (
+          /* ---- Mobile: Save prominent + "more" menu ---- */
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
-              variant="outline"
-              disabled={pdfLoading}
-              onClick={handlePreviewPDF}
-              className="rounded-r-none"
+              disabled={saving}
+              onClick={handleSave}
+              className="flex-1"
             >
-              {pdfLoading ? (
+              {saving ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Download className="h-3.5 w-3.5" />
+                <Save className="h-3.5 w-3.5" />
               )}
-              {pdfLoading ? "生成中..." : "預覽 PDF"}
+              {saving ? "儲存中..." : isEditMode ? "更新" : "儲存"}
+            </Button>
+            <Button size="sm" onClick={handleNewQuote}>
+              <FilePlus className="h-3.5 w-3.5" />
+            </Button>
+            <div className="relative">
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => setMobileMoreOpen((v) => !v)}
+              >
+                <Ellipsis className="h-4 w-4" />
+              </Button>
+              {mobileMoreOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setMobileMoreOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]">
+                    <button
+                      type="button"
+                      disabled={saving || copyingVersion}
+                      onClick={() => { setCopyDialogOpen(true); setMobileMoreOpen(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)] disabled:opacity-40"
+                    >
+                      <Copy className="h-4 w-4 text-[var(--text-secondary)]" />
+                      複製
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { handleCopyText(); setMobileMoreOpen(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)]"
+                    >
+                      <MessageSquare className="h-4 w-4 text-[var(--text-secondary)]" />
+                      複製文字版
+                    </button>
+                    <button
+                      type="button"
+                      disabled={jpgLoading}
+                      onClick={() => { handleDownloadJpg(); setMobileMoreOpen(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)] disabled:opacity-40"
+                    >
+                      <ImageIcon className="h-4 w-4 text-[var(--text-secondary)]" />
+                      {jpgLoading ? "生成中..." : "下載 JPG"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={pdfLoading}
+                      onClick={() => { handlePreviewPDF(); setMobileMoreOpen(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)] disabled:opacity-40"
+                    >
+                      <Download className="h-4 w-4 text-[var(--text-secondary)]" />
+                      {pdfLoading ? "生成中..." : `預覽 PDF (${pdfPageMode === "a4" ? "A4" : "長版"})`}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* ---- Desktop: all buttons inline (unchanged) ---- */
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={handleSave}
+            >
+              {saving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              {saving ? "儲存中..." : isEditMode ? "更新" : "儲存"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={saving || copyingVersion}
+              onClick={() => setCopyDialogOpen(true)}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              複製
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleCopyText}>
+              <MessageSquare className="h-3.5 w-3.5" />
+              複製文字版
             </Button>
             <Button
               size="sm"
-              variant="outline"
-              className="rounded-l-none border-l-0 px-2 text-[10px]"
-              onClick={() => setPdfPageMode((m) => (m === "a4" ? "long" : "a4"))}
+              disabled={jpgLoading}
+              onClick={handleDownloadJpg}
             >
-              {pdfPageMode === "a4" ? "A4" : "長版"}
+              {jpgLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <ImageIcon className="h-3.5 w-3.5" />
+              )}
+              {jpgLoading ? "生成中..." : "下載 JPG"}
+            </Button>
+            <div className="flex items-center">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pdfLoading}
+                onClick={handlePreviewPDF}
+                className="rounded-r-none"
+              >
+                {pdfLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                {pdfLoading ? "生成中..." : "預覽 PDF"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-l-none border-l-0 px-2 text-[10px]"
+                onClick={() => setPdfPageMode((m) => (m === "a4" ? "long" : "a4"))}
+              >
+                {pdfPageMode === "a4" ? "A4" : "長版"}
+              </Button>
+            </div>
+            <Button size="sm" onClick={handleNewQuote}>
+              <FilePlus className="h-3.5 w-3.5" />
+              新建報價
             </Button>
           </div>
-          <Button size="sm" onClick={handleNewQuote}>
-            <FilePlus className="h-3.5 w-3.5" />
-            新建報價
-          </Button>
-        </div>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className={isMobile ? "space-y-2" : "flex flex-wrap items-center gap-3"}>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-[var(--text-secondary)]">報價單</span>
           <Input
             value={quoteId}
             onChange={(e) => setQuoteId(e.target.value)}
-            className="h-8 w-48 text-sm font-semibold"
+            className={isMobile ? "h-8 flex-1 text-sm font-semibold" : "h-8 w-48 text-sm font-semibold"}
             placeholder="CQ-YYYYMMDD-01"
             disabled={Boolean(versionId)}
           />
+          <span className="badge badge-draft">{STATUS_LABELS[status]}</span>
         </div>
-        <span className="badge badge-draft">{STATUS_LABELS[status]}</span>
-        <span className="text-xs text-[var(--text-secondary)]">{localDraftStatusLabel}</span>
+        {!isMobile && (
+          <span className="text-xs text-[var(--text-secondary)]">{localDraftStatusLabel}</span>
+        )}
         <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--text-secondary)]">通路</span>
           <Select value={channel} onValueChange={(v) => setChannel(v as Channel)}>
@@ -2290,8 +2372,6 @@ export function QuoteEditor() {
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--text-secondary)]">有效至</span>
           <Input
             type="date"
@@ -2299,7 +2379,7 @@ export function QuoteEditor() {
             onChange={(e) => setValidUntil(e.target.value)}
             className="h-8 w-40 text-xs"
           />
-          {[7, 14, 30].map((d) => (
+          {!isMobile && [7, 14, 30].map((d) => (
             <Button
               key={d}
               type="button"
