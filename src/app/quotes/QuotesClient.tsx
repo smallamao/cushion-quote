@@ -13,6 +13,7 @@ import {
 import type { QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import { formatCurrency } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -64,6 +65,7 @@ function compareDateTextDesc(a: string, b: string): number {
 
 export function QuotesClient() {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [versions, setVersions] = useState<VersionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
@@ -454,19 +456,21 @@ export function QuotesClient() {
               ))}
             </SelectContent>
           </Select>
-          <Input
-            type="date"
-            value={filterDateFrom}
-            onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="w-full lg:w-44"
-          />
-          <span className="hidden text-sm text-[var(--text-tertiary)] lg:inline">~</span>
-          <Input
-            type="date"
-            value={filterDateTo}
-            onChange={(e) => setFilterDateTo(e.target.value)}
-            className="w-full lg:w-44"
-          />
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <Input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+              className="w-full lg:w-44"
+            />
+            <span className="hidden text-sm text-[var(--text-tertiary)] md:inline">~</span>
+            <Input
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+              className="w-full lg:w-44"
+            />
+          </div>
           <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
             <Checkbox
               checked={showSuperseded}
@@ -485,6 +489,69 @@ export function QuotesClient() {
           </div>
         ) : sorted.length === 0 ? (
           <div className="py-12 text-center text-sm text-[var(--text-secondary)]">尚無報價紀錄</div>
+        ) : isMobile ? (
+          <div className="space-y-3 p-3">
+            {sorted.map((version) => {
+              const statusInfo = VERSION_STATUS_MAP[version.versionStatus] ?? VERSION_STATUS_MAP.draft;
+              const isBusy = busyVersionId === version.versionId;
+              const contact = version.contactNameSnapshot?.trim();
+              return (
+                <div
+                  key={version.versionId}
+                  className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs text-[var(--accent)]">{version.quoteId}</span>
+                    <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-sm font-semibold text-[var(--text-primary)]">
+                      {version.clientNameSnapshot || contact || "—"}
+                      {version.clientNameSnapshot && contact && (
+                        <span className="ml-1 font-normal text-xs text-[var(--text-secondary)]">
+                          {contact}
+                        </span>
+                      )}
+                    </div>
+                    {version.quoteNameSnapshot && (
+                      <div className="mt-0.5 text-sm font-medium text-[var(--text-primary)]">
+                        {version.quoteNameSnapshot}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-1.5 text-xs text-[var(--text-tertiary)]">
+                    {version.quoteDate || version.createdAt || "—"}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-[var(--text-primary)]">
+                      {formatCurrency(version.totalAmount)}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        onClick={() => openVersion(version.versionId, version.caseId, version.quoteId)}
+                        className="h-7 gap-1 whitespace-nowrap px-2 text-xs"
+                        disabled={isBusy}
+                      >
+                        <Edit className="h-3 w-3" />
+                        編輯
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleDuplicate(version)}
+                        className="h-7 w-7 p-0"
+                        title="複製為新案件"
+                        disabled={isBusy}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table" style={{ width: table.getTotalSize() }}>
