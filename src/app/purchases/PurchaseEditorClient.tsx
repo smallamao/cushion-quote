@@ -33,6 +33,9 @@ import { fetchPurchaseOrder, usePurchases } from "@/hooks/usePurchases";
 import { usePurchaseProducts } from "@/hooks/usePurchaseProducts";
 import { useSettings } from "@/hooks/useSettings";
 import { useSuppliers } from "@/hooks/useSuppliers";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { MobilePurchaseItemCard } from "@/components/purchases/MobilePurchaseItemCard";
+import { ProductCombobox } from "@/components/purchases/ProductCombobox";
 import {
   parsePurchasePasteText,
   resolveParsedLines,
@@ -158,6 +161,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
   const { settings } = useSettings();
   const { orders, createOrder, updateOrder, receiveOrderItems } = usePurchases();
 
+  const isMobile = useIsMobile();
   const isEditing = Boolean(orderId);
   const factoryAddress =
     settings.factoryAddress || "236新北市土城區廣福街77巷6-6號";
@@ -806,7 +810,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
 
       {/* Order header form */}
       <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           <div>
             <Label className="mb-1 block text-xs">廠商 *</Label>
             <Select value={supplierId} onValueChange={setSupplierId}>
@@ -963,164 +967,159 @@ export function PurchaseEditorClient({ orderId }: Props) {
             </Button>
           </div>
         </div>
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
-            <tr>
-              <th className="px-2 py-2 text-left font-medium w-10">#</th>
-              <th className="px-2 py-2 text-left font-medium">商品</th>
-              <th className="px-2 py-2 text-left font-medium w-20">單位</th>
-              <th className="px-2 py-2 text-right font-medium w-20">訂購</th>
-              <th className="px-2 py-2 text-right font-medium w-20">實收</th>
-              <th className="px-2 py-2 text-right font-medium w-24">單價</th>
-              <th className="px-2 py-2 text-right font-medium w-24">金額</th>
-              <th className="px-2 py-2 text-left font-medium w-28">備註</th>
-              <th className="px-2 py-2 w-8"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--border)]">
+        {isMobile ? (
+          <div className="space-y-3 p-3">
             {items.map((it, idx) => (
-              <tr key={idx} className={!it.matched ? "bg-amber-50/50" : ""}>
-                <td className="px-2 py-2 text-xs text-[var(--text-tertiary)]">
-                  {idx + 1}
-                </td>
-                <td className="px-2 py-1.5">
-                  {it.matched && it.productCode ? (
-                    <Select
-                      value={it.productId}
-                      onValueChange={(v) => selectProduct(idx, v)}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue>
-                          <span className="font-mono">{it.productCode}</span>
-                          {it.productName && (
-                            <>
-                              <span className="mx-1.5 text-[var(--text-tertiary)]">·</span>
-                              <span className="text-[var(--text-tertiary)]">
-                                {it.productName}
-                              </span>
-                            </>
+              <MobilePurchaseItemCard
+                key={idx}
+                index={idx}
+                item={it}
+                supplierProducts={supplierProducts}
+                onUpdate={(patch) => updateItem(idx, patch)}
+                onRemove={() => removeItem(idx)}
+                onSelectProduct={(productId) => selectProduct(idx, productId)}
+                onOpenQuickCreate={() => openQuickCreate(idx)}
+              />
+            ))}
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
+              <tr>
+                <th className="px-2 py-2 text-left font-medium w-10">#</th>
+                <th className="px-2 py-2 text-left font-medium">商品</th>
+                <th className="px-2 py-2 text-left font-medium w-20">單位</th>
+                <th className="px-2 py-2 text-right font-medium w-20">訂購</th>
+                <th className="px-2 py-2 text-right font-medium w-20">實收</th>
+                <th className="px-2 py-2 text-right font-medium w-24">單價</th>
+                <th className="px-2 py-2 text-right font-medium w-24">金額</th>
+                <th className="px-2 py-2 text-left font-medium w-28">備註</th>
+                <th className="px-2 py-2 w-8"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {items.map((it, idx) => (
+                <tr key={idx} className={!it.matched ? "bg-amber-50/50" : ""}>
+                  <td className="px-2 py-2 text-xs text-[var(--text-tertiary)]">
+                    {idx + 1}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {it.matched && it.productCode ? (
+                      <ProductCombobox
+                        value={it.productId}
+                        products={supplierProducts}
+                        onChange={(v) => selectProduct(idx, v)}
+                      />
+                    ) : (
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1">
+                          <Input
+                            placeholder="商品編號"
+                            value={it.productCode}
+                            onChange={(e) =>
+                              updateItem(idx, { productCode: e.target.value })
+                            }
+                            className="h-7 flex-1 text-xs font-mono"
+                          />
+                          {it.productCode && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 shrink-0 px-2 text-[10px]"
+                              onClick={() => openQuickCreate(idx)}
+                              title="新增到商品庫"
+                            >
+                              <Sparkles className="h-3 w-3" />
+                              新增
+                            </Button>
                           )}
-                        </SelectValue>
+                        </div>
+                        {it.warning && (
+                          <div className="text-[10px] text-amber-600">⚠ {it.warning}</div>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Select
+                      value={it.unit}
+                      onValueChange={(v) => updateItem(idx, { unit: v as PurchaseUnit })}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {supplierProducts.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            <span className="font-mono">{p.productCode}</span>
-                            {" — "}
-                            {p.productName}
+                        {UNIT_OPTIONS.map((u) => (
+                          <SelectItem key={u} value={u}>
+                            {u}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  ) : (
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1">
-                        <Input
-                          placeholder="商品編號"
-                          value={it.productCode}
-                          onChange={(e) =>
-                            updateItem(idx, { productCode: e.target.value })
-                          }
-                          className="h-7 flex-1 text-xs font-mono"
-                        />
-                        {it.productCode && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 shrink-0 px-2 text-[10px]"
-                            onClick={() => openQuickCreate(idx)}
-                            title="新增到商品庫"
-                          >
-                            <Sparkles className="h-3 w-3" />
-                            新增
-                          </Button>
-                        )}
-                      </div>
-                      {it.warning && (
-                        <div className="text-[10px] text-amber-600">⚠ {it.warning}</div>
-                      )}
-                    </div>
-                  )}
-                </td>
-                <td className="px-2 py-1.5">
-                  <Select
-                    value={it.unit}
-                    onValueChange={(v) => updateItem(idx, { unit: v as PurchaseUnit })}
-                  >
-                    <SelectTrigger className="h-7 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {UNIT_OPTIONS.map((u) => (
-                        <SelectItem key={u} value={u}>
-                          {u}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="px-2 py-1.5">
-                  <Input
-                    type="number"
-                    step="0.5"
-                    value={it.quantity || ""}
-                    onChange={(e) =>
-                      updateItem(idx, { quantity: Number(e.target.value) || 0 })
-                    }
-                    className="h-7 text-right text-xs font-mono"
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <Input
-                    type="number"
-                    step="0.5"
-                    value={it.receivedQuantity || ""}
-                    readOnly
-                    disabled
-                    className={`h-7 text-right text-xs font-mono ${
-                      it.receivedQuantity > 0 && it.receivedQuantity !== it.quantity
-                        ? "bg-amber-50 border-amber-300"
-                        : ""
-                    }`}
-                    placeholder="請用收貨入庫"
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <Input
-                    type="number"
-                    step="1"
-                    value={it.unitPrice || ""}
-                    onChange={(e) =>
-                      updateItem(idx, { unitPrice: Number(e.target.value) || 0 })
-                    }
-                    className="h-7 text-right text-xs font-mono"
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-right font-mono text-xs">
-                  ${(it.quantity * it.unitPrice).toLocaleString("zh-TW", { maximumFractionDigits: 0 })}
-                </td>
-                <td className="px-2 py-1.5">
-                  <Input
-                    value={it.notes}
-                    onChange={(e) => updateItem(idx, { notes: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-center">
-                  <button
-                    type="button"
-                    onClick={() => removeItem(idx)}
-                    className="text-[var(--text-tertiary)] hover:text-red-500"
-                    aria-label="刪除"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={it.quantity || ""}
+                      onChange={(e) =>
+                        updateItem(idx, { quantity: Number(e.target.value) || 0 })
+                      }
+                      className="h-7 text-right text-xs font-mono"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={it.receivedQuantity || ""}
+                      readOnly
+                      disabled
+                      className={`h-7 text-right text-xs font-mono ${
+                        it.receivedQuantity > 0 && it.receivedQuantity !== it.quantity
+                          ? "bg-amber-50 border-amber-300"
+                          : ""
+                      }`}
+                      placeholder="請用收貨入庫"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Input
+                      type="number"
+                      step="1"
+                      value={it.unitPrice || ""}
+                      onChange={(e) =>
+                        updateItem(idx, { unitPrice: Number(e.target.value) || 0 })
+                      }
+                      className="h-7 text-right text-xs font-mono"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-mono text-xs">
+                    ${(it.quantity * it.unitPrice).toLocaleString("zh-TW", { maximumFractionDigits: 0 })}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Input
+                      value={it.notes}
+                      onChange={(e) => updateItem(idx, { notes: e.target.value })}
+                      className="h-7 text-xs"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    <button
+                      type="button"
+                      onClick={() => removeItem(idx)}
+                      className="text-[var(--text-tertiary)] hover:text-red-500"
+                      aria-label="刪除"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Totals + notes */}
