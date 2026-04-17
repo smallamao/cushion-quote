@@ -30,6 +30,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useClients } from "@/hooks/useClients";
 import { useHistory } from "@/hooks/useHistory";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
 import {
@@ -82,6 +83,7 @@ import {
 } from "@/components/pdf/QuotePDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { CalculatorModal } from "@/components/quote-editor/CalculatorModal";
+import { MobileQuoteItemCard } from "@/components/quote-editor/MobileQuoteItemCard";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -593,6 +595,7 @@ export function QuoteEditor() {
   const { settings } = useSettings();
   const { clients, loading: clientsLoading } = useClients();
   const { templates: dbTemplates, loadTemplates } = useTemplates();
+  const isMobile = useIsMobile();
 
   const [caseId, setCaseId] = useState("");
   const [quoteId, setQuoteId] = useState(generateQuoteId);
@@ -2457,76 +2460,106 @@ export function QuoteEditor() {
       </div>
 
       <div className="card-surface rounded-[var(--radius-lg)]">
-        <div className="overflow-x-auto rounded-t-[var(--radius-lg)]">
-          <DndContext onDragEnd={handleDragEnd}>
-            <table className={`w-full border-collapse text-sm ${isResizing ? "select-none" : ""}`}>
-              <thead>
-                <tr className="border-b border-[var(--border)] bg-[var(--bg-subtle)]">
-                  <th className="w-12 px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]">
-                    項次
-                  </th>
-                  <th
-                    className="relative px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]"
-                    style={{ width: colWidths.itemName, minWidth: COL_MIN.itemName }}
-                  >
-                    商品名稱
-                    <div
-                      onMouseDown={(e) => handleResizeStart("itemName", e)}
-                      className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--accent)]"
-                    />
-                  </th>
-                  <th
-                    className="relative px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]"
-                    style={{ width: colWidths.spec, minWidth: COL_MIN.spec }}
-                  >
-                    規格
-                    <div
-                      onMouseDown={(e) => handleResizeStart("spec", e)}
-                      className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--accent)]"
-                    />
-                  </th>
-                  <th className="w-20 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
-                    數量
-                  </th>
-                  <th className="w-20 px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]">
-                    單位
-                  </th>
-                  <th className="w-28 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
-                    單價
-                  </th>
-                  <th className="w-28 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
-                    金額
-                  </th>
-                  <th className="w-12 px-3 py-2.5" />
-                </tr>
-              </thead>
-              <SortableContext
-                items={items.map((item) => item.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <tbody>
-                  {items.map((item, idx) => (
-                    <SortableQuoteItemRow
-                      key={item.id}
-                      item={item}
-                      index={idx}
-                      colWidths={colWidths}
-                      expanded={expandedItems.has(item.id)}
-                      isImageUploading={Boolean(itemImageUploading[item.id])}
-                      isSpecImageUploading={Boolean(itemImageUploading[`${item.id}:spec`])}
-                      imageUploadError={itemImageErrors[item.id]}
-                      specImageUploadError={itemImageErrors[`${item.id}:spec`]}
-                      onToggleExpand={toggleItemExpand}
-                      onUpdateItem={updateItem}
-                      onRemoveItem={removeItem}
-                      onHandleImageUpload={handleImageUpload}
-                    />
-                  ))}
-                </tbody>
-              </SortableContext>
-            </table>
-          </DndContext>
-        </div>
+        {isMobile ? (
+          <div className="space-y-3 p-3">
+            {items.map((item, idx) => (
+              <MobileQuoteItemCard
+                key={item.id}
+                item={item}
+                index={idx}
+                expanded={expandedItems.has(item.id)}
+                isImageUploading={Boolean(itemImageUploading[item.id])}
+                isSpecImageUploading={Boolean(itemImageUploading[`${item.id}:spec`])}
+                imageUploadError={itemImageErrors[item.id]}
+                specImageUploadError={itemImageErrors[`${item.id}:spec`]}
+                onToggleExpand={toggleItemExpand}
+                onUpdateItem={updateItem}
+                onRemoveItem={removeItem}
+                onHandleImageUpload={handleImageUpload}
+              />
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => addItem()}
+              className="w-full border border-dashed border-[var(--border)]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              ＋ 新增品項
+            </Button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-t-[var(--radius-lg)]">
+            <DndContext onDragEnd={handleDragEnd}>
+              <table className={`w-full border-collapse text-sm ${isResizing ? "select-none" : ""}`}>
+                <thead>
+                  <tr className="border-b border-[var(--border)] bg-[var(--bg-subtle)]">
+                    <th className="w-12 px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]">
+                      項次
+                    </th>
+                    <th
+                      className="relative px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]"
+                      style={{ width: colWidths.itemName, minWidth: COL_MIN.itemName }}
+                    >
+                      商品名稱
+                      <div
+                        onMouseDown={(e) => handleResizeStart("itemName", e)}
+                        className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--accent)]"
+                      />
+                    </th>
+                    <th
+                      className="relative px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]"
+                      style={{ width: colWidths.spec, minWidth: COL_MIN.spec }}
+                    >
+                      規格
+                      <div
+                        onMouseDown={(e) => handleResizeStart("spec", e)}
+                        className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--accent)]"
+                      />
+                    </th>
+                    <th className="w-20 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
+                      數量
+                    </th>
+                    <th className="w-20 px-3 py-2.5 text-left text-xs font-medium text-[var(--text-secondary)]">
+                      單位
+                    </th>
+                    <th className="w-28 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
+                      單價
+                    </th>
+                    <th className="w-28 px-3 py-2.5 text-right text-xs font-medium text-[var(--text-secondary)]">
+                      金額
+                    </th>
+                    <th className="w-12 px-3 py-2.5" />
+                  </tr>
+                </thead>
+                <SortableContext
+                  items={items.map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <SortableQuoteItemRow
+                        key={item.id}
+                        item={item}
+                        index={idx}
+                        colWidths={colWidths}
+                        expanded={expandedItems.has(item.id)}
+                        isImageUploading={Boolean(itemImageUploading[item.id])}
+                        isSpecImageUploading={Boolean(itemImageUploading[`${item.id}:spec`])}
+                        imageUploadError={itemImageErrors[item.id]}
+                        specImageUploadError={itemImageErrors[`${item.id}:spec`]}
+                        onToggleExpand={toggleItemExpand}
+                        onUpdateItem={updateItem}
+                        onRemoveItem={removeItem}
+                        onHandleImageUpload={handleImageUpload}
+                      />
+                    ))}
+                  </tbody>
+                </SortableContext>
+              </table>
+            </DndContext>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 border-t border-[var(--border)] px-4 py-3">
           <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo}>
@@ -2537,14 +2570,14 @@ export function QuoteEditor() {
           </Button>
           <Button variant="ghost" size="sm" onClick={() => addItem()}>
             <Plus className="h-3.5 w-3.5" />
-            新增品項
+            <span className="hidden md:inline">新增品項</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setCalcOpen(true)}
           >
-            🧮 用計算器算
+            🧮 <span className="hidden md:inline">用計算器算</span>
           </Button>
           <div className="relative">
             <Button
@@ -2552,7 +2585,7 @@ export function QuoteEditor() {
               size="sm"
               onClick={() => setTemplateDropdownOpen(!templateDropdownOpen)}
             >
-              📋 常用範本
+              📋 <span className="hidden md:inline">常用範本</span>
               <ChevronDown className="h-3 w-3" />
             </Button>
             {templateDropdownOpen && (
@@ -2587,7 +2620,7 @@ export function QuoteEditor() {
               size="sm"
               onClick={() => setQuoteTemplateDropdownOpen(!quoteTemplateDropdownOpen)}
             >
-              📄 套用整單範本
+              📄 <span className="hidden md:inline">套用整單範本</span>
               <ChevronDown className="h-3 w-3" />
             </Button>
             {quoteTemplateDropdownOpen && (
@@ -2623,7 +2656,7 @@ export function QuoteEditor() {
             disabled={items.length === 0}
           >
             <Save className="h-3 w-3" />
-            存為範本
+            <span className="hidden md:inline">存為範本</span>
           </Button>
         </div>
       </div>
