@@ -1,68 +1,46 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-
+import { useCompanies } from "./useCompanies";
 import type { Client } from "@/lib/types";
+import type { Company } from "@/lib/types/company";
 
-const CACHE_KEY = "cq-clients-cache";
-const TTL = 5 * 60 * 1000;
+function clientToCompany(client: Client): Company {
+  return {
+    id: client.id,
+    companyName: client.companyName,
+    shortName: client.shortName,
+    clientType: client.clientType,
+    channel: client.channel,
+    address: client.address,
+    taxId: client.taxId,
+    commissionMode: client.commissionMode,
+    commissionRate: client.commissionRate,
+    commissionFixedAmount: client.commissionFixedAmount,
+    paymentTerms: client.paymentTerms,
+    defaultNotes: client.defaultNotes,
+    isActive: client.isActive,
+    createdAt: client.createdAt,
+    updatedAt: client.updatedAt,
+    notes: client.notes,
+  };
+}
 
+/**
+ * Backward-compatible hook that returns the flat Client[] array.
+ * Used by QuoteEditor and other existing consumers.
+ */
 export function useClients() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { clients, loading, reload, addCompany, updateCompany } = useCompanies();
 
-  const load = useCallback(async (force = false) => {
-    setLoading(true);
-    try {
-      if (!force) {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          const parsed = JSON.parse(cached) as { data: Client[]; ts: number };
-          if (Date.now() - parsed.ts < TTL) {
-            setClients(parsed.data);
-            setLoading(false);
-            return;
-          }
-        }
-      }
-
-      const response = await fetch("/api/sheets/clients", { cache: "no-store" });
-      if (!response.ok) throw new Error("load clients");
-      const payload = (await response.json()) as { clients: Client[] };
-      setClients(payload.clients);
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ data: payload.clients, ts: Date.now() }));
-    } catch {
-      setClients([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const addClient = useCallback(async (client: Client) => {
-    const response = await fetch("/api/sheets/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(client),
-    });
-    if (!response.ok) throw new Error("新增客戶失敗");
-    localStorage.removeItem(CACHE_KEY);
-    await load(true);
-  }, [load]);
-
-  const updateClient = useCallback(async (client: Client) => {
-    const response = await fetch("/api/sheets/clients", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(client),
-    });
-    if (!response.ok) throw new Error("更新客戶失敗");
-    localStorage.removeItem(CACHE_KEY);
-    await load(true);
-  }, [load]);
-
-  return { clients, loading, reload: () => load(true), addClient, updateClient };
+  return {
+    clients,
+    loading,
+    reload,
+    addClient: async (client: Client) => {
+      await addCompany(clientToCompany(client));
+    },
+    updateClient: async (client: Client) => {
+      await updateCompany(clientToCompany(client));
+    },
+  };
 }
