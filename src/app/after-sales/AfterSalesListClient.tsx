@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAfterSales } from "@/hooks/useAfterSales";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useUnreadReplies } from "@/hooks/useUnreadReplies";
 import type { AfterSalesStatus } from "@/lib/types";
 
@@ -34,6 +35,7 @@ function getSafeStatus(status: AfterSalesStatus | string | undefined): AfterSale
 
 export function AfterSalesListClient() {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const { user } = useCurrentUser();
   const { services, loading, error } = useAfterSales();
   const { markAsRead } = useUnreadReplies();
@@ -117,7 +119,7 @@ export function AfterSalesListClient() {
             className="pl-9"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex items-center gap-1 overflow-x-auto flex-nowrap pb-1">
           {(
             [
               ["all", "全部"],
@@ -151,132 +153,208 @@ export function AfterSalesListClient() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--surface-2)] text-xs uppercase text-[var(--text-secondary)]">
-            <tr>
-              <th className="px-3 py-2 text-left">單號</th>
-              <th className="px-3 py-2 text-left">受理日期</th>
-              <th className="px-3 py-2 text-left">客戶</th>
-              <th className="px-3 py-2 text-left">款式</th>
-              <th className="px-3 py-2 text-left">問題</th>
-              <th className="px-3 py-2 text-left">狀態</th>
-              <th className="px-3 py-2 text-left">負責人</th>
-              <th className="px-3 py-2 text-left">訂單</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
-                  載入中...
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
-                  尚無符合的售後單
-                </td>
-              </tr>
-            )}
-            {pageRows.map((s) => {
-              const safeStatus = getSafeStatus(s.status);
-              return (
-                <tr
-                  key={s.serviceId}
-                  className="border-t border-[var(--border)] hover:bg-[var(--bg-hover)] cursor-pointer"
-                  onClick={() => router.push(`/after-sales/${s.serviceId}`)}
-                >
-                  <td className="px-3 py-2">
-                    <Link
-                      href={`/after-sales/${s.serviceId}` as never}
-                      className="block font-mono text-xs text-[var(--accent)] hover:underline"
-                    >
-                      {s.serviceId}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-xs">{s.receivedDate}</td>
-                  <td className="px-3 py-2">
-                    <div className="text-sm">{s.clientName}</div>
-                    <div className="text-[10px] text-[var(--text-tertiary)]">
+      {isMobile ? (
+        <div className="space-y-3">
+          {loading && (
+            <div className="py-8 text-center text-xs text-[var(--text-tertiary)]">
+              載入中...
+            </div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div className="py-8 text-center text-xs text-[var(--text-tertiary)]">
+              尚無符合的售後單
+            </div>
+          )}
+          {pageRows.map((s) => {
+            const safeStatus = getSafeStatus(s.status);
+            return (
+              <div
+                key={s.serviceId}
+                className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-sm active:opacity-80"
+                onClick={() => router.push(`/after-sales/${s.serviceId}`)}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs text-[var(--accent)]">
+                    {s.serviceId}
+                  </span>
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
+                  >
+                    {STATUS_LABEL[safeStatus]}
+                  </span>
+                </div>
+                <div className="mt-1 text-sm font-medium">
+                  {s.clientName}
+                  {s.clientPhone && (
+                    <span className="ml-2 text-xs font-normal text-[var(--text-tertiary)]">
                       {s.clientPhone}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {s.modelCode && (
-                      <span className="font-mono">{s.modelCode}</span>
-                    )}
-                    {s.modelNameSnapshot && (
-                      <span className="ml-1 text-[var(--text-tertiary)]">
-                        {s.modelNameSnapshot}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="max-w-xs truncate text-xs text-[var(--text-secondary)]">
-                      {s.issueDescription}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
-                    >
-                      {STATUS_LABEL[safeStatus]}
                     </span>
-                  </td>
-                  <td className="px-3 py-2 text-xs">{s.assignedTo || "—"}</td>
-                  <td className="px-3 py-2 text-xs text-[var(--text-secondary)]">
-                    {s.relatedOrderNo || "—"}
+                  )}
+                </div>
+                {(s.modelNameSnapshot || s.issueDescription) && (
+                  <div className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">
+                    {s.modelNameSnapshot && (
+                      <span>{s.modelNameSnapshot}</span>
+                    )}
+                    {s.modelNameSnapshot && s.issueDescription && (
+                      <span className="mx-1">—</span>
+                    )}
+                    {s.issueDescription && (
+                      <span>{s.issueDescription}</span>
+                    )}
+                  </div>
+                )}
+                <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--text-tertiary)]">
+                  <span>{s.receivedDate}</span>
+                  <span>{s.assignedTo || "—"}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+          <table className="w-full text-sm">
+            <thead className="bg-[var(--surface-2)] text-xs uppercase text-[var(--text-secondary)]">
+              <tr>
+                <th className="px-3 py-2 text-left">單號</th>
+                <th className="px-3 py-2 text-left">受理日期</th>
+                <th className="px-3 py-2 text-left">客戶</th>
+                <th className="px-3 py-2 text-left">款式</th>
+                <th className="px-3 py-2 text-left">問題</th>
+                <th className="px-3 py-2 text-left">狀態</th>
+                <th className="px-3 py-2 text-left">負責人</th>
+                <th className="px-3 py-2 text-left">訂單</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
+                    載入中...
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              )}
+              {!loading && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
+                    尚無符合的售後單
+                  </td>
+                </tr>
+              )}
+              {pageRows.map((s) => {
+                const safeStatus = getSafeStatus(s.status);
+                return (
+                  <tr
+                    key={s.serviceId}
+                    className="border-t border-[var(--border)] hover:bg-[var(--bg-hover)] cursor-pointer"
+                    onClick={() => router.push(`/after-sales/${s.serviceId}`)}
+                  >
+                    <td className="px-3 py-2">
+                      <Link
+                        href={`/after-sales/${s.serviceId}` as never}
+                        className="block font-mono text-xs text-[var(--accent)] hover:underline"
+                      >
+                        {s.serviceId}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{s.receivedDate}</td>
+                    <td className="px-3 py-2">
+                      <div className="text-sm">{s.clientName}</div>
+                      <div className="text-[10px] text-[var(--text-tertiary)]">
+                        {s.clientPhone}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {s.modelCode && (
+                        <span className="font-mono">{s.modelCode}</span>
+                      )}
+                      {s.modelNameSnapshot && (
+                        <span className="ml-1 text-[var(--text-tertiary)]">
+                          {s.modelNameSnapshot}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="max-w-xs truncate text-xs text-[var(--text-secondary)]">
+                        {s.issueDescription}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
+                      >
+                        {STATUS_LABEL[safeStatus]}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{s.assignedTo || "—"}</td>
+                    <td className="px-3 py-2 text-xs text-[var(--text-secondary)]">
+                      {s.relatedOrderNo || "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {filtered.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
           <div>
-            顯示 <span className="font-semibold text-[var(--text-primary)]">{pageStart + 1}</span>
-            {" - "}
-            <span className="font-semibold text-[var(--text-primary)]">
-              {Math.min(pageStart + pageSize, filtered.length)}
-            </span>
-            {" / "}
-            <span className="font-semibold text-[var(--text-primary)]">{filtered.length}</span> 筆
+            {isMobile ? (
+              <span>
+                <span className="font-semibold text-[var(--text-primary)]">{currentPage}</span>
+                {" / "}
+                <span className="font-semibold text-[var(--text-primary)]">{totalPages}</span>
+                {" 頁，共 "}
+                <span className="font-semibold text-[var(--text-primary)]">{filtered.length}</span>
+                {" 筆"}
+              </span>
+            ) : (
+              <>
+                顯示 <span className="font-semibold text-[var(--text-primary)]">{pageStart + 1}</span>
+                {" - "}
+                <span className="font-semibold text-[var(--text-primary)]">
+                  {Math.min(pageStart + pageSize, filtered.length)}
+                </span>
+                {" / "}
+                <span className="font-semibold text-[var(--text-primary)]">{filtered.length}</span> 筆
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1">
-              每頁
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-                className="h-7 rounded border border-[var(--border)] bg-white px-1 text-xs"
-              >
-                <option value={20}>20</option>
-                <option value={30}>30</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-              筆
-            </label>
+            {!isMobile && (
+              <label className="flex items-center gap-1">
+                每頁
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="h-7 rounded border border-[var(--border)] bg-white px-1 text-xs"
+                >
+                  <option value={20}>20</option>
+                  <option value={30}>30</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                筆
+              </label>
+            )}
             <div className="flex items-center gap-1">
               <Button size="sm" variant="outline" disabled={currentPage === 1} onClick={() => setPage(1)}>
                 «
               </Button>
               <Button size="sm" variant="outline" disabled={currentPage === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                上一頁
+                ‹<span className="hidden md:inline ml-1">上一頁</span>
               </Button>
               <span className="px-2">
                 {currentPage} / {totalPages}
               </span>
               <Button size="sm" variant="outline" disabled={currentPage === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                下一頁
+                <span className="hidden md:inline mr-1">下一頁</span>›
               </Button>
               <Button size="sm" variant="outline" disabled={currentPage === totalPages} onClick={() => setPage(totalPages)}>
                 »
