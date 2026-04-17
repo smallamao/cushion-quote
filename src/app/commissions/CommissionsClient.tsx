@@ -3,6 +3,8 @@
 import { Loader2, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useIsMobile } from "@/hooks/useIsMobile";
+
 import type { CommissionSettlement, SettlementStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -82,6 +84,7 @@ function getLast6MonthKeys(): string[] {
 }
 
 export function CommissionsClient() {
+  const isMobile = useIsMobile();
   const [settlements, setSettlements] = useState<CommissionSettlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
@@ -420,10 +423,10 @@ export function CommissionsClient() {
                   <tr>
                     <th className="px-4 py-2.5">報價單號</th>
                     <th className="px-4 py-2.5">合作方</th>
-                    <th className="px-4 py-2.5">身份</th>
+                    {!isMobile && <th className="px-4 py-2.5">身份</th>}
                     <th className="px-4 py-2.5 text-right">佣金金額</th>
                     <th className="px-4 py-2.5">狀態</th>
-                    <th className="px-4 py-2.5">付款日期</th>
+                    {!isMobile && <th className="px-4 py-2.5">付款日期</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -436,12 +439,12 @@ export function CommissionsClient() {
                           <div className="text-sm font-medium text-[var(--text-primary)]">{item.partnerName || "—"}</div>
                           {item.partnerId && <div className="text-xs text-[var(--text-secondary)]">{item.partnerId}</div>}
                         </td>
-                        <td className="px-4 py-2.5 text-sm">{ROLE_LABELS[item.partnerRole] ?? "其他"}</td>
+                        {!isMobile && <td className="px-4 py-2.5 text-sm">{ROLE_LABELS[item.partnerRole] ?? "其他"}</td>}
                         <td className="px-4 py-2.5 text-right text-sm font-medium">{formatCurrency(item.commissionAmount)}</td>
                         <td className="px-4 py-2.5">
                           <span className={`badge ${statusMeta.className}`}>{statusMeta.label}</span>
                         </td>
-                        <td className="px-4 py-2.5 text-sm">{displayDate(item.paidAt)}</td>
+                        {!isMobile && <td className="px-4 py-2.5 text-sm">{displayDate(item.paidAt)}</td>}
                       </tr>
                     );
                   })}
@@ -482,8 +485,8 @@ export function CommissionsClient() {
                   <th>合作方名稱</th>
                   <th className="text-right">總報價數</th>
                   <th className="text-right">總佣金金額</th>
-                  <th className="text-right">待付金額</th>
-                  <th className="text-right">已付金額</th>
+                  {!isMobile && <th className="text-right">待付金額</th>}
+                  {!isMobile && <th className="text-right">已付金額</th>}
                 </tr>
               </thead>
               <tbody>
@@ -492,13 +495,13 @@ export function CommissionsClient() {
                     <td className="text-sm font-medium">{row.name}</td>
                     <td className="text-right text-sm">{row.quoteCount}</td>
                     <td className="text-right text-sm font-medium">{formatCurrency(row.total)}</td>
-                    <td className="text-right text-sm">{formatCurrency(row.pending)}</td>
-                    <td className="text-right text-sm">{formatCurrency(row.paid)}</td>
+                    {!isMobile && <td className="text-right text-sm">{formatCurrency(row.pending)}</td>}
+                    {!isMobile && <td className="text-right text-sm">{formatCurrency(row.paid)}</td>}
                   </tr>
                 ))}
                 {byPartner.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-[var(--text-secondary)]">
+                    <td colSpan={isMobile ? 3 : 5} className="px-4 py-8 text-center text-sm text-[var(--text-secondary)]">
                       尚無合作方統計
                     </td>
                   </tr>
