@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { LEAD_SOURCE_DETAIL_ENABLED, LEAD_SOURCE_LABELS, LEAD_SOURCE_OPTIONS } from "@/lib/constants";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import type { CaseRecord, LeadSource, QuotePlanRecord, QuoteVersionRecord } from "@/lib/types";
@@ -94,6 +95,7 @@ export function CasesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { clients, loading: clientsLoading } = useClients();
+  const isMobile = useIsMobile();
 
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -574,7 +576,270 @@ export function CasesClient() {
           </div>
         ) : sorted.length === 0 ? (
           <div className="py-12 text-center text-sm text-[var(--text-secondary)]">尚無案件資料</div>
+        ) : isMobile ? (
+          /* ── Mobile card list ── */
+          <div className="divide-y divide-[var(--border)]">
+            {sorted.map((item) => {
+              const status = CASE_STATUS_MAP[item.caseStatus] ?? CASE_STATUS_MAP.new;
+              const isExpanded = expandedCaseIds.has(item.caseId);
+              const detail = details[item.caseId];
+              const detailLoading = loadingDetails[item.caseId];
+
+              return (
+                <div key={item.caseId} id={`case-row-${item.caseId}`}>
+                  {/* Card header — tap to expand */}
+                  <div
+                    className="flex cursor-pointer items-start gap-3 px-4 py-3"
+                    onClick={() => toggleCase(item.caseId)}
+                  >
+                    <div className="mt-0.5 text-[var(--text-tertiary)]">
+                      {isExpanded
+                        ? <ChevronDown className="h-4 w-4" />
+                        : <ChevronRight className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-[var(--text-primary)]">{item.caseName || "—"}</span>
+                        <span className={`badge ${status.className}`}>{status.label}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                        {item.clientNameSnapshot || "—"}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-[var(--text-secondary)]">
+                        <span>{LEAD_SOURCE_LABELS[item.leadSource ?? "unknown"]?.label ?? "未分類"}</span>
+                        <span>{item.createdAt ? item.createdAt.slice(0, 10) : "—"}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditDialog(item);
+                      }}
+                      className="mt-0.5 shrink-0 text-[var(--text-tertiary)] transition-colors hover:text-blue-500"
+                      title="編輯案件"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Expanded detail section */}
+                  {isExpanded && (
+                    <div className="bg-[var(--bg-subtle)] px-4 py-3">
+                      {detailLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          讀取方案與版本中...
+                        </div>
+                      ) : !detail ? (
+                        <div className="text-sm text-[var(--text-secondary)]">讀取案件詳情失敗，請再試一次</div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-sm">
+                            <div className="flex flex-col gap-2">
+                              <div>
+                                <div className="text-xs text-[var(--text-secondary)]">案件來源</div>
+                                <div className="font-medium text-[var(--text-primary)]">
+                                  {LEAD_SOURCE_LABELS[detail.case.leadSource ?? "unknown"]?.label ?? "未分類"}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-[var(--text-secondary)]">來源細項</div>
+                                <div className="font-medium text-[var(--text-primary)]">
+                                  {detail.case.leadSourceDetail || "—"}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-[var(--text-secondary)]">來源人 / 介紹人</div>
+                                <div className="font-medium text-[var(--text-primary)]">
+                                  {detail.case.leadSourceContact || "—"}
+                                </div>
+                              </div>
+                            </div>
+                            {detail.case.leadSourceNotes && (
+                              <div className="mt-3">
+                                <div className="text-xs text-[var(--text-secondary)]">來源備註</div>
+                                <div className="mt-1 whitespace-pre-wrap text-sm text-[var(--text-primary)]">
+                                  {detail.case.leadSourceNotes}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-sm">
+                            {(() => {
+                              const allVersions = detail.quotes.flatMap(q => q.versions);
+                              const compareVersion =
+                                allVersions.find(v => v.versionStatus === "accepted") ??
+                                allVersions.find(v => v.versionStatus === "sent") ??
+                                allVersions[0];
+
+                              const actualCost = detail.purchaseSummary.totalOrderAmount;
+                              const hasComparison = compareVersion && actualCost > 0;
+                              const estimatedCost = compareVersion?.estimatedCostTotal ?? 0;
+                              const quotedPrice = compareVersion?.totalAmount ?? 0;
+                              const costDiff = actualCost - estimatedCost;
+                              const actualMargin = quotedPrice - actualCost;
+                              const estimatedMargin = quotedPrice - estimatedCost;
+                              const marginDiff = actualMargin - estimatedMargin;
+
+                              return hasComparison ? (
+                                <div className="mb-3 rounded-[var(--radius-sm)] bg-blue-50 border border-blue-200 p-3">
+                                  <div className="text-xs font-semibold text-blue-900 mb-2">
+                                    成本對比 <span className="font-normal text-blue-700">（vs {compareVersion.versionId}）</span>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2 text-xs">
+                                    <div>
+                                      <div className="text-blue-700">預估成本</div>
+                                      <div className="font-mono font-semibold text-blue-900">${estimatedCost.toLocaleString()}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-blue-700">實際成本</div>
+                                      <div className="font-mono font-semibold text-blue-900">${actualCost.toLocaleString()}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-blue-700">差異</div>
+                                      <div className={`font-mono font-semibold ${costDiff > 0 ? "text-red-600" : costDiff < 0 ? "text-green-600" : "text-blue-900"}`}>
+                                        {costDiff > 0 ? "+" : ""}{costDiff.toLocaleString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 pt-2 border-t border-blue-200 grid grid-cols-3 gap-2 text-xs">
+                                    <div>
+                                      <div className="text-blue-700">預估毛利</div>
+                                      <div className="font-mono font-semibold text-green-700">${estimatedMargin.toLocaleString()}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-blue-700">實際毛利</div>
+                                      <div className="font-mono font-semibold text-green-700">${actualMargin.toLocaleString()}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-blue-700">毛利差</div>
+                                      <div className={`font-mono font-semibold ${marginDiff >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                        {marginDiff > 0 ? "+" : ""}{marginDiff.toLocaleString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : null;
+                            })()}
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-[var(--text-primary)]">採購成本</div>
+                                <div className="mt-0.5 text-xs text-[var(--text-secondary)]">依關聯採購單彙整</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-[var(--text-secondary)]">採購總額</div>
+                                <div className="text-base font-semibold text-[var(--text-primary)]">
+                                  {detail.purchaseSummary.totalOrderAmount.toLocaleString()}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid grid-cols-3 gap-2">
+                              <div className="rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] px-3 py-2">
+                                <div className="text-xs text-[var(--text-secondary)]">採購單數</div>
+                                <div className="mt-1 font-medium text-[var(--text-primary)]">{detail.purchaseSummary.orderCount}</div>
+                              </div>
+                              <div className="rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] px-3 py-2">
+                                <div className="text-xs text-[var(--text-secondary)]">品項數</div>
+                                <div className="mt-1 font-medium text-[var(--text-primary)]">{detail.purchaseSummary.itemCount}</div>
+                              </div>
+                              <div className="rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] px-3 py-2">
+                                <div className="text-xs text-[var(--text-secondary)]">材料小計</div>
+                                <div className="mt-1 font-medium text-[var(--text-primary)]">
+                                  {detail.purchaseSummary.totalItemAmount.toLocaleString()}
+                                </div>
+                              </div>
+                            </div>
+                            {detail.purchases.length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {detail.purchases.map((purchase) => (
+                                  <div key={purchase.order.orderId} className="rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 text-xs">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div>
+                                        <div className="font-medium text-[var(--text-primary)]">{purchase.order.orderId}</div>
+                                        <div className="text-[var(--text-secondary)]">{purchase.supplierName || "—"} · {purchase.order.status || "—"}</div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="font-medium text-[var(--text-primary)]">{purchase.order.totalAmount.toLocaleString()}</div>
+                                        <div className="text-[var(--text-secondary)]">{purchase.order.orderDate || "—"}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-3 text-sm text-[var(--text-secondary)]">此案件尚無關聯採購單</div>
+                            )}
+                          </div>
+                          {detail.quotes.length === 0 ? (
+                            <div className="text-sm text-[var(--text-secondary)]">此案件尚無報價方案</div>
+                          ) : detail.quotes.map(({ quote, versions }) => (
+                            <div key={quote.quoteId} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+                              <div className="text-sm font-semibold text-[var(--text-primary)]">
+                                {quote.quoteName || quote.quoteId}
+                              </div>
+                              <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                                目前版本: {quote.currentVersionId || "—"}
+                              </div>
+                              <div className="mt-3 space-y-2">
+                                {versions
+                                  .slice()
+                                  .sort((a, b) => b.versionNo - a.versionNo)
+                                  .map((version) => {
+                                    const versionStatus =
+                                      VERSION_STATUS_MAP[version.versionStatus] ?? VERSION_STATUS_MAP.draft;
+                                    return (
+                                      <div
+                                        key={version.versionId}
+                                        className="flex cursor-pointer items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 hover:bg-[var(--bg-subtle)]"
+                                        onClick={() => openVersion(version.versionId, item.caseId, quote.quoteId)}
+                                      >
+                                        <div>
+                                          <div className="text-sm font-medium text-[var(--accent)]">
+                                            V{version.versionNo} {version.versionLabel}
+                                          </div>
+                                          <div className="mt-0.5 text-xs text-[var(--text-secondary)]">{version.quoteDate || "—"}</div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className={`badge ${versionStatus.className}`}>{versionStatus.label}</span>
+                                          <div className="text-right">
+                                            <div className="text-sm font-medium text-[var(--text-primary)]">
+                                              {version.totalAmount.toLocaleString()}
+                                            </div>
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 w-7 p-0"
+                                            title="複製版本"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openCopyDialog(
+                                                version.versionId,
+                                                item.caseId,
+                                                quote.quoteId,
+                                                item.caseName,
+                                              );
+                                            }}
+                                          >
+                                            <Copy className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         ) : (
+          /* ── Desktop table ── */
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
