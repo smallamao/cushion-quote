@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Loader2, Upload } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { useRef } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -8,24 +8,20 @@ import { useBusinessCardRecognition } from "@/hooks/useBusinessCardRecognition";
 import type { BusinessCardData } from "@/lib/gemini-client";
 
 interface BusinessCardUploadProps {
-  onRecognized: (data: BusinessCardData, imageUrl: string) => void;
-  existingImageUrl?: string;
+  onRecognized: (data: BusinessCardData, imageUrls: string[]) => void;
 }
 
-export function BusinessCardUpload({
-  onRecognized,
-  existingImageUrl,
-}: BusinessCardUploadProps) {
+export function BusinessCardUpload({ onRecognized }: BusinessCardUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { status, error, recognize } = useBusinessCardRecognition();
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const result = await recognize(file);
+    const result = await recognize(Array.from(files));
     if (result) {
-      onRecognized(result.data, result.imageUrl);
+      onRecognized(result.data, result.imageUrls);
     }
 
     if (fileInputRef.current) {
@@ -35,21 +31,12 @@ export function BusinessCardUpload({
 
   return (
     <div className="space-y-3">
-      {existingImageUrl && (
-        <div className="overflow-hidden rounded-[var(--radius)]">
-          <img
-            src={existingImageUrl}
-            alt="名片"
-            className="h-auto w-full max-w-[280px] rounded-[var(--radius)] border border-[var(--border)]"
-          />
-        </div>
-      )}
-
       <input
         ref={fileInputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/heic"
         capture="environment"
+        multiple
         className="hidden"
         onChange={handleFileChange}
       />
@@ -65,15 +52,10 @@ export function BusinessCardUpload({
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             辨識中...
           </>
-        ) : existingImageUrl ? (
-          <>
-            <Camera className="h-3.5 w-3.5" />
-            重新上傳名片
-          </>
         ) : (
           <>
             <Upload className="h-3.5 w-3.5" />
-            上傳名片
+            上傳名片（可多選正反面）
           </>
         )}
       </Button>

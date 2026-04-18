@@ -1,0 +1,102 @@
+<h2>手機版響應式優化 — 方案比較</h2>
+<p class="subtitle">三種實作策略，各有不同的改動範圍與效果深度</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>🔧 由外而內：Shell 優先</h3>
+      <p><strong>先修框架，再修頁面</strong></p>
+      <p>第一步改好 App Shell（側邊欄→抽屜、Header 適配、觸控尺寸全域放大），建立手機可用的基礎導航。第二步逐頁處理表格和表單。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>✅ 優點</h4>
+          <ul>
+            <li>第一步做完就能在手機上導航所有頁面</li>
+            <li>全域 CSS 變數統一調整觸控尺寸</li>
+            <li>風險最低，每步都可獨立部署</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>⚠️ 代價</h4>
+          <ul>
+            <li>個別頁面（報價編輯器、表格）仍需逐一處理</li>
+            <li>完整優化需要較多輪迭代</li>
+          </ul>
+        </div>
+      </div>
+      <p style="margin-top:12px;color:var(--text-secondary);font-size:14px;">
+        <strong>改動範圍：</strong>globals.css、Sidebar.tsx、HeaderUserMenu.tsx、button.tsx、input.tsx<br>
+        <strong>預估檔案數：</strong>~8 個核心檔 + 各頁面逐步跟進
+      </p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>📱 由內而外：核心功能優先</h3>
+      <p><strong>先修報價編輯器（主功能），再擴展到其他頁面</strong></p>
+      <p>先把使用頻率最高的報價編輯器改成手機友好（品項改為卡片式、輸入框放大），同時順便修導航。其他頁面之後再處理。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>✅ 優點</h4>
+          <ul>
+            <li>最核心的功能最先可用</li>
+            <li>用戶感受最明顯的改善</li>
+            <li>可以先收集回饋再調整其他頁面</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>⚠️ 代價</h4>
+          <ul>
+            <li>QuoteEditor 改動量大（500+ 行元件）</li>
+            <li>其他頁面暫時仍是桌面版體驗</li>
+            <li>可能需要重構表格結構</li>
+          </ul>
+        </div>
+      </div>
+      <p style="margin-top:12px;color:var(--text-secondary);font-size:14px;">
+        <strong>改動範圍：</strong>QuoteEditor.tsx、Sidebar.tsx、globals.css<br>
+        <strong>預估檔案數：</strong>~5 個檔案深度改動
+      </p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>⚡ 全面推進：一次到位</h3>
+      <p><strong>Shell + 所有主要頁面一輪做完</strong></p>
+      <p>結合 A 和 B：先建立 Shell 響應式基礎，接著同時處理所有主要頁面（報價編輯器、報價列表、採購單、案件管理、材料庫）。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>✅ 優點</h4>
+          <ul>
+            <li>一次完成，體驗一致</li>
+            <li>不會有「這頁好用那頁難用」的落差</li>
+            <li>共用元件只需改一次</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>⚠️ 代價</h4>
+          <ul>
+            <li>改動範圍最大（15+ 檔案）</li>
+            <li>一次 PR 較大，review 負擔重</li>
+            <li>若有 bug 影響範圍較廣</li>
+          </ul>
+        </div>
+      </div>
+      <p style="margin-top:12px;color:var(--text-secondary);font-size:14px;">
+        <strong>改動範圍：</strong>全部主要元件與頁面<br>
+        <strong>預估檔案數：</strong>15-20 個檔案
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:32px;padding:20px;background:var(--bg-secondary);border-radius:12px;">
+  <h3>💡 我的推薦：方案 A（Shell 優先）</h3>
+  <p style="margin-top:8px;">原因：目前連基本導航都無法在手機使用。先修好 Shell 層，所有頁面立刻獲得「至少可用」的手機體驗（能導航、能捲動、能點擊）。接著再逐頁深度優化，每一步都能獨立部署和驗證。</p>
+  <p style="margin-top:8px;">方案 C 雖然理想，但改動太集中，風險較高。方案 A 的漸進式路徑最終也能達到方案 C 的效果，但每一步都更安全。</p>
+</div>

@@ -1,0 +1,94 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: 馬鈴薯沙發
+        - generic [ref=e7]: 報價系統 v0.3.3
+      - navigation [ref=e8]:
+        - link "報價工作台" [ref=e9] [cursor=pointer]:
+          - /url: /
+          - img [ref=e10]
+          - generic [ref=e12]: 報價工作台
+        - link "客戶管理" [ref=e13] [cursor=pointer]:
+          - /url: /clients
+          - img [ref=e14]
+          - generic [ref=e19]: 客戶管理
+        - link "案件管理" [ref=e20] [cursor=pointer]:
+          - /url: /cases
+          - img [ref=e21]
+          - generic [ref=e24]: 案件管理
+        - link "材質資料庫" [ref=e25] [cursor=pointer]:
+          - /url: /materials
+          - img [ref=e26]
+          - generic [ref=e32]: 材質資料庫
+        - link "報價紀錄" [ref=e33] [cursor=pointer]:
+          - /url: /quotes
+          - img [ref=e34]
+          - generic [ref=e37]: 報價紀錄
+        - link "佣金結算" [ref=e38] [cursor=pointer]:
+          - /url: /commissions
+          - img [ref=e39]
+          - generic [ref=e45]: 佣金結算
+        - link "採購單" [ref=e46] [cursor=pointer]:
+          - /url: /purchases
+          - img [ref=e47]
+          - generic [ref=e51]: 採購單
+        - link "廠商管理" [ref=e52] [cursor=pointer]:
+          - /url: /suppliers
+          - img [ref=e53]
+          - generic [ref=e58]: 廠商管理
+        - link "採購商品" [ref=e59] [cursor=pointer]:
+          - /url: /purchase-products
+          - img [ref=e60]
+          - generic [ref=e64]: 採購商品
+        - link "系統設定" [ref=e65] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e66]
+          - generic [ref=e69]: 系統設定
+        - link "使用說明" [ref=e70] [cursor=pointer]:
+          - /url: /help
+          - img [ref=e71]
+          - generic [ref=e74]: 使用說明
+    - generic [ref=e75]:
+      - button "收合側邊欄" [ref=e76]:
+        - img [ref=e77]
+        - generic [ref=e79]: 收合側邊欄
+      - generic [ref=e80]: Google Sheets 已連線
+  - generic [ref=e81]:
+    - banner [ref=e82]:
+      - generic [ref=e83]: 馬鈴薯沙發
+      - generic [ref=e84]: CushionQuote
+    - main [ref=e85]:
+      - generic [ref=e86]:
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - heading "採購單" [level=1] [ref=e89]
+            - paragraph [ref=e90]: 管理向廠商下的採購單
+          - link "新增採購單" [ref=e91] [cursor=pointer]:
+            - /url: /purchases/new
+            - button "新增採購單" [ref=e92]:
+              - img [ref=e93]
+              - text: 新增採購單
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - img [ref=e96]
+            - textbox "搜尋單號、廠商、附註" [ref=e99]
+          - generic [ref=e100]:
+            - button "全部" [ref=e101]
+            - button "草稿" [ref=e102]
+            - button "已送出" [ref=e103]
+            - button "已確認" [ref=e104]
+            - button "已到貨" [ref=e105]
+            - button "已取消" [ref=e106]
+        - table [ref=e108]:
+          - rowgroup [ref=e109]:
+            - row "採購單號 日期 廠商 合計金額 狀態 附註" [ref=e110]:
+              - columnheader "採購單號" [ref=e111]
+              - columnheader "日期" [ref=e112]
+              - columnheader "廠商" [ref=e113]
+              - columnheader "合計金額" [ref=e114]
+              - columnheader "狀態" [ref=e115]
+              - columnheader "附註" [ref=e116]
+          - rowgroup [ref=e117]:
+            - row "載入中…" [ref=e118]:
+              - cell "載入中…" [ref=e119]

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2, Plus, Upload, X } from "lucide-react";
+import { Check, Loader2, Plus, Upload, X, ZoomIn } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,12 @@ const EMPTY_COMPANY: CompanyWithPrimaryContact = {
   primaryContact: null,
 };
 
+interface OcrPreview {
+  company: { companyName: string; taxId: string; address: string };
+  contact: { name: string; role: string; phone: string; phone2: string; lineId: string; email: string };
+  imageUrls: string[];
+}
+
 export function CompanyListPanel() {
   const { companies, loading, filters, setFilters, reload, addCompany, updateCompany } =
     useCompanies();
@@ -52,12 +58,11 @@ export function CompanyListPanel() {
   const [showCardUpload, setShowCardUpload] = useState(false);
 
   // OCR preview state
-  const [ocrPreview, setOcrPreview] = useState<{
-    company: { companyName: string; address: string };
-    contact: { name: string; role: string; phone: string; phone2: string; lineId: string; email: string };
-    imageUrl: string;
-  } | null>(null);
+  const [ocrPreview, setOcrPreview] = useState<OcrPreview | null>(null);
   const [ocrSaving, setOcrSaving] = useState(false);
+
+  // Image lightbox
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   function handleOpenNew() {
     setSelectedCompany({ ...EMPTY_COMPANY, id: `CLI-${Date.now()}` });
@@ -83,9 +88,13 @@ export function CompanyListPanel() {
     await reload();
   }
 
-  function handleCardRecognized(data: BusinessCardData, imageUrl: string) {
+  function handleCardRecognized(data: BusinessCardData, imageUrls: string[]) {
     setOcrPreview({
-      company: { companyName: data.companyName, address: data.address },
+      company: {
+        companyName: data.companyName,
+        taxId: data.taxId,
+        address: data.address,
+      },
       contact: {
         name: data.name,
         role: data.role,
@@ -94,16 +103,16 @@ export function CompanyListPanel() {
         lineId: data.lineId,
         email: data.email,
       },
-      imageUrl,
+      imageUrls,
     });
     setShowCardUpload(false);
   }
 
-  function updateOcrCompany(patch: Partial<{ companyName: string; address: string }>) {
+  function updateOcrCompany(patch: Partial<OcrPreview["company"]>) {
     setOcrPreview((prev) => prev ? { ...prev, company: { ...prev.company, ...patch } } : prev);
   }
 
-  function updateOcrContact(patch: Partial<{ name: string; role: string; phone: string; phone2: string; lineId: string; email: string }>) {
+  function updateOcrContact(patch: Partial<OcrPreview["contact"]>) {
     setOcrPreview((prev) => prev ? { ...prev, contact: { ...prev.contact, ...patch } } : prev);
   }
 
@@ -116,6 +125,7 @@ export function CompanyListPanel() {
         ...EMPTY_COMPANY,
         id: companyId,
         companyName: ocrPreview.company.companyName,
+        taxId: ocrPreview.company.taxId,
         address: ocrPreview.company.address,
       };
       await addCompany(company);
@@ -130,7 +140,7 @@ export function CompanyListPanel() {
           phone2: ocrPreview.contact.phone2,
           lineId: ocrPreview.contact.lineId,
           email: ocrPreview.contact.email,
-          businessCardUrl: ocrPreview.imageUrl,
+          businessCardUrl: ocrPreview.imageUrls[0] ?? "",
           isPrimary: true,
           createdAt: "",
           updatedAt: "",
@@ -180,7 +190,7 @@ export function CompanyListPanel() {
       {showCardUpload && (
         <div className="card-surface space-y-3 p-4">
           <p className="text-xs text-[var(--text-secondary)]">
-            上傳名片圖片，系統將自動辨識並建立公司及聯絡人資料。
+            上傳名片圖片（可多選正反面），系統將自動辨識並建立公司及聯絡人資料。
           </p>
           <BusinessCardUpload onRecognized={handleCardRecognized} />
           <Button
@@ -205,14 +215,30 @@ export function CompanyListPanel() {
             </span>
           </div>
 
-          {ocrPreview.imageUrl && (
-            <img
-              src={ocrPreview.imageUrl}
-              alt="名片"
-              className="h-auto max-w-[300px] rounded-[var(--radius)] border border-[var(--border)]"
-            />
+          {/* Card images — clickable to enlarge */}
+          {ocrPreview.imageUrls.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {ocrPreview.imageUrls.map((url, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className="group relative cursor-zoom-in overflow-hidden rounded-[var(--radius)] border border-[var(--border)]"
+                  onClick={() => setLightboxUrl(url)}
+                >
+                  <img
+                    src={url}
+                    alt={`名片${ocrPreview.imageUrls.length > 1 ? (i === 0 ? "（正面）" : "（反面）") : ""}`}
+                    className="h-auto max-h-[160px] w-auto max-w-[240px] object-contain"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
+                    <ZoomIn className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                  </div>
+                </button>
+              ))}
+            </div>
           )}
 
+          {/* Company fields */}
           <div className="space-y-3">
             <h4 className="text-xs font-medium uppercase tracking-wider text-[var(--text-secondary)]">
               公司資訊
@@ -226,6 +252,13 @@ export function CompanyListPanel() {
                 />
               </div>
               <div>
+                <Label>統一編號</Label>
+                <Input
+                  value={ocrPreview.company.taxId}
+                  onChange={(e) => updateOcrCompany({ taxId: e.target.value })}
+                />
+              </div>
+              <div className="sm:col-span-2">
                 <Label>地址</Label>
                 <Input
                   value={ocrPreview.company.address}
@@ -235,6 +268,7 @@ export function CompanyListPanel() {
             </div>
           </div>
 
+          {/* Contact fields */}
           <div className="space-y-3">
             <h4 className="text-xs font-medium uppercase tracking-wider text-[var(--text-secondary)]">
               聯絡人
@@ -476,6 +510,27 @@ export function CompanyListPanel() {
           onSave={handleSave}
           isNew={isNewCompany}
         />
+      )}
+
+      {/* Image lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            className="absolute right-4 top-4 text-white hover:text-gray-300"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="名片放大"
+            className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

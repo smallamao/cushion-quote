@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export interface BusinessCardData {
   companyName: string;
+  taxId: string;
   name: string;
   role: string;
   phone: string;
@@ -15,6 +16,7 @@ export interface BusinessCardData {
 
 const EMPTY_RESULT: BusinessCardData = {
   companyName: "",
+  taxId: "",
   name: "",
   role: "",
   phone: "",
@@ -25,39 +27,44 @@ const EMPTY_RESULT: BusinessCardData = {
 };
 
 export async function recognizeBusinessCard(
-  imageBuffer: Buffer,
-  mimeType: string,
+  images: { buffer: Buffer; mimeType: string }[],
 ): Promise<BusinessCardData> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { ...EMPTY_RESULT };
 
   try {
     const genai = new GoogleGenerativeAI(apiKey);
-    const model = genai.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `你是一個名片 OCR 助手。請從這張名片圖片中擷取以下資訊，並以 JSON 格式回傳。
+    const prompt = images.length > 1
+      ? `你是一個名片 OCR 助手。以下是同一張名片的正面和反面。請綜合兩面的資訊，擷取以下欄位並以 JSON 格式回傳。
 若某欄位不存在則回傳空字串。
-欄位：companyName（公司名稱）、name（姓名）、role（職稱）、phone（主要電話）、phone2（第二電話）、email（電子郵件）、lineId（LINE ID）、address（地址）。
+欄位：companyName（公司名稱）、taxId（統一編號）、name（姓名）、role（職稱）、phone（主要電話，手機優先）、phone2（第二電話，市話）、email（電子郵件）、lineId（LINE ID）、address（地址）。
+僅回傳 JSON，不要任何其他文字。`
+      : `你是一個名片 OCR 助手。請從這張名片圖片中擷取以下資訊，並以 JSON 格式回傳。
+若某欄位不存在則回傳空字串。
+欄位：companyName（公司名稱）、taxId（統一編號）、name（姓名）、role（職稱）、phone（主要電話，手機優先）、phone2（第二電話，市話）、email（電子郵件）、lineId（LINE ID）、address（地址）。
 僅回傳 JSON，不要任何其他文字。`;
 
-    const result = await model.generateContent([
-      prompt,
-      {
+    const parts: (string | { inlineData: { mimeType: string; data: string } })[] = [prompt];
+    for (const img of images) {
+      parts.push({
         inlineData: {
-          mimeType,
-          data: imageBuffer.toString("base64"),
+          mimeType: img.mimeType,
+          data: img.buffer.toString("base64"),
         },
-      },
-    ]);
+      });
+    }
+
+    const result = await model.generateContent(parts);
 
     let text = result.response.text();
-
-    // Strip markdown code fences
     text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 
     const parsed = JSON.parse(text) as Partial<BusinessCardData>;
     return {
       companyName: parsed.companyName ?? "",
+      taxId: parsed.taxId ?? "",
       name: parsed.name ?? "",
       role: parsed.role ?? "",
       phone: parsed.phone ?? "",

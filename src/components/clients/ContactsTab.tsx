@@ -38,7 +38,7 @@ export function ContactsTab({ companyId }: ContactsTabProps) {
     setNewDraft((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleCardRecognized(data: BusinessCardData, _imageUrl: string) {
+  function handleCardRecognized(data: BusinessCardData, imageUrls: string[]) {
     setNewDraft((prev) => ({
       ...prev,
       name: data.name || prev.name || "",
@@ -47,6 +47,7 @@ export function ContactsTab({ companyId }: ContactsTabProps) {
       phone2: data.phone2 || prev.phone2 || "",
       lineId: data.lineId || prev.lineId || "",
       email: data.email || prev.email || "",
+      businessCardUrl: imageUrls[0] ?? prev.businessCardUrl ?? "",
     }));
     setShowCardUpload(false);
     setShowNewForm(true);

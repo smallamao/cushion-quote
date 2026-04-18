@@ -1,0 +1,25 @@
+[    3745ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3000/purchases:0
+[    4033ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    4102ms] [LOG] [HMR] connected @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   21079ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8000/ws/updates?client_id=692fb3b0-bad9-4ce9-8b3a-4d233d9e15f8' failed:  @ http://127.0.0.1:3000/_next/static/chunks/_c6641475._.js:4287
+[   21083ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Y9KNpOU4uoOFbWtYiXyqC' failed:  @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   22117ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Y9KNpOU4uoOFbWtYiXyqC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   23122ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Y9KNpOU4uoOFbWtYiXyqC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   24127ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Y9KNpOU4uoOFbWtYiXyqC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   25137ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Y9KNpOU4uoOFbWtYiXyqC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   26153ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Y9KNpOU4uoOFbWtYiXyqC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   31171ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Y9KNpOU4uoOFbWtYiXyqC' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   38337ms] [LOG] [HMR] connected @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   43984ms] [ERROR] Failed to fetch RSC payload for http://127.0.0.1:3000/. Falling back to browser navigation. Error: can't infer type of chunk from URL app/page
+    at doLoadChunk (http://127.0.0.1:3000/_next/static/chunks/turbopack-_23a915ee._.js:1748:23)
+    at Object.loadChunkCached (http://127.0.0.1:3000/_next/static/chunks/turbopack-_23a915ee._.js:1634:20)
+    at loadChunkByUrlInternal (http://127.0.0.1:3000/_next/static/chunks/turbopack-_23a915ee._.js:637:30)
+    at DevContext.loadChunkByUrl [as L] (http://127.0.0.1:3000/_next/static/chunks/turbopack-_23a915ee._.js:632:12)
+    at preloadModule (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js:72:83)
+    at resolveModule (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js:1727:21)
+    at processFullStringRow (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js:2366:17)
+    at processFullBinaryRow (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js:2361:9)
+    at processBinaryChunk (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js:2470:221)
+    at progress (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_9212ccad._.js:2640:13) @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   44222ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3000/customers?_rsc=1e9w2:0
+[   44618ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/./node_modules/.pnpm/next@14.2.35_@babel+core@7.29.0_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next/dist/compiled/react-dom/cjs/react-dom.development.js:38559

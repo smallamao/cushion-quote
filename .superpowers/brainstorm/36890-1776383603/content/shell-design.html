@@ -1,0 +1,234 @@
+<h2>Phase 1：Shell 層響應式設計</h2>
+<p class="subtitle">以下是手機版 App Shell 的核心改動，分為 4 個區塊</p>
+
+<!-- 區塊 1：行動導航 -->
+<div class="section">
+  <h3>1. 行動導航抽屜（Mobile Nav Drawer）</h3>
+  <p class="subtitle">取代桌面版側邊欄，≤768px 時啟用</p>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">現況：≤1080px sidebar 消失</div>
+      <div class="mockup-body" style="background:#fafafa;min-height:300px;position:relative;">
+        <div style="background:#fff;border-bottom:1px solid #e5e5e5;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:14px;font-weight:600;">馬鈴薯沙發</span>
+          <div style="display:flex;gap:4px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:#eee;"></div>
+            <div style="width:32px;height:32px;border-radius:50%;background:#1e1e1e;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">M</div>
+          </div>
+        </div>
+        <div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px;">
+          <div style="font-size:48px;margin-bottom:12px;">🚫</div>
+          沒有導航選單<br>無法切換頁面
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header">改善後：漢堡選單 + 底部滑出抽屜</div>
+      <div class="mockup-body" style="background:#fafafa;min-height:300px;position:relative;">
+        <!-- Header with hamburger -->
+        <div style="background:#fff;border-bottom:1px solid #e5e5e5;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="display:flex;flex-direction:column;gap:4px;cursor:pointer;">
+              <div style="width:18px;height:2px;background:#111;border-radius:1px;"></div>
+              <div style="width:18px;height:2px;background:#111;border-radius:1px;"></div>
+              <div style="width:18px;height:2px;background:#111;border-radius:1px;"></div>
+            </div>
+            <span style="font-size:14px;font-weight:600;">馬鈴薯沙發</span>
+          </div>
+          <div style="display:flex;gap:4px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </div>
+            <div style="width:36px;height:36px;border-radius:50%;background:#1e1e1e;display:flex;align-items:center;justify-content:center;color:white;font-size:13px;font-weight:600;">M</div>
+          </div>
+        </div>
+
+        <!-- Overlay -->
+        <div style="position:absolute;top:60px;left:0;right:0;bottom:0;background:rgba(0,0,0,0.3);">
+          <!-- Bottom sheet drawer -->
+          <div style="position:absolute;bottom:0;left:0;right:0;background:#1e1e1e;border-radius:16px 16px 0 0;padding:16px 0 24px;">
+            <div style="width:36px;height:4px;background:rgba(255,255,255,0.3);border-radius:2px;margin:0 auto 16px;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:0 12px;">
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:rgba(255,255,255,0.18);">
+                <span style="font-size:14px;">🧮</span>
+                <span style="color:white;font-size:13px;">報價工作台</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">💼</span>
+                <span style="color:white;font-size:13px;">案件紀錄</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">🎨</span>
+                <span style="color:white;font-size:13px;">材質資料庫</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">📄</span>
+                <span style="color:white;font-size:13px;">報價紀錄</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">💰</span>
+                <span style="color:white;font-size:13px;">佣金結算</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">🛒</span>
+                <span style="color:white;font-size:13px;">採購單</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">📦</span>
+                <span style="color:white;font-size:13px;">採購商品</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">📊</span>
+                <span style="color:white;font-size:13px;">採購報表</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">🔧</span>
+                <span style="color:white;font-size:13px;">售後服務</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;">
+                <span style="font-size:14px;">⚙️</span>
+                <span style="color:white;font-size:13px;">系統設定</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;padding:16px;background:var(--bg-secondary);border-radius:8px;font-size:14px;">
+    <strong>實作方式：</strong>
+    <ul style="margin:8px 0 0;padding-left:20px;">
+      <li>新增 <code>MobileDrawer.tsx</code> 元件，使用 CSS transform 動畫從底部滑入</li>
+      <li>Header 左側加入漢堡圖示（僅 ≤768px 顯示）</li>
+      <li>點擊漢堡 → 開啟抽屜，點擊 overlay 或連結 → 關閉</li>
+      <li>導航項目使用 2 欄 grid，觸控目標 ≥48px 高</li>
+      <li>桌面版 sidebar 行為完全不變</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 區塊 2：Header 適配 -->
+<div class="section" style="margin-top:32px;">
+  <h3>2. Header 手機適配</h3>
+  <p class="subtitle">縮減 padding、調整元素位置</p>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">現況：px-8 在手機太寬</div>
+      <div class="mockup-body" style="background:#fff;border-bottom:1px solid #e5e5e5;">
+        <div style="padding:12px 32px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:14px;font-weight:600;">馬鈴薯沙發</span>
+          <div style="display:flex;gap:4px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:#eee;"></div>
+            <div style="width:32px;height:32px;border-radius:50%;background:#1e1e1e;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">M</div>
+          </div>
+        </div>
+        <div style="background:#fee;color:#c00;font-size:11px;text-align:center;padding:4px;">← 32px padding 浪費寶貴空間 →</div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header">改善後：px-4 + 通知面板響應式</div>
+      <div class="mockup-body" style="background:#fff;border-bottom:1px solid #e5e5e5;">
+        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <div style="width:18px;height:2px;background:#111;border-radius:1px;"></div>
+              <div style="width:18px;height:2px;background:#111;border-radius:1px;"></div>
+              <div style="width:18px;height:2px;background:#111;border-radius:1px;"></div>
+            </div>
+            <span style="font-size:14px;font-weight:600;">馬鈴薯沙發</span>
+          </div>
+          <div style="display:flex;gap:4px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:#f5f5f5;display:flex;align-items:center;justify-content:center;">🔔</div>
+            <div style="width:36px;height:36px;border-radius:50%;background:#1e1e1e;display:flex;align-items:center;justify-content:center;color:white;font-size:13px;font-weight:600;">M</div>
+          </div>
+        </div>
+        <div style="background:#efe;color:#060;font-size:11px;text-align:center;padding:4px;">← 16px padding，更多內容空間 →</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;padding:16px;background:var(--bg-secondary);border-radius:8px;font-size:14px;">
+    <strong>改動細節：</strong>
+    <ul style="margin:8px 0 0;padding-left:20px;">
+      <li>Header padding：<code>px-8</code> → <code>px-4 md:px-8</code></li>
+      <li>通知面板：<code>w-80</code> → <code>w-[calc(100vw-32px)] md:w-80</code>，手機上接近全寬</li>
+      <li>使用者選單：<code>w-52</code> → <code>w-[calc(100vw-32px)] md:w-52</code></li>
+      <li>觸控目標：鈴鐺/頭像從 <code>h-9 w-9</code> → <code>h-10 w-10</code></li>
+    </ul>
+  </div>
+</div>
+
+<!-- 區塊 3：觸控尺寸 -->
+<div class="section" style="margin-top:32px;">
+  <h3>3. 全域觸控尺寸升級</h3>
+  <p class="subtitle">按鈕和輸入框在手機上放大到 44px 觸控區域</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div style="padding:20px;border:1px solid var(--border);border-radius:12px;">
+      <div style="font-size:12px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">現在</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="height:32px;background:#2563eb;color:white;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;">h-8 (32px) sm 按鈕</div>
+        <div style="height:36px;background:#2563eb;color:white;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;">h-9 (36px) 預設按鈕</div>
+        <div style="height:32px;border:1px solid #e5e5e5;border-radius:8px;display:flex;align-items:center;padding:0 12px;font-size:12px;color:#9ca3af;">h-8 輸入框</div>
+      </div>
+    </div>
+    <div style="padding:20px;border:1px solid var(--border);border-radius:12px;">
+      <div style="font-size:12px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">改善後（手機）</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="height:40px;background:#2563eb;color:white;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;">h-10 (40px) sm 按鈕</div>
+        <div style="height:44px;background:#2563eb;color:white;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;">h-11 (44px) 預設按鈕</div>
+        <div style="height:44px;border:1px solid #e5e5e5;border-radius:8px;display:flex;align-items:center;padding:0 12px;font-size:14px;color:#9ca3af;">h-11 輸入框</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;padding:16px;background:var(--bg-secondary);border-radius:8px;font-size:14px;">
+    <strong>策略：</strong>CSS 變數 + 媒體查詢，手機上自動放大，桌面不變。
+    <ul style="margin:8px 0 0;padding-left:20px;">
+      <li><code>button.tsx</code>：sm size <code>h-8</code> → <code>h-10 md:h-8</code></li>
+      <li><code>button.tsx</code>：default size <code>h-9</code> → <code>h-11 md:h-9</code></li>
+      <li><code>button.tsx</code>：icon size <code>h-8 w-8</code> → <code>h-10 w-10 md:h-8 md:w-8</code></li>
+      <li><code>input.tsx</code>：同樣邏輯，確保 ≥44px</li>
+      <li><code>page-container</code> padding：<code>var(--space-8)</code> → 手機 16px / 桌面 32px</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 區塊 4：CSS 斷點 -->
+<div class="section" style="margin-top:32px;">
+  <h3>4. CSS 斷點體系</h3>
+  <p class="subtitle">建立統一的響應式斷點，取代目前的單一 1080px</p>
+
+  <div style="padding:20px;border:1px solid var(--border);border-radius:12px;font-family:monospace;font-size:13px;line-height:2;">
+    <div><span style="color:#2563eb;">≤ 768px</span> — 手機：sidebar 隱藏，漢堡抽屜，全域觸控放大</div>
+    <div><span style="color:#d97706;">769px ~ 1080px</span> — 平板：sidebar 自動收合為 icon-only (56px)</div>
+    <div><span style="color:#059669;">≥ 1081px</span> — 桌面：現有行為不變</div>
+  </div>
+
+  <div style="margin-top:16px;padding:16px;background:var(--bg-secondary);border-radius:8px;font-size:14px;">
+    <strong>改動：</strong>
+    <ul style="margin:8px 0 0;padding-left:20px;">
+      <li><code>globals.css</code> 新增 <code>@media (max-width: 768px)</code> 區塊</li>
+      <li>768px 以下：<code>.app-shell { grid-template-columns: 1fr }</code> + <code>.sidebar { display: none }</code></li>
+      <li>769-1080px：保留 sidebar 但強制收合</li>
+      <li><code>.page-container</code> 手機 padding 降為 16px</li>
+    </ul>
+  </div>
+</div>
+
+<div style="margin-top:32px;padding:20px;background:var(--bg-secondary);border-radius:12px;">
+  <h3 style="margin-top:0;">📋 Phase 1 不改動的範圍</h3>
+  <p style="font-size:14px;margin-top:8px;">以下留給後續 Phase 處理：</p>
+  <ul style="font-size:14px;padding-left:20px;">
+    <li>報價編輯器品項表格的響應式重排</li>
+    <li>報價紀錄 / 採購單列表的卡片式呈現</li>
+    <li>ProductCombobox 寬度適配</li>
+    <li>材質資料庫的手機佈局</li>
+    <li>各頁面的表單 grid 調整</li>
+  </ul>
+</div>

@@ -32,7 +32,7 @@ export function ContactCard({
     setDraft((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleRecognized(data: BusinessCardData, imageUrl: string) {
+  function handleRecognized(data: BusinessCardData, imageUrls: string[]) {
     setDraft((prev) => ({
       ...prev,
       name: data.name || prev.name,
@@ -41,7 +41,7 @@ export function ContactCard({
       phone2: data.phone2 || prev.phone2,
       lineId: data.lineId || prev.lineId,
       email: data.email || prev.email,
-      businessCardUrl: imageUrl || prev.businessCardUrl,
+      businessCardUrl: imageUrls[0] || prev.businessCardUrl,
     }));
     if (!editing) setEditing(true);
   }
@@ -91,7 +91,7 @@ export function ContactCard({
           </div>
         </div>
 
-        <BusinessCardUpload existingImageUrl={draft.businessCardUrl} onRecognized={handleRecognized} />
+        <BusinessCardUpload onRecognized={handleRecognized} />
 
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={handleCancel}>

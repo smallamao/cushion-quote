@@ -1,0 +1,746 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e6]: 馬鈴薯沙發
+          - generic [ref=e7]: 報價系統 v0.3.3
+        - navigation [ref=e8]:
+          - link "報價工作台" [ref=e9] [cursor=pointer]:
+            - /url: /
+            - img [ref=e10]
+            - generic [ref=e12]: 報價工作台
+          - link "客戶管理" [ref=e13] [cursor=pointer]:
+            - /url: /clients
+            - img [ref=e14]
+            - generic [ref=e19]: 客戶管理
+          - link "案件管理" [ref=e20] [cursor=pointer]:
+            - /url: /cases
+            - img [ref=e21]
+            - generic [ref=e24]: 案件管理
+          - link "材質資料庫" [ref=e25] [cursor=pointer]:
+            - /url: /materials
+            - img [ref=e26]
+            - generic [ref=e32]: 材質資料庫
+          - link "報價紀錄" [ref=e33] [cursor=pointer]:
+            - /url: /quotes
+            - img [ref=e34]
+            - generic [ref=e37]: 報價紀錄
+          - link "佣金結算" [ref=e38] [cursor=pointer]:
+            - /url: /commissions
+            - img [ref=e39]
+            - generic [ref=e45]: 佣金結算
+          - link "採購單" [ref=e46] [cursor=pointer]:
+            - /url: /purchases
+            - img [ref=e47]
+            - generic [ref=e51]: 採購單
+          - link "廠商管理" [ref=e52] [cursor=pointer]:
+            - /url: /suppliers
+            - img [ref=e53]
+            - generic [ref=e58]: 廠商管理
+          - link "採購商品" [ref=e59] [cursor=pointer]:
+            - /url: /purchase-products
+            - img [ref=e60]
+            - generic [ref=e64]: 採購商品
+          - link "系統設定" [ref=e65] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e66]
+            - generic [ref=e69]: 系統設定
+          - link "使用說明" [ref=e70] [cursor=pointer]:
+            - /url: /help
+            - img [ref=e71]
+            - generic [ref=e74]: 使用說明
+      - generic [ref=e75]:
+        - button "收合側邊欄" [ref=e76]:
+          - img [ref=e77]
+          - generic [ref=e79]: 收合側邊欄
+        - generic [ref=e80]: Google Sheets 已連線
+    - generic [ref=e81]:
+      - banner [ref=e82]:
+        - generic [ref=e83]: 馬鈴薯沙發
+        - generic [ref=e84]: CushionQuote
+      - main [ref=e85]:
+        - generic [ref=e86]:
+          - generic [ref=e87]:
+            - generic [ref=e88]:
+              - heading "採購單" [level=1] [ref=e89]
+              - paragraph [ref=e90]:
+                - text: 管理向廠商下的採購單
+                - generic [ref=e91]: 65 筆
+            - link "新增採購單" [ref=e92] [cursor=pointer]:
+              - /url: /purchases/new
+              - button "新增採購單" [ref=e93]:
+                - img [ref=e94]
+                - text: 新增採購單
+          - generic [ref=e95]:
+            - generic [ref=e96]:
+              - img [ref=e97]
+              - textbox "搜尋單號、廠商、附註" [ref=e100]
+            - generic [ref=e101]:
+              - button "全部" [ref=e102]
+              - button "草稿" [ref=e103]
+              - button "已送出" [ref=e104]
+              - button "已確認" [ref=e105]
+              - button "已到貨" [ref=e106]
+              - button "已取消" [ref=e107]
+          - table [ref=e109]:
+            - rowgroup [ref=e110]:
+              - row "採購單號 日期 廠商 合計金額 狀態 附註" [ref=e111]:
+                - columnheader "採購單號" [ref=e112]
+                - columnheader "日期" [ref=e113]
+                - columnheader "廠商" [ref=e114]
+                - columnheader "合計金額" [ref=e115]
+                - columnheader "狀態" [ref=e116]
+                - columnheader "附註" [ref=e117]
+            - rowgroup [ref=e118]:
+              - row "PS-20260409-03 2026-04-09 米盧 $83,380 已到貨 P6018/P6001/P5981/P5981/P6005" [ref=e119] [cursor=pointer]:
+                - cell "PS-20260409-03" [ref=e120]:
+                  - link "PS-20260409-03" [ref=e121]:
+                    - /url: /purchases/PS-20260409-03
+                - cell "2026-04-09" [ref=e122]
+                - cell "米盧" [ref=e123]
+                - cell "$83,380" [ref=e124]
+                - cell "已到貨" [ref=e125]:
+                  - generic [ref=e126]: 已到貨
+                - cell "P6018/P6001/P5981/P5981/P6005" [ref=e127]
+              - row "PS-20260409-02 2026-04-09 阿布ABU $9,800 已到貨 P6009,P5990" [ref=e128] [cursor=pointer]:
+                - cell "PS-20260409-02" [ref=e129]:
+                  - link "PS-20260409-02" [ref=e130]:
+                    - /url: /purchases/PS-20260409-02
+                - cell "2026-04-09" [ref=e131]
+                - cell "阿布ABU" [ref=e132]
+                - cell "$9,800" [ref=e133]
+                - cell "已到貨" [ref=e134]:
+                  - generic [ref=e135]: 已到貨
+                - cell "P6009,P5990" [ref=e136]
+              - row "PS-20260409-01 2026-04-09 綠都 $3,570 已到貨 P5960" [ref=e137] [cursor=pointer]:
+                - cell "PS-20260409-01" [ref=e138]:
+                  - link "PS-20260409-01" [ref=e139]:
+                    - /url: /purchases/PS-20260409-01
+                - cell "2026-04-09" [ref=e140]
+                - cell "綠都" [ref=e141]
+                - cell "$3,570" [ref=e142]
+                - cell "已到貨" [ref=e143]:
+                  - generic [ref=e144]: 已到貨
+                - cell "P5960" [ref=e145]
+              - row "PS-20260406-02 2026-04-06 久保 $472 已到貨 P5978,P5991,P6012,P6007" [ref=e146] [cursor=pointer]:
+                - cell "PS-20260406-02" [ref=e147]:
+                  - link "PS-20260406-02" [ref=e148]:
+                    - /url: /purchases/PS-20260406-02
+                - cell "2026-04-06" [ref=e149]
+                - cell "久保" [ref=e150]
+                - cell "$472" [ref=e151]
+                - cell "已到貨" [ref=e152]:
+                  - generic [ref=e153]: 已到貨
+                - cell "P5978,P5991,P6012,P6007" [ref=e154]
+              - row "PS-20260406-01 2026-04-06 凡加利 $1,848 已到貨 P5995、P5996" [ref=e155] [cursor=pointer]:
+                - cell "PS-20260406-01" [ref=e156]:
+                  - link "PS-20260406-01" [ref=e157]:
+                    - /url: /purchases/PS-20260406-01
+                - cell "2026-04-06" [ref=e158]
+                - cell "凡加利" [ref=e159]
+                - cell "$1,848" [ref=e160]
+                - cell "已到貨" [ref=e161]:
+                  - generic [ref=e162]: 已到貨
+                - cell "P5995、P5996" [ref=e163]
+              - row "PS-20260331-03 2026-03-31 綠都 $5,016 已到貨 P5997,P5991" [ref=e164] [cursor=pointer]:
+                - cell "PS-20260331-03" [ref=e165]:
+                  - link "PS-20260331-03" [ref=e166]:
+                    - /url: /purchases/PS-20260331-03
+                - cell "2026-03-31" [ref=e167]
+                - cell "綠都" [ref=e168]
+                - cell "$5,016" [ref=e169]
+                - cell "已到貨" [ref=e170]:
+                  - generic [ref=e171]: 已到貨
+                - cell "P5997,P5991" [ref=e172]
+              - row "PS-20260331-02 2026-03-31 阿布ABU $3,150 已到貨 P5991" [ref=e173] [cursor=pointer]:
+                - cell "PS-20260331-02" [ref=e174]:
+                  - link "PS-20260331-02" [ref=e175]:
+                    - /url: /purchases/PS-20260331-02
+                - cell "2026-03-31" [ref=e176]
+                - cell "阿布ABU" [ref=e177]
+                - cell "$3,150" [ref=e178]
+                - cell "已到貨" [ref=e179]:
+                  - generic [ref=e180]: 已到貨
+                - cell "P5991" [ref=e181]
+              - row "PS-20260331-01 2026-03-31 米盧 $11,440 已到貨 P5992" [ref=e182] [cursor=pointer]:
+                - cell "PS-20260331-01" [ref=e183]:
+                  - link "PS-20260331-01" [ref=e184]:
+                    - /url: /purchases/PS-20260331-01
+                - cell "2026-03-31" [ref=e185]
+                - cell "米盧" [ref=e186]
+                - cell "$11,440" [ref=e187]
+                - cell "已到貨" [ref=e188]:
+                  - generic [ref=e189]: 已到貨
+                - cell "P5992" [ref=e190]
+              - row "PS-20260327-02 2026-03-27 米盧 $27,280 已到貨 P5984/P5976" [ref=e191] [cursor=pointer]:
+                - cell "PS-20260327-02" [ref=e192]:
+                  - link "PS-20260327-02" [ref=e193]:
+                    - /url: /purchases/PS-20260327-02
+                - cell "2026-03-27" [ref=e194]
+                - cell "米盧" [ref=e195]
+                - cell "$27,280" [ref=e196]
+                - cell "已到貨" [ref=e197]:
+                  - generic [ref=e198]: 已到貨
+                - cell "P5984/P5976" [ref=e199]
+              - row "PS-20260327-01 2026-03-27 綠都 $2,940 已到貨 P5987/P5953" [ref=e200] [cursor=pointer]:
+                - cell "PS-20260327-01" [ref=e201]:
+                  - link "PS-20260327-01" [ref=e202]:
+                    - /url: /purchases/PS-20260327-01
+                - cell "2026-03-27" [ref=e203]
+                - cell "綠都" [ref=e204]
+                - cell "$2,940" [ref=e205]
+                - cell "已到貨" [ref=e206]:
+                  - generic [ref=e207]: 已到貨
+                - cell "P5987/P5953" [ref=e208]
+              - row "PS-20260319-03 2026-03-19 阿布ABU $8,750 已到貨 P5972" [ref=e209] [cursor=pointer]:
+                - cell "PS-20260319-03" [ref=e210]:
+                  - link "PS-20260319-03" [ref=e211]:
+                    - /url: /purchases/PS-20260319-03
+                - cell "2026-03-19" [ref=e212]
+                - cell "阿布ABU" [ref=e213]
+                - cell "$8,750" [ref=e214]
+                - cell "已到貨" [ref=e215]:
+                  - generic [ref=e216]: 已到貨
+                - cell "P5972" [ref=e217]
+              - row "PS-20260319-02 2026-03-19 綠都 $12,660 已到貨 P5975,P5968" [ref=e218] [cursor=pointer]:
+                - cell "PS-20260319-02" [ref=e219]:
+                  - link "PS-20260319-02" [ref=e220]:
+                    - /url: /purchases/PS-20260319-02
+                - cell "2026-03-19" [ref=e221]
+                - cell "綠都" [ref=e222]
+                - cell "$12,660" [ref=e223]
+                - cell "已到貨" [ref=e224]:
+                  - generic [ref=e225]: 已到貨
+                - cell "P5975,P5968" [ref=e226]
+              - row "PS-20260319-01 2026-03-19 米盧 $14,000 已到貨 P5980" [ref=e227] [cursor=pointer]:
+                - cell "PS-20260319-01" [ref=e228]:
+                  - link "PS-20260319-01" [ref=e229]:
+                    - /url: /purchases/PS-20260319-01
+                - cell "2026-03-19" [ref=e230]
+                - cell "米盧" [ref=e231]
+                - cell "$14,000" [ref=e232]
+                - cell "已到貨" [ref=e233]:
+                  - generic [ref=e234]: 已到貨
+                - cell "P5980" [ref=e235]
+              - row "PS-20260312-03 2026-03-12 勝騏 $4,545 已到貨 P5970,P5957" [ref=e236] [cursor=pointer]:
+                - cell "PS-20260312-03" [ref=e237]:
+                  - link "PS-20260312-03" [ref=e238]:
+                    - /url: /purchases/PS-20260312-03
+                - cell "2026-03-12" [ref=e239]
+                - cell "勝騏" [ref=e240]
+                - cell "$4,545" [ref=e241]
+                - cell "已到貨" [ref=e242]:
+                  - generic [ref=e243]: 已到貨
+                - cell "P5970,P5957" [ref=e244]
+              - row "PS-20260312-02 2026-03-12 綠都 $16,910 已到貨 S839,P5841,P5964,P5956" [ref=e245] [cursor=pointer]:
+                - cell "PS-20260312-02" [ref=e246]:
+                  - link "PS-20260312-02" [ref=e247]:
+                    - /url: /purchases/PS-20260312-02
+                - cell "2026-03-12" [ref=e248]
+                - cell "綠都" [ref=e249]
+                - cell "$16,910" [ref=e250]
+                - cell "已到貨" [ref=e251]:
+                  - generic [ref=e252]: 已到貨
+                - cell "S839,P5841,P5964,P5956" [ref=e253]
+              - row "PS-20260312-01 2026-03-12 米盧 $7,920 已到貨 P5841" [ref=e254] [cursor=pointer]:
+                - cell "PS-20260312-01" [ref=e255]:
+                  - link "PS-20260312-01" [ref=e256]:
+                    - /url: /purchases/PS-20260312-01
+                - cell "2026-03-12" [ref=e257]
+                - cell "米盧" [ref=e258]
+                - cell "$7,920" [ref=e259]
+                - cell "已到貨" [ref=e260]:
+                  - generic [ref=e261]: 已到貨
+                - cell "P5841" [ref=e262]
+              - row "PS-20260305-01 2026-03-05 勝騏 $5,145 已到貨 P5958,S1065" [ref=e263] [cursor=pointer]:
+                - cell "PS-20260305-01" [ref=e264]:
+                  - link "PS-20260305-01" [ref=e265]:
+                    - /url: /purchases/PS-20260305-01
+                - cell "2026-03-05" [ref=e266]
+                - cell "勝騏" [ref=e267]
+                - cell "$5,145" [ref=e268]
+                - cell "已到貨" [ref=e269]:
+                  - generic [ref=e270]: 已到貨
+                - cell "P5958,S1065" [ref=e271]
+              - row "PS-20260304-03 2026-03-04 綠都 $4,150 已到貨 P5807,P5962" [ref=e272] [cursor=pointer]:
+                - cell "PS-20260304-03" [ref=e273]:
+                  - link "PS-20260304-03" [ref=e274]:
+                    - /url: /purchases/PS-20260304-03
+                - cell "2026-03-04" [ref=e275]
+                - cell "綠都" [ref=e276]
+                - cell "$4,150" [ref=e277]
+                - cell "已到貨" [ref=e278]:
+                  - generic [ref=e279]: 已到貨
+                - cell "P5807,P5962" [ref=e280]
+              - row "PS-20260304-02 2026-03-04 米盧 $29,080 已到貨 P5963,P5807" [ref=e281] [cursor=pointer]:
+                - cell "PS-20260304-02" [ref=e282]:
+                  - link "PS-20260304-02" [ref=e283]:
+                    - /url: /purchases/PS-20260304-02
+                - cell "2026-03-04" [ref=e284]
+                - cell "米盧" [ref=e285]
+                - cell "$29,080" [ref=e286]
+                - cell "已到貨" [ref=e287]:
+                  - generic [ref=e288]: 已到貨
+                - cell "P5963,P5807" [ref=e289]
+              - row "PS-20260304-01 2026-03-04 安得利 $8,190 已到貨 P5962" [ref=e290] [cursor=pointer]:
+                - cell "PS-20260304-01" [ref=e291]:
+                  - link "PS-20260304-01" [ref=e292]:
+                    - /url: /purchases/PS-20260304-01
+                - cell "2026-03-04" [ref=e293]
+                - cell "安得利" [ref=e294]
+                - cell "$8,190" [ref=e295]
+                - cell "已到貨" [ref=e296]:
+                  - generic [ref=e297]: 已到貨
+                - cell "P5962" [ref=e298]
+              - row "PS-20260303-01 2026-03-03 阿布ABU $2,768 已到貨 P5932,S834" [ref=e299] [cursor=pointer]:
+                - cell "PS-20260303-01" [ref=e300]:
+                  - link "PS-20260303-01" [ref=e301]:
+                    - /url: /purchases/PS-20260303-01
+                - cell "2026-03-03" [ref=e302]
+                - cell "阿布ABU" [ref=e303]
+                - cell "$2,768" [ref=e304]
+                - cell "已到貨" [ref=e305]:
+                  - generic [ref=e306]: 已到貨
+                - cell "P5932,S834" [ref=e307]
+              - row "PS-20260226-01 2026-02-26 綠都 $3,570 已到貨 P5937" [ref=e308] [cursor=pointer]:
+                - cell "PS-20260226-01" [ref=e309]:
+                  - link "PS-20260226-01" [ref=e310]:
+                    - /url: /purchases/PS-20260226-01
+                - cell "2026-02-26" [ref=e311]
+                - cell "綠都" [ref=e312]
+                - cell "$3,570" [ref=e313]
+                - cell "已到貨" [ref=e314]:
+                  - generic [ref=e315]: 已到貨
+                - cell "P5937" [ref=e316]
+              - row "PS-20260224-02 2026-02-24 阿布ABU $20,880 已到貨 展示間,P5941,P5948,P5940" [ref=e317] [cursor=pointer]:
+                - cell "PS-20260224-02" [ref=e318]:
+                  - link "PS-20260224-02" [ref=e319]:
+                    - /url: /purchases/PS-20260224-02
+                - cell "2026-02-24" [ref=e320]
+                - cell "阿布ABU" [ref=e321]
+                - cell "$20,880" [ref=e322]
+                - cell "已到貨" [ref=e323]:
+                  - generic [ref=e324]: 已到貨
+                - cell "展示間,P5941,P5948,P5940" [ref=e325]
+              - 'row "PS-20260224-01 2026-02-24 米盧 $7,920 已到貨 #展示間" [ref=e326] [cursor=pointer]':
+                - cell "PS-20260224-01" [ref=e327]:
+                  - link "PS-20260224-01" [ref=e328]:
+                    - /url: /purchases/PS-20260224-01
+                - cell "2026-02-24" [ref=e329]
+                - cell "米盧" [ref=e330]
+                - cell "$7,920" [ref=e331]
+                - cell "已到貨" [ref=e332]:
+                  - generic [ref=e333]: 已到貨
+                - cell "#展示間" [ref=e334]
+              - row "PS-20260212-01 2026-02-12 米盧 $10,560 已到貨 P5945" [ref=e335] [cursor=pointer]:
+                - cell "PS-20260212-01" [ref=e336]:
+                  - link "PS-20260212-01" [ref=e337]:
+                    - /url: /purchases/PS-20260212-01
+                - cell "2026-02-12" [ref=e338]
+                - cell "米盧" [ref=e339]
+                - cell "$10,560" [ref=e340]
+                - cell "已到貨" [ref=e341]:
+                  - generic [ref=e342]: 已到貨
+                - cell "P5945" [ref=e343]
+              - row "PS-20260205-02 2026-02-05 勝騏 $3,025 已到貨 P5887,P5934,S817" [ref=e344] [cursor=pointer]:
+                - cell "PS-20260205-02" [ref=e345]:
+                  - link "PS-20260205-02" [ref=e346]:
+                    - /url: /purchases/PS-20260205-02
+                - cell "2026-02-05" [ref=e347]
+                - cell "勝騏" [ref=e348]
+                - cell "$3,025" [ref=e349]
+                - cell "已到貨" [ref=e350]:
+                  - generic [ref=e351]: 已到貨
+                - cell "P5887,P5934,S817" [ref=e352]
+              - row "PS-20260205-01 2026-02-05 阿布ABU $17,783 已到貨 P5923,P5935,P5923,P5924,P5935" [ref=e353] [cursor=pointer]:
+                - cell "PS-20260205-01" [ref=e354]:
+                  - link "PS-20260205-01" [ref=e355]:
+                    - /url: /purchases/PS-20260205-01
+                - cell "2026-02-05" [ref=e356]
+                - cell "阿布ABU" [ref=e357]
+                - cell "$17,783" [ref=e358]
+                - cell "已到貨" [ref=e359]:
+                  - generic [ref=e360]: 已到貨
+                - cell "P5923,P5935,P5923,P5924,P5935" [ref=e361]
+              - row "PS-20260204-02 2026-02-04 綠都 $4,750 已到貨 P5527-2,P5930" [ref=e362] [cursor=pointer]:
+                - cell "PS-20260204-02" [ref=e363]:
+                  - link "PS-20260204-02" [ref=e364]:
+                    - /url: /purchases/PS-20260204-02
+                - cell "2026-02-04" [ref=e365]
+                - cell "綠都" [ref=e366]
+                - cell "$4,750" [ref=e367]
+                - cell "已到貨" [ref=e368]:
+                  - generic [ref=e369]: 已到貨
+                - cell "P5527-2,P5930" [ref=e370]
+              - row "PS-20260204-01 2026-02-04 米盧 $57,120 已到貨 P5930,P5931,P5924,P5925" [ref=e371] [cursor=pointer]:
+                - cell "PS-20260204-01" [ref=e372]:
+                  - link "PS-20260204-01" [ref=e373]:
+                    - /url: /purchases/PS-20260204-01
+                - cell "2026-02-04" [ref=e374]
+                - cell "米盧" [ref=e375]
+                - cell "$57,120" [ref=e376]
+                - cell "已到貨" [ref=e377]:
+                  - generic [ref=e378]: 已到貨
+                - cell "P5930,P5931,P5924,P5925" [ref=e379]
+              - row "PS-20260122-05 2026-01-22 凡加利 $1,376 已到貨 P5903,P5919,P5910" [ref=e380] [cursor=pointer]:
+                - cell "PS-20260122-05" [ref=e381]:
+                  - link "PS-20260122-05" [ref=e382]:
+                    - /url: /purchases/PS-20260122-05
+                - cell "2026-01-22" [ref=e383]
+                - cell "凡加利" [ref=e384]
+                - cell "$1,376" [ref=e385]
+                - cell "已到貨" [ref=e386]:
+                  - generic [ref=e387]: 已到貨
+                - cell "P5903,P5919,P5910" [ref=e388]
+              - row "PS-20260122-04 2026-01-22 綠都 $5,960 已到貨 P5926,S828,P5917,P5906" [ref=e389] [cursor=pointer]:
+                - cell "PS-20260122-04" [ref=e390]:
+                  - link "PS-20260122-04" [ref=e391]:
+                    - /url: /purchases/PS-20260122-04
+                - cell "2026-01-22" [ref=e392]
+                - cell "綠都" [ref=e393]
+                - cell "$5,960" [ref=e394]
+                - cell "已到貨" [ref=e395]:
+                  - generic [ref=e396]: 已到貨
+                - cell "P5926,S828,P5917,P5906" [ref=e397]
+              - row "PS-20260122-03 2026-01-22 阿布ABU $20,475 已到貨 P5904,P5921,P5920" [ref=e398] [cursor=pointer]:
+                - cell "PS-20260122-03" [ref=e399]:
+                  - link "PS-20260122-03" [ref=e400]:
+                    - /url: /purchases/PS-20260122-03
+                - cell "2026-01-22" [ref=e401]
+                - cell "阿布ABU" [ref=e402]
+                - cell "$20,475" [ref=e403]
+                - cell "已到貨" [ref=e404]:
+                  - generic [ref=e405]: 已到貨
+                - cell "P5904,P5921,P5920" [ref=e406]
+              - 'row "PS-20260122-02 2026-01-22 米盧 $43,120 已到貨 #P5908/#P5915,P5907" [ref=e407] [cursor=pointer]':
+                - cell "PS-20260122-02" [ref=e408]:
+                  - link "PS-20260122-02" [ref=e409]:
+                    - /url: /purchases/PS-20260122-02
+                - cell "2026-01-22" [ref=e410]
+                - cell "米盧" [ref=e411]
+                - cell "$43,120" [ref=e412]
+                - cell "已到貨" [ref=e413]:
+                  - generic [ref=e414]: 已到貨
+                - cell "#P5908/#P5915,P5907" [ref=e415]
+              - row "PS-20260122-01 2026-01-22 勝騏 $9,870 已到貨 S1063,P5910" [ref=e416] [cursor=pointer]:
+                - cell "PS-20260122-01" [ref=e417]:
+                  - link "PS-20260122-01" [ref=e418]:
+                    - /url: /purchases/PS-20260122-01
+                - cell "2026-01-22" [ref=e419]
+                - cell "勝騏" [ref=e420]
+                - cell "$9,870" [ref=e421]
+                - cell "已到貨" [ref=e422]:
+                  - generic [ref=e423]: 已到貨
+                - cell "S1063,P5910" [ref=e424]
+              - row "PS-20260119-01 2026-01-19 安得利 $14,400 已到貨 P5901" [ref=e425] [cursor=pointer]:
+                - cell "PS-20260119-01" [ref=e426]:
+                  - link "PS-20260119-01" [ref=e427]:
+                    - /url: /purchases/PS-20260119-01
+                - cell "2026-01-19" [ref=e428]
+                - cell "安得利" [ref=e429]
+                - cell "$14,400" [ref=e430]
+                - cell "已到貨" [ref=e431]:
+                  - generic [ref=e432]: 已到貨
+                - cell "P5901" [ref=e433]
+              - row "PS-20260115-03 2026-01-15 勝騏 $2,520 已到貨 P5893" [ref=e434] [cursor=pointer]:
+                - cell "PS-20260115-03" [ref=e435]:
+                  - link "PS-20260115-03" [ref=e436]:
+                    - /url: /purchases/PS-20260115-03
+                - cell "2026-01-15" [ref=e437]
+                - cell "勝騏" [ref=e438]
+                - cell "$2,520" [ref=e439]
+                - cell "已到貨" [ref=e440]:
+                  - generic [ref=e441]: 已到貨
+                - cell "P5893" [ref=e442]
+              - 'row "PS-20260115-02 2026-01-15 阿布ABU $19,415 已到貨 S824, #P5827,P5895,P5827,展示間,P5899" [ref=e443] [cursor=pointer]':
+                - cell "PS-20260115-02" [ref=e444]:
+                  - link "PS-20260115-02" [ref=e445]:
+                    - /url: /purchases/PS-20260115-02
+                - cell "2026-01-15" [ref=e446]
+                - cell "阿布ABU" [ref=e447]
+                - cell "$19,415" [ref=e448]
+                - cell "已到貨" [ref=e449]:
+                  - generic [ref=e450]: 已到貨
+                - 'cell "S824, #P5827,P5895,P5827,展示間,P5899" [ref=e451]'
+              - row "PS-20260115-01 2026-01-15 綠都 $2,660 已到貨 P5894" [ref=e452] [cursor=pointer]:
+                - cell "PS-20260115-01" [ref=e453]:
+                  - link "PS-20260115-01" [ref=e454]:
+                    - /url: /purchases/PS-20260115-01
+                - cell "2026-01-15" [ref=e455]
+                - cell "綠都" [ref=e456]
+                - cell "$2,660" [ref=e457]
+                - cell "已到貨" [ref=e458]:
+                  - generic [ref=e459]: 已到貨
+                - cell "P5894" [ref=e460]
+              - row "PS-20260114-01 2026-01-14 米盧 $10,080 已到貨 P5886" [ref=e461] [cursor=pointer]:
+                - cell "PS-20260114-01" [ref=e462]:
+                  - link "PS-20260114-01" [ref=e463]:
+                    - /url: /purchases/PS-20260114-01
+                - cell "2026-01-14" [ref=e464]
+                - cell "米盧" [ref=e465]
+                - cell "$10,080" [ref=e466]
+                - cell "已到貨" [ref=e467]:
+                  - generic [ref=e468]: 已到貨
+                - cell "P5886" [ref=e469]
+              - row "PS-20260113-01 2026-01-13 勝騏 $5,440 已到貨 P5869" [ref=e470] [cursor=pointer]:
+                - cell "PS-20260113-01" [ref=e471]:
+                  - link "PS-20260113-01" [ref=e472]:
+                    - /url: /purchases/PS-20260113-01
+                - cell "2026-01-13" [ref=e473]
+                - cell "勝騏" [ref=e474]
+                - cell "$5,440" [ref=e475]
+                - cell "已到貨" [ref=e476]:
+                  - generic [ref=e477]: 已到貨
+                - cell "P5869" [ref=e478]
+              - row "PS-20260105-05 2026-01-05 阿布ABU $10,620 已到貨 P5889,P4455,S796,P5878" [ref=e479] [cursor=pointer]:
+                - cell "PS-20260105-05" [ref=e480]:
+                  - link "PS-20260105-05" [ref=e481]:
+                    - /url: /purchases/PS-20260105-05
+                - cell "2026-01-05" [ref=e482]
+                - cell "阿布ABU" [ref=e483]
+                - cell "$10,620" [ref=e484]
+                - cell "已到貨" [ref=e485]:
+                  - generic [ref=e486]: 已到貨
+                - cell "P5889,P4455,S796,P5878" [ref=e487]
+              - row "PS-20260105-04 2026-01-05 勝騏 $1,600 已到貨 P5882" [ref=e488] [cursor=pointer]:
+                - cell "PS-20260105-04" [ref=e489]:
+                  - link "PS-20260105-04" [ref=e490]:
+                    - /url: /purchases/PS-20260105-04
+                - cell "2026-01-05" [ref=e491]
+                - cell "勝騏" [ref=e492]
+                - cell "$1,600" [ref=e493]
+                - cell "已到貨" [ref=e494]:
+                  - generic [ref=e495]: 已到貨
+                - cell "P5882" [ref=e496]
+              - row "PS-20260105-03 2026-01-05 米盧 $56,080 已到貨 P5877/P5890/P5889,P5896,P5883" [ref=e497] [cursor=pointer]:
+                - cell "PS-20260105-03" [ref=e498]:
+                  - link "PS-20260105-03" [ref=e499]:
+                    - /url: /purchases/PS-20260105-03
+                - cell "2026-01-05" [ref=e500]
+                - cell "米盧" [ref=e501]
+                - cell "$56,080" [ref=e502]
+                - cell "已到貨" [ref=e503]:
+                  - generic [ref=e504]: 已到貨
+                - cell "P5877/P5890/P5889,P5896,P5883" [ref=e505]
+              - row "PS-20260105-02 2026-01-05 綠都 $4,745 已到貨 P5896,P5890" [ref=e506] [cursor=pointer]:
+                - cell "PS-20260105-02" [ref=e507]:
+                  - link "PS-20260105-02" [ref=e508]:
+                    - /url: /purchases/PS-20260105-02
+                - cell "2026-01-05" [ref=e509]
+                - cell "綠都" [ref=e510]
+                - cell "$4,745" [ref=e511]
+                - cell "已到貨" [ref=e512]:
+                  - generic [ref=e513]: 已到貨
+                - cell "P5896,P5890" [ref=e514]
+              - row "PS-20260105-01 2026-01-05 久保 $20 已到貨 P5870,P5864,P5875-2,P5866" [ref=e515] [cursor=pointer]:
+                - cell "PS-20260105-01" [ref=e516]:
+                  - link "PS-20260105-01" [ref=e517]:
+                    - /url: /purchases/PS-20260105-01
+                - cell "2026-01-05" [ref=e518]
+                - cell "久保" [ref=e519]
+                - cell "$20" [ref=e520]
+                - cell "已到貨" [ref=e521]:
+                  - generic [ref=e522]: 已到貨
+                - cell "P5870,P5864,P5875-2,P5866" [ref=e523]
+              - row "PS-20260102-04 2026-01-02 阿布ABU $12,180 已到貨 P5866,P5872,P5868,P5860+S792" [ref=e524] [cursor=pointer]:
+                - cell "PS-20260102-04" [ref=e525]:
+                  - link "PS-20260102-04" [ref=e526]:
+                    - /url: /purchases/PS-20260102-04
+                - cell "2026-01-02" [ref=e527]
+                - cell "阿布ABU" [ref=e528]
+                - cell "$12,180" [ref=e529]
+                - cell "已到貨" [ref=e530]:
+                  - generic [ref=e531]: 已到貨
+                - cell "P5866,P5872,P5868,P5860+S792" [ref=e532]
+              - row "PS-20260102-03 2026-01-02 勝騏 $1,260 已到貨 P5880" [ref=e533] [cursor=pointer]:
+                - cell "PS-20260102-03" [ref=e534]:
+                  - link "PS-20260102-03" [ref=e535]:
+                    - /url: /purchases/PS-20260102-03
+                - cell "2026-01-02" [ref=e536]
+                - cell "勝騏" [ref=e537]
+                - cell "$1,260" [ref=e538]
+                - cell "已到貨" [ref=e539]:
+                  - generic [ref=e540]: 已到貨
+                - cell "P5880" [ref=e541]
+              - row "PS-20260102-02 2026-01-02 綠都 $12,920 已到貨 P5876,P5871" [ref=e542] [cursor=pointer]:
+                - cell "PS-20260102-02" [ref=e543]:
+                  - link "PS-20260102-02" [ref=e544]:
+                    - /url: /purchases/PS-20260102-02
+                - cell "2026-01-02" [ref=e545]
+                - cell "綠都" [ref=e546]
+                - cell "$12,920" [ref=e547]
+                - cell "已到貨" [ref=e548]:
+                  - generic [ref=e549]: 已到貨
+                - cell "P5876,P5871" [ref=e550]
+              - row "PS-20260102-01 2026-01-02 米盧 $69,520 已到貨 展示間,P5881,P5884,P5876" [ref=e551] [cursor=pointer]:
+                - cell "PS-20260102-01" [ref=e552]:
+                  - link "PS-20260102-01" [ref=e553]:
+                    - /url: /purchases/PS-20260102-01
+                - cell "2026-01-02" [ref=e554]
+                - cell "米盧" [ref=e555]
+                - cell "$69,520" [ref=e556]
+                - cell "已到貨" [ref=e557]:
+                  - generic [ref=e558]: 已到貨
+                - cell "展示間,P5881,P5884,P5876" [ref=e559]
+              - row "PS-20231107-01 2023-11-07 安得利 $3,465 已到貨 P4127" [ref=e560] [cursor=pointer]:
+                - cell "PS-20231107-01" [ref=e561]:
+                  - link "PS-20231107-01" [ref=e562]:
+                    - /url: /purchases/PS-20231107-01
+                - cell "2023-11-07" [ref=e563]
+                - cell "安得利" [ref=e564]
+                - cell "$3,465" [ref=e565]
+                - cell "已到貨" [ref=e566]:
+                  - generic [ref=e567]: 已到貨
+                - cell "P4127" [ref=e568]
+              - row "PS-20220926-01 2022-09-26 久保 $320 已到貨 P3437、P3416、P3418" [ref=e569] [cursor=pointer]:
+                - cell "PS-20220926-01" [ref=e570]:
+                  - link "PS-20220926-01" [ref=e571]:
+                    - /url: /purchases/PS-20220926-01
+                - cell "2022-09-26" [ref=e572]
+                - cell "久保" [ref=e573]
+                - cell "$320" [ref=e574]
+                - cell "已到貨" [ref=e575]:
+                  - generic [ref=e576]: 已到貨
+                - cell "P3437、P3416、P3418" [ref=e577]
+              - row "PS-20220914-02 2022-09-14 凡加利 $2,586 已到貨 P3381" [ref=e578] [cursor=pointer]:
+                - cell "PS-20220914-02" [ref=e579]:
+                  - link "PS-20220914-02" [ref=e580]:
+                    - /url: /purchases/PS-20220914-02
+                - cell "2022-09-14" [ref=e581]
+                - cell "凡加利" [ref=e582]
+                - cell "$2,586" [ref=e583]
+                - cell "已到貨" [ref=e584]:
+                  - generic [ref=e585]: 已到貨
+                - cell "P3381" [ref=e586]
+              - row "PS-20220914-01 2022-09-14 久保 $300 已到貨 P3403" [ref=e587] [cursor=pointer]:
+                - cell "PS-20220914-01" [ref=e588]:
+                  - link "PS-20220914-01" [ref=e589]:
+                    - /url: /purchases/PS-20220914-01
+                - cell "2022-09-14" [ref=e590]
+                - cell "久保" [ref=e591]
+                - cell "$300" [ref=e592]
+                - cell "已到貨" [ref=e593]:
+                  - generic [ref=e594]: 已到貨
+                - cell "P3403" [ref=e595]
+              - row "PS-20220908-02 2022-09-08 久保 $360 已到貨 P3357" [ref=e596] [cursor=pointer]:
+                - cell "PS-20220908-02" [ref=e597]:
+                  - link "PS-20220908-02" [ref=e598]:
+                    - /url: /purchases/PS-20220908-02
+                - cell "2022-09-08" [ref=e599]
+                - cell "久保" [ref=e600]
+                - cell "$360" [ref=e601]
+                - cell "已到貨" [ref=e602]:
+                  - generic [ref=e603]: 已到貨
+                - cell "P3357" [ref=e604]
+              - row "PS-20220908-01 2022-09-08 久保 $300 已到貨 P3355，不急，下星期有其他貨趟再一起出" [ref=e605] [cursor=pointer]:
+                - cell "PS-20220908-01" [ref=e606]:
+                  - link "PS-20220908-01" [ref=e607]:
+                    - /url: /purchases/PS-20220908-01
+                - cell "2022-09-08" [ref=e608]
+                - cell "久保" [ref=e609]
+                - cell "$300" [ref=e610]
+                - cell "已到貨" [ref=e611]:
+                  - generic [ref=e612]: 已到貨
+                - cell "P3355，不急，下星期有其他貨趟再一起出" [ref=e613]
+              - row "PS-20220906-01 2022-09-06 久保 $1,760 已到貨 P3386、P3385(A007-3 深胡桃木色!)、P3349" [ref=e614] [cursor=pointer]:
+                - cell "PS-20220906-01" [ref=e615]:
+                  - link "PS-20220906-01" [ref=e616]:
+                    - /url: /purchases/PS-20220906-01
+                - cell "2022-09-06" [ref=e617]
+                - cell "久保" [ref=e618]
+                - cell "$1,760" [ref=e619]
+                - cell "已到貨" [ref=e620]:
+                  - generic [ref=e621]: 已到貨
+                - cell "P3386、P3385(A007-3 深胡桃木色!)、P3349" [ref=e622]
+              - row "PS-20220905-02 2022-09-05 綠都 $7,030 已到貨 P3351、P3378" [ref=e623] [cursor=pointer]:
+                - cell "PS-20220905-02" [ref=e624]:
+                  - link "PS-20220905-02" [ref=e625]:
+                    - /url: /purchases/PS-20220905-02
+                - cell "2022-09-05" [ref=e626]
+                - cell "綠都" [ref=e627]
+                - cell "$7,030" [ref=e628]
+                - cell "已到貨" [ref=e629]:
+                  - generic [ref=e630]: 已到貨
+                - cell "P3351、P3378" [ref=e631]
+              - row "PS-20220905-01 2022-09-05 米盧 $15,840 已到貨 P3351、P3410" [ref=e632] [cursor=pointer]:
+                - cell "PS-20220905-01" [ref=e633]:
+                  - link "PS-20220905-01" [ref=e634]:
+                    - /url: /purchases/PS-20220905-01
+                - cell "2022-09-05" [ref=e635]
+                - cell "米盧" [ref=e636]
+                - cell "$15,840" [ref=e637]
+                - cell "已到貨" [ref=e638]:
+                  - generic [ref=e639]: 已到貨
+                - cell "P3351、P3410" [ref=e640]
+              - row "PS-20220903-02 2022-09-03 久保 $720 已到貨 P3401、P3402" [ref=e641] [cursor=pointer]:
+                - cell "PS-20220903-02" [ref=e642]:
+                  - link "PS-20220903-02" [ref=e643]:
+                    - /url: /purchases/PS-20220903-02
+                - cell "2022-09-03" [ref=e644]
+                - cell "久保" [ref=e645]
+                - cell "$720" [ref=e646]
+                - cell "已到貨" [ref=e647]:
+                  - generic [ref=e648]: 已到貨
+                - cell "P3401、P3402" [ref=e649]
+              - row "PS-20220901-02 2022-09-01 久保 $1,700 已到貨 P3417、P3387、P3364" [ref=e650] [cursor=pointer]:
+                - cell "PS-20220901-02" [ref=e651]:
+                  - link "PS-20220901-02" [ref=e652]:
+                    - /url: /purchases/PS-20220901-02
+                - cell "2022-09-01" [ref=e653]
+                - cell "久保" [ref=e654]
+                - cell "$1,700" [ref=e655]
+                - cell "已到貨" [ref=e656]:
+                  - generic [ref=e657]: 已到貨
+                - cell "P3417、P3387、P3364" [ref=e658]
+              - row "PS-20220901-01 2022-09-01 凡加利 $456 已到貨 P3368" [ref=e659] [cursor=pointer]:
+                - cell "PS-20220901-01" [ref=e660]:
+                  - link "PS-20220901-01" [ref=e661]:
+                    - /url: /purchases/PS-20220901-01
+                - cell "2022-09-01" [ref=e662]
+                - cell "凡加利" [ref=e663]
+                - cell "$456" [ref=e664]
+                - cell "已到貨" [ref=e665]:
+                  - generic [ref=e666]: 已到貨
+                - cell "P3368" [ref=e667]
+              - row "PS-20220831-01 2022-08-31 安得利 $10,360 已到貨 P3389" [ref=e668] [cursor=pointer]:
+                - cell "PS-20220831-01" [ref=e669]:
+                  - link "PS-20220831-01" [ref=e670]:
+                    - /url: /purchases/PS-20220831-01
+                - cell "2022-08-31" [ref=e671]
+                - cell "安得利" [ref=e672]
+                - cell "$10,360" [ref=e673]
+                - cell "已到貨" [ref=e674]:
+                  - generic [ref=e675]: 已到貨
+                - cell "P3389" [ref=e676]
+              - row "PS-20220830-01 2022-08-30 安得利 $6,480 已到貨 P3394" [ref=e677] [cursor=pointer]:
+                - cell "PS-20220830-01" [ref=e678]:
+                  - link "PS-20220830-01" [ref=e679]:
+                    - /url: /purchases/PS-20220830-01
+                - cell "2022-08-30" [ref=e680]
+                - cell "安得利" [ref=e681]
+                - cell "$6,480" [ref=e682]
+                - cell "已到貨" [ref=e683]:
+                  - generic [ref=e684]: 已到貨
+                - cell "P3394" [ref=e685]
+              - row "PS-20220704-02 2022-07-04 阿布ABU $1,980 已到貨 P3255" [ref=e686] [cursor=pointer]:
+                - cell "PS-20220704-02" [ref=e687]:
+                  - link "PS-20220704-02" [ref=e688]:
+                    - /url: /purchases/PS-20220704-02
+                - cell "2022-07-04" [ref=e689]
+                - cell "阿布ABU" [ref=e690]
+                - cell "$1,980" [ref=e691]
+                - cell "已到貨" [ref=e692]:
+                  - generic [ref=e693]: 已到貨
+                - cell "P3255" [ref=e694]
+              - row "PS-20220518-01 2022-05-18 安得利 $5,940 已到貨 P3168" [ref=e695] [cursor=pointer]:
+                - cell "PS-20220518-01" [ref=e696]:
+                  - link "PS-20220518-01" [ref=e697]:
+                    - /url: /purchases/PS-20220518-01
+                - cell "2022-05-18" [ref=e698]
+                - cell "安得利" [ref=e699]
+                - cell "$5,940" [ref=e700]
+                - cell "已到貨" [ref=e701]:
+                  - generic [ref=e702]: 已到貨
+                - cell "P3168" [ref=e703]
+  - alert [ref=e704]

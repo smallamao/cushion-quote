@@ -23,7 +23,8 @@
       "Bash(vercel ls:*)",
       "Bash(sips:*)",
       "Bash(npm test:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(pkill -f \"next dev\")"
     ]
   }
 }

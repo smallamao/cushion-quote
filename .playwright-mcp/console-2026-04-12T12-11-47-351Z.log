@@ -1,0 +1,4 @@
+[     895ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3001/_next/static/css/app/layout.css?v=1775995907876:0
+[     944ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3001/_next/static/chunks/main-app.js?v=1775995907876:0
+[     944ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3001/_next/static/chunks/app-pages-internals.js:0
+[    4648ms] [WARNING] The resource http://127.0.0.1:3001/_next/static/media/13971731025ec697-s.p.woff2 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ http://127.0.0.1:3001/purchases/PS-20260409-03:0

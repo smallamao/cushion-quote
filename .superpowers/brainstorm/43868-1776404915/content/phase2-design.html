@@ -1,0 +1,204 @@
+<h2>Phase 2：全頁面深度優化設計</h2>
+<p class="subtitle">9 個頁面的手機版卡片化 + 表單重排，統一設計語言</p>
+
+<!-- 共用模式 -->
+<div class="section">
+  <h3>共用元件：useIsMobile hook + ResponsiveList</h3>
+  <p>建立一個共用的 <code>useIsMobile()</code> hook（breakpoint 768px）和 <code>ResponsiveList</code> 包裝元件，所有列表頁面共用同一套「桌面表格 / 手機卡片」切換邏輯。</p>
+  <div style="padding:16px;background:var(--bg-secondary);border-radius:8px;font-size:13px;margin-top:12px;">
+    <code>useIsMobile()</code> → boolean<br>
+    <code>&lt;ResponsiveList&gt;</code> 接受 <code>renderTable</code> 和 <code>renderCards</code> 兩個 render prop
+  </div>
+</div>
+
+<!-- 1. QuoteEditor -->
+<div class="section" style="margin-top:32px;">
+  <h3>1. 報價編輯器 — 品項卡片化（最複雜）</h3>
+
+  <div class="mockup">
+    <div class="mockup-header">iPhone SE (375px) — 報價編輯器品項</div>
+    <div class="mockup-body" style="background:#fafafa;padding:12px;font-size:13px;">
+      <!-- Item Card 1 -->
+      <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="font-size:12px;color:#6b7280;font-weight:500;">1</span>
+          <div style="display:flex;gap:6px;">
+            <div style="width:32px;height:32px;border-radius:6px;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;font-size:12px;color:#6b7280;">📝</div>
+            <div style="width:32px;height:32px;border-radius:6px;border:1px solid #fee2e2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#dc2626;">🗑</div>
+          </div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">商品名稱</div>
+          <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;min-height:40px;">三人座沙發繃布 — 義大利進口牛皮</div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">規格 / 材質</div>
+          <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;">頭層牛皮 / 深棕色</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">數量</div>
+            <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;text-align:center;">1</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">單位</div>
+            <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;text-align:center;">組</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">單價</div>
+            <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;text-align:right;">28,000</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #f0f0f0;">
+          <span style="font-size:12px;color:#6b7280;">小計</span>
+          <span style="font-size:15px;font-weight:600;">$28,000</span>
+        </div>
+      </div>
+
+      <!-- Item Card 2 (collapsed) -->
+      <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="font-size:12px;color:#6b7280;font-weight:500;">2</span>
+          <div style="display:flex;gap:6px;">
+            <div style="width:32px;height:32px;border-radius:6px;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;font-size:12px;color:#6b7280;">📝</div>
+            <div style="width:32px;height:32px;border-radius:6px;border:1px solid #fee2e2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#dc2626;">🗑</div>
+          </div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">商品名稱</div>
+          <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;">坐墊海綿更換</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">數量</div>
+            <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;text-align:center;">3</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">單位</div>
+            <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;text-align:center;">件</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">單價</div>
+            <div style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;padding:8px 10px;font-size:13px;text-align:right;">3,200</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #f0f0f0;">
+          <span style="font-size:12px;color:#6b7280;">小計</span>
+          <span style="font-size:15px;font-weight:600;">$9,600</span>
+        </div>
+      </div>
+
+      <!-- Add button -->
+      <button style="width:100%;padding:12px;border:2px dashed #e5e5e5;border-radius:10px;background:transparent;color:#6b7280;font-size:13px;cursor:pointer;">+ 新增品項</button>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;padding:16px;background:var(--bg-secondary);border-radius:8px;font-size:13px;">
+    <strong>設計要點：</strong>
+    <ul style="margin:8px 0 0;padding-left:18px;">
+      <li>手機上隱藏拖曳排序（drag handle），改用卡片右上角的上移/下移按鈕</li>
+      <li>數量、單位、單價用 3 欄 grid，利用 375px 寬度</li>
+      <li>備註/圖片區域在卡片底部展開（點「備註」按鈕）</li>
+      <li>桌面版保持現有表格，完全不變</li>
+      <li>新增 <code>MobileQuoteItemCard.tsx</code> 元件</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 2-9: List pages summary -->
+<div class="section" style="margin-top:32px;">
+  <h3>2-9. 列表頁面統一卡片化</h3>
+  <p class="subtitle">每個列表頁面在 ≤768px 時從表格切換為卡片列表</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <!-- QuotesClient -->
+    <div style="padding:14px;border:1px solid var(--border);border-radius:10px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">報價紀錄</div>
+      <div style="font-size:13px;line-height:1.6;">
+        <strong>卡片欄位：</strong>單號 + 狀態、客戶名、日期、金額<br>
+        <strong>操作：</strong>編輯、複製 icon 按鈕<br>
+        <strong>篩選：</strong>搜尋框 + 狀態下拉（取代 inline select）
+      </div>
+    </div>
+
+    <!-- CasesClient -->
+    <div style="padding:14px;border:1px solid var(--border);border-radius:10px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">案件紀錄</div>
+      <div style="font-size:13px;line-height:1.6;">
+        <strong>卡片欄位：</strong>案件名 + 狀態、客戶、來源、建立日期<br>
+        <strong>操作：</strong>點擊展開詳情（報價/採購/成本）<br>
+        <strong>篩選：</strong>搜尋框 + 狀態下拉
+      </div>
+    </div>
+
+    <!-- PurchasesClient -->
+    <div style="padding:14px;border:1px solid var(--border);border-radius:10px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">採購單列表</div>
+      <div style="font-size:13px;line-height:1.6;">
+        <strong>卡片欄位：</strong>單號 + 狀態、廠商、日期、金額<br>
+        <strong>操作：</strong>點擊進入詳情頁<br>
+        <strong>篩選：</strong>搜尋框 + 狀態 pill 改為水平捲動
+      </div>
+    </div>
+
+    <!-- PurchaseEditor -->
+    <div style="padding:14px;border:1px solid var(--border);border-radius:10px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">採購單編輯器</div>
+      <div style="font-size:13px;line-height:1.6;">
+        <strong>表單：</strong>供應商欄位垂直堆疊<br>
+        <strong>品項：</strong>卡片式（同報價編輯器模式）<br>
+        <strong>ProductCombobox：</strong>全寬下拉
+      </div>
+    </div>
+
+    <!-- Materials -->
+    <div style="padding:14px;border:1px solid var(--border);border-radius:10px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">材質資料庫</div>
+      <div style="font-size:13px;line-height:1.6;">
+        <strong>卡片欄位：</strong>品牌/系列、色號/色名、進價/牌價<br>
+        <strong>操作：</strong>編輯、停用 icon 按鈕<br>
+        <strong>隱藏：</strong>分類欄（次要資訊）
+      </div>
+    </div>
+
+    <!-- Commissions -->
+    <div style="padding:14px;border:1px solid var(--border);border-radius:10px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">佣金結算</div>
+      <div style="font-size:13px;line-height:1.6;">
+        <strong>改動最小：</strong>已有響應式 grid<br>
+        <strong>表格：</strong>隱藏付款日期欄<br>
+        <strong>統計卡片：</strong>保持原樣（已 OK）
+      </div>
+    </div>
+
+    <!-- AfterSales -->
+    <div style="padding:14px;border:1px solid var(--border);border-radius:10px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">售後服務</div>
+      <div style="font-size:13px;line-height:1.6;">
+        <strong>卡片欄位：</strong>單號 + 狀態、客戶、款式、問題摘要<br>
+        <strong>操作：</strong>點擊進入詳情<br>
+        <strong>分頁：</strong>簡化為 icon 按鈕
+      </div>
+    </div>
+
+    <!-- ProductCombobox -->
+    <div style="padding:14px;border:1px solid var(--border);border-radius:10px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">ProductCombobox</div>
+      <div style="font-size:13px;line-height:1.6;">
+        <strong>寬度：</strong>w-[380px] → 手機全寬<br>
+        <strong>結果項：</strong>雙行排列（名稱 + 價格換行）<br>
+        <strong>觸控：</strong>項目高度增加到 48px
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:24px;padding:20px;background:var(--bg-secondary);border-radius:12px;">
+  <h3 style="margin-top:0;">檔案影響範圍預估</h3>
+  <div style="font-size:13px;margin-top:8px;">
+    <strong>新增檔案（~4 個）：</strong><br>
+    <code>useIsMobile.ts</code>、<code>MobileQuoteItemCard.tsx</code>、<code>MobilePurchaseItemCard.tsx</code>、<code>ResponsiveList.tsx</code><br><br>
+    <strong>修改檔案（~10 個）：</strong><br>
+    QuoteEditor.tsx、QuotesClient.tsx、CasesClient.tsx、PurchasesClient.tsx、PurchaseEditorClient.tsx、ProductCombobox.tsx、MaterialTable.tsx、CommissionsClient.tsx、AfterSalesListClient.tsx、globals.css
+  </div>
+</div>
