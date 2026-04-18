@@ -6,6 +6,7 @@ import type {
   ExtraItem,
   FlexQuoteItem,
   InstallHeightTier,
+  ClientSource,
   LeadSource,
   Material,
   MethodConfig,
@@ -188,6 +189,22 @@ export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
   design_firm: "設計公司",
   builder: "建商/工班",
   homeowner: "屋主",
+  other: "其他",
+};
+
+export const CLIENT_SOURCE_LABELS: Record<ClientSource, string> = {
+  unknown: "未分類",
+  bni: "BNI 商會",
+  rotary: "扶輪社",
+  guild_association: "公會 / 協會",
+  peer_referral: "同業介紹",
+  designer_referral: "設計師介紹",
+  client_referral: "舊客介紹",
+  google_search: "Google 搜尋",
+  facebook_instagram: "Facebook / Instagram",
+  line: "LINE",
+  exhibition: "展覽 / 活動",
+  cold_outreach: "主動開發",
   other: "其他",
 };
 

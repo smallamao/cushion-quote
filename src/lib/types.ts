@@ -20,6 +20,21 @@ export type LeadSource =
   | "association_network"
   | "other";
 
+export type ClientSource =
+  | "unknown"
+  | "bni"
+  | "rotary"
+  | "guild_association"
+  | "peer_referral"
+  | "designer_referral"
+  | "client_referral"
+  | "google_search"
+  | "facebook_instagram"
+  | "line"
+  | "exhibition"
+  | "cold_outreach"
+  | "other";
+
 export type ExtraItem = "leather_labor" | "lining" | "anti_slip" | "power_hole";
 
 export type AddonType =

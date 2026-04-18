@@ -5,7 +5,7 @@ import type { Company, Contact, CompanyWithPrimaryContact } from "@/lib/types/co
 import { companyToClient } from "@/lib/types/company";
 import type { Channel, Client, ClientType, CommissionMode } from "@/lib/types";
 
-import type { LeadSource } from "@/lib/types";
+import type { ClientSource } from "@/lib/types";
 
 // New schema: 17 columns A:Q
 function rowToCompany(row: string[]): Company {
@@ -26,7 +26,7 @@ function rowToCompany(row: string[]): Company {
     updatedAt: row[13] ?? "",
     notes: row[14] ?? "",
     commissionFixedAmount: Number(row[15] ?? 0),
-    leadSource: (row[16] as LeadSource) ?? "unknown",
+    leadSource: (row[16] as ClientSource) ?? "unknown",
   };
 }
 
@@ -51,7 +51,7 @@ function legacyRowToCompanyAndContact(
     updatedAt: row[18] ?? "",
     notes: row[19] ?? "",
     commissionFixedAmount: Number(row[20] ?? 0),
-    leadSource: "unknown" as LeadSource,
+    leadSource: "unknown" as ClientSource,
   };
 
   const contactName = row[5] ?? "";
