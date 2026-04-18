@@ -985,6 +985,10 @@ export function QuoteEditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           caseId: targetCaseId,
+          clientId: selectedClientId === "__new__" ? "" : selectedClientId,
+          clientNameSnapshot: companyName,
+          contactNameSnapshot: contactName,
+          phoneSnapshot: phone,
           projectAddress: address,
           leadSource,
           leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
@@ -994,7 +998,7 @@ export function QuoteEditor() {
       });
       if (!response.ok) throw new Error("更新案件資料失敗");
     },
-    [address, leadSource, leadSourceContact, leadSourceDetail, leadSourceNotes, shouldShowLeadSourceDetail],
+    [address, companyName, contactName, leadSource, leadSourceContact, leadSourceDetail, leadSourceNotes, phone, selectedClientId, shouldShowLeadSourceDetail],
   );
 
   const loadVersionDocument = useCallback(
