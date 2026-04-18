@@ -152,26 +152,35 @@ export function CompanyListPanel() {
         await addCompany(company);
       }
 
-      if (ocrPreview.contact.name.trim()) {
+      // Always create contact if there's any contact info
+      const hasContactInfo = ocrPreview.contact.name.trim() ||
+        ocrPreview.contact.phone.trim() ||
+        ocrPreview.contact.email.trim();
+
+      if (hasContactInfo) {
         const contact = {
           id: `CON-${Date.now()}`,
           companyId,
-          name: ocrPreview.contact.name,
+          name: ocrPreview.contact.name || "（未命名）",
           role: ocrPreview.contact.role,
           phone: ocrPreview.contact.phone,
           phone2: ocrPreview.contact.phone2,
           lineId: ocrPreview.contact.lineId,
           email: ocrPreview.contact.email,
           businessCardUrl: ocrPreview.imageUrls[0] ?? "",
-          isPrimary: !ocrPreview.matchedCompanyId, // only primary if new company
+          isPrimary: !ocrPreview.matchedCompanyId,
           createdAt: "",
           updatedAt: "",
         };
-        await fetch("/api/sheets/contacts", {
+        const res = await fetch("/api/sheets/contacts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(contact),
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error ?? "聯絡人建立失敗");
+        }
       }
 
       setOcrPreview(null);
