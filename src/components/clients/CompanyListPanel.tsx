@@ -137,28 +137,32 @@ export function CompanyListPanel() {
       let companyId: string;
 
       if (ocrPreview.matchedCompanyId) {
-        // Add contact to existing company
         companyId = ocrPreview.matchedCompanyId;
       } else {
-        // Create new company
+        // Step 1: Create company (raw fetch, no reload yet)
         companyId = `CLI-${Date.now()}`;
-        const company: Company = {
+        const companyPayload: Company = {
           ...EMPTY_COMPANY,
           id: companyId,
           companyName: ocrPreview.company.companyName,
           taxId: ocrPreview.company.taxId,
           address: ocrPreview.company.address,
         };
-        await addCompany(company);
+        const companyRes = await fetch("/api/sheets/clients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(companyPayload),
+        });
+        if (!companyRes.ok) throw new Error("公司建立失敗");
       }
 
-      // Always create contact if there's any contact info
+      // Step 2: Create contact
       const hasContactInfo = ocrPreview.contact.name.trim() ||
         ocrPreview.contact.phone.trim() ||
         ocrPreview.contact.email.trim();
 
       if (hasContactInfo) {
-        const contact = {
+        const contactPayload = {
           id: `CON-${Date.now()}`,
           companyId,
           name: ocrPreview.contact.name || "（未命名）",
@@ -172,19 +176,19 @@ export function CompanyListPanel() {
           createdAt: "",
           updatedAt: "",
         };
-        const res = await fetch("/api/sheets/contacts", {
+        const contactRes = await fetch("/api/sheets/contacts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(contact),
+          body: JSON.stringify(contactPayload),
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error((err as { error?: string }).error ?? "聯絡人建立失敗");
-        }
+        if (!contactRes.ok) throw new Error("聯絡人建立失敗");
       }
 
+      // Step 3: Done — close preview and reload once
       setOcrPreview(null);
       await reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "建檔失敗");
     } finally {
       setOcrSaving(false);
     }
