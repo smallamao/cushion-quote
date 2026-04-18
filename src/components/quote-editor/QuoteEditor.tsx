@@ -30,6 +30,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
+import { ClientCombobox } from "./ClientCombobox";
 import { useHistory } from "@/hooks/useHistory";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useSettings } from "@/hooks/useSettings";
@@ -2418,24 +2419,12 @@ export function QuoteEditor() {
           <div className="border-t border-[var(--border)] px-6 py-4">
             <div className="mb-4">
               <Label>選擇客戶</Label>
-              <Select
+              <ClientCombobox
                 value={selectedClientId}
-                onValueChange={selectClient}
-              >
-                <SelectTrigger className="max-w-xl">
-                  <SelectValue placeholder={clientsLoading ? "載入中..." : "選擇客戶或新建"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__new__">＋ 新客戶（手動輸入）</SelectItem>
-                  {clients.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.companyName}
-                      {c.shortName ? ` (${c.shortName})` : ""}
-                      {c.contactName ? ` — ${c.contactName}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                clients={clients}
+                onChange={selectClient}
+                loading={clientsLoading}
+              />
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
