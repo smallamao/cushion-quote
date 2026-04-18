@@ -165,6 +165,10 @@ export function CompanyListPanel() {
         ocrPreview.contact.email.trim();
 
       if (hasContactInfo) {
+        // Skip base64 data URLs (too large for Sheets) — only save real URLs
+        const cardUrl = ocrPreview.imageUrls[0] ?? "";
+        const safeCardUrl = cardUrl.startsWith("data:") ? "" : cardUrl;
+
         const contactPayload = {
           id: `CON-${Date.now()}`,
           companyId,
@@ -174,7 +178,7 @@ export function CompanyListPanel() {
           phone2: ocrPreview.contact.phone2,
           lineId: ocrPreview.contact.lineId,
           email: ocrPreview.contact.email,
-          businessCardUrl: ocrPreview.imageUrls[0] ?? "",
+          businessCardUrl: safeCardUrl,
           isPrimary: !ocrPreview.matchedCompanyId,
           createdAt: "",
           updatedAt: "",
