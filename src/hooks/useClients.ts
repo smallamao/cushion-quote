@@ -18,6 +18,7 @@ function clientToCompany(client: Client): Company {
     commissionFixedAmount: client.commissionFixedAmount,
     paymentTerms: client.paymentTerms,
     defaultNotes: client.defaultNotes,
+    leadSource: "unknown",
     isActive: client.isActive,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt,

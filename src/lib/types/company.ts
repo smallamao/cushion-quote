@@ -1,4 +1,4 @@
-import type { Channel, ClientType, CommissionMode } from "../types";
+import type { Channel, ClientType, CommissionMode, LeadSource } from "../types";
 
 export interface Company {
   id: string;
@@ -13,6 +13,7 @@ export interface Company {
   commissionFixedAmount: number;
   paymentTerms: string;
   defaultNotes: string;
+  leadSource: LeadSource;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

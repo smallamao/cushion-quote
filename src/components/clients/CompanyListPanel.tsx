@@ -35,6 +35,7 @@ const EMPTY_COMPANY: CompanyWithPrimaryContact = {
   commissionFixedAmount: 0,
   paymentTerms: "",
   defaultNotes: "",
+  leadSource: "unknown",
   isActive: true,
   createdAt: "",
   updatedAt: "",

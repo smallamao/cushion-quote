@@ -14,7 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CLIENT_TYPE_LABELS, CHANNEL_LABELS } from "@/lib/constants";
+import { CLIENT_TYPE_LABELS, CHANNEL_LABELS, LEAD_SOURCE_LABELS } from "@/lib/constants";
+import type { Channel, ClientType, CommissionMode, LeadSource } from "@/lib/types";
 import type { Company } from "@/lib/types/company";
 import { clampCommissionRate } from "@/lib/utils";
 
@@ -120,6 +121,24 @@ export function CompanyInfoTab({ company, onSave }: CompanyInfoTabProps) {
                 ).map((key) => (
                   <SelectItem key={key} value={key}>
                     {CHANNEL_LABELS[key].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="sm:col-span-2">
+            <Label>客戶來源</Label>
+            <Select
+              value={draft.leadSource ?? "unknown"}
+              onValueChange={(v) => update({ leadSource: v as LeadSource })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(LEAD_SOURCE_LABELS).map(([key, { label }]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
                   </SelectItem>
                 ))}
               </SelectContent>

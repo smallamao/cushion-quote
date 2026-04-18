@@ -5,7 +5,9 @@ import type { Company, Contact, CompanyWithPrimaryContact } from "@/lib/types/co
 import { companyToClient } from "@/lib/types/company";
 import type { Channel, Client, ClientType, CommissionMode } from "@/lib/types";
 
-// New schema: 16 columns A:P
+import type { LeadSource } from "@/lib/types";
+
+// New schema: 17 columns A:Q
 function rowToCompany(row: string[]): Company {
   return {
     id: row[0] ?? "",
@@ -24,6 +26,7 @@ function rowToCompany(row: string[]): Company {
     updatedAt: row[13] ?? "",
     notes: row[14] ?? "",
     commissionFixedAmount: Number(row[15] ?? 0),
+    leadSource: (row[16] as LeadSource) ?? "unknown",
   };
 }
 
@@ -48,6 +51,7 @@ function legacyRowToCompanyAndContact(
     updatedAt: row[18] ?? "",
     notes: row[19] ?? "",
     commissionFixedAmount: Number(row[20] ?? 0),
+    leadSource: "unknown" as LeadSource,
   };
 
   const contactName = row[5] ?? "";
@@ -89,6 +93,7 @@ function companyToRow(c: Company): string[] {
     c.updatedAt,
     c.notes,
     String(c.commissionFixedAmount),
+    c.leadSource ?? "unknown",
   ];
 }
 
@@ -143,7 +148,7 @@ export async function GET() {
 
     for (const row of rawRows) {
       // Detect schema: legacy has 21 columns, new has 16
-      const isLegacy = row.length > 16;
+      const isLegacy = row.length > 17;
 
       let company: Company;
       let inlineContact: Contact | null = null;
@@ -189,7 +194,7 @@ export async function POST(request: Request) {
   try {
     await sheetsClient.sheets.spreadsheets.values.append({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: "客戶資料庫!A:P",
+      range: "客戶資料庫!A:Q",
       valueInputOption: "RAW",
       requestBody: { values: [companyToRow(payload)] },
     });
@@ -224,7 +229,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `客戶資料庫!A${sheetRow}:P${sheetRow}`,
+      range: `客戶資料庫!A${sheetRow}:Q${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [companyToRow(payload)] },
     });
