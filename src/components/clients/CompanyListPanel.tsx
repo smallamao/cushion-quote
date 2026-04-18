@@ -46,6 +46,8 @@ interface OcrPreview {
   company: { companyName: string; taxId: string; address: string };
   contact: { name: string; role: string; phone: string; phone2: string; lineId: string; email: string };
   imageUrls: string[];
+  matchedCompanyId: string | null; // if OCR matches an existing company
+  matchedCompanyName: string | null;
 }
 
 export function CompanyListPanel() {
@@ -89,6 +91,16 @@ export function CompanyListPanel() {
   }
 
   function handleCardRecognized(data: BusinessCardData, imageUrls: string[]) {
+    // Check if recognized company name matches an existing company
+    const nameToMatch = data.companyName.trim().toLowerCase();
+    const matched = nameToMatch
+      ? companies.find(
+          (c) =>
+            c.companyName.toLowerCase() === nameToMatch ||
+            c.shortName?.toLowerCase() === nameToMatch,
+        )
+      : undefined;
+
     setOcrPreview({
       company: {
         companyName: data.companyName,
@@ -104,6 +116,8 @@ export function CompanyListPanel() {
         email: data.email,
       },
       imageUrls,
+      matchedCompanyId: matched?.id ?? null,
+      matchedCompanyName: matched?.companyName ?? null,
     });
     setShowCardUpload(false);
   }
@@ -120,15 +134,23 @@ export function CompanyListPanel() {
     if (!ocrPreview || !ocrPreview.company.companyName.trim()) return;
     setOcrSaving(true);
     try {
-      const companyId = `CLI-${Date.now()}`;
-      const company: Company = {
-        ...EMPTY_COMPANY,
-        id: companyId,
-        companyName: ocrPreview.company.companyName,
-        taxId: ocrPreview.company.taxId,
-        address: ocrPreview.company.address,
-      };
-      await addCompany(company);
+      let companyId: string;
+
+      if (ocrPreview.matchedCompanyId) {
+        // Add contact to existing company
+        companyId = ocrPreview.matchedCompanyId;
+      } else {
+        // Create new company
+        companyId = `CLI-${Date.now()}`;
+        const company: Company = {
+          ...EMPTY_COMPANY,
+          id: companyId,
+          companyName: ocrPreview.company.companyName,
+          taxId: ocrPreview.company.taxId,
+          address: ocrPreview.company.address,
+        };
+        await addCompany(company);
+      }
 
       if (ocrPreview.contact.name.trim()) {
         const contact = {
@@ -141,7 +163,7 @@ export function CompanyListPanel() {
           lineId: ocrPreview.contact.lineId,
           email: ocrPreview.contact.email,
           businessCardUrl: ocrPreview.imageUrls[0] ?? "",
-          isPrimary: true,
+          isPrimary: !ocrPreview.matchedCompanyId, // only primary if new company
           createdAt: "",
           updatedAt: "",
         };
@@ -238,7 +260,30 @@ export function CompanyListPanel() {
             </div>
           )}
 
-          {/* Company fields */}
+          {/* Matched company notice */}
+          {ocrPreview.matchedCompanyId && (
+            <div className="flex items-center gap-2 rounded-[var(--radius)] bg-blue-50 px-3 py-2 text-xs text-blue-700">
+              <span>
+                已找到匹配的公司「<strong>{ocrPreview.matchedCompanyName}</strong>」，
+                確認後將新增為該公司的聯絡人。
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto shrink-0 text-xs text-blue-600"
+                onClick={() =>
+                  setOcrPreview((prev) =>
+                    prev ? { ...prev, matchedCompanyId: null, matchedCompanyName: null } : prev,
+                  )
+                }
+              >
+                建為新公司
+              </Button>
+            </div>
+          )}
+
+          {/* Company fields — hidden when matched */}
+          {!ocrPreview.matchedCompanyId && (
           <div className="space-y-3">
             <h4 className="text-xs font-medium uppercase tracking-wider text-[var(--text-secondary)]">
               公司資訊
@@ -267,6 +312,7 @@ export function CompanyListPanel() {
               </div>
             </div>
           </div>
+          )}
 
           {/* Contact fields */}
           <div className="space-y-3">
@@ -338,7 +384,11 @@ export function CompanyListPanel() {
               ) : (
                 <Check className="h-3.5 w-3.5" />
               )}
-              {ocrSaving ? "建檔中..." : "確認建檔"}
+              {ocrSaving
+                ? "建檔中..."
+                : ocrPreview?.matchedCompanyId
+                  ? "新增為聯絡人"
+                  : "確認建檔"}
             </Button>
           </div>
         </div>
