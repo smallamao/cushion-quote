@@ -29,7 +29,7 @@ export function CompanyDetailPanel({
   isNew = false,
 }: CompanyDetailPanelProps) {
   async function handleDeactivate() {
-    const confirmed = confirm(`確定要停用「${company.companyName}」嗎？`);
+    const confirmed = confirm(`確定要刪除「${company.companyName}」嗎？刪除後可在「顯示停用」中找回。`);
     if (!confirmed) return;
     await onSave({ ...company, isActive: false });
     onClose();
@@ -117,7 +117,7 @@ export function CompanyDetailPanel({
               onClick={handleDeactivate}
             >
               <Ban className="h-3.5 w-3.5" />
-              停用公司
+              刪除公司
             </Button>
           </div>
         )}
