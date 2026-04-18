@@ -45,9 +45,9 @@ export function CompanyDetailPanel({
       />
 
       {/* Panel */}
-      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[480px] flex-col bg-[var(--bg-primary)] shadow-2xl">
+      <div className="fixed inset-y-0 right-0 z-50 flex w-[90vw] max-w-[520px] flex-col overflow-hidden bg-[var(--bg-primary)] shadow-2xl sm:w-full">
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-[var(--border)] px-6 py-4">
+        <div className="flex items-start justify-between border-b border-[var(--border)] px-4 py-4 sm:px-6">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">
               {isNew ? "新增公司" : company.companyName}
@@ -75,7 +75,7 @@ export function CompanyDetailPanel({
 
         {/* Tabs */}
         <Tabs defaultValue="info" className="flex min-h-0 flex-1 flex-col">
-          <TabsList className="w-full justify-start border-b border-[var(--border)] bg-transparent px-6">
+          <TabsList className="w-full justify-start border-b border-[var(--border)] bg-transparent px-4 sm:px-6">
             <TabsTrigger value="info">公司資料</TabsTrigger>
             {!isNew && (
               <TabsTrigger value="contacts">聯絡人</TabsTrigger>
@@ -86,18 +86,18 @@ export function CompanyDetailPanel({
           </TabsList>
 
           <div className="flex-1 overflow-y-auto">
-            <TabsContent value="info" className="mt-0 px-6 py-4">
+            <TabsContent value="info" className="mt-0 px-4 py-4 sm:px-6">
               <CompanyInfoTab company={company} onSave={onSave} />
             </TabsContent>
 
             {!isNew && (
-              <TabsContent value="contacts" className="mt-0 px-6 py-4">
+              <TabsContent value="contacts" className="mt-0 px-4 py-4 sm:px-6">
                 <ContactsTab companyId={company.id} />
               </TabsContent>
             )}
 
             {!isNew && (
-              <TabsContent value="quotes" className="mt-0 px-6 py-4">
+              <TabsContent value="quotes" className="mt-0 px-4 py-4 sm:px-6">
                 <QuoteHistoryTab
                   companyId={company.id}
                   companyName={company.companyName}
@@ -109,7 +109,7 @@ export function CompanyDetailPanel({
 
         {/* Footer */}
         {!isNew && (
-          <div className="border-t border-[var(--border)] px-6 py-3">
+          <div className="border-t border-[var(--border)] px-4 py-3 sm:px-6">
             <Button
               variant="ghost"
               size="sm"
