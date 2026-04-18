@@ -7,9 +7,9 @@ import { useEffect, useState } from "react";
 interface VersionRecord {
   versionId: string;
   quoteDate: string;
-  projectName: string;
+  projectNameSnapshot: string;
   versionStatus: string;
-  totalWithTax: number;
+  totalAmount: number;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -61,7 +61,7 @@ export function QuoteHistoryTab({
     };
   }, [companyId]);
 
-  const total = versions.reduce((sum, v) => sum + (v.totalWithTax ?? 0), 0);
+  const total = versions.reduce((sum, v) => sum + (v.totalAmount ?? 0), 0);
 
   function handleLoadVersion(versionId: string) {
     sessionStorage.setItem(
@@ -124,14 +124,14 @@ export function QuoteHistoryTab({
                   <td className="text-[var(--text-secondary)]">
                     {v.quoteDate}
                   </td>
-                  <td>{v.projectName}</td>
+                  <td>{v.projectNameSnapshot}</td>
                   <td>
                     <span className="rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-xs">
                       {STATUS_LABELS[v.versionStatus] ?? v.versionStatus}
                     </span>
                   </td>
                   <td className="text-right font-mono">
-                    ${(v.totalWithTax ?? 0).toLocaleString()}
+                    ${(v.totalAmount ?? 0).toLocaleString()}
                   </td>
                 </tr>
               ))}
