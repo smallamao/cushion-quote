@@ -2422,7 +2422,7 @@ export function QuoteEditor() {
                 value={selectedClientId}
                 onValueChange={selectClient}
               >
-                <SelectTrigger className="max-w-xs">
+                <SelectTrigger className="max-w-xl">
                   <SelectValue placeholder={clientsLoading ? "載入中..." : "選擇客戶或新建"} />
                 </SelectTrigger>
                 <SelectContent>
