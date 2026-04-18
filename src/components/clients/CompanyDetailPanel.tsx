@@ -45,7 +45,7 @@ export function CompanyDetailPanel({
       />
 
       {/* Panel */}
-      <div className="fixed inset-y-0 right-0 z-50 flex w-[90vw] max-w-[520px] flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl sm:w-full">
+      <div className="fixed inset-y-0 right-0 z-50 flex w-[90vw] max-w-[520px] flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-elevated)] shadow-2xl sm:w-full">
         {/* Header */}
         <div className="flex items-start justify-between border-b border-[var(--border)] px-4 py-4 sm:px-6">
           <div className="space-y-1">
