@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { uploadBusinessCardImage } from "@/lib/drive-client";
 import { recognizeBusinessCard } from "@/lib/gemini-client";
 
 export async function POST(request: Request) {
@@ -32,20 +31,18 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const timestamp = Date.now();
-    const ext = file.type.split("/")[1] ?? "jpg";
-    const fileName = `card_${timestamp}.${ext}`;
 
-    // Run OCR and Drive upload in parallel
-    const [ocrResult, imageUrl] = await Promise.all([
-      recognizeBusinessCard(buffer, file.type),
-      uploadBusinessCardImage(buffer, fileName, file.type),
-    ]);
+    // OCR with Gemini
+    const ocrResult = await recognizeBusinessCard(buffer, file.type);
+
+    // Store image as base64 data URL (no Drive upload needed)
+    const base64 = buffer.toString("base64");
+    const imageUrl = `data:${file.type};base64,${base64}`;
 
     return NextResponse.json({
       ok: true,
       data: ocrResult,
-      imageUrl: imageUrl ?? "",
+      imageUrl,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

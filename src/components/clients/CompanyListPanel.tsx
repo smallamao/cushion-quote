@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Plus, Upload } from "lucide-react";
+import { Check, Loader2, Plus, Upload, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,14 @@ export function CompanyListPanel() {
   const [isNewCompany, setIsNewCompany] = useState(false);
   const [showCardUpload, setShowCardUpload] = useState(false);
 
+  // OCR preview state
+  const [ocrPreview, setOcrPreview] = useState<{
+    company: { companyName: string; address: string };
+    contact: { name: string; role: string; phone: string; phone2: string; lineId: string; email: string };
+    imageUrl: string;
+  } | null>(null);
+  const [ocrSaving, setOcrSaving] = useState(false);
+
   function handleOpenNew() {
     setSelectedCompany({ ...EMPTY_COMPANY, id: `CLI-${Date.now()}` });
     setIsNewCompany(true);
@@ -75,27 +83,70 @@ export function CompanyListPanel() {
     await reload();
   }
 
-  function handleCardRecognized(data: BusinessCardData, _imageUrl: string) {
-    const newCompany: CompanyWithPrimaryContact = {
-      ...EMPTY_COMPANY,
-      id: `CLI-${Date.now()}`,
-      companyName: data.companyName,
-      address: data.address,
-    };
-
-    const contactData = {
-      name: data.name,
-      role: data.role,
-      phone: data.phone,
-      phone2: data.phone2,
-      lineId: data.lineId,
-      email: data.email,
-    };
-    sessionStorage.setItem("pendingContact", JSON.stringify(contactData));
-
+  function handleCardRecognized(data: BusinessCardData, imageUrl: string) {
+    setOcrPreview({
+      company: { companyName: data.companyName, address: data.address },
+      contact: {
+        name: data.name,
+        role: data.role,
+        phone: data.phone,
+        phone2: data.phone2,
+        lineId: data.lineId,
+        email: data.email,
+      },
+      imageUrl,
+    });
     setShowCardUpload(false);
-    setSelectedCompany(newCompany);
-    setIsNewCompany(true);
+  }
+
+  function updateOcrCompany(patch: Partial<{ companyName: string; address: string }>) {
+    setOcrPreview((prev) => prev ? { ...prev, company: { ...prev.company, ...patch } } : prev);
+  }
+
+  function updateOcrContact(patch: Partial<{ name: string; role: string; phone: string; phone2: string; lineId: string; email: string }>) {
+    setOcrPreview((prev) => prev ? { ...prev, contact: { ...prev.contact, ...patch } } : prev);
+  }
+
+  async function handleOcrConfirm() {
+    if (!ocrPreview || !ocrPreview.company.companyName.trim()) return;
+    setOcrSaving(true);
+    try {
+      const companyId = `CLI-${Date.now()}`;
+      const company: Company = {
+        ...EMPTY_COMPANY,
+        id: companyId,
+        companyName: ocrPreview.company.companyName,
+        address: ocrPreview.company.address,
+      };
+      await addCompany(company);
+
+      if (ocrPreview.contact.name.trim()) {
+        const contact = {
+          id: `CON-${Date.now()}`,
+          companyId,
+          name: ocrPreview.contact.name,
+          role: ocrPreview.contact.role,
+          phone: ocrPreview.contact.phone,
+          phone2: ocrPreview.contact.phone2,
+          lineId: ocrPreview.contact.lineId,
+          email: ocrPreview.contact.email,
+          businessCardUrl: ocrPreview.imageUrl,
+          isPrimary: true,
+          createdAt: "",
+          updatedAt: "",
+        };
+        await fetch("/api/sheets/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(contact),
+        });
+      }
+
+      setOcrPreview(null);
+      await reload();
+    } finally {
+      setOcrSaving(false);
+    }
   }
 
   return (
@@ -139,6 +190,123 @@ export function CompanyListPanel() {
           >
             取消
           </Button>
+        </div>
+      )}
+
+      {/* OCR Preview */}
+      {ocrPreview && (
+        <div className="card-surface space-y-4 rounded-[var(--radius-lg)] p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+              名片辨識結果
+            </h3>
+            <span className="text-xs text-[var(--text-secondary)]">
+              請確認資料是否正確，修正後按「確認建檔」
+            </span>
+          </div>
+
+          {ocrPreview.imageUrl && (
+            <img
+              src={ocrPreview.imageUrl}
+              alt="名片"
+              className="h-auto max-w-[300px] rounded-[var(--radius)] border border-[var(--border)]"
+            />
+          )}
+
+          <div className="space-y-3">
+            <h4 className="text-xs font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+              公司資訊
+            </h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>公司名稱 *</Label>
+                <Input
+                  value={ocrPreview.company.companyName}
+                  onChange={(e) => updateOcrCompany({ companyName: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>地址</Label>
+                <Input
+                  value={ocrPreview.company.address}
+                  onChange={(e) => updateOcrCompany({ address: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-xs font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+              聯絡人
+            </h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>姓名</Label>
+                <Input
+                  value={ocrPreview.contact.name}
+                  onChange={(e) => updateOcrContact({ name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>職稱</Label>
+                <Input
+                  value={ocrPreview.contact.role}
+                  onChange={(e) => updateOcrContact({ role: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>電話</Label>
+                <Input
+                  value={ocrPreview.contact.phone}
+                  onChange={(e) => updateOcrContact({ phone: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>電話 2</Label>
+                <Input
+                  value={ocrPreview.contact.phone2}
+                  onChange={(e) => updateOcrContact({ phone2: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>LINE</Label>
+                <Input
+                  value={ocrPreview.contact.lineId}
+                  onChange={(e) => updateOcrContact({ lineId: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Email</Label>
+                <Input
+                  value={ocrPreview.contact.email}
+                  onChange={(e) => updateOcrContact({ email: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setOcrPreview(null)}
+            >
+              <X className="h-3.5 w-3.5" />
+              取消
+            </Button>
+            <Button
+              size="sm"
+              disabled={ocrSaving || !ocrPreview.company.companyName.trim()}
+              onClick={handleOcrConfirm}
+            >
+              {ocrSaving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check className="h-3.5 w-3.5" />
+              )}
+              {ocrSaving ? "建檔中..." : "確認建檔"}
+            </Button>
+          </div>
         </div>
       )}
 

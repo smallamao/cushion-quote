@@ -49,7 +49,7 @@ export async function getDriveClient() {
   const auth = new GoogleAuth({
     credentials,
     scopes: [
-      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive",
     ],
   });
 

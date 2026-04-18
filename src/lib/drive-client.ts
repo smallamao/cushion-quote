@@ -4,7 +4,7 @@ import { Readable } from "stream";
 
 import { getDriveClient } from "./sheets-client";
 
-const FOLDER_NAME = "繃布報價-名片";
+const FOLDER_NAME = "營運系統-名片";
 
 async function getOrCreateFolder(drive: Awaited<ReturnType<typeof getDriveClient>>): Promise<string> {
   if (!drive) throw new Error("Drive client unavailable");
@@ -12,6 +12,8 @@ async function getOrCreateFolder(drive: Awaited<ReturnType<typeof getDriveClient
   const listRes = await drive.files.list({
     q: `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: "files(id)",
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true,
   });
 
   const existing = listRes.data.files?.[0];
@@ -19,16 +21,7 @@ async function getOrCreateFolder(drive: Awaited<ReturnType<typeof getDriveClient
     return existing.id;
   }
 
-  const createRes = await drive.files.create({
-    requestBody: {
-      name: FOLDER_NAME,
-      mimeType: "application/vnd.google-apps.folder",
-    },
-    fields: "id",
-  });
-
-  if (!createRes.data.id) throw new Error("Failed to create Drive folder");
-  return createRes.data.id;
+  throw new Error(`找不到共享資料夾「${FOLDER_NAME}」，請先在 Google Drive 建立並共享給 Service Account`);
 }
 
 export async function uploadBusinessCardImage(
@@ -51,6 +44,7 @@ export async function uploadBusinessCardImage(
       body: Readable.from(imageBuffer),
     },
     fields: "id",
+    supportsAllDrives: true,
   });
 
   const fileId = uploadRes.data.id;
@@ -62,6 +56,7 @@ export async function uploadBusinessCardImage(
       role: "reader",
       type: "anyone",
     },
+    supportsAllDrives: true,
   });
 
   return `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
