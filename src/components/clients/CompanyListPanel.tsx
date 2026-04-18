@@ -153,7 +153,10 @@ export function CompanyListPanel() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(companyPayload),
         });
-        if (!companyRes.ok) throw new Error("公司建立失敗");
+        if (!companyRes.ok) {
+          const errBody = await companyRes.json().catch(() => ({ error: `HTTP ${companyRes.status}` }));
+          throw new Error(`公司建立失敗: ${(errBody as { error?: string }).error ?? companyRes.statusText}`);
+        }
       }
 
       // Step 2: Create contact
@@ -181,7 +184,10 @@ export function CompanyListPanel() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(contactPayload),
         });
-        if (!contactRes.ok) throw new Error("聯絡人建立失敗");
+        if (!contactRes.ok) {
+          const errBody = await contactRes.json().catch(() => ({ error: `HTTP ${contactRes.status}` }));
+          throw new Error(`聯絡人建立失敗: ${(errBody as { error?: string }).error ?? contactRes.statusText}`);
+        }
       }
 
       // Step 3: Done — close preview and reload once
