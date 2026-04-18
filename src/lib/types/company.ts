@@ -52,7 +52,11 @@ export function companyToClient(
     shortName: company.shortName,
     clientType: company.clientType,
     channel: company.channel,
-    contactName: primaryContact?.name ?? "",
+    contactName: primaryContact
+      ? primaryContact.role
+        ? `${primaryContact.name} ${primaryContact.role}`
+        : primaryContact.name
+      : "",
     phone: primaryContact?.phone ?? "",
     phone2: primaryContact?.phone2 ?? "",
     lineId: primaryContact?.lineId ?? "",

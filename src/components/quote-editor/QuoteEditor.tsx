@@ -2426,6 +2426,7 @@ export function QuoteEditor() {
                     <SelectItem key={c.id} value={c.id}>
                       {c.companyName}
                       {c.shortName ? ` (${c.shortName})` : ""}
+                      {c.contactName ? ` — ${c.contactName}` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
