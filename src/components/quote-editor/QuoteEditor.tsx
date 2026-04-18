@@ -1871,6 +1871,7 @@ export function QuoteEditor() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             caseId: payload.version.caseId,
+            clientId: selectedClientId === "__new__" ? "" : selectedClientId,
             ...(trimmedProjectName ? { caseName: trimmedProjectName } : {}),
             clientNameSnapshot: companyName,
             contactNameSnapshot: contactName,
