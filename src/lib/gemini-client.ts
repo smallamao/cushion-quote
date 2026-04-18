@@ -36,15 +36,20 @@ export async function recognizeBusinessCard(
     const genai = new GoogleGenerativeAI(apiKey);
     const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = images.length > 1
-      ? `你是一個名片 OCR 助手。以下是同一張名片的正面和反面。請綜合兩面的資訊，擷取以下欄位並以 JSON 格式回傳。
+    const basePrompt = `你是一個名片 OCR 助手。${images.length > 1 ? "以下是同一張名片的正面和反面。請綜合兩面的資訊，擷取" : "請從這張名片圖片中擷取"}以下欄位並以 JSON 格式回傳。
 若某欄位不存在則回傳空字串。
-欄位：companyName（公司名稱）、taxId（統一編號）、name（姓名）、role（職稱）、phone（主要電話，手機優先）、phone2（第二電話，市話）、email（電子郵件）、lineId（LINE ID）、address（地址）。
-僅回傳 JSON，不要任何其他文字。`
-      : `你是一個名片 OCR 助手。請從這張名片圖片中擷取以下資訊，並以 JSON 格式回傳。
-若某欄位不存在則回傳空字串。
-欄位：companyName（公司名稱）、taxId（統一編號）、name（姓名）、role（職稱）、phone（主要電話，手機優先）、phone2（第二電話，市話）、email（電子郵件）、lineId（LINE ID）、address（地址）。
+欄位說明：
+- companyName：公司名稱
+- taxId：統一編號（8位數字）
+- name：姓名，如果有中文名和英文名請合在一起，例如「徐燕娜 Nana」
+- role：職稱
+- phone：主要電話（手機優先）
+- phone2：第二電話（市話）
+- email：電子郵件
+- lineId：LINE ID（如有）
+- address：地址
 僅回傳 JSON，不要任何其他文字。`;
+    const prompt = basePrompt;
 
     const parts: (string | { inlineData: { mimeType: string; data: string } })[] = [prompt];
     for (const img of images) {
