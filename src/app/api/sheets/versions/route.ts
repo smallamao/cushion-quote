@@ -139,10 +139,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const quoteId = searchParams.get("quoteId")?.trim() ?? "";
   const clientId = searchParams.get("clientId")?.trim() ?? "";
+  const includeLines = searchParams.get("includeLines") !== "false";
 
   const client = await getSheetsClient();
   if (!client) {
-    return NextResponse.json({ versions: [] as Array<QuoteVersionRecord & { lines: VersionLineRecord[] }> });
+    return NextResponse.json({ versions: [] as Array<QuoteVersionRecord & { lines?: VersionLineRecord[] }> });
   }
 
   try {
@@ -154,18 +155,18 @@ export async function GET(request: Request) {
       );
     }
 
-    const [versionRows, lineRows] = await Promise.all([
-      getVersionRows(client),
-      getVersionLineRows(client),
-    ]);
-    const lines = lineRows.map(lineRowToRecord);
+    const versionRowsPromise = getVersionRows(client);
+    const lineRowsPromise = includeLines ? getVersionLineRows(client) : Promise.resolve([]);
+    const [versionRows, lineRows] = await Promise.all([versionRowsPromise, lineRowsPromise]);
+
+    const lines = includeLines ? lineRows.map(lineRowToRecord) : [];
     const versions = versionRows
       .map(versionRowToRecord)
       .filter((version) => !quoteId || version.quoteId === quoteId)
       .filter((version) => !allowedCaseIds || allowedCaseIds.has(version.caseId))
       .map((version) => ({
         ...version,
-        lines: lines.filter((line) => line.versionId === version.versionId),
+        ...(includeLines ? { lines: lines.filter((line) => line.versionId === version.versionId) } : {}),
       }));
 
     return NextResponse.json({ versions });

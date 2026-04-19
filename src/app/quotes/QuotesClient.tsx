@@ -1,14 +1,8 @@
 "use client";
 
-import { Copy, Edit, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Edit, FilePlus2, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  useReactTable,
-  getCoreRowModel,
-  ColumnDef,
-  flexRender,
-} from "@tanstack/react-table";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import type { QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
@@ -26,6 +20,13 @@ import {
 } from "@/components/ui/select";
 
 type VersionRow = QuoteVersionRecord & { lines?: unknown[] };
+
+interface QuoteGroup {
+  quoteId: string;
+  caseId: string;
+  latest: VersionRow;
+  olderVersions: VersionRow[];
+}
 
 const VERSION_STATUS_MAP: Record<QuoteVersionRecord["versionStatus"], { label: string; className: string }> = {
   draft: { label: "草稿", className: "badge-draft" },
@@ -74,17 +75,17 @@ export function QuotesClient() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showSuperseded, setShowSuperseded] = useState(false);
   const [busyVersionId, setBusyVersionId] = useState("");
-  const [columnSizing, setColumnSizing] = useState<Record<string, number>>({});
+  const [expandedQuoteIds, setExpandedQuoteIds] = useState<Set<string>>(new Set());
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
     try {
-      const response = await fetch("/api/sheets/versions", { cache: "no-store" });
+      const response = await fetch("/api/sheets/versions?includeLines=false", { cache: "no-store" });
       if (!response.ok) throw new Error("load");
       const payload = (await response.json()) as { versions: VersionRow[] };
       setVersions(payload.versions);
     } catch {
-      setVersions([]);
+      if (!background) setVersions([]);
     } finally {
       setLoading(false);
     }
@@ -94,24 +95,26 @@ export function QuotesClient() {
     void load();
   }, [load]);
 
-  // Load column widths from localStorage
+  // Re-fetch in background when navigating back via browser back button (bfcache restore)
   useEffect(() => {
-    const saved = localStorage.getItem("quotes-table-column-sizing");
-    if (saved) {
-      try {
-        setColumnSizing(JSON.parse(saved));
-      } catch {
-        // Ignore parse errors
-      }
+    function handlePageShow(e: PageTransitionEvent) {
+      if (e.persisted) void load(true);
     }
-  }, []);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, [load]);
 
-  // Save column widths to localStorage
-  useEffect(() => {
-    if (Object.keys(columnSizing).length > 0) {
-      localStorage.setItem("quotes-table-column-sizing", JSON.stringify(columnSizing));
-    }
-  }, [columnSizing]);
+  function toggleExpand(quoteId: string) {
+    setExpandedQuoteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(quoteId)) {
+        next.delete(quoteId);
+      } else {
+        next.add(quoteId);
+      }
+      return next;
+    });
+  }
 
   function openVersion(versionId: string, caseId: string, quoteId: string) {
     writeQuoteLoadRequest(
@@ -190,6 +193,28 @@ export function QuotesClient() {
     }
   }
 
+  async function handleNewVersion(version: VersionRow) {
+    setBusyVersionId(version.versionId);
+    try {
+      const response = await fetch("/api/sheets/versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "new_version",
+          basedOnVersionId: version.versionId,
+        }),
+      });
+      if (!response.ok) throw new Error("建立新版本失敗");
+      const payload = (await response.json()) as { versionId?: string };
+      if (!payload.versionId) throw new Error("建立新版本結果不完整");
+      openVersion(payload.versionId, version.caseId, version.quoteId);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "建立新版本失敗");
+    } finally {
+      setBusyVersionId("");
+    }
+  }
+
   async function handleDelete(version: VersionRow) {
     if (!confirm(`確定要刪除版本 ${version.versionId}？`)) return;
     await handleStatusChange(version.versionId, "superseded");
@@ -219,191 +244,41 @@ export function QuotesClient() {
     });
   }, [filterDateFrom, filterDateTo, filterStatus, searchText, showSuperseded, versions]);
 
-  const sorted = useMemo(() => {
-    return [...filtered].sort((a, b) => {
-      const byQuoteDate = compareDateTextDesc(a.quoteDate, b.quoteDate);
-      if (byQuoteDate !== 0) return byQuoteDate;
-      return compareDateTextDesc(a.createdAt, b.createdAt);
+  const groups = useMemo(() => {
+    // Build a map of ALL versions per quoteId (for grouping)
+    const allMap = new Map<string, VersionRow[]>();
+    for (const v of versions) {
+      const list = allMap.get(v.quoteId) ?? [];
+      list.push(v);
+      allMap.set(v.quoteId, list);
+    }
+
+    // Determine which quoteIds have at least one version matching current filters
+    const filteredQuoteIds = new Set(filtered.map((v) => v.quoteId));
+
+    const result: QuoteGroup[] = [];
+    for (const quoteId of filteredQuoteIds) {
+      const allVersions = allMap.get(quoteId) ?? [];
+      const sorted = [...allVersions].sort((a, b) => b.versionNo - a.versionNo);
+      // Latest = highest versionNo that is NOT superseded, fallback to highest overall
+      const latest = sorted.find((v) => v.versionStatus !== "superseded") ?? sorted[0];
+      const olderVersions = sorted.filter((v) => v.versionId !== latest.versionId);
+      result.push({
+        quoteId,
+        caseId: latest.caseId,
+        latest,
+        olderVersions,
+      });
+    }
+
+    result.sort((a, b) => {
+      const byDate = compareDateTextDesc(a.latest.quoteDate, b.latest.quoteDate);
+      if (byDate !== 0) return byDate;
+      return compareDateTextDesc(a.latest.createdAt, b.latest.createdAt);
     });
+
+    return result;
   }, [filtered]);
-
-  const columns = useMemo<ColumnDef<VersionRow>[]>(
-    () => [
-      {
-        id: "quoteId",
-        accessorKey: "quoteId",
-        header: "報價單號",
-        size: 140,
-        minSize: 100,
-        maxSize: 200,
-        cell: ({ row }) => (
-          <div>
-            <div className="font-mono text-xs">{row.original.quoteId}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
-              V{row.original.versionNo}
-            </div>
-          </div>
-        ),
-      },
-      {
-        id: "quoteDate",
-        accessorKey: "quoteDate",
-        header: "日期",
-        size: 120,
-        minSize: 100,
-        maxSize: 150,
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.quoteDate || "—"}</span>
-        ),
-      },
-      {
-        id: "client",
-        accessorKey: "clientNameSnapshot",
-        header: "客戶",
-        size: 180,
-        minSize: 120,
-        maxSize: 300,
-        cell: ({ row }) => {
-          const contact = row.original.contactNameSnapshot?.trim();
-          return (
-            <div>
-              <div className="text-sm font-medium">
-                {row.original.clientNameSnapshot || contact || "—"}
-              </div>
-              {row.original.clientNameSnapshot && contact && (
-                <div className="text-xs text-[var(--text-secondary)]">{contact}</div>
-              )}
-            </div>
-          );
-        },
-      },
-      {
-        id: "quoteName",
-        accessorKey: "quoteNameSnapshot",
-        header: "方案名稱",
-        size: 150,
-        minSize: 100,
-        maxSize: 250,
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.quoteNameSnapshot || "—"}</span>
-        ),
-      },
-      {
-        id: "project",
-        accessorKey: "projectNameSnapshot",
-        header: "案場",
-        size: 150,
-        minSize: 100,
-        maxSize: 250,
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.projectNameSnapshot || "—"}</span>
-        ),
-      },
-      {
-        id: "totalAmount",
-        accessorKey: "totalAmount",
-        header: "含稅總額",
-        size: 130,
-        minSize: 100,
-        maxSize: 180,
-        cell: ({ row }) => (
-          <span className="text-sm font-medium text-right block">
-            {formatCurrency(row.original.totalAmount)}
-          </span>
-        ),
-      },
-      {
-        id: "status",
-        accessorKey: "versionStatus",
-        header: "狀態",
-        size: 140,
-        minSize: 120,
-        maxSize: 160,
-        enableResizing: true,
-        cell: ({ row }) => {
-          const statusInfo = VERSION_STATUS_MAP[row.original.versionStatus] ?? VERSION_STATUS_MAP.draft;
-          const isBusy = busyVersionId === row.original.versionId;
-          return (
-            <Select
-              value={row.original.versionStatus}
-              disabled={isBusy}
-              onValueChange={(value) => void handleStatusChange(row.original.versionId, value as VersionStatus)}
-            >
-              <SelectTrigger className="h-7 whitespace-nowrap text-xs">
-                <SelectValue>
-                  <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_CHANGE_OPTIONS.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {VERSION_STATUS_MAP[status].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          );
-        },
-      },
-      {
-        id: "actions",
-        header: "操作",
-        size: 140,
-        minSize: 120,
-        maxSize: 160,
-        enableResizing: false,
-        cell: ({ row }) => {
-          const isBusy = busyVersionId === row.original.versionId;
-          return (
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                onClick={() => openVersion(row.original.versionId, row.original.caseId, row.original.quoteId)}
-                className="h-7 gap-1 whitespace-nowrap px-2 text-xs"
-                disabled={isBusy}
-              >
-                <Edit className="h-3 w-3" />
-                編輯
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleDuplicate(row.original)}
-                className="h-7 w-7 p-0"
-                title="複製為新案件"
-                disabled={isBusy}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleDelete(row.original)}
-                className="h-7 w-7 p-0 text-[var(--text-tertiary)] hover:text-[var(--error)]"
-                title="標記為已取代"
-                disabled={isBusy}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          );
-        },
-      },
-    ],
-    [busyVersionId],
-  );
-
-  const table = useReactTable({
-    data: sorted,
-    columns,
-    state: {
-      columnSizing,
-    },
-    onColumnSizingChange: setColumnSizing,
-    columnResizeMode: "onChange",
-    getCoreRowModel: getCoreRowModel(),
-    enableColumnResizing: true,
-  });
 
   const nonSupersededAll = useMemo(
     () => versions.filter((item) => item.versionStatus !== "superseded"),
@@ -419,6 +294,71 @@ export function QuotesClient() {
     filterDateTo !== "" ||
     showSuperseded;
 
+  function renderActionButtons(version: VersionRow) {
+    const isBusy = busyVersionId === version.versionId;
+    return (
+      <div className="flex items-center justify-center gap-1">
+        <button
+          onClick={(e) => { e.stopPropagation(); openVersion(version.versionId, version.caseId, version.quoteId); }}
+          className="text-[var(--text-tertiary)] hover:text-blue-500 transition-colors"
+          title="編輯"
+          disabled={isBusy}
+        >
+          <Edit className="h-4 w-4" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); void handleNewVersion(version); }}
+          className="text-[var(--text-tertiary)] hover:text-blue-500 transition-colors"
+          title="建立新版本"
+          disabled={isBusy}
+        >
+          <FilePlus2 className="h-4 w-4" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); void handleDuplicate(version); }}
+          className="text-[var(--text-tertiary)] hover:text-blue-500 transition-colors"
+          title="複製為新案件"
+          disabled={isBusy}
+        >
+          <Copy className="h-4 w-4" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); void handleDelete(version); }}
+          className="text-[var(--text-tertiary)] hover:text-red-500 transition-colors"
+          title="標記為已取代"
+          disabled={isBusy}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  function renderStatusSelect(version: VersionRow) {
+    const statusInfo = VERSION_STATUS_MAP[version.versionStatus] ?? VERSION_STATUS_MAP.draft;
+    const isBusy = busyVersionId === version.versionId;
+    return (
+      <Select
+        value={version.versionStatus}
+        disabled={isBusy}
+        onValueChange={(value) => void handleStatusChange(version.versionId, value as VersionStatus)}
+      >
+        <SelectTrigger className="h-7 whitespace-nowrap text-xs" onClick={(e) => e.stopPropagation()}>
+          <SelectValue>
+            <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {STATUS_CHANGE_OPTIONS.map((status) => (
+            <SelectItem key={status} value={status}>
+              {VERSION_STATUS_MAP[status].label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -427,7 +367,7 @@ export function QuotesClient() {
           <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
             {loading
               ? "載入中..."
-              : `${hasFilters ? `顯示 ${sorted.length} 筆` : `${totalCount} 筆報價`} · 已成交 ${acceptedCount} 筆 · 報價總額 ${formatCurrency(totalAmount)}`}
+              : `${hasFilters ? `顯示 ${filtered.length} 筆` : `${totalCount} 筆報價`} · 已成交 ${acceptedCount} 筆 · 報價總額 ${formatCurrency(totalAmount)}`}
           </p>
         </div>
         <Button variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
@@ -487,49 +427,60 @@ export function QuotesClient() {
             <Loader2 className="h-4 w-4 animate-spin" />
             載入中...
           </div>
-        ) : sorted.length === 0 ? (
+        ) : groups.length === 0 ? (
           <div className="py-12 text-center text-sm text-[var(--text-secondary)]">尚無報價紀錄</div>
         ) : isMobile ? (
           <div className="space-y-3 p-3">
-            {sorted.map((version) => {
-              const statusInfo = VERSION_STATUS_MAP[version.versionStatus] ?? VERSION_STATUS_MAP.draft;
-              const isBusy = busyVersionId === version.versionId;
-              const contact = version.contactNameSnapshot?.trim();
+            {groups.map((group) => {
+              const { latest } = group;
+              const statusInfo = VERSION_STATUS_MAP[latest.versionStatus] ?? VERSION_STATUS_MAP.draft;
+              const isBusy = busyVersionId === latest.versionId;
+              const contact = latest.contactNameSnapshot?.trim();
+              const isExpanded = expandedQuoteIds.has(group.quoteId);
+              const hasOlder = group.olderVersions.length > 0;
               return (
                 <div
-                  key={version.versionId}
+                  key={group.quoteId}
                   className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs text-[var(--accent)]">{version.quoteId}</span>
+                    <div className="flex items-center gap-2">
+                      {hasOlder && (
+                        <button onClick={() => toggleExpand(group.quoteId)} className="text-[var(--text-tertiary)]">
+                          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </button>
+                      )}
+                      <span className="font-mono text-xs text-[var(--accent)]">{latest.quoteId}</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)]">V{latest.versionNo}</span>
+                    </div>
                     <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
                   </div>
                   <div className="mt-2">
                     <div className="text-sm font-semibold text-[var(--text-primary)]">
-                      {version.clientNameSnapshot || contact || "—"}
-                      {version.clientNameSnapshot && contact && (
+                      {latest.clientNameSnapshot || contact || "—"}
+                      {latest.clientNameSnapshot && contact && (
                         <span className="ml-1 font-normal text-xs text-[var(--text-secondary)]">
                           {contact}
                         </span>
                       )}
                     </div>
-                    {version.quoteNameSnapshot && (
+                    {latest.quoteNameSnapshot && (
                       <div className="mt-0.5 text-sm font-medium text-[var(--text-primary)]">
-                        {version.quoteNameSnapshot}
+                        {latest.quoteNameSnapshot}
                       </div>
                     )}
                   </div>
                   <div className="mt-1.5 text-xs text-[var(--text-tertiary)]">
-                    {version.quoteDate || version.createdAt || "—"}
+                    {latest.quoteDate || latest.createdAt || "—"}
                   </div>
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-sm font-semibold text-[var(--text-primary)]">
-                      {formatCurrency(version.totalAmount)}
+                      {formatCurrency(latest.totalAmount)}
                     </span>
                     <div className="flex items-center gap-1">
                       <Button
                         size="sm"
-                        onClick={() => openVersion(version.versionId, version.caseId, version.quoteId)}
+                        onClick={() => openVersion(latest.versionId, latest.caseId, latest.quoteId)}
                         className="h-7 gap-1 whitespace-nowrap px-2 text-xs"
                         disabled={isBusy}
                       >
@@ -539,7 +490,7 @@ export function QuotesClient() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => void handleDuplicate(version)}
+                        onClick={() => void handleDuplicate(latest)}
                         className="h-7 w-7 p-0"
                         title="複製為新案件"
                         disabled={isBusy}
@@ -548,67 +499,157 @@ export function QuotesClient() {
                       </Button>
                     </div>
                   </div>
+                  {isExpanded && group.olderVersions.length > 0 && (
+                    <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
+                      <div className="text-xs font-medium text-[var(--text-secondary)]">歷史版本</div>
+                      {group.olderVersions.map((v) => {
+                        const vStatus = VERSION_STATUS_MAP[v.versionStatus] ?? VERSION_STATUS_MAP.draft;
+                        return (
+                          <div
+                            key={v.versionId}
+                            className="flex items-center justify-between rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] px-3 py-2 cursor-pointer"
+                            onClick={() => openVersion(v.versionId, v.caseId, v.quoteId)}
+                          >
+                            <div>
+                              <span className="text-xs font-medium text-[var(--accent)]">V{v.versionNo}</span>
+                              <span className="ml-2 text-xs text-[var(--text-secondary)]">{v.quoteDate || "—"}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`badge ${vStatus.className}`}>{vStatus.label}</span>
+                              <span className="text-xs font-medium">{formatCurrency(v.totalAmount)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="data-table" style={{ width: table.getTotalSize() }}>
+            <table className="data-table">
               <thead>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <th
-                        key={header.id}
-                        className="px-4 py-2.5 relative"
-                        style={{
-                          width: header.getSize(),
-                          textAlign: header.id === "totalAmount" ? "right" : "left",
-                        }}
-                      >
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                        {header.column.getCanResize() && (
-                          <div
-                            onMouseDown={header.getResizeHandler()}
-                            onTouchStart={header.getResizeHandler()}
-                            className={`resizer ${
-                              header.column.getIsResizing() ? "isResizing" : ""
-                            }`}
-                            style={{
-                              position: "absolute",
-                              right: 0,
-                              top: 0,
-                              height: "100%",
-                              width: "5px",
-                              cursor: "col-resize",
-                              userSelect: "none",
-                              touchAction: "none",
-                            }}
-                          />
-                        )}
-                      </th>
-                    ))}
-                  </tr>
-                ))}
+                <tr>
+                  <th className="w-8 px-2 py-2.5" />
+                  <th className="px-4 py-2.5">報價單號</th>
+                  <th className="px-4 py-2.5">日期</th>
+                  <th className="px-4 py-2.5">客戶</th>
+                  <th className="px-4 py-2.5">方案名稱</th>
+                  <th className="px-4 py-2.5">案場</th>
+                  <th className="px-4 py-2.5 text-right">含稅總額</th>
+                  <th className="w-28 px-4 py-2.5">狀態</th>
+                  <th className="w-28 px-4 py-2.5 text-center">操作</th>
+                </tr>
               </thead>
               <tbody>
-                {table.getRowModel().rows.map((row) => (
-                  <tr key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        className="px-4 py-2.5"
-                        style={{ width: cell.column.getSize() }}
+                {groups.map((group) => {
+                  const { latest } = group;
+                  const contact = latest.contactNameSnapshot?.trim();
+                  const hasOlder = group.olderVersions.length > 0;
+                  const isExpanded = expandedQuoteIds.has(group.quoteId);
+
+                  return (
+                    <Fragment key={group.quoteId}>
+                      <tr
+                        className={hasOlder ? "cursor-pointer" : undefined}
+                        onClick={hasOlder ? () => toggleExpand(group.quoteId) : undefined}
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                        <td className="px-2 py-2.5 text-center text-[var(--text-tertiary)]">
+                          {hasOlder ? (
+                            isExpanded ? <ChevronDown className="mx-auto h-4 w-4" /> : <ChevronRight className="mx-auto h-4 w-4" />
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="font-mono text-xs">{latest.quoteId}</div>
+                          <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
+                            V{latest.versionNo}
+                            {hasOlder && (
+                              <span className="ml-1 text-[var(--text-tertiary)]">
+                                ({group.olderVersions.length + 1} 個版本)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className="text-sm">{latest.quoteDate || "—"}</span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="text-sm font-medium">
+                            {latest.clientNameSnapshot || contact || "—"}
+                          </div>
+                          {latest.clientNameSnapshot && contact && (
+                            <div className="text-xs text-[var(--text-secondary)]">{contact}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className="text-sm">{latest.quoteNameSnapshot || "—"}</span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className="text-sm">{latest.projectNameSnapshot || "—"}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <span className="text-sm font-medium">{formatCurrency(latest.totalAmount)}</span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {renderStatusSelect(latest)}
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          {renderActionButtons(latest)}
+                        </td>
+                      </tr>
+
+                      {isExpanded && group.olderVersions.length > 0 && (
+                        <tr>
+                          <td colSpan={9} className="bg-[var(--bg-subtle)] px-4 py-3">
+                            <div className="ml-6">
+                              <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">歷史版本</div>
+                              <table className="w-full border-collapse text-sm">
+                                <thead>
+                                  <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
+                                    <th className="px-2 py-2 text-left">版本</th>
+                                    <th className="px-2 py-2 text-left">日期</th>
+                                    <th className="px-2 py-2 text-left">狀態</th>
+                                    <th className="px-2 py-2 text-right">金額</th>
+                                    <th className="w-28 px-2 py-2 text-center">操作</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {group.olderVersions.map((version) => {
+                                    const versionStatus =
+                                      VERSION_STATUS_MAP[version.versionStatus] ?? VERSION_STATUS_MAP.draft;
+                                    return (
+                                      <tr
+                                        key={version.versionId}
+                                        className="cursor-pointer border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-subtle)]"
+                                        onClick={() => openVersion(version.versionId, version.caseId, version.quoteId)}
+                                      >
+                                        <td className="px-2 py-2 font-medium text-[var(--accent)]">
+                                          V{version.versionNo} {version.versionLabel}
+                                        </td>
+                                        <td className="px-2 py-2 text-[var(--text-secondary)]">{version.quoteDate || "—"}</td>
+                                        <td className="px-2 py-2">
+                                          <span className={`badge ${versionStatus.className}`}>{versionStatus.label}</span>
+                                        </td>
+                                        <td className="px-2 py-2 text-right font-medium text-[var(--text-primary)]">
+                                          {formatCurrency(version.totalAmount)}
+                                        </td>
+                                        <td className="px-2 py-2 text-center">
+                                          {renderActionButtons(version)}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
