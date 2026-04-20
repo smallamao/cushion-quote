@@ -171,7 +171,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   commissionFixedAmount: 0,
   quoteValidityDays: 30,
   companyName: "馬鈴薯沙發",
-  companyFullName: "馬鈴薯沙發企業社",
+  companyFullName: "馬鈴薯沙發",
   companyPhone: "0978-280-280",
   companyFax: "",
   companyAddress: "",

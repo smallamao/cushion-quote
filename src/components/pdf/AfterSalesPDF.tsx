@@ -70,13 +70,13 @@ const s = StyleSheet.create({
   },
   logo: { width: 48, height: 48 },
   titleBox: { alignItems: "center" },
-  brandName: { fontSize: 16, fontWeight: 700, color: C.black },
+  brandName: { fontSize: 20, fontWeight: 700, color: C.black, letterSpacing: 6 },
   docTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 700,
     color: C.black,
     marginTop: 2,
-    letterSpacing: 2,
+    letterSpacing: 6,
   },
 
   sectionBar: {
@@ -135,6 +135,23 @@ const s = StyleSheet.create({
     minHeight: 40,
   },
 
+  noteBlock: {
+    borderWidth: 0.5,
+    borderColor: C.border,
+    borderTopWidth: 0,
+    padding: 8,
+  },
+  noteLabel: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: C.dark,
+    marginBottom: 4,
+  },
+  noteText: {
+    fontSize: 9.5,
+    color: C.black,
+    lineHeight: 1.6,
+  },
   issueTextBox: {
     padding: 8,
     fontSize: 10,
@@ -241,9 +258,9 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
           <Image src="/logo.png" style={s.logo} />
           <View style={s.titleBox}>
             <Text style={s.brandName}>
-              {settings.companyFullName || settings.companyName}
+              {settings.companyName}
             </Text>
-            <Text style={s.docTitle}>售 後 服 務 單</Text>
+            <Text style={s.docTitle}>售後服務單</Text>
           </View>
         </View>
 
@@ -293,9 +310,18 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
             right={{ label: "款式名稱", value: service.modelNameSnapshot }}
           />
         </View>
-        <Text style={s.issueTextBox}>
-          {service.issueDescription || " "}
-        </Text>
+        {service.issueDescription ? (
+          <View style={s.noteBlock}>
+            <Text style={s.noteLabel}>報修項目</Text>
+            <Text style={s.noteText}>{service.issueDescription}</Text>
+          </View>
+        ) : null}
+        {service.dispatchNotes ? (
+          <View style={s.noteBlock}>
+            <Text style={s.noteLabel}>報修備註</Text>
+            <Text style={s.noteText}>{service.dispatchNotes}</Text>
+          </View>
+        ) : null}
 
         {/* 問題照片 */}
         {service.issuePhotos.length > 0 && (
@@ -329,14 +355,6 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
                 left={{ label: "派工日期", value: service.scheduledDate }}
                 right={{ label: "完工日期", value: service.completedDate }}
               />
-              {service.dispatchNotes ? (
-                <View style={s.infoRow}>
-                  <View style={{ flexDirection: "row", flex: 1 }}>
-                    <Text style={s.infoLabel}>派工備註</Text>
-                    <Text style={s.infoValueFull}>{service.dispatchNotes}</Text>
-                  </View>
-                </View>
-              ) : null}
               {service.completionNotes ? (
                 <View style={s.infoRow}>
                   <View style={{ flexDirection: "row", flex: 1 }}>
@@ -345,29 +363,6 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
                   </View>
                 </View>
               ) : null}
-            </View>
-          </>
-        )}
-
-        {/* 聯繫紀錄 */}
-        {replies.length > 0 && (
-          <>
-            <View style={s.sectionBar}>
-              <Text style={s.sectionTitle}>聯繫紀錄</Text>
-            </View>
-            <View style={{ paddingHorizontal: 4 }}>
-              {replies
-                .slice()
-                .reverse()
-                .slice(0, 10)
-                .map((r) => (
-                  <View key={r.replyId} style={s.replyRow}>
-                    <Text style={s.replyMeta}>
-                      {r.occurredAt.replace("T", " ").slice(0, 16)} · {r.author}
-                    </Text>
-                    <Text style={s.replyContent}>{r.content}</Text>
-                  </View>
-                ))}
             </View>
           </>
         )}

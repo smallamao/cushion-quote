@@ -350,6 +350,54 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 /**
+ * PUT = lightweight status-only update
+ * Body: { status: PurchaseOrderStatus }
+ */
+export async function PUT(request: Request, context: RouteContext) {
+  const { orderId } = await context.params;
+  const body = (await request.json()) as { status: PurchaseOrderStatus };
+  if (!body.status) {
+    return NextResponse.json({ ok: false, error: "status is required" }, { status: 400 });
+  }
+
+  const sheetsClient = await getSheetsClient();
+  if (!sheetsClient) {
+    return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+  }
+
+  try {
+    const orderRes = await sheetsClient.sheets.spreadsheets.values.get({
+      spreadsheetId: sheetsClient.spreadsheetId,
+      range: ORDER_RANGE_DATA,
+    });
+    const rows = orderRes.data.values ?? [];
+    const rowIndex = rows.findIndex((r) => r[0] === orderId);
+    if (rowIndex === -1) {
+      return NextResponse.json({ ok: false, error: "order not found" }, { status: 404 });
+    }
+
+    const sheetRow = rowIndex + 2;
+    const now = new Date().toISOString();
+    // Status = column L (index 11), updatedAt = column P (index 15)
+    await sheetsClient.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: sheetsClient.spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: [
+          { range: `${ORDER_SHEET}!L${sheetRow}`, values: [[body.status]] },
+          { range: `${ORDER_SHEET}!P${sheetRow}`, values: [[now]] },
+        ],
+      },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+/**
  * DELETE = soft-delete by setting status = cancelled
  */
 export async function DELETE(_request: Request, context: RouteContext) {

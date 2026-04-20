@@ -6,6 +6,13 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { usePurchases } from "@/hooks/usePurchases";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -27,6 +34,14 @@ const STATUS_COLOR: Record<PurchaseOrderStatus, string> = {
   cancelled: "bg-red-100 text-red-700",
 };
 
+const STATUS_CHANGE_OPTIONS: PurchaseOrderStatus[] = [
+  "draft",
+  "sent",
+  "confirmed",
+  "received",
+  "cancelled",
+];
+
 function fmtMoney(n: number | null | undefined): string {
   const safeNumber = Number(n ?? 0);
   return (Number.isFinite(safeNumber) ? safeNumber : 0).toLocaleString("zh-TW", {
@@ -39,11 +54,12 @@ function getSafeStatus(status: PurchaseOrderStatus | string | null | undefined):
 }
 
 export function PurchasesClient() {
-  const { orders, loading } = usePurchases();
+  const { orders, loading, reload } = usePurchases();
   const { suppliers } = useSuppliers();
   const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | "all">("all");
+  const [busyOrderId, setBusyOrderId] = useState("");
 
   const supplierMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -66,6 +82,23 @@ export function PurchasesClient() {
       })
       .sort((a, b) => b.orderId.localeCompare(a.orderId));
   }, [orders, search, statusFilter]);
+
+  async function handleStatusChange(orderId: string, newStatus: PurchaseOrderStatus) {
+    setBusyOrderId(orderId);
+    try {
+      const res = await fetch(`/api/sheets/purchases/${encodeURIComponent(orderId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error("更新狀態失敗");
+      await reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "更新狀態失敗");
+    } finally {
+      setBusyOrderId("");
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -162,7 +195,7 @@ export function PurchasesClient() {
                 <th className="px-3 py-2 text-left font-medium">日期</th>
                 <th className="px-3 py-2 text-left font-medium">廠商</th>
                 <th className="px-3 py-2 text-right font-medium">合計金額</th>
-                <th className="px-3 py-2 text-left font-medium">狀態</th>
+                <th className="w-28 px-3 py-2 text-left font-medium">狀態</th>
                 <th className="px-3 py-2 text-left font-medium">附註</th>
               </tr>
             </thead>
@@ -181,52 +214,64 @@ export function PurchasesClient() {
                   </td>
                 </tr>
               )}
-              {filtered.map((o) => (
-                <tr key={o.orderId} className="hover:bg-[var(--bg-hover)]">
-                  <td className="px-3 py-2">
-                    <Link
-                      href={`/purchases/${o.orderId}`}
-                      className="block font-mono text-xs text-[var(--accent)] hover:underline"
-                    >
-                      {o.orderId}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    <Link href={`/purchases/${o.orderId}`} className="block">
-                      {o.orderDate}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    <Link href={`/purchases/${o.orderId}`} className="block">
-                      {supplierMap.get(o.supplierId) || o.supplierSnapshot?.shortName || o.supplierSnapshot?.name || o.supplierId}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-xs">
-                    <Link href={`/purchases/${o.orderId}`} className="block">
-                      ${fmtMoney(o.totalAmount)}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2">
-                    {(() => {
-                      const safeStatus = getSafeStatus(o.status);
-                      return (
-                        <Link href={`/purchases/${o.orderId}`} className="block">
-                          <span
-                            className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
-                          >
-                            {STATUS_LABEL[safeStatus]}
-                          </span>
-                        </Link>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
-                    <Link href={`/purchases/${o.orderId}`} className="block truncate">
-                      {o.notes}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((o) => {
+                const safeStatus = getSafeStatus(o.status);
+                const isBusy = busyOrderId === o.orderId;
+                return (
+                  <tr key={o.orderId} className="hover:bg-[var(--bg-hover)]">
+                    <td className="px-3 py-2">
+                      <Link
+                        href={`/purchases/${o.orderId}`}
+                        className="block font-mono text-xs text-[var(--accent)] hover:underline"
+                      >
+                        {o.orderId}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      <Link href={`/purchases/${o.orderId}`} className="block">
+                        {o.orderDate}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      <Link href={`/purchases/${o.orderId}`} className="block">
+                        {supplierMap.get(o.supplierId) || o.supplierSnapshot?.shortName || o.supplierSnapshot?.name || o.supplierId}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-xs">
+                      <Link href={`/purchases/${o.orderId}`} className="block">
+                        ${fmtMoney(o.totalAmount)}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Select
+                        value={safeStatus}
+                        disabled={isBusy}
+                        onValueChange={(value) => void handleStatusChange(o.orderId, value as PurchaseOrderStatus)}
+                      >
+                        <SelectTrigger className="h-7 w-24 whitespace-nowrap text-xs">
+                          <SelectValue>
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}>
+                              {STATUS_LABEL[safeStatus]}
+                            </span>
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUS_CHANGE_OPTIONS.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {STATUS_LABEL[s]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
+                      <Link href={`/purchases/${o.orderId}`} className="block truncate">
+                        {o.notes}
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -120,7 +120,7 @@ const DEFAULT_SETTINGS_ROWS = [
   ["company_fax", "(02)8262-8182"],
   ["company_tax_id", "85164778"],
   ["company_contact", "周春懋"],
-  ["company_full_name", "馬鈴薯沙發企業社"],
+  ["company_full_name", "馬鈴薯沙發"],
   ["factory_address", "236新北市土城區廣福街77巷6-6號"],
   ["purchase_order_prefix", "PS"],
 ];
