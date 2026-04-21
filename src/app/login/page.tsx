@@ -41,8 +41,15 @@ function LoginContent() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setEmbedded(detectEmbeddedBrowser());
+    const detected = detectEmbeddedBrowser();
+    setEmbedded(detected);
     setCurrentUrl(window.location.href);
+
+    // LINE-only: auto-open external browser once (skip if already retried)
+    if (detected === "line" && !window.location.search.includes("openExternalBrowser")) {
+      const sep = window.location.search ? "&" : "?";
+      window.location.replace(`${window.location.href}${sep}openExternalBrowser=1`);
+    }
   }, []);
 
   const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;

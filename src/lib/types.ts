@@ -286,6 +286,14 @@ export interface SystemSettings extends PricingConfig {
   factoryAddress: string;
 }
 
+export type ShippingStatus =
+  | "not_started"
+  | "pending"
+  | "shipped"
+  | "delivered"
+  | "installed"
+  | "returned";
+
 export interface CaseRecord {
   caseId: string;
   caseName: string;
@@ -311,6 +319,9 @@ export interface CaseRecord {
   internalNotes: string;
   createdAt: string;
   updatedAt: string;
+  shippingStatus: ShippingStatus;
+  trackingNo: string;
+  shippedAt: string;
 }
 
 export interface QuotePlanRecord {

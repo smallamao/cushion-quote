@@ -98,6 +98,7 @@ describe("resolveParsedLines", () => {
     {
       id: "LY9802-PS007",
       productCode: "LY9802",
+      supplierProductCode: "",
       productName: "蘭陽 LY9802 系列",
       specification: "9802",
       category: "面料",
@@ -113,6 +114,7 @@ describe("resolveParsedLines", () => {
     {
       id: "S6901-PS009",
       productCode: "S6901",
+      supplierProductCode: "",
       productName: "南亞呼吸皮 6901",
       specification: "6901",
       category: "皮革",

@@ -106,6 +106,9 @@ export function caseRowToRecord(row: string[]): CaseRecord {
     leadSourceDetail: normalizedLeadSourceDetail,
     leadSourceContact: row.length >= 24 ? row[22] ?? "" : row[21] ?? "",
     leadSourceNotes: row.length >= 24 ? row[23] ?? "" : row[22] ?? "",
+    shippingStatus: (row[24] as CaseRecord["shippingStatus"]) || "not_started",
+    trackingNo: row[25] ?? "",
+    shippedAt: row[26] ?? "",
   };
 }
 
@@ -135,6 +138,9 @@ export function caseRecordToRow(record: CaseRecord): string[] {
     record.leadSourceDetail,
     record.leadSourceContact,
     record.leadSourceNotes,
+    record.shippingStatus || "not_started",
+    record.trackingNo || "",
+    record.shippedAt || "",
   ];
 }
 
@@ -406,7 +412,7 @@ export function lineRecordToRow(record: VersionLineRecord): string[] {
 export async function getCaseRows(client: SheetsClient): Promise<string[][]> {
   const response = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: `${CASE_SHEET}!A2:X`,
+    range: `${CASE_SHEET}!A2:AA`,
   });
   return response.data.values ?? [];
 }

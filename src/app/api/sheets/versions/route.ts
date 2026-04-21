@@ -501,6 +501,9 @@ export async function POST(request: Request) {
       internalNotes: caseDraft.internalNotes ?? "",
       createdAt: now,
       updatedAt: now,
+      shippingStatus: caseDraft.shippingStatus ?? "not_started",
+      trackingNo: caseDraft.trackingNo ?? "",
+      shippedAt: caseDraft.shippedAt ?? "",
     };
 
     const quoteDraft = payload.quoteDraft ?? {};

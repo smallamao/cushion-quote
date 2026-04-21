@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { QuoteVersionRecord } from "@/lib/types";
+import type { QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { normalizeVersionUpdate } from "@/app/api/sheets/_v2-utils";
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,10 @@ function makeVersion(overrides: Partial<QuoteVersionRecord> = {}): QuoteVersionR
     commissionAmount: 5000,
     commissionFixedAmount: 0,
     commissionPartners: "",
+    signedBack: false,
+    signedBackDate: "",
+    signedContractUrls: [],
+    signedNotes: "",
     ...overrides,
   };
 }
@@ -162,7 +166,7 @@ describe("版本狀態 → 報價/案件狀態 映射規則", () => {
   });
 
   it("version rejected → quote 應為 not_adopted, case 應為 lost", () => {
-    const versionStatus = "rejected";
+    const versionStatus = "rejected" as VersionStatus;
     const quoteStatus = versionStatus === "accepted" ? "adopted" : versionStatus === "rejected" ? "not_adopted" : "draft";
     const caseStatus = versionStatus === "accepted" ? "won" : versionStatus === "rejected" ? "lost" : "new";
     expect(quoteStatus).toBe("not_adopted");
@@ -170,7 +174,7 @@ describe("版本狀態 → 報價/案件狀態 映射規則", () => {
   });
 
   it("version sent → quote/case 狀態不變（保留原值）", () => {
-    const versionStatus = "sent";
+    const versionStatus = "sent" as VersionStatus;
     const originalQuoteStatus = "quoting";
     const originalCaseStatus = "following_up";
     const quoteStatus = versionStatus === "accepted" ? "adopted" : versionStatus === "rejected" ? "not_adopted" : originalQuoteStatus;

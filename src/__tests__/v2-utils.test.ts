@@ -50,6 +50,9 @@ function makeCaseRecord(overrides: Partial<CaseRecord> = {}): CaseRecord {
     leadSourceDetail: "",
     leadSourceContact: "搜尋",
     leadSourceNotes: "",
+    shippingStatus: "not_started",
+    trackingNo: "",
+    shippedAt: "",
     ...overrides,
   };
 }
@@ -121,6 +124,10 @@ function makeVersionRecord(overrides: Partial<QuoteVersionRecord> = {}): QuoteVe
     commissionFixedAmount: 0,
     commissionPartners: "",
     quoteNameSnapshot: "客廳沙發方案",
+    signedBack: false,
+    signedBackDate: "",
+    signedContractUrls: [],
+    signedNotes: "",
     ...overrides,
   };
 }

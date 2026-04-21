@@ -27,6 +27,9 @@ const CASE_HEADERS = [
   "來源細項",
   "來源人/介紹人",
   "來源備註",
+  "出貨狀態",
+  "物流單號",
+  "出貨日期",
 ];
 
 export async function POST() {
@@ -74,7 +77,7 @@ export async function POST() {
 
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: "案件!A1:X1",
+      range: "案件!A1:AA1",
       valueInputOption: "RAW",
       requestBody: { values: [CASE_HEADERS] },
     });

@@ -8,7 +8,7 @@ import { useClients } from "@/hooks/useClients";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LEAD_SOURCE_DETAIL_ENABLED, LEAD_SOURCE_LABELS, LEAD_SOURCE_OPTIONS } from "@/lib/constants";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
-import type { CaseRecord, LeadSource, QuotePlanRecord, QuoteVersionRecord } from "@/lib/types";
+import type { CaseRecord, LeadSource, QuotePlanRecord, QuoteVersionRecord, ShippingStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -158,6 +158,9 @@ export function CasesClient() {
     leadSourceDetail: string;
     leadSourceContact: string;
     leadSourceNotes: string;
+    shippingStatus: ShippingStatus;
+    trackingNo: string;
+    shippedAt: string;
   }>({
     open: false,
     caseId: "",
@@ -167,6 +170,9 @@ export function CasesClient() {
     leadSourceDetail: "",
     leadSourceContact: "",
     leadSourceNotes: "",
+    shippingStatus: "not_started",
+    trackingNo: "",
+    shippedAt: "",
   });
 
   const shouldShowLeadSourceDetail = useCallback(
@@ -426,6 +432,9 @@ export function CasesClient() {
       leadSourceDetail: caseRecord.leadSourceDetail,
       leadSourceContact: caseRecord.leadSourceContact,
       leadSourceNotes: caseRecord.leadSourceNotes,
+      shippingStatus: caseRecord.shippingStatus || "not_started",
+      trackingNo: caseRecord.trackingNo || "",
+      shippedAt: caseRecord.shippedAt || "",
     });
   }
 
@@ -444,6 +453,9 @@ export function CasesClient() {
           leadSourceDetail: shouldShowLeadSourceDetail(editDialog.leadSource) ? editDialog.leadSourceDetail.trim() : "",
           leadSourceContact: editDialog.leadSourceContact.trim(),
           leadSourceNotes: editDialog.leadSourceNotes.trim(),
+          shippingStatus: editDialog.shippingStatus,
+          trackingNo: editDialog.trackingNo.trim(),
+          shippedAt: editDialog.shippedAt.trim(),
         }),
       });
 
@@ -461,6 +473,9 @@ export function CasesClient() {
         leadSourceDetail: "",
         leadSourceContact: "",
         leadSourceNotes: "",
+        shippingStatus: "not_started",
+        trackingNo: "",
+        shippedAt: "",
       });
 
       // Clear cached details for this case to force reload
@@ -1598,6 +1613,58 @@ export function CasesClient() {
                 placeholder="例如：透過 FB 私訊詢問"
               />
             </div>
+
+            <div className="border-t border-[var(--border)] pt-4">
+              <div className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">
+                出貨追蹤
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <Label>出貨狀態</Label>
+                  <Select
+                    value={editDialog.shippingStatus}
+                    onValueChange={(v) =>
+                      setEditDialog((prev) => ({
+                        ...prev,
+                        shippingStatus: v as ShippingStatus,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="not_started">尚未出貨</SelectItem>
+                      <SelectItem value="pending">備貨中</SelectItem>
+                      <SelectItem value="shipped">已出貨</SelectItem>
+                      <SelectItem value="delivered">已送達</SelectItem>
+                      <SelectItem value="installed">已安裝</SelectItem>
+                      <SelectItem value="returned">退回</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>出貨日期</Label>
+                  <Input
+                    type="date"
+                    value={editDialog.shippedAt}
+                    onChange={(e) =>
+                      setEditDialog((prev) => ({ ...prev, shippedAt: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="mt-3">
+                <Label>物流單號</Label>
+                <Input
+                  value={editDialog.trackingNo}
+                  onChange={(e) =>
+                    setEditDialog((prev) => ({ ...prev, trackingNo: e.target.value }))
+                  }
+                  placeholder="例如：黑貓 1234567890"
+                />
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -1606,13 +1673,16 @@ export function CasesClient() {
                 setEditDialog({
                   open: false,
                   caseId: "",
-                   caseName: "",
-                   projectAddress: "",
-                   leadSource: "unknown",
-                   leadSourceDetail: "",
-                   leadSourceContact: "",
-                   leadSourceNotes: "",
-                 })
+                  caseName: "",
+                  projectAddress: "",
+                  leadSource: "unknown",
+                  leadSourceDetail: "",
+                  leadSourceContact: "",
+                  leadSourceNotes: "",
+                  shippingStatus: "not_started",
+                  trackingNo: "",
+                  shippedAt: "",
+                })
               }
               disabled={editing}
             >

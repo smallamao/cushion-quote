@@ -69,19 +69,22 @@ export async function POST(request: Request) {
       internalNotes: payload.internalNotes ?? "",
       createdAt: now,
       updatedAt: now,
+      shippingStatus: payload.shippingStatus ?? "not_started",
+      trackingNo: payload.trackingNo ?? "",
+      shippedAt: payload.shippedAt ?? "",
     };
 
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-      range: "案件!A:X",
+      range: "案件!A:AA",
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(record)] },
     });
 
     await sortSheetRows(client, {
       sheetName: "案件",
-      dataRange: "案件!A2:X",
-      totalColumnCount: 24,
+      dataRange: "案件!A2:AA",
+      totalColumnCount: 27,
       primarySortColumnIndex: 18,
       secondarySortColumnIndex: 0,
     });
@@ -125,7 +128,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-        range: `案件!A${sheetRow}:X${sheetRow}`,
+        range: `案件!A${sheetRow}:AA${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(merged)] },
     });
