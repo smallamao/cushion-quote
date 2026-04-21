@@ -1,7 +1,7 @@
 "use client";
 
-import { Download, Loader2, RefreshCw, Save } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { CheckCircle2, Clock, Download, Loader2, RefreshCw, Save, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -34,6 +34,46 @@ function fmtDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function fmtRelative(iso: string): string {
+  try {
+    const then = new Date(iso).getTime();
+    const now = Date.now();
+    const diffMs = now - then;
+    const diffSec = Math.max(0, Math.floor(diffMs / 1000));
+    if (diffSec < 60) return "剛剛";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin} 分鐘前`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} 小時前`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay < 30) return `${diffDay} 天前`;
+    return `${Math.floor(diffDay / 30)} 個月前`;
+  } catch {
+    return "";
+  }
+}
+
+// Vercel Cron: "0 18 * * *" UTC = 02:00 Asia/Taipei next day
+function nextScheduledBackup(): Date {
+  const now = new Date();
+  // Compute the next 18:00 UTC from now.
+  const next = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      18,
+      0,
+      0,
+      0,
+    ),
+  );
+  if (next.getTime() <= now.getTime()) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+  return next;
 }
 
 export function BackupPanel() {
@@ -106,12 +146,55 @@ export function BackupPanel() {
     }
   }
 
+  const latest = files[0];
+  const hoursSinceLatest = latest
+    ? (Date.now() - new Date(latest.createdTime).getTime()) / (1000 * 60 * 60)
+    : Infinity;
+  // Alert if no backup in the last 48 hours (allows for missed cron + user forgetting).
+  const overdue = !latest || hoursSinceLatest > 48;
+  const statusColor = overdue
+    ? "border-amber-300 bg-amber-50 text-amber-900"
+    : "border-green-300 bg-green-50 text-green-900";
+  const nextBackup = useMemo(() => nextScheduledBackup(), [files]);
+
   return (
     <div className="space-y-4">
+      <div className={`flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 text-sm ${statusColor}`}>
+        <div className="flex items-center gap-2">
+          {overdue ? (
+            <TriangleAlert className="h-4 w-4 shrink-0" />
+          ) : (
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+          )}
+          <div>
+            <div className="font-semibold">
+              {latest
+                ? `最後備份: ${fmtDate(latest.createdTime)} (${fmtRelative(latest.createdTime)})`
+                : "尚未有任何備份"}
+            </div>
+            <div className="text-xs opacity-80">
+              <Clock className="mr-1 inline h-3 w-3" />
+              下次自動備份: {fmtDate(nextBackup.toISOString())} (
+              {fmtRelative(nextBackup.toISOString()).replace("前", "後")})
+            </div>
+          </div>
+        </div>
+        {latest && !overdue && (
+          <span className="rounded-full bg-white/50 px-2 py-0.5 text-xs">
+            {fmtBytes(latest.sizeBytes)}
+          </span>
+        )}
+        {overdue && latest && (
+          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium">
+            {Math.floor(hoursSinceLatest / 24)} 天未備份
+          </span>
+        )}
+      </div>
+
       <div className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-4 text-sm">
         <h3 className="mb-2 font-semibold">Google Sheet 定時備份</h3>
         <p className="mb-3 text-xs text-[var(--text-secondary)]">
-          每日凌晨自動把所有工作表備份為 JSON,儲存到 Google Drive 的
+          每日台北時間凌晨 02:00 自動把所有工作表備份為 JSON,儲存到 Google Drive 的
           「<strong>營運系統-備份</strong>」資料夾,保留最近 30 份。你也可以隨時手動
           執行一次。若資料被誤改,可從此處找到對應日期的備份檔還原。
         </p>
