@@ -4,10 +4,13 @@ import type {
   ARScheduleRecord,
   ARScheduleStatus,
   ARStatus,
+  PendingMonthlyRecord,
+  PendingMonthlyStatus,
 } from "@/lib/types";
 
 export const AR_SHEET = "應收帳款";
 export const AR_SCHEDULE_SHEET = "應收分期";
+export const PENDING_MONTHLY_SHEET = "月結待出";
 
 // Column ranges — use full column notation ("A:V") + skip header row in code
 // to avoid "Unable to parse range" errors on newly-created empty sheets.
@@ -21,6 +24,12 @@ export const AR_SCHEDULE_RANGE_FULL = `${AR_SCHEDULE_SHEET}!A:O`;
 export const AR_SCHEDULE_RANGE_DATA = `${AR_SCHEDULE_SHEET}!A2:O10000`;
 export const AR_SCHEDULE_ROW_RANGE = (sheetRow: number) =>
   `${AR_SCHEDULE_SHEET}!A${sheetRow}:O${sheetRow}`;
+
+// 月結待出 sheet — 15 columns A:O
+export const PENDING_MONTHLY_RANGE_FULL = `${PENDING_MONTHLY_SHEET}!A:O`;
+export const PENDING_MONTHLY_RANGE_DATA = `${PENDING_MONTHLY_SHEET}!A2:O10000`;
+export const PENDING_MONTHLY_ROW_RANGE = (sheetRow: number) =>
+  `${PENDING_MONTHLY_SHEET}!A${sheetRow}:O${sheetRow}`;
 
 // ===== Helpers =====
 
@@ -197,6 +206,63 @@ export async function generateArId(
 
 export function generateArScheduleId(arId: string, seq: number): string {
   return `${arId}-S${String(seq).padStart(2, "0")}`;
+}
+
+// ===== 月結待出 =====
+
+export function pendingMonthlyRowToRecord(row: string[]): PendingMonthlyRecord {
+  return {
+    pendingId: row[0] ?? "",
+    versionId: row[1] ?? "",
+    quoteId: row[2] ?? "",
+    caseId: row[3] ?? "",
+    clientId: row[4] ?? "",
+    clientNameSnapshot: row[5] ?? "",
+    caseNameSnapshot: row[6] ?? "",
+    projectNameSnapshot: row[7] ?? "",
+    amount: toNumber(row[8]),
+    acceptedAt: row[9] ?? "",
+    consolidatedArId: row[10] ?? "",
+    status: ((row[11] as PendingMonthlyStatus) || "pending") as PendingMonthlyStatus,
+    notes: row[12] ?? "",
+    createdAt: row[13] ?? "",
+    updatedAt: row[14] ?? "",
+  };
+}
+
+export function pendingMonthlyRecordToRow(r: PendingMonthlyRecord): string[] {
+  return [
+    r.pendingId,
+    r.versionId,
+    r.quoteId,
+    r.caseId,
+    r.clientId,
+    r.clientNameSnapshot,
+    r.caseNameSnapshot,
+    r.projectNameSnapshot,
+    String(r.amount),
+    r.acceptedAt,
+    r.consolidatedArId,
+    r.status,
+    r.notes,
+    r.createdAt,
+    r.updatedAt,
+  ];
+}
+
+export async function generatePendingMonthlyId(
+  existingIds: string[],
+  now: Date = new Date(),
+): Promise<string> {
+  const month = now.toISOString().slice(0, 7).replace("-", "");
+  const prefix = `PM-${month}-`;
+  const maxSeq = existingIds
+    .filter((id) => id.startsWith(prefix))
+    .reduce((max, id) => {
+      const seq = Number(id.slice(prefix.length));
+      return Number.isFinite(seq) ? Math.max(max, seq) : max;
+    }, 0);
+  return `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
 }
 
 // ===== Preset schedule templates =====

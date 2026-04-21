@@ -5,6 +5,7 @@ import type {
   ARRecord,
   ARScheduleRecord,
   CaseRecord,
+  PendingMonthlyRecord,
   QuotePlanRecord,
   QuoteVersionRecord,
   VersionLineRecord,
@@ -17,6 +18,9 @@ import {
   AR_SCHEDULE_RANGE_DATA,
   AR_SCHEDULE_RANGE_FULL,
   AR_SCHEDULE_ROW_RANGE,
+  PENDING_MONTHLY_RANGE_DATA,
+  PENDING_MONTHLY_RANGE_FULL,
+  PENDING_MONTHLY_ROW_RANGE,
   arRecordToRow,
   arRowToRecord,
   arScheduleRecordToRow,
@@ -24,6 +28,9 @@ import {
   calcARStatusFromSchedules,
   generateArId,
   generateArScheduleId,
+  generatePendingMonthlyId,
+  pendingMonthlyRecordToRow,
+  pendingMonthlyRowToRecord,
 } from "@/lib/ar-utils";
 
 import {
@@ -161,10 +168,14 @@ async function syncARFromVersion(
     }
 
     const billingType = await getCompanyBillingType(client, caseClientId);
-    if (billingType !== "per_quote") return;
-
     const totalAmount = version.totalAmount;
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) return;
+
+    if (billingType === "monthly") {
+      await upsertPendingMonthly(client, version, caseClientId);
+      return;
+    }
+    if (billingType !== "per_quote") return;
 
     const arId = await generateArId(ars.map((ar) => ar.arId));
     const schedule: ARScheduleRecord = {
@@ -272,6 +283,105 @@ async function syncARFromVersion(
         });
       }
     }
+  }
+
+  // Also cancel any pending-monthly entry for this version that hasn't
+  // been consolidated yet (consolidated entries are frozen by design).
+  try {
+    const pendingRes = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: PENDING_MONTHLY_RANGE_DATA,
+    });
+    const pendingRows = (pendingRes.data.values ?? []) as string[][];
+    for (let i = 0; i < pendingRows.length; i++) {
+      const rec = pendingMonthlyRowToRecord(pendingRows[i]);
+      if (rec.versionId !== version.versionId) continue;
+      if (rec.status !== "pending") continue;
+      const cancelled: PendingMonthlyRecord = {
+        ...rec,
+        status: "cancelled",
+        notes: rec.notes
+          ? `${rec.notes}\n版本狀態變更,自動取消`
+          : "版本狀態變更,自動取消",
+        updatedAt: now,
+      };
+      await client.sheets.spreadsheets.values.update({
+        spreadsheetId: client.spreadsheetId,
+        range: PENDING_MONTHLY_ROW_RANGE(i + 2),
+        valueInputOption: "RAW",
+        requestBody: { values: [pendingMonthlyRecordToRow(cancelled)] },
+      });
+    }
+  } catch {
+    // 月結待出 sheet may not exist yet; silently skip.
+  }
+}
+
+async function upsertPendingMonthly(
+  client: NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>,
+  version: QuoteVersionRecord,
+  clientId: string,
+): Promise<void> {
+  const now = isoNow();
+  const today = isoDateNow();
+  try {
+    const res = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: PENDING_MONTHLY_RANGE_DATA,
+    });
+    const rows = (res.data.values ?? []) as string[][];
+    const records = rows.map(pendingMonthlyRowToRecord);
+    const existing = records.find((r) => r.versionId === version.versionId);
+    if (existing) {
+      // If it was cancelled previously (user toggled status back and forth),
+      // re-activate it. If it was already consolidated, leave alone — the
+      // admin must handle that case manually.
+      if (existing.status === "cancelled") {
+        const idx = records.findIndex((r) => r.pendingId === existing.pendingId);
+        const revived: PendingMonthlyRecord = {
+          ...existing,
+          status: "pending",
+          amount: version.totalAmount,
+          acceptedAt: existing.acceptedAt || today,
+          notes: "",
+          updatedAt: now,
+        };
+        await client.sheets.spreadsheets.values.update({
+          spreadsheetId: client.spreadsheetId,
+          range: PENDING_MONTHLY_ROW_RANGE(idx + 2),
+          valueInputOption: "RAW",
+          requestBody: { values: [pendingMonthlyRecordToRow(revived)] },
+        });
+      }
+      return;
+    }
+    const pendingId = await generatePendingMonthlyId(records.map((r) => r.pendingId));
+    const record: PendingMonthlyRecord = {
+      pendingId,
+      versionId: version.versionId,
+      quoteId: version.quoteId,
+      caseId: version.caseId,
+      clientId,
+      clientNameSnapshot: version.clientNameSnapshot,
+      caseNameSnapshot: version.projectNameSnapshot,
+      projectNameSnapshot: version.projectNameSnapshot,
+      amount: version.totalAmount,
+      acceptedAt: today,
+      consolidatedArId: "",
+      status: "pending",
+      notes: "",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await client.sheets.spreadsheets.values.append({
+      spreadsheetId: client.spreadsheetId,
+      range: PENDING_MONTHLY_RANGE_FULL,
+      valueInputOption: "RAW",
+      requestBody: { values: [pendingMonthlyRecordToRow(record)] },
+    });
+  } catch {
+    // Most likely the 月結待出 sheet hasn't been migrated yet.
+    // Admin needs to run migrate-v13; no-op for now.
   }
 }
 

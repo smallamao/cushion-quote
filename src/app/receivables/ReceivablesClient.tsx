@@ -14,6 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PendingMonthlyPanel } from "@/components/ar/PendingMonthlyPanel";
 import {
   AR_STATUS_COLOR,
   AR_STATUS_LABEL,
@@ -85,6 +87,13 @@ export function ReceivablesClient() {
           重新載入
         </Button>
       </div>
+
+      <Tabs defaultValue="active">
+        <TabsList>
+          <TabsTrigger value="active">應收清單</TabsTrigger>
+          <TabsTrigger value="pending-monthly">月結待出</TabsTrigger>
+        </TabsList>
+        <TabsContent value="active" className="mt-4 space-y-6">
 
       {/* Monthly summary cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -239,6 +248,12 @@ export function ReceivablesClient() {
           </tbody>
         </table>
       </div>
+        </TabsContent>
+
+        <TabsContent value="pending-monthly" className="mt-4">
+          <PendingMonthlyPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

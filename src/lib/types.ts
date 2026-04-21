@@ -482,6 +482,33 @@ export interface RecordARPaymentPayload {
   notes?: string;
 }
 
+export type PendingMonthlyStatus = "pending" | "consolidated" | "cancelled";
+
+export interface PendingMonthlyRecord {
+  pendingId: string;
+  versionId: string;
+  quoteId: string;
+  caseId: string;
+  clientId: string;
+  clientNameSnapshot: string;
+  caseNameSnapshot: string;
+  projectNameSnapshot: string;
+  amount: number;
+  acceptedAt: string; // YYYY-MM-DD
+  consolidatedArId: string;
+  status: PendingMonthlyStatus;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConsolidatePendingPayload {
+  clientId: string;
+  pendingIds: string[];
+  dueDate: string;
+  notes?: string;
+}
+
 export interface VersionLineRecord {
   itemId: string;
   versionId: string;
