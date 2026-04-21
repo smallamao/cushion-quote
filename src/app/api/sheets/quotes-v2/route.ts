@@ -151,6 +151,10 @@ export async function POST(request: Request) {
       projectAddressSnapshot: firstVersion.projectAddressSnapshot ?? caseRecord.projectAddress,
       channelSnapshot: firstVersion.channelSnapshot ?? caseRecord.channelSnapshot,
       quoteNameSnapshot: quoteRecord.quoteName,
+      signedBack: firstVersion.signedBack ?? false,
+      signedBackDate: firstVersion.signedBackDate ?? "",
+      signedContractUrls: firstVersion.signedContractUrls ?? [],
+      signedNotes: firstVersion.signedNotes ?? "",
       createdAt: now,
       updatedAt: now,
     };
