@@ -20,6 +20,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TemplateManager } from "@/components/settings/TemplateManager";
+import { BackupPanel } from "@/components/admin/BackupPanel";
 import { CaseClientIdMigrationPanel } from "@/components/clients/CaseClientIdMigrationPanel";
 import { CompanyListPanel } from "@/components/clients/CompanyListPanel";
 import { EquipmentCatalogPanel } from "@/components/equipment/EquipmentCatalogPanel";
@@ -174,6 +175,7 @@ export function SettingsClient() {
           <TabsTrigger value="equipment">設備型錄</TabsTrigger>
           <TabsTrigger value="suppliers">廠商管理</TabsTrigger>
           <TabsTrigger value="users">使用者與權限</TabsTrigger>
+          <TabsTrigger value="maintenance">系統維護</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -463,6 +465,17 @@ export function SettingsClient() {
             </div>
             <div className="px-6 py-4">
               <UsersManagementPanel />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="maintenance">
+          <div className="card-surface rounded-[var(--radius-lg)]">
+            <div className="border-b border-[var(--border)] px-6 py-3">
+              <span className="text-sm font-medium">系統維護</span>
+            </div>
+            <div className="px-6 py-4">
+              <BackupPanel />
             </div>
           </div>
         </TabsContent>
