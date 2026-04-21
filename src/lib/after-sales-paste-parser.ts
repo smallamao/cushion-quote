@@ -30,6 +30,7 @@ export interface ParsedAfterSalesPayload {
   clientPhone2: string;
   deliveryAddress: string;
   modelCode: string;
+  modelNameSnapshot: string;
   issueDescription: string;
   matchedFields: string[];
 }
@@ -156,6 +157,20 @@ function extractModel(text: string): string {
   return "";
 }
 
+function isLikelyModelLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (trimmed.length > 40) return false;
+  if (parseDate(trimmed)) return false;
+  if (parsePhoneLine(trimmed)) return false;
+  if (isAddressLine(trimmed)) return false;
+  // Already an order number on its own? skip.
+  if (/^(?:P|SO[-_]?)\d{3,}$/iu.test(trimmed)) return false;
+  // Accept alphanumeric + CJK mix, reject lines with lots of punctuation.
+  if (/^[\p{L}\p{N}\s\-_/+×x.]+$/u.test(trimmed)) return true;
+  return false;
+}
+
 export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
   const rawLines = text.split(/\r?\n/);
   const lines = rawLines.map((l) => l.trim()).filter((l) => l.length > 0);
@@ -193,17 +208,43 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
   });
 
   const orderNo = extractOrderNo(text);
-  const modelCode = extractModel(text);
+  const modelCodeHit = extractModel(text);
+
+  // Mark the order-number line as consumed so it doesn't leak into
+  // issueDescription.
+  if (orderNo) {
+    const orderLineIdx = lines.findIndex((l) => l === orderNo);
+    if (orderLineIdx >= 0) consumed.add(orderLineIdx);
+  }
+
+  // Try to pick a model name from the first short non-consumed line
+  // after the order-number line. Handles cases like a bare "JIMMY" or
+  // "Mule JR 貓抓 L型" that are clearly the model but not a BB-1234
+  // style code.
+  let modelNameSnapshot = "";
+  for (let i = 0; i < lines.length; i++) {
+    if (consumed.has(i)) continue;
+    if (isLikelyModelLine(lines[i])) {
+      modelNameSnapshot = lines[i]
+        .replace(/^(?:款式|型號|model)\s*[:：]?\s*/iu, "")
+        .trim();
+      consumed.add(i);
+      break;
+    }
+  }
+
+  // If extractModel picked up a coded token (BB-1234), prefer that as
+  // the modelCode; keep modelNameSnapshot as the looser free-text.
+  const modelCode = modelCodeHit || "";
 
   const issueDescription = lines
     .filter((_, idx) => !consumed.has(idx))
     .map((line) => line.trim())
     .filter((line) => {
-      // Skip obvious noise from labels already captured
       if (/^(?:電話|手機|地址|住址|訂單|款式|型號)\s*[:：]/u.test(line)) return false;
-      // Skip standalone order/model tokens we already extracted
       if (orderNo && line === orderNo) return false;
       if (modelCode && line === modelCode) return false;
+      if (modelNameSnapshot && line === modelNameSnapshot) return false;
       return true;
     })
     .join("\n")
@@ -216,6 +257,7 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
   if (phonePairs[1]) matchedFields.push("次要聯絡人");
   if (orderNo) matchedFields.push("訂單編號");
   if (modelCode) matchedFields.push("款式編號");
+  if (modelNameSnapshot) matchedFields.push("款式名稱");
 
   return {
     shipmentDate,
@@ -226,6 +268,7 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
     clientPhone2: phonePairs[1]?.phone ?? "",
     deliveryAddress,
     modelCode,
+    modelNameSnapshot,
     issueDescription,
     matchedFields,
   };

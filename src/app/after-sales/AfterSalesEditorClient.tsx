@@ -152,6 +152,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
       clientPhone2: result.clientPhone2 || prev.clientPhone2,
       deliveryAddress: result.deliveryAddress || prev.deliveryAddress,
       modelCode: result.modelCode || prev.modelCode,
+      modelNameSnapshot: result.modelNameSnapshot || prev.modelNameSnapshot,
       issueDescription: result.issueDescription || prev.issueDescription,
     }));
     setPasteMatched(result.matchedFields);
