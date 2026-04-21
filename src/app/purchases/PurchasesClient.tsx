@@ -224,15 +224,19 @@ export function PurchasesClient() {
             className="pl-8"
           />
         </div>
-        <div className="w-full lg:w-auto flex flex-wrap items-center gap-1.5 lg:flex-nowrap lg:overflow-x-auto">
+        <div
+          className="grid w-full grid-cols-3 gap-1.5 lg:flex lg:w-auto lg:flex-nowrap lg:items-center lg:overflow-x-auto"
+        >
           {(["all", "draft", "sent", "confirmed", "received", "cancelled"] as const).map(
             (status) => (
               <button
                 key={status}
                 type="button"
                 onClick={() => setStatusFilter(status)}
+                style={{ whiteSpace: "nowrap" }}
                 className={[
-                  "inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs transition-colors whitespace-nowrap",
+                  "inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs transition-colors",
+                  "lg:shrink-0",
                   statusFilter === status
                     ? "bg-[var(--accent)] text-white"
                     : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
