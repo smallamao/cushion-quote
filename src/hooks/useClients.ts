@@ -35,7 +35,7 @@ export function useClients() {
   const { clients, loading, reload, addCompany, updateCompany } = useCompanies();
 
   return {
-    clients,
+    clients: clients.filter((c) => c.isActive),
     loading,
     reload,
     addClient: async (client: Client) => {

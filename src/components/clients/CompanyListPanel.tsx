@@ -1,7 +1,7 @@
 "use client";
 
 import { Ban, Check, CheckCheck, Loader2, Plus, Upload, X, ZoomIn } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,13 +53,64 @@ interface OcrPreview {
 }
 
 export function CompanyListPanel() {
-  const { companies, loading, filters, setFilters, reload, addCompany, updateCompany } =
-    useCompanies();
+  const {
+    companies,
+    loading,
+    filters,
+    setFilters,
+    reload,
+    addCompany,
+    updateCompany,
+    batchSetActive,
+  } = useCompanies();
 
   const [selectedCompany, setSelectedCompany] =
     useState<CompanyWithPrimaryContact | null>(null);
   const [isNewCompany, setIsNewCompany] = useState(false);
   const [showCardUpload, setShowCardUpload] = useState(false);
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  const visibleIds = useMemo(() => companies.map((c) => c.id), [companies]);
+  const effectiveSelected = useMemo(
+    () => new Set(visibleIds.filter((id) => selectedIds.has(id))),
+    [visibleIds, selectedIds],
+  );
+  const allSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => effectiveSelected.has(id));
+  const someSelected = effectiveSelected.size > 0 && !allSelected;
+
+  function toggleSelect(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(checked: boolean) {
+    setSelectedIds(checked ? new Set(visibleIds) : new Set());
+  }
+
+  async function handleBulkToggleActive(active: boolean) {
+    const ids = [...effectiveSelected];
+    if (ids.length === 0) return;
+
+    const verb = active ? "啟用" : "停用";
+    if (!confirm(`確定要${verb} ${ids.length} 筆公司嗎？`)) return;
+
+    setBatchLoading(true);
+    try {
+      await batchSetActive(ids, active);
+      setSelectedIds(new Set());
+    } catch (err) {
+      alert(err instanceof Error ? err.message : `批次${verb}失敗`);
+    } finally {
+      setBatchLoading(false);
+    }
+  }
 
   // OCR preview state
   const [ocrPreview, setOcrPreview] = useState<OcrPreview | null>(null);
@@ -232,6 +283,48 @@ export function CompanyListPanel() {
           </Button>
         </div>
       </div>
+
+      {/* Bulk action bar */}
+      {effectiveSelected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2">
+          <span className="text-sm text-[var(--text-primary)]">
+            已選取{" "}
+            <span className="font-semibold">{effectiveSelected.size}</span> 筆
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={batchLoading}
+              onClick={() => handleBulkToggleActive(true)}
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              批次啟用
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={batchLoading}
+              onClick={() => handleBulkToggleActive(false)}
+            >
+              {batchLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Ban className="h-3.5 w-3.5" />
+              )}
+              批次停用
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={batchLoading}
+              onClick={() => setSelectedIds(new Set())}
+            >
+              取消選取
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Card upload area */}
       {showCardUpload && (
@@ -522,6 +615,13 @@ export function CompanyListPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr>
+                <th className="w-[40px] text-left">
+                  <Checkbox
+                    aria-label="全選"
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={(checked) => toggleSelectAll(checked === true)}
+                  />
+                </th>
                 <th className="text-left">公司名稱</th>
                 <th className="text-left">類型</th>
                 <th className="text-left">通路</th>
@@ -537,6 +637,15 @@ export function CompanyListPanel() {
                   className="cursor-pointer"
                   onClick={() => handleOpenExisting(company)}
                 >
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      aria-label={`選取 ${company.companyName}`}
+                      checked={effectiveSelected.has(company.id)}
+                      onCheckedChange={(checked) =>
+                        toggleSelect(company.id, checked === true)
+                      }
+                    />
+                  </td>
                   <td>
                     <div className="font-medium text-[var(--text-primary)]">
                       {company.companyName}

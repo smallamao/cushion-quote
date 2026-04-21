@@ -45,6 +45,7 @@ interface Props {
   index: number;
   item: EditableItem;
   supplierProducts: readonly PurchaseProduct[];
+  inventoryByProductId?: Map<string, { qty: number; unit: string }>;
   onUpdate: (patch: Partial<EditableItem>) => void;
   onRemove: () => void;
   onSelectProduct: (productId: string) => void;
@@ -55,6 +56,7 @@ export function MobilePurchaseItemCard({
   index,
   item,
   supplierProducts,
+  inventoryByProductId,
   onUpdate,
   onRemove,
   onSelectProduct,
@@ -87,12 +89,35 @@ export function MobilePurchaseItemCard({
 
       {/* Product combobox (full-width) */}
       {item.matched && item.productCode ? (
-        <ProductCombobox
-          value={item.productId}
-          products={supplierProducts}
-          onChange={onSelectProduct}
-          placeholder="選擇商品..."
-        />
+        <div>
+          <ProductCombobox
+            value={item.productId}
+            products={supplierProducts}
+            onChange={onSelectProduct}
+            placeholder="選擇商品..."
+          />
+          {item.productId && inventoryByProductId && (
+            <div
+              className={`mt-1 text-[11px] ${
+                (inventoryByProductId.get(item.productId)?.qty ?? 0) <= 0
+                  ? "text-amber-600"
+                  : "text-[var(--text-tertiary)]"
+              }`}
+            >
+              {inventoryByProductId.has(item.productId) ? (
+                <>
+                  目前庫存:{" "}
+                  {inventoryByProductId
+                    .get(item.productId)
+                    ?.qty.toLocaleString("zh-TW", { maximumFractionDigits: 2 })}{" "}
+                  {inventoryByProductId.get(item.productId)?.unit}
+                </>
+              ) : (
+                "目前庫存: 無紀錄"
+              )}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">

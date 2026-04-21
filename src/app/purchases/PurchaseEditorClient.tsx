@@ -33,6 +33,7 @@ import { fetchPurchaseOrder, usePurchases } from "@/hooks/usePurchases";
 import { usePurchaseProducts } from "@/hooks/usePurchaseProducts";
 import { useSettings } from "@/hooks/useSettings";
 import { useSuppliers } from "@/hooks/useSuppliers";
+import { useInventory } from "@/hooks/useInventory";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { MobilePurchaseItemCard } from "@/components/purchases/MobilePurchaseItemCard";
 import { ProductCombobox } from "@/components/purchases/ProductCombobox";
@@ -160,6 +161,18 @@ export function PurchaseEditorClient({ orderId }: Props) {
   const { products, loading: loadingProducts, addProduct } = usePurchaseProducts();
   const { settings } = useSettings();
   const { orders, createOrder, updateOrder, receiveOrderItems } = usePurchases();
+  const { inventory } = useInventory();
+
+  const inventoryByProductId = useMemo(() => {
+    const m = new Map<string, { qty: number; unit: string }>();
+    for (const inv of inventory) {
+      m.set(inv.productId, {
+        qty: inv.quantityOnHand,
+        unit: inv.productSnapshot.unit,
+      });
+    }
+    return m;
+  }, [inventory]);
 
   const isMobile = useIsMobile();
   const isEditing = Boolean(orderId);
@@ -975,6 +988,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
                 index={idx}
                 item={it}
                 supplierProducts={supplierProducts}
+                inventoryByProductId={inventoryByProductId}
                 onUpdate={(patch) => updateItem(idx, patch)}
                 onRemove={() => removeItem(idx)}
                 onSelectProduct={(productId) => selectProduct(idx, productId)}
@@ -1005,11 +1019,34 @@ export function PurchaseEditorClient({ orderId }: Props) {
                   </td>
                   <td className="px-2 py-1.5">
                     {it.matched && it.productCode ? (
-                      <ProductCombobox
-                        value={it.productId}
-                        products={supplierProducts}
-                        onChange={(v) => selectProduct(idx, v)}
-                      />
+                      <div>
+                        <ProductCombobox
+                          value={it.productId}
+                          products={supplierProducts}
+                          onChange={(v) => selectProduct(idx, v)}
+                        />
+                        {it.productId && inventoryByProductId.has(it.productId) && (
+                          <div
+                            className={`mt-0.5 text-[11px] ${
+                              (inventoryByProductId.get(it.productId)?.qty ?? 0) <= 0
+                                ? "text-amber-600"
+                                : "text-[var(--text-tertiary)]"
+                            }`}
+                          >
+                            庫存:{" "}
+                            {inventoryByProductId.get(it.productId)?.qty.toLocaleString(
+                              "zh-TW",
+                              { maximumFractionDigits: 2 },
+                            )}{" "}
+                            {inventoryByProductId.get(it.productId)?.unit}
+                          </div>
+                        )}
+                        {it.productId && !inventoryByProductId.has(it.productId) && (
+                          <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
+                            庫存: 無紀錄
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1">
