@@ -30,7 +30,6 @@ export interface ParsedAfterSalesPayload {
   clientPhone2: string;
   deliveryAddress: string;
   modelCode: string;
-  modelNameSnapshot: string;
   issueDescription: string;
   matchedFields: string[];
 }
@@ -208,7 +207,6 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
   });
 
   const orderNo = extractOrderNo(text);
-  const modelCodeHit = extractModel(text);
 
   // Mark the order-number line as consumed so it doesn't leak into
   // issueDescription.
@@ -217,15 +215,16 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
     if (orderLineIdx >= 0) consumed.add(orderLineIdx);
   }
 
-  // Try to pick a model name from the first short non-consumed line
-  // after the order-number line. Handles cases like a bare "JIMMY" or
-  // "Mule JR 貓抓 L型" that are clearly the model but not a BB-1234
-  // style code.
-  let modelNameSnapshot = "";
+  // Pick the model code from the first short non-consumed line.
+  // Handles both coded tokens (BB-1234) and plain names (JIMMY, Mule).
+  // The selected value goes to modelCode; the equipment catalog on the
+  // editor side will translate that into a Chinese modelNameSnapshot
+  // automatically when the code matches.
+  let modelCode = "";
   for (let i = 0; i < lines.length; i++) {
     if (consumed.has(i)) continue;
     if (isLikelyModelLine(lines[i])) {
-      modelNameSnapshot = lines[i]
+      modelCode = lines[i]
         .replace(/^(?:款式|型號|model)\s*[:：]?\s*/iu, "")
         .trim();
       consumed.add(i);
@@ -233,9 +232,11 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
     }
   }
 
-  // If extractModel picked up a coded token (BB-1234), prefer that as
-  // the modelCode; keep modelNameSnapshot as the looser free-text.
-  const modelCode = modelCodeHit || "";
+  // Fallback: if nothing matched the heuristic, try the tighter coded
+  // token regex (BB-1234) anywhere in the text.
+  if (!modelCode) {
+    modelCode = extractModel(text);
+  }
 
   const issueDescription = lines
     .filter((_, idx) => !consumed.has(idx))
@@ -244,7 +245,6 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
       if (/^(?:電話|手機|地址|住址|訂單|款式|型號)\s*[:：]/u.test(line)) return false;
       if (orderNo && line === orderNo) return false;
       if (modelCode && line === modelCode) return false;
-      if (modelNameSnapshot && line === modelNameSnapshot) return false;
       return true;
     })
     .join("\n")
@@ -257,7 +257,6 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
   if (phonePairs[1]) matchedFields.push("次要聯絡人");
   if (orderNo) matchedFields.push("訂單編號");
   if (modelCode) matchedFields.push("款式編號");
-  if (modelNameSnapshot) matchedFields.push("款式名稱");
 
   return {
     shipmentDate,
@@ -268,7 +267,6 @@ export function parseAfterSalesText(text: string): ParsedAfterSalesPayload {
     clientPhone2: phonePairs[1]?.phone ?? "",
     deliveryAddress,
     modelCode,
-    modelNameSnapshot,
     issueDescription,
     matchedFields,
   };

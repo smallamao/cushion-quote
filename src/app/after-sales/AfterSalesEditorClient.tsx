@@ -142,19 +142,30 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
       setPasteMatched([]);
       return;
     }
-    setDraft((prev) => ({
-      ...prev,
-      shipmentDate: result.shipmentDate || prev.shipmentDate,
-      relatedOrderNo: result.relatedOrderNo || prev.relatedOrderNo,
-      clientName: result.clientName || prev.clientName,
-      clientPhone: result.clientPhone || prev.clientPhone,
-      clientContact2: result.clientContact2 || prev.clientContact2,
-      clientPhone2: result.clientPhone2 || prev.clientPhone2,
-      deliveryAddress: result.deliveryAddress || prev.deliveryAddress,
-      modelCode: result.modelCode || prev.modelCode,
-      modelNameSnapshot: result.modelNameSnapshot || prev.modelNameSnapshot,
-      issueDescription: result.issueDescription || prev.issueDescription,
-    }));
+    setDraft((prev) => {
+      const nextModelCode = result.modelCode || prev.modelCode;
+      const catalogHit = nextModelCode
+        ? equipment.find((e) => e.modelCode === nextModelCode)
+        : null;
+      const nextModelName = catalogHit
+        ? catalogHit.modelName
+        : result.modelCode && !prev.modelNameSnapshot
+          ? result.modelCode
+          : prev.modelNameSnapshot;
+      return {
+        ...prev,
+        shipmentDate: result.shipmentDate || prev.shipmentDate,
+        relatedOrderNo: result.relatedOrderNo || prev.relatedOrderNo,
+        clientName: result.clientName || prev.clientName,
+        clientPhone: result.clientPhone || prev.clientPhone,
+        clientContact2: result.clientContact2 || prev.clientContact2,
+        clientPhone2: result.clientPhone2 || prev.clientPhone2,
+        deliveryAddress: result.deliveryAddress || prev.deliveryAddress,
+        modelCode: nextModelCode,
+        modelNameSnapshot: nextModelName,
+        issueDescription: result.issueDescription || prev.issueDescription,
+      };
+    });
     setPasteMatched(result.matchedFields);
   }
 
