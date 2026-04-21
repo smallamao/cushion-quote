@@ -20,6 +20,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TemplateManager } from "@/components/settings/TemplateManager";
+import { CaseClientIdMigrationPanel } from "@/components/clients/CaseClientIdMigrationPanel";
 import { CompanyListPanel } from "@/components/clients/CompanyListPanel";
 import { EquipmentCatalogPanel } from "@/components/equipment/EquipmentCatalogPanel";
 import { SuppliersManagementPanel } from "@/components/suppliers/SuppliersManagementPanel";
@@ -413,12 +414,22 @@ export function SettingsClient() {
         </TabsContent>
 
         <TabsContent value="clients">
-          <div className="card-surface rounded-[var(--radius-lg)]">
-            <div className="border-b border-[var(--border)] px-6 py-3">
-              <span className="text-sm font-medium">客戶主檔</span>
+          <div className="space-y-4">
+            <div className="card-surface rounded-[var(--radius-lg)]">
+              <div className="border-b border-[var(--border)] px-6 py-3">
+                <span className="text-sm font-medium">客戶主檔</span>
+              </div>
+              <div className="px-6 py-4">
+                <CompanyListPanel />
+              </div>
             </div>
-            <div className="px-6 py-4">
-              <CompanyListPanel />
+            <div className="card-surface rounded-[var(--radius-lg)]">
+              <div className="border-b border-[var(--border)] px-6 py-3">
+                <span className="text-sm font-medium">資料維護工具</span>
+              </div>
+              <div className="px-6 py-4">
+                <CaseClientIdMigrationPanel />
+              </div>
             </div>
           </div>
         </TabsContent>
