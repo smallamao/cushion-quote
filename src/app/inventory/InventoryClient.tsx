@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ClipboardCheck,
   History,
   Loader2,
   Package,
@@ -11,7 +12,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,11 +26,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useInventory, useInventoryTransactions } from "@/hooks/useInventory";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePurchaseProducts } from "@/hooks/usePurchaseProducts";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import type {
+  CaseRecord,
   InventorySummary,
   InventoryTransactionType,
   PurchaseProductCategory,
@@ -83,7 +86,9 @@ export function InventoryClient() {
   const { inventory, loading, error, reload, adjust } = useInventory();
   const { products } = usePurchaseProducts();
   const { suppliers } = useSuppliers();
+  const { user } = useCurrentUser();
   const isMobile = useIsMobile();
+  const canAdjust = user?.role === "admin";
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<PurchaseProductCategory | "all">("all");
@@ -101,6 +106,33 @@ export function InventoryClient() {
   const [adjReferenceNumber, setAdjReferenceNumber] = useState("");
   const [adjProductId, setAdjProductId] = useState("");
   const [adjSaving, setAdjSaving] = useState(false);
+
+  // Remainder-report dialog state
+  const [reportTarget, setReportTarget] = useState<InventorySummary | null>(null);
+  const [reportRemaining, setReportRemaining] = useState("");
+  const [reportCaseId, setReportCaseId] = useState("");
+  const [reportNotes, setReportNotes] = useState("");
+  const [reportSaving, setReportSaving] = useState(false);
+  const [activeCases, setActiveCases] = useState<CaseRecord[]>([]);
+
+  // Lazy-load active cases for the 回報剩餘 dialog (so we don't hit API on
+  // every page visit — only when the user actually opens the dialog).
+  useEffect(() => {
+    if (!reportTarget) return;
+    if (activeCases.length > 0) return;
+    fetch("/api/sheets/cases", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json: { cases?: CaseRecord[] }) => {
+        const list = (json.cases ?? []).filter(
+          (c) =>
+            c.caseStatus !== "lost" &&
+            c.caseStatus !== "closed" &&
+            (c.caseName || c.clientNameSnapshot),
+        );
+        setActiveCases(list);
+      })
+      .catch(() => setActiveCases([]));
+  }, [reportTarget, activeCases.length]);
 
   // Transaction history dialog
   const [historyTarget, setHistoryTarget] = useState<InventorySummary | null>(null);
@@ -175,6 +207,65 @@ export function InventoryClient() {
     setAdjustTarget(null);
   }
 
+  function openReport(target: InventorySummary) {
+    setReportTarget(target);
+    setReportRemaining("");
+    setReportCaseId("");
+    setReportNotes("");
+  }
+
+  function closeReport() {
+    setReportTarget(null);
+  }
+
+  async function submitReport() {
+    if (!reportTarget) return;
+    const remaining = Number(reportRemaining);
+    if (!Number.isFinite(remaining) || remaining < 0) {
+      alert("請輸入合理的剩餘數量(0 以上)");
+      return;
+    }
+    const delta = remaining - reportTarget.quantityOnHand;
+    if (delta === 0) {
+      alert("剩餘量跟系統現量一樣,沒有需要記錄的異動");
+      return;
+    }
+    if (delta > 0) {
+      const ok = confirm(
+        `回報剩餘 ${remaining} 比系統現量 ${reportTarget.quantityOnHand} 多 ${delta}。\n代表系統現量偏低,會補回 +${delta}。是否繼續?`,
+      );
+      if (!ok) return;
+    }
+    // Build notes automatically with context
+    const caseInfo = reportCaseId
+      ? activeCases.find((c) => c.caseId === reportCaseId)
+      : null;
+    const noteParts: string[] = [];
+    noteParts.push(`裁切回報,剩 ${remaining} ${reportTarget.productSnapshot.unit}`);
+    if (caseInfo) {
+      noteParts.push(`案件: ${caseInfo.caseName} (${caseInfo.caseId})`);
+    }
+    if (reportNotes.trim()) {
+      noteParts.push(reportNotes.trim());
+    }
+    setReportSaving(true);
+    try {
+      await adjust({
+        productId: reportTarget.productId,
+        inventoryId: reportTarget.inventoryId,
+        quantityDelta: delta,
+        transactionType: delta < 0 ? "issue_out" : "manual_adjustment",
+        notes: noteParts.join(" / "),
+        referenceNumber: reportCaseId,
+      });
+      closeReport();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "回報失敗");
+    } finally {
+      setReportSaving(false);
+    }
+  }
+
   async function submitAdjust() {
     const delta = Number(adjDelta);
     if (!Number.isFinite(delta) || delta === 0) {
@@ -218,10 +309,12 @@ export function InventoryClient() {
             )}
           </p>
         </div>
-        <Button size="sm" onClick={openNewStock} className="shrink-0">
-          <Plus className="h-3.5 w-3.5" />
-          手動建立 / 開帳
-        </Button>
+        {canAdjust && (
+          <Button size="sm" onClick={openNewStock} className="shrink-0">
+            <Plus className="h-3.5 w-3.5" />
+            手動建立 / 開帳
+          </Button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -363,7 +456,15 @@ export function InventoryClient() {
               </div>
               <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--text-tertiary)]">
                 <span>{supplierMap.get(item.supplierId) || item.supplierId}</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 font-semibold text-green-700"
+                    onClick={() => openReport(item)}
+                  >
+                    <ClipboardCheck className="h-3.5 w-3.5" />
+                    回報剩餘
+                  </button>
                   <button
                     type="button"
                     className="flex items-center gap-1 text-[var(--text-secondary)]"
@@ -372,14 +473,16 @@ export function InventoryClient() {
                     <History className="h-3 w-3" />
                     紀錄
                   </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-[var(--accent)]"
-                    onClick={() => openAdjust(item)}
-                  >
-                    <Pencil className="h-3 w-3" />
-                    調整
-                  </button>
+                  {canAdjust && (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-[var(--accent)]"
+                      onClick={() => openAdjust(item)}
+                    >
+                      <Pencil className="h-3 w-3" />
+                      調整
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -457,20 +560,31 @@ export function InventoryClient() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
+                          className="flex items-center gap-0.5 text-xs font-semibold text-green-700 hover:underline"
+                          onClick={() => openReport(item)}
+                          title="裁切完畢,回報剩餘"
+                        >
+                          <ClipboardCheck className="h-3.5 w-3.5" />
+                          回報
+                        </button>
+                        <button
+                          type="button"
                           className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                           onClick={() => setHistoryTarget(item)}
                           title="異動紀錄"
                         >
                           <History className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          type="button"
-                          className="text-xs text-[var(--accent)] hover:underline"
-                          onClick={() => openAdjust(item)}
-                          title="人工調整"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
+                        {canAdjust && (
+                          <button
+                            type="button"
+                            className="text-xs text-[var(--accent)] hover:underline"
+                            onClick={() => openAdjust(item)}
+                            title="人工調整"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -599,6 +713,124 @@ export function InventoryClient() {
               <Button size="sm" onClick={() => void submitAdjust()} disabled={adjSaving}>
                 {adjSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 確認
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remainder-report dialog (師傅 main action) */}
+      {reportTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold">
+                <ClipboardCheck className="mr-2 inline h-4 w-4 text-green-700" />
+                裁切完畢,回報剩餘
+              </h2>
+              <button type="button" onClick={closeReport}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className="rounded-md bg-[var(--bg-subtle)] p-3 text-sm">
+                <div className="font-mono text-xs text-[var(--accent)]">
+                  {reportTarget.productSnapshot.productCode}
+                </div>
+                <div className="mt-0.5 font-medium">
+                  {reportTarget.productSnapshot.productName}
+                </div>
+                <div className="text-xs text-[var(--text-tertiary)]">
+                  {reportTarget.productSnapshot.specification}
+                </div>
+                <div className="mt-2 text-xs">
+                  系統現量:{" "}
+                  <span className="font-mono text-sm font-semibold">
+                    {fmtQty(reportTarget.quantityOnHand)} {reportTarget.productSnapshot.unit}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <Label>
+                  剩餘多少 {reportTarget.productSnapshot.unit}? *
+                </Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={reportRemaining}
+                  onChange={(e) => setReportRemaining(e.target.value)}
+                  placeholder="例如剩 3.5"
+                  autoFocus
+                  className="text-lg"
+                />
+                {reportRemaining !== "" &&
+                  Number.isFinite(Number(reportRemaining)) && (
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {(() => {
+                        const r = Number(reportRemaining);
+                        const d = r - reportTarget.quantityOnHand;
+                        if (d === 0) return "跟系統現量一樣,不會異動";
+                        if (d < 0)
+                          return `→ 系統將記錄本次用掉 ${fmtQty(-d)} ${reportTarget.productSnapshot.unit}`;
+                        return `→ 回報量比系統多 ${fmtQty(d)} ${reportTarget.productSnapshot.unit}(系統會往上補)`;
+                      })()}
+                    </p>
+                  )}
+              </div>
+
+              <div>
+                <Label>用在哪個案件 (選填)</Label>
+                <Select
+                  value={reportCaseId || "__none__"}
+                  onValueChange={(v) => setReportCaseId(v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="選案件 (選填)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— 不指定 —</SelectItem>
+                    {activeCases.map((c) => (
+                      <SelectItem key={c.caseId} value={c.caseId}>
+                        {c.caseName}{" "}
+                        {c.clientNameSnapshot ? `（${c.clientNameSnapshot}）` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                  可略過。填了之後查得到這塊料是做哪張單用掉的。
+                </p>
+              </div>
+
+              <div>
+                <Label>備註 (選填)</Label>
+                <Textarea
+                  rows={2}
+                  value={reportNotes}
+                  onChange={(e) => setReportNotes(e.target.value)}
+                  placeholder="例:剩的 3 碼有小瑕疵 / 師傅:阿明"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={closeReport}
+                disabled={reportSaving}
+              >
+                取消
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void submitReport()}
+                disabled={reportSaving || reportRemaining === ""}
+              >
+                {reportSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                確認回報
               </Button>
             </div>
           </div>

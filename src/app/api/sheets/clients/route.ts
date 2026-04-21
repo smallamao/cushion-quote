@@ -164,8 +164,6 @@ export async function GET() {
         company = rowToCompany(row);
       }
 
-      if (!company.isActive) continue;
-
       const primaryContact = primaryContactMap.get(company.id) ?? inlineContact ?? null;
       companies.push({ ...company, primaryContact });
     }

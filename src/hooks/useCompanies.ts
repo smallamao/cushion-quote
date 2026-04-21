@@ -148,6 +148,31 @@ export function useCompanies() {
     [load],
   );
 
+  const batchSetActive = useCallback(
+    async (ids: string[], active: boolean) => {
+      const targets = companies.filter((c) => ids.includes(c.id));
+      if (targets.length === 0) return;
+
+      const results = await Promise.all(
+        targets.map((c) =>
+          fetch("/api/sheets/clients", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...c, isActive: active, primaryContact: undefined }),
+          }),
+        ),
+      );
+
+      const failed = results.filter((r) => !r.ok).length;
+      localStorage.removeItem(CACHE_KEY);
+      await load(true);
+      if (failed > 0) {
+        throw new Error(`${failed} 筆更新失敗`);
+      }
+    },
+    [companies, load],
+  );
+
   return {
     companies: filtered,
     allCompanies: companies,
@@ -158,5 +183,6 @@ export function useCompanies() {
     reload: () => load(true),
     addCompany,
     updateCompany,
+    batchSetActive,
   };
 }
