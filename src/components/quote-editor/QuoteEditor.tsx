@@ -2203,18 +2203,24 @@ export function QuoteEditor() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <div>
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">報價編輯</h1>
-          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-            案件：{projectName || "未命名案件"} | 報價：{quoteId || "未建立"} | 版本：
-            {versionId ? `V${versionNo}` : "未建立"}
-            {versionLabel ? ` ${versionLabel}` : ""}
-          </p>
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-[var(--text-primary)]">報價編輯</h1>
+            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+              案件：{projectName || "未命名案件"} | 報價：{quoteId || "未建立"} | 版本：
+              {versionId ? `V${versionNo}` : "未建立"}
+              {versionLabel ? ` ${versionLabel}` : ""}
+            </p>
+          </div>
+          <Button size="sm" onClick={handleNewQuote} className="shrink-0">
+            <FilePlus className="h-3.5 w-3.5" />
+            新建報價
+          </Button>
         </div>
         {isMobile ? (
           /* ---- Mobile: Save prominent + "more" menu ---- */
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"
               disabled={saving}
@@ -2227,9 +2233,6 @@ export function QuoteEditor() {
                 <Save className="h-3.5 w-3.5" />
               )}
               {saving ? "儲存中..." : isEditMode ? "更新" : "儲存"}
-            </Button>
-            <Button size="sm" onClick={handleNewQuote}>
-              <FilePlus className="h-3.5 w-3.5" />
             </Button>
             <div className="relative">
               <Button
@@ -2288,8 +2291,8 @@ export function QuoteEditor() {
             </div>
           </div>
         ) : (
-          /* ---- Desktop: all buttons inline (unchanged) ---- */
-          <div className="flex flex-wrap items-center gap-2">
+          /* ---- Desktop: other actions right-aligned ---- */
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -2352,10 +2355,6 @@ export function QuoteEditor() {
                 {pdfPageMode === "a4" ? "A4" : "長版"}
               </Button>
             </div>
-            <Button size="sm" onClick={handleNewQuote}>
-              <FilePlus className="h-3.5 w-3.5" />
-              新建報價
-            </Button>
           </div>
         )}
       </div>
