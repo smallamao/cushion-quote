@@ -43,6 +43,25 @@ export async function GET() {
     const currentCols = clientSheet.properties.gridProperties?.columnCount ?? 0;
     const requiredCols = 18;
 
+    // Safety: refuse to run if R1 already has a header that is not
+    // empty and not "結帳方式" — otherwise we would clobber legacy
+    // data (e.g. 建立日期 in the old 21-column schema).
+    const headerRes = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: "客戶資料庫!R1",
+    });
+    const currentR1 = headerRes.data.values?.[0]?.[0] ?? "";
+    if (currentR1 && currentR1 !== "結帳方式") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `偵測到 R 欄已有資料 "${currentR1}"，migration 已中止以免覆蓋。請聯絡開發者調整欄位位置。`,
+          currentR1,
+        },
+        { status: 409 },
+      );
+    }
+
     if (currentCols < requiredCols) {
       await client.sheets.spreadsheets.batchUpdate({
         spreadsheetId: client.spreadsheetId,
@@ -60,7 +79,7 @@ export async function GET() {
       });
     }
 
-    // Write header at R1
+    // Write header at R1 (safe now — we verified it's empty or already "結帳方式")
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
       range: "客戶資料庫!R1",
@@ -98,10 +117,16 @@ export async function GET() {
       });
     }
 
+    // Refresh column count so the response reflects reality (we only
+    // grew the grid when currentCols < requiredCols; otherwise the
+    // existing column count is preserved).
+    const finalCols = Math.max(currentCols, requiredCols);
+
     return NextResponse.json({
       ok: true,
       previousCols: currentCols,
-      newCols: requiredCols,
+      finalCols,
+      requiredCols,
       rowsBackfilled: backfilled,
     });
   } catch (err) {
