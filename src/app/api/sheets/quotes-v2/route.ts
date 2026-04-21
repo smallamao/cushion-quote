@@ -201,7 +201,7 @@ export async function POST(request: Request) {
 
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-        range: "報價版本!A:AQ",
+        range: "報價版本!A:AU",
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(versionRecord)] },
     });
@@ -241,8 +241,8 @@ export async function POST(request: Request) {
     });
     await sortSheetRows(client, {
       sheetName: "報價版本",
-      dataRange: "報價版本!A2:AQ",
-      totalColumnCount: 43,
+      dataRange: "報價版本!A2:AU",
+      totalColumnCount: 47,
       primarySortColumnIndex: 35,
       secondarySortColumnIndex: 0,
     });

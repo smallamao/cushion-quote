@@ -255,7 +255,24 @@ export function versionRowToRecord(row: string[]): QuoteVersionRecord {
     commissionAmount: toNumber(row[39]),
     commissionFixedAmount: toNumber(row[40]),
     commissionPartners: row[41] ?? "",
+    signedBack: toBoolean(row[43]),
+    signedBackDate: row[44] ?? "",
+    signedContractUrls: parseJsonStringArray(row[45]),
+    signedNotes: row[46] ?? "",
   };
+}
+
+function parseJsonStringArray(input: string | undefined): string[] {
+  if (!input) return [];
+  try {
+    const parsed = JSON.parse(input);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((v): v is string => typeof v === "string");
+    }
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 export function versionRecordToRow(record: QuoteVersionRecord): string[] {
@@ -303,6 +320,10 @@ export function versionRecordToRow(record: QuoteVersionRecord): string[] {
     String(record.commissionFixedAmount),
     record.commissionPartners,
     record.quoteNameSnapshot,
+    record.signedBack ? "TRUE" : "FALSE",
+    record.signedBackDate,
+    JSON.stringify(record.signedContractUrls ?? []),
+    record.signedNotes,
   ];
 }
 
@@ -401,7 +422,7 @@ export async function getQuoteRows(client: SheetsClient): Promise<string[][]> {
 export async function getVersionRows(client: SheetsClient): Promise<string[][]> {
   const response = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: `${VERSION_SHEET}!A2:AQ`,
+    range: `${VERSION_SHEET}!A2:AU`,
   });
   return response.data.values ?? [];
 }

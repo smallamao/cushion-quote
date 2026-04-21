@@ -109,7 +109,7 @@ export async function PUT(
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `報價版本!A${sheetRow}:AQ${sheetRow}`,
+      range: `報價版本!A${sheetRow}:AU${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(record)] },
     });
@@ -156,6 +156,60 @@ export async function PUT(
     await syncAutoCommissionSettlements(client, record);
 
     return NextResponse.json({ ok: true, versionId, lineCount: lines.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+interface VersionPatchPayload {
+  versionStatus?: QuoteVersionRecord["versionStatus"];
+  signedBack?: boolean;
+  signedBackDate?: string;
+  signedContractUrls?: string[];
+  signedNotes?: string;
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ versionId: string }> },
+) {
+  const { versionId } = await params;
+  const payload = (await request.json()) as VersionPatchPayload;
+
+  const client = await getSheetsClient();
+  if (!client) {
+    return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+  }
+
+  try {
+    const versionRows = await getVersionRows(client);
+    const rowIndex = versionRows.findIndex((row) => row[0] === versionId);
+    if (rowIndex === -1) {
+      return NextResponse.json({ ok: false, error: "version not found" }, { status: 404 });
+    }
+
+    const existing = versionRowToRecord(versionRows[rowIndex] ?? []);
+    const now = isoNow();
+    const updated: QuoteVersionRecord = {
+      ...existing,
+      versionStatus: payload.versionStatus ?? existing.versionStatus,
+      signedBack: payload.signedBack ?? existing.signedBack,
+      signedBackDate: payload.signedBackDate ?? existing.signedBackDate,
+      signedContractUrls: payload.signedContractUrls ?? existing.signedContractUrls,
+      signedNotes: payload.signedNotes ?? existing.signedNotes,
+      updatedAt: now,
+    };
+
+    const sheetRow = rowIndex + 2;
+    await client.sheets.spreadsheets.values.update({
+      spreadsheetId: client.spreadsheetId,
+      range: `報價版本!A${sheetRow}:AU${sheetRow}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [versionRecordToRow(updated)] },
+    });
+
+    return NextResponse.json({ ok: true, version: updated });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

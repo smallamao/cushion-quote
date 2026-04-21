@@ -59,41 +59,55 @@ export function Sidebar() {
             className="mt-0.5 text-[11px] text-white transition-opacity duration-200"
             style={{ opacity: collapsed ? 0 : 0.6, height: collapsed ? 0 : "auto" }}
           >
-            報價系統 v0.6.0
+            報價系統 v0.7.0
           </div>
         </div>
 
         <nav className="space-y-0.5" style={{ padding: collapsed ? "0 6px" : "0 12px" }}>
-          {visibleLinks.map((link) => {
+          {visibleLinks.map((link, index) => {
             const Icon = link.icon;
             const isActive =
               link.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(link.href);
+            const prev = visibleLinks[index - 1];
+            const showDivider = prev && prev.group !== link.group;
 
             return (
-              <Link
-                key={link.href}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                href={link.href as any}
-                title={collapsed ? link.label : undefined}
-                style={{ color: "#FFFFFF" }}
-                className={[
-                  "flex items-center rounded-[var(--radius-md)] py-2.5 text-[13px] font-medium transition-colors",
-                  "hover:bg-[var(--sidebar-hover)]",
-                  isActive ? "bg-[var(--sidebar-active)]" : "",
-                  collapsed ? "justify-center px-0" : "gap-2.5 px-3",
-                ].join(" ")}
-              >
-                <Icon
-                  className="h-4 w-4 shrink-0"
-                  style={{ color: "#FFFFFF" }}
-                  strokeWidth={1.5}
-                />
-                {!collapsed && (
-                  <span className="sidebar-label">{link.label}</span>
+              <div key={link.href}>
+                {showDivider && (
+                  <div
+                    className="my-2"
+                    style={{
+                      height: 1,
+                      background: "rgba(255,255,255,0.12)",
+                      marginLeft: collapsed ? 0 : 4,
+                      marginRight: collapsed ? 0 : 4,
+                    }}
+                  />
                 )}
-              </Link>
+                <Link
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  href={link.href as any}
+                  title={collapsed ? link.label : undefined}
+                  style={{ color: "#FFFFFF" }}
+                  className={[
+                    "flex items-center rounded-[var(--radius-md)] py-2.5 text-[13px] font-medium transition-colors",
+                    "hover:bg-[var(--sidebar-hover)]",
+                    isActive ? "bg-[var(--sidebar-active)]" : "",
+                    collapsed ? "justify-center px-0" : "gap-2.5 px-3",
+                  ].join(" ")}
+                >
+                  <Icon
+                    className="h-4 w-4 shrink-0"
+                    style={{ color: "#FFFFFF" }}
+                    strokeWidth={1.5}
+                  />
+                  {!collapsed && (
+                    <span className="sidebar-label">{link.label}</span>
+                  )}
+                </Link>
+              </div>
             );
           })}
         </nav>

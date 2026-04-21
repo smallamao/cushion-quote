@@ -374,8 +374,101 @@ export interface QuoteVersionRecord {
   projectAddressSnapshot: string;
   channelSnapshot: Channel;
   quoteNameSnapshot: string;
+  signedBack: boolean;
+  signedBackDate: string;
+  signedContractUrls: string[];
+  signedNotes: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// ===== 應收帳款 (Accounts Receivable) =====
+
+export type ARStatus =
+  | "draft"
+  | "active"
+  | "partial"
+  | "paid"
+  | "overdue"
+  | "cancelled";
+
+export type ARScheduleStatus =
+  | "pending"
+  | "partial"
+  | "paid"
+  | "overdue"
+  | "waived";
+
+export type ARPaymentMethod =
+  | "cash"
+  | "transfer"
+  | "check"
+  | "credit_card"
+  | "other"
+  | "";
+
+export interface ARScheduleRecord {
+  scheduleId: string;
+  arId: string;
+  seq: number;
+  label: string;
+  ratio: number;
+  amount: number;
+  dueDate: string;
+  receivedAmount: number;
+  receivedDate: string;
+  paymentMethod: ARPaymentMethod;
+  scheduleStatus: ARScheduleStatus;
+  adjustmentAmount: number;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ARRecord {
+  arId: string;
+  issueDate: string;
+  caseId: string;
+  caseNameSnapshot: string;
+  quoteId: string;
+  versionId: string;
+  clientId: string;
+  clientNameSnapshot: string;
+  contactNameSnapshot: string;
+  clientPhoneSnapshot: string;
+  projectNameSnapshot: string;
+  totalAmount: number;
+  receivedAmount: number;
+  outstandingAmount: number;
+  scheduleCount: number;
+  arStatus: ARStatus;
+  hasOverdue: boolean;
+  lastReceivedAt: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+export interface ARScheduleDraft {
+  label: string;
+  ratio: number;
+  amount: number;
+  dueDate: string;
+}
+
+export interface CreateARPayload {
+  versionId: string;
+  schedules: ARScheduleDraft[];
+  notes?: string;
+}
+
+export interface RecordARPaymentPayload {
+  scheduleId: string;
+  receivedAmount: number;
+  receivedDate: string;
+  paymentMethod: ARPaymentMethod;
+  notes?: string;
 }
 
 export interface VersionLineRecord {

@@ -7,6 +7,7 @@ import { Plus, Search, Stethoscope } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import { useAfterSales } from "@/hooks/useAfterSales";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -49,7 +50,7 @@ export function AfterSalesListClient() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<AfterSalesStatus | "all">("all");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(30);
+  const [pageSize, setPageSize] = useState(20);
 
   useEffect(() => {
     setPage(1);
@@ -119,7 +120,7 @@ export function AfterSalesListClient() {
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-1 overflow-x-auto flex-nowrap pb-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap pb-1 -mx-1 px-1">
           {(
             [
               ["all", "全部"],
@@ -130,19 +131,22 @@ export function AfterSalesListClient() {
               ["cancelled", "取消"],
             ] as const
           ).map(([key, label]) => (
-            <Button
+            <button
               key={key}
-              size="sm"
-              variant={statusFilter === key ? "default" : "outline"}
+              type="button"
               onClick={() => setStatusFilter(key)}
+              className={[
+                "shrink-0 rounded-full px-3 py-1 text-xs transition-colors whitespace-nowrap",
+                statusFilter === key
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
+              ].join(" ")}
             >
               {label}
               {statusCounts[key] !== undefined && (
-                <span className="ml-1 text-[10px] opacity-70">
-                  {statusCounts[key]}
-                </span>
+                <span className="ml-1 opacity-70">{statusCounts[key]}</span>
               )}
-            </Button>
+            </button>
           ))}
         </div>
       </div>
@@ -299,70 +303,19 @@ export function AfterSalesListClient() {
         </div>
       )}
 
-      {filtered.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
-          <div>
-            {isMobile ? (
-              <span>
-                <span className="font-semibold text-[var(--text-primary)]">{currentPage}</span>
-                {" / "}
-                <span className="font-semibold text-[var(--text-primary)]">{totalPages}</span>
-                {" 頁，共 "}
-                <span className="font-semibold text-[var(--text-primary)]">{filtered.length}</span>
-                {" 筆"}
-              </span>
-            ) : (
-              <>
-                顯示 <span className="font-semibold text-[var(--text-primary)]">{pageStart + 1}</span>
-                {" - "}
-                <span className="font-semibold text-[var(--text-primary)]">
-                  {Math.min(pageStart + pageSize, filtered.length)}
-                </span>
-                {" / "}
-                <span className="font-semibold text-[var(--text-primary)]">{filtered.length}</span> 筆
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {!isMobile && (
-              <label className="flex items-center gap-1">
-                每頁
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="h-7 rounded border border-[var(--border)] bg-white px-1 text-xs"
-                >
-                  <option value={20}>20</option>
-                  <option value={30}>30</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-                筆
-              </label>
-            )}
-            <div className="flex items-center gap-1">
-              <Button size="sm" variant="outline" disabled={currentPage === 1} onClick={() => setPage(1)}>
-                «
-              </Button>
-              <Button size="sm" variant="outline" disabled={currentPage === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                ‹<span className="hidden md:inline ml-1">上一頁</span>
-              </Button>
-              <span className="px-2">
-                {currentPage} / {totalPages}
-              </span>
-              <Button size="sm" variant="outline" disabled={currentPage === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                <span className="hidden md:inline mr-1">下一頁</span>›
-              </Button>
-              <Button size="sm" variant="outline" disabled={currentPage === totalPages} onClick={() => setPage(totalPages)}>
-                »
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={filtered.length}
+        pageStart={pageStart}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        isMobile={isMobile}
+      />
     </div>
   );
 }

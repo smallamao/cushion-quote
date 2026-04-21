@@ -46,7 +46,7 @@ export async function DELETE(request: Request) {
 
   const sheets = [
     { name: "報價", range: "報價!A2:P", idCol: 0 },
-    { name: "報價版本", range: "報價版本!A2:AQ", idCol: 0 },
+    { name: "報價版本", range: "報價版本!A2:AU", idCol: 0 },
     { name: "報價版本明細", range: "報價版本明細!A2:AG", idCol: 0 },
     { name: "佣金結算", range: "佣金結算!A2:M", idCol: 0 },
   ];

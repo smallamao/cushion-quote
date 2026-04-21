@@ -99,7 +99,7 @@ export async function POST() {
       const sheetRow = rowIndex + 2; // +2 because: 1-indexed + header row
       await client.sheets.spreadsheets.values.update({
         spreadsheetId: client.spreadsheetId,
-        range: `報價版本!A${sheetRow}:AQ${sheetRow}`,
+        range: `報價版本!A${sheetRow}:AU${sheetRow}`,
         valueInputOption: "RAW",
         requestBody: { values: [versionRecordToRow(updatedVersion)] },
       });

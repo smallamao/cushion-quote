@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Copy, Edit, FilePlus2, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Edit, FileCheck2, FilePlus2, Loader2, RefreshCw, Trash2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -11,6 +11,14 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -18,6 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SignedContractArchive } from "@/components/quote-editor/SignedContractArchive";
+import { CreateARDialog } from "@/components/ar/CreateARDialog";
+import { useReceivables } from "@/hooks/useReceivables";
 
 type VersionRow = QuoteVersionRecord & { lines?: unknown[] };
 
@@ -75,7 +86,31 @@ export function QuotesClient() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showSuperseded, setShowSuperseded] = useState(false);
   const [busyVersionId, setBusyVersionId] = useState("");
+  const [contractDialogVersion, setContractDialogVersion] = useState<VersionRow | null>(null);
+  const [contractDraft, setContractDraft] = useState({
+    signedBack: false,
+    signedBackDate: "",
+    signedContractUrls: [] as string[],
+    signedNotes: "",
+  });
+  const [contractSaving, setContractSaving] = useState(false);
+  const [createARVersion, setCreateARVersion] = useState<QuoteVersionRecord | null>(null);
+  const { ars, createAR } = useReceivables();
+  const arByVersionId = useMemo(() => {
+    const m = new Map<string, typeof ars[number]>();
+    for (const ar of ars) {
+      if (ar.arStatus === "cancelled") continue;
+      m.set(ar.versionId, ar);
+    }
+    return m;
+  }, [ars]);
   const [expandedQuoteIds, setExpandedQuoteIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchText, filterStatus, filterDateFrom, filterDateTo, showSuperseded]);
 
   const load = useCallback(async (background = false) => {
     if (!background) setLoading(true);
@@ -215,6 +250,51 @@ export function QuotesClient() {
     }
   }
 
+  function openContractDialog(version: VersionRow) {
+    setContractDialogVersion(version);
+    setContractDraft({
+      signedBack: version.signedBack ?? false,
+      signedBackDate: version.signedBackDate ?? "",
+      signedContractUrls: version.signedContractUrls ?? [],
+      signedNotes: version.signedNotes ?? "",
+    });
+  }
+
+  async function handleContractSave() {
+    if (!contractDialogVersion) return;
+    setContractSaving(true);
+    try {
+      const res = await fetch(
+        `/api/sheets/versions/${encodeURIComponent(contractDialogVersion.versionId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(contractDraft),
+        },
+      );
+      if (!res.ok) throw new Error("儲存失敗");
+      // Optimistic local update
+      setVersions((current) =>
+        current.map((v) =>
+          v.versionId === contractDialogVersion.versionId
+            ? {
+                ...v,
+                signedBack: contractDraft.signedBack,
+                signedBackDate: contractDraft.signedBackDate,
+                signedContractUrls: contractDraft.signedContractUrls,
+                signedNotes: contractDraft.signedNotes,
+              }
+            : v,
+        ),
+      );
+      setContractDialogVersion(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "儲存失敗");
+    } finally {
+      setContractSaving(false);
+    }
+  }
+
   async function handleDelete(version: VersionRow) {
     if (!confirm(`確定要刪除版本 ${version.versionId}？`)) return;
     await handleStatusChange(version.versionId, "superseded");
@@ -280,6 +360,14 @@ export function QuotesClient() {
     return result;
   }, [filtered]);
 
+  const totalPages = Math.max(1, Math.ceil(groups.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pagedGroups = useMemo(
+    () => groups.slice(pageStart, pageStart + pageSize),
+    [groups, pageStart, pageSize],
+  );
+
   const nonSupersededAll = useMemo(
     () => versions.filter((item) => item.versionStatus !== "superseded"),
     [versions],
@@ -296,6 +384,8 @@ export function QuotesClient() {
 
   function renderActionButtons(version: VersionRow) {
     const isBusy = busyVersionId === version.versionId;
+    const existingAr = arByVersionId.get(version.versionId);
+    const canCreateAR = version.versionStatus === "accepted" && !existingAr;
     return (
       <div className="flex items-center justify-center gap-1">
         <button
@@ -314,6 +404,39 @@ export function QuotesClient() {
         >
           <FilePlus2 className="h-4 w-4" />
         </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); openContractDialog(version); }}
+          className={[
+            "transition-colors",
+            version.signedBack
+              ? "text-green-600 hover:text-green-700"
+              : "text-[var(--text-tertiary)] hover:text-blue-500",
+          ].join(" ")}
+          title={version.signedBack ? "合約已歸檔（點擊檢視/編輯）" : "合約歸檔（回簽存證）"}
+          disabled={isBusy}
+        >
+          <FileCheck2 className="h-4 w-4" />
+        </button>
+        {canCreateAR && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setCreateARVersion(version); }}
+            className="text-amber-600 hover:text-amber-700 transition-colors"
+            title="建立應收帳款"
+            disabled={isBusy}
+          >
+            <Wallet className="h-4 w-4" />
+          </button>
+        )}
+        {existingAr && (
+          <button
+            onClick={(e) => { e.stopPropagation(); router.push(`/receivables/${existingAr.arId}`); }}
+            className="text-green-600 hover:text-green-700 transition-colors"
+            title={`已有應收帳款 ${existingAr.arId}（點擊檢視）`}
+            disabled={isBusy}
+          >
+            <Wallet className="h-4 w-4" />
+          </button>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); void handleDuplicate(version); }}
           className="text-[var(--text-tertiary)] hover:text-blue-500 transition-colors"
@@ -431,7 +554,7 @@ export function QuotesClient() {
           <div className="py-12 text-center text-sm text-[var(--text-secondary)]">尚無報價紀錄</div>
         ) : isMobile ? (
           <div className="space-y-3 p-3">
-            {groups.map((group) => {
+            {pagedGroups.map((group) => {
               const { latest } = group;
               const statusInfo = VERSION_STATUS_MAP[latest.versionStatus] ?? VERSION_STATUS_MAP.draft;
               const isBusy = busyVersionId === latest.versionId;
@@ -544,7 +667,7 @@ export function QuotesClient() {
                 </tr>
               </thead>
               <tbody>
-                {groups.map((group) => {
+                {pagedGroups.map((group) => {
                   const { latest } = group;
                   const contact = latest.contactNameSnapshot?.trim();
                   const hasOlder = group.olderVersions.length > 0;
@@ -655,6 +778,78 @@ export function QuotesClient() {
           </div>
         )}
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={groups.length}
+        pageStart={pageStart}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        isMobile={isMobile}
+      />
+
+      <Dialog
+        open={contractDialogVersion !== null}
+        onOpenChange={(open) => {
+          if (!open) setContractDialogVersion(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              合約歸檔 — {contractDialogVersion?.quoteId} V{contractDialogVersion?.versionNo}
+            </DialogTitle>
+          </DialogHeader>
+          {contractDialogVersion && (
+            <SignedContractArchive
+              versionId={contractDialogVersion.versionId}
+              signedBack={contractDraft.signedBack}
+              signedBackDate={contractDraft.signedBackDate}
+              signedContractUrls={contractDraft.signedContractUrls}
+              signedNotes={contractDraft.signedNotes}
+              onChange={setContractDraft}
+            />
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setContractDialogVersion(null)}
+              disabled={contractSaving}
+            >
+              取消
+            </Button>
+            <Button onClick={() => void handleContractSave()} disabled={contractSaving}>
+              {contractSaving ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  儲存中…
+                </>
+              ) : (
+                "儲存"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <CreateARDialog
+        open={createARVersion !== null}
+        onOpenChange={(open) => {
+          if (!open) setCreateARVersion(null);
+        }}
+        version={createARVersion}
+        onCreate={async (payload) => {
+          const result = await createAR(payload);
+          if (result?.ar) {
+            router.push(`/receivables/${result.ar.arId}`);
+          }
+        }}
+      />
     </div>
   );
 }

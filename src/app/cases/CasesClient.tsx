@@ -1,6 +1,6 @@
 "use client";
 
-import { Briefcase, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, Copy, ExternalLink, FileCheck2, Loader2, Pencil, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -20,6 +20,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Pagination } from "@/components/ui/pagination";
+import { SignedContractArchive } from "@/components/quote-editor/SignedContractArchive";
+import { CreateARDialog } from "@/components/ar/CreateARDialog";
+import { useReceivables } from "@/hooks/useReceivables";
 import {
   Select,
   SelectContent,
@@ -121,6 +125,24 @@ export function CasesClient() {
     caseName: "",
   });
   const [copying, setCopying] = useState(false);
+  const [contractDialogVersion, setContractDialogVersion] = useState<QuoteVersionRecord | null>(null);
+  const [contractDraft, setContractDraft] = useState({
+    signedBack: false,
+    signedBackDate: "",
+    signedContractUrls: [] as string[],
+    signedNotes: "",
+  });
+  const [contractSaving, setContractSaving] = useState(false);
+  const [createARVersion, setCreateARVersion] = useState<QuoteVersionRecord | null>(null);
+  const { ars, createAR } = useReceivables();
+  const arByVersionId = useMemo(() => {
+    const m = new Map<string, typeof ars[number]>();
+    for (const ar of ars) {
+      if (ar.arStatus === "cancelled") continue;
+      m.set(ar.versionId, ar);
+    }
+    return m;
+  }, [ars]);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; caseId: string; caseName: string }>({
     open: false,
     caseId: "",
@@ -282,6 +304,47 @@ export function CasesClient() {
 
   function openCopyDialog(sourceVersionId: string, caseId: string, quoteId: string, caseName: string) {
     setCopyDialog({ open: true, sourceVersionId, caseId, quoteId, caseName });
+  }
+
+  function openContractDialog(version: QuoteVersionRecord) {
+    setContractDialogVersion(version);
+    setContractDraft({
+      signedBack: version.signedBack ?? false,
+      signedBackDate: version.signedBackDate ?? "",
+      signedContractUrls: version.signedContractUrls ?? [],
+      signedNotes: version.signedNotes ?? "",
+    });
+  }
+
+  async function handleContractSave() {
+    if (!contractDialogVersion) return;
+    setContractSaving(true);
+    try {
+      const res = await fetch(
+        `/api/sheets/versions/${encodeURIComponent(contractDialogVersion.versionId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(contractDraft),
+        },
+      );
+      if (!res.ok) throw new Error("儲存失敗");
+      // Refresh the case detail so version list reflects the change
+      const caseId = contractDialogVersion.caseId;
+      if (caseId) {
+        setDetails((prev) => {
+          const next = { ...prev };
+          delete next[caseId];
+          return next;
+        });
+        await loadCaseDetails(caseId);
+      }
+      setContractDialogVersion(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "儲存失敗");
+    } finally {
+      setContractSaving(false);
+    }
   }
 
   async function handleCopy(action: "new_version" | "use_as_template" | "new_quote_same_case") {
@@ -484,6 +547,21 @@ export function CasesClient() {
     return [...filteredBySource].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [filteredBySource]);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchText, leadSourceFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pagedCases = useMemo(
+    () => sorted.slice(pageStart, pageStart + pageSize),
+    [sorted, pageStart, pageSize],
+  );
+
   const sourceBreakdown = useMemo(() => {
     const total = sorted.length;
     return LEAD_SOURCE_OPTIONS.map((source) => {
@@ -579,7 +657,7 @@ export function CasesClient() {
         ) : isMobile ? (
           /* ── Mobile card list ── */
           <div className="divide-y divide-[var(--border)]">
-            {sorted.map((item) => {
+            {pagedCases.map((item) => {
               const status = CASE_STATUS_MAP[item.caseStatus] ?? CASE_STATUS_MAP.new;
               const isExpanded = expandedCaseIds.has(item.caseId);
               const detail = details[item.caseId];
@@ -809,6 +887,57 @@ export function CasesClient() {
                                           <Button
                                             variant="ghost"
                                             size="sm"
+                                            className={[
+                                              "h-7 w-7 p-0",
+                                              version.signedBack ? "text-green-600 hover:text-green-700" : "",
+                                            ].join(" ")}
+                                            title={version.signedBack ? "合約已歸檔" : "合約歸檔（回簽存證）"}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openContractDialog(version);
+                                            }}
+                                          >
+                                            <FileCheck2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                          {(() => {
+                                            const existingAr = arByVersionId.get(version.versionId);
+                                            if (existingAr) {
+                                              return (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="h-7 w-7 p-0 text-green-600 hover:text-green-700"
+                                                  title={`已有應收 ${existingAr.arId}（點擊檢視）`}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    router.push(`/receivables/${existingAr.arId}`);
+                                                  }}
+                                                >
+                                                  <Wallet className="h-3.5 w-3.5" />
+                                                </Button>
+                                              );
+                                            }
+                                            if (version.versionStatus === "accepted") {
+                                              return (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="h-7 w-7 p-0 text-amber-600 hover:text-amber-700"
+                                                  title="建立應收帳款"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setCreateARVersion(version);
+                                                  }}
+                                                >
+                                                  <Wallet className="h-3.5 w-3.5" />
+                                                </Button>
+                                              );
+                                            }
+                                            return null;
+                                          })()}
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
                                             className="h-7 w-7 p-0"
                                             title="複製版本"
                                             onClick={(e) => {
@@ -856,7 +985,7 @@ export function CasesClient() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((item) => {
+                {pagedCases.map((item) => {
                   const status = CASE_STATUS_MAP[item.caseStatus] ?? CASE_STATUS_MAP.new;
                   const isExpanded = expandedCaseIds.has(item.caseId);
                   const detail = details[item.caseId];
@@ -1144,23 +1273,76 @@ export function CasesClient() {
                                                     {version.totalAmount.toLocaleString()}
                                                   </td>
                                                   <td className="px-2 py-2 text-center">
-                                                    <Button
-                                                      variant="ghost"
-                                                      size="sm"
-                                                      className="h-7 w-7 p-0"
-                                                      title="複製版本"
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        openCopyDialog(
-                                                          version.versionId,
-                                                          item.caseId,
-                                                          quote.quoteId,
-                                                          item.caseName,
-                                                        );
-                                                      }}
-                                                    >
-                                                      <Copy className="h-3.5 w-3.5" />
-                                                    </Button>
+                                                    <div className="flex items-center justify-center gap-1">
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className={[
+                                                          "h-7 w-7 p-0",
+                                                          version.signedBack ? "text-green-600 hover:text-green-700" : "",
+                                                        ].join(" ")}
+                                                        title={version.signedBack ? "合約已歸檔" : "合約歸檔（回簽存證）"}
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          openContractDialog(version);
+                                                        }}
+                                                      >
+                                                        <FileCheck2 className="h-3.5 w-3.5" />
+                                                      </Button>
+                                                      {(() => {
+                                                        const existingAr = arByVersionId.get(version.versionId);
+                                                        if (existingAr) {
+                                                          return (
+                                                            <Button
+                                                              variant="ghost"
+                                                              size="sm"
+                                                              className="h-7 w-7 p-0 text-green-600 hover:text-green-700"
+                                                              title={`已有應收 ${existingAr.arId}（點擊檢視）`}
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                router.push(`/receivables/${existingAr.arId}`);
+                                                              }}
+                                                            >
+                                                              <Wallet className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                          );
+                                                        }
+                                                        if (version.versionStatus === "accepted") {
+                                                          return (
+                                                            <Button
+                                                              variant="ghost"
+                                                              size="sm"
+                                                              className="h-7 w-7 p-0 text-amber-600 hover:text-amber-700"
+                                                              title="建立應收帳款"
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setCreateARVersion(version);
+                                                              }}
+                                                            >
+                                                              <Wallet className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                          );
+                                                        }
+                                                        return null;
+                                                      })()}
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 w-7 p-0"
+                                                        title="複製版本"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          openCopyDialog(
+                                                            version.versionId,
+                                                            item.caseId,
+                                                            quote.quoteId,
+                                                            item.caseName,
+                                                          );
+                                                        }}
+                                                      >
+                                                        <Copy className="h-3.5 w-3.5" />
+                                                      </Button>
+                                                    </div>
                                                   </td>
                                                 </tr>
                                               );
@@ -1183,6 +1365,20 @@ export function CasesClient() {
           </div>
         )}
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={sorted.length}
+        pageStart={pageStart}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        isMobile={isMobile}
+      />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-lg p-0">
@@ -1467,6 +1663,64 @@ export function CasesClient() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={contractDialogVersion !== null}
+        onOpenChange={(open) => {
+          if (!open) setContractDialogVersion(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              合約歸檔 — {contractDialogVersion?.quoteId} V{contractDialogVersion?.versionNo}
+            </DialogTitle>
+          </DialogHeader>
+          {contractDialogVersion && (
+            <SignedContractArchive
+              versionId={contractDialogVersion.versionId}
+              signedBack={contractDraft.signedBack}
+              signedBackDate={contractDraft.signedBackDate}
+              signedContractUrls={contractDraft.signedContractUrls}
+              signedNotes={contractDraft.signedNotes}
+              onChange={setContractDraft}
+            />
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setContractDialogVersion(null)}
+              disabled={contractSaving}
+            >
+              取消
+            </Button>
+            <Button onClick={() => void handleContractSave()} disabled={contractSaving}>
+              {contractSaving ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  儲存中…
+                </>
+              ) : (
+                "儲存"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <CreateARDialog
+        open={createARVersion !== null}
+        onOpenChange={(open) => {
+          if (!open) setCreateARVersion(null);
+        }}
+        version={createARVersion}
+        onCreate={async (payload) => {
+          const result = await createAR(payload);
+          if (result?.ar) {
+            router.push(`/receivables/${result.ar.arId}`);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -2,10 +2,11 @@
 
 import { DollarSign, Layers, Pencil, Plus, Save, Trash2, TrendingUp, Wand2, X } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { usePurchaseProducts } from "@/hooks/usePurchaseProducts";
 import { useSuppliers } from "@/hooks/useSuppliers";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import type {
   PurchaseProduct,
   PurchaseProductCategory,
@@ -14,6 +15,7 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Pagination } from "@/components/ui/pagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -83,6 +85,7 @@ function defaultBulkCommon(): BulkCommon {
 export function PurchaseProductsClient() {
   const { products, loading, addProduct, updateProduct, reload } = usePurchaseProducts();
   const { suppliers } = useSuppliers();
+  const isMobile = useIsMobile();
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -127,6 +130,21 @@ export function PurchaseProductsClient() {
         );
       });
   }, [products, keyword, categoryFilter, supplierFilter, showInactive]);
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setPage(1);
+  }, [keyword, categoryFilter, supplierFilter, showInactive]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageRows = useMemo(
+    () => filtered.slice(pageStart, pageStart + pageSize),
+    [filtered, pageStart, pageSize],
+  );
 
   const batchFilterSummary = useMemo(() => {
     const summary: string[] = [];
@@ -437,7 +455,7 @@ export function PurchaseProductsClient() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((p) => (
+            {pageRows.map((p) => (
               <tr
                 key={p.id}
                 className={`border-t border-[var(--border)] ${
@@ -482,6 +500,20 @@ export function PurchaseProductsClient() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={filtered.length}
+        pageStart={pageStart}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        isMobile={isMobile}
+      />
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

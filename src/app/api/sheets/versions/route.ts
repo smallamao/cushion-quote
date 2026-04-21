@@ -243,14 +243,14 @@ export async function POST(request: Request) {
       const baseSheetRow = baseRowIndex + 2;
       await client.sheets.spreadsheets.values.update({
         spreadsheetId: client.spreadsheetId,
-        range: `報價版本!A${baseSheetRow}:AQ${baseSheetRow}`,
+        range: `報價版本!A${baseSheetRow}:AU${baseSheetRow}`,
         valueInputOption: "RAW",
         requestBody: { values: [versionRecordToRow(superseded)] },
       });
 
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.spreadsheetId,
-          range: "報價版本!A:AQ",
+          range: "報價版本!A:AU",
         valueInputOption: "RAW",
         requestBody: { values: [versionRecordToRow(draft)] },
       });
@@ -273,8 +273,8 @@ export async function POST(request: Request) {
       await syncVersionToParents(client, draft);
       await sortSheetRows(client, {
         sheetName: "報價版本",
-        dataRange: "報價版本!A2:AQ",
-        totalColumnCount: 43,
+        dataRange: "報價版本!A2:AU",
+        totalColumnCount: 47,
         primarySortColumnIndex: 35,
         secondarySortColumnIndex: 0,
       });
@@ -401,7 +401,7 @@ export async function POST(request: Request) {
       });
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.spreadsheetId,
-        range: "報價版本!A:AQ",
+        range: "報價版本!A:AU",
         valueInputOption: "RAW",
         requestBody: { values: [versionRecordToRow(draftVersion)] },
       });
@@ -418,8 +418,8 @@ export async function POST(request: Request) {
       await syncVersionToParents(client, draftVersion);
       await sortSheetRows(client, {
         sheetName: "報價版本",
-        dataRange: "報價版本!A2:AQ",
-        totalColumnCount: 43,
+        dataRange: "報價版本!A2:AU",
+        totalColumnCount: 47,
         primarySortColumnIndex: 35,
         secondarySortColumnIndex: 0,
       });
@@ -571,7 +571,7 @@ export async function POST(request: Request) {
     });
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-        range: "報價版本!A:AQ",
+        range: "報價版本!A:AU",
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(draftVersion)] },
     });
@@ -601,8 +601,8 @@ export async function POST(request: Request) {
     });
     await sortSheetRows(client, {
       sheetName: "報價版本",
-      dataRange: "報價版本!A2:AQ",
-      totalColumnCount: 43,
+      dataRange: "報價版本!A2:AU",
+      totalColumnCount: 47,
       primarySortColumnIndex: 35,
       secondarySortColumnIndex: 0,
     });
@@ -651,7 +651,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-        range: `報價版本!A${sheetRow}:AQ${sheetRow}`,
+        range: `報價版本!A${sheetRow}:AU${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(merged)] },
     });
