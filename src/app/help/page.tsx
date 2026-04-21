@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "使用說明 | 馬鈴薯沙發報價系統",
+  title: "使用說明 | 馬鈴薯沙發營運系統",
   description: "系統內建操作說明",
 };
 

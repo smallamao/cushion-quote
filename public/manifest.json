@@ -1,7 +1,7 @@
 {
-  "name": "馬鈴薯沙發報價系統",
-  "short_name": "沙發報價",
-  "description": "專業沙發繃布報價管理系統",
+  "name": "馬鈴薯沙發營運系統",
+  "short_name": "沙發營運",
+  "description": "馬鈴薯沙發營運管理系統",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
