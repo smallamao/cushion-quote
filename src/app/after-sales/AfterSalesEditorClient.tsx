@@ -34,6 +34,7 @@ import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useEquipment } from "@/hooks/useEquipment";
 import { useSettings } from "@/hooks/useSettings";
+import { useUsers } from "@/hooks/useUsers";
 import type {
   AfterSalesReply,
   AfterSalesService,
@@ -96,6 +97,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
   const { user, loading: userLoading } = useCurrentUser();
   const { equipment } = useEquipment();
   const { settings } = useSettings();
+  const { users } = useUsers();
   const readOnly = user?.role === "technician";
 
   // 技師不能新增工單，導回列表
@@ -653,11 +655,30 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           </div>
           <div>
             <Label>負責人</Label>
-            <Input
-              value={draft.assignedTo}
-              onChange={(e) => update("assignedTo", e.target.value)}
-              placeholder="例 阿明"
-            />
+            <Select
+              value={draft.assignedTo || "__unassigned__"}
+              onValueChange={(v) => update("assignedTo", v === "__unassigned__" ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="選擇負責人" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__unassigned__">— 未指派 —</SelectItem>
+                {users
+                  .filter((u) => u.isActive)
+                  .map((u) => (
+                    <SelectItem key={u.userId} value={u.displayName}>
+                      {u.displayName}
+                    </SelectItem>
+                  ))}
+                {draft.assignedTo &&
+                  !users.some((u) => u.displayName === draft.assignedTo) && (
+                    <SelectItem value={draft.assignedTo}>
+                      {draft.assignedTo}（舊資料）
+                    </SelectItem>
+                  )}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label>預定派工日期</Label>
