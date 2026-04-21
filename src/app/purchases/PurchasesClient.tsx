@@ -224,7 +224,7 @@ export function PurchasesClient() {
             className="pl-8"
           />
         </div>
-        <div className="overflow-x-auto flex-nowrap flex items-center gap-1.5">
+        <div className="w-full lg:w-auto overflow-x-auto flex-nowrap flex items-center gap-1.5">
           {(["all", "draft", "sent", "confirmed", "received", "cancelled"] as const).map(
             (status) => (
               <button
@@ -232,7 +232,7 @@ export function PurchasesClient() {
                 type="button"
                 onClick={() => setStatusFilter(status)}
                 className={[
-                  "rounded-full px-3 py-1 text-xs transition-colors whitespace-nowrap",
+                  "inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs transition-colors whitespace-nowrap",
                   statusFilter === status
                     ? "bg-[var(--accent)] text-white"
                     : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",

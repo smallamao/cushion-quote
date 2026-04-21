@@ -120,7 +120,7 @@ export function AfterSalesListClient() {
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap pb-1 -mx-1 px-1">
+        <div className="w-full lg:w-auto flex items-center gap-1.5 overflow-x-auto flex-nowrap pb-1 -mx-1 px-1">
           {(
             [
               ["all", "全部"],
@@ -136,15 +136,15 @@ export function AfterSalesListClient() {
               type="button"
               onClick={() => setStatusFilter(key)}
               className={[
-                "shrink-0 rounded-full px-3 py-1 text-xs transition-colors whitespace-nowrap",
+                "inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs transition-colors whitespace-nowrap",
                 statusFilter === key
                   ? "bg-[var(--accent)] text-white"
                   : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
               ].join(" ")}
             >
-              {label}
+              <span className="whitespace-nowrap">{label}</span>
               {statusCounts[key] !== undefined && (
-                <span className="ml-1 opacity-70">{statusCounts[key]}</span>
+                <span className="opacity-70">{statusCounts[key]}</span>
               )}
             </button>
           ))}
