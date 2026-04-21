@@ -1,4 +1,5 @@
 import {
+  Archive,
   BarChart3,
   Briefcase,
   Calculator,
@@ -37,6 +38,7 @@ export const navLinks: NavLinkDef[] = [
   { href: "/commissions", label: "佣金結算", icon: HandCoins, roles: ["admin"], group: "daily" },
   { href: "/materials", label: "材質資料庫", icon: Palette, roles: ["admin"], group: "reference" },
   { href: "/purchase-products", label: "採購商品", icon: Package, roles: ["admin"], group: "reference" },
+  { href: "/inventory", label: "庫存管理", icon: Archive, roles: ["admin"], group: "reference" },
   { href: "/reports", label: "採購報表", icon: BarChart3, roles: ["admin"], group: "system" },
   { href: "/settings", label: "系統設定", icon: Settings, roles: ["admin"], group: "system" },
   { href: "/help", label: "使用說明", icon: CircleHelp, roles: ["admin"], group: "system" },
