@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
-import type { Company, Contact, CompanyWithPrimaryContact } from "@/lib/types/company";
+import type { BillingType, Company, Contact, CompanyWithPrimaryContact } from "@/lib/types/company";
 import { companyToClient } from "@/lib/types/company";
 import type { Channel, Client, ClientType, CommissionMode } from "@/lib/types";
 
 import type { ClientSource } from "@/lib/types";
 
-// New schema: 17 columns A:Q
+// New schema: 18 columns A:R (R = billingType)
 function rowToCompany(row: string[]): Company {
   return {
     id: row[0] ?? "",
@@ -27,6 +27,7 @@ function rowToCompany(row: string[]): Company {
     notes: row[14] ?? "",
     commissionFixedAmount: Number(row[15] ?? 0),
     leadSource: (row[16] as ClientSource) ?? "unknown",
+    billingType: ((row[17] as BillingType) === "monthly" ? "monthly" : "per_quote") as BillingType,
   };
 }
 
@@ -52,6 +53,7 @@ function legacyRowToCompanyAndContact(
     notes: row[19] ?? "",
     commissionFixedAmount: Number(row[20] ?? 0),
     leadSource: "unknown" as ClientSource,
+    billingType: "per_quote" as BillingType,
   };
 
   const contactName = row[5] ?? "";
@@ -94,6 +96,7 @@ function companyToRow(c: Company): string[] {
     c.notes,
     String(c.commissionFixedAmount),
     c.leadSource ?? "unknown",
+    c.billingType ?? "per_quote",
   ];
 }
 
@@ -194,7 +197,7 @@ export async function POST(request: Request) {
   try {
     await sheetsClient.sheets.spreadsheets.values.append({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: "客戶資料庫!A:Q",
+      range: "客戶資料庫!A:R",
       valueInputOption: "RAW",
       requestBody: { values: [companyToRow(payload)] },
     });
@@ -229,7 +232,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `客戶資料庫!A${sheetRow}:Q${sheetRow}`,
+      range: `客戶資料庫!A${sheetRow}:R${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [companyToRow(payload)] },
     });

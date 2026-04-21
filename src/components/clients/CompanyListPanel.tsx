@@ -36,6 +36,7 @@ const EMPTY_COMPANY: CompanyWithPrimaryContact = {
   paymentTerms: "",
   defaultNotes: "",
   leadSource: "unknown",
+  billingType: "per_quote",
   isActive: true,
   createdAt: "",
   updatedAt: "",

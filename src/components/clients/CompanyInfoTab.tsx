@@ -16,7 +16,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { CLIENT_TYPE_LABELS, CHANNEL_LABELS, CLIENT_SOURCE_LABELS } from "@/lib/constants";
 import type { ClientSource } from "@/lib/types";
-import type { Company } from "@/lib/types/company";
+import type { BillingType, Company } from "@/lib/types/company";
 import { clampCommissionRate } from "@/lib/utils";
 
 interface CompanyInfoTabProps {
@@ -221,6 +221,21 @@ export function CompanyInfoTab({ company, onSave }: CompanyInfoTabProps) {
               onChange={(e) => update({ paymentTerms: e.target.value })}
               placeholder="例：貨到付款、月結 30 天"
             />
+          </div>
+          <div>
+            <Label>結帳方式</Label>
+            <Select
+              value={draft.billingType ?? "per_quote"}
+              onValueChange={(v) => update({ billingType: v as BillingType })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="per_quote">逐筆(成交後自動開 AR)</SelectItem>
+                <SelectItem value="monthly">月結(由月結流程統一收帳)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="sm:col-span-2">
             <Label>預設備註</Label>

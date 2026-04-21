@@ -1,5 +1,7 @@
 import type { Channel, ClientSource, ClientType, CommissionMode } from "../types";
 
+export type BillingType = "per_quote" | "monthly";
+
 export interface Company {
   id: string;
   companyName: string;
@@ -14,6 +16,7 @@ export interface Company {
   paymentTerms: string;
   defaultNotes: string;
   leadSource: ClientSource;
+  billingType: BillingType;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -74,4 +77,8 @@ export function companyToClient(
     updatedAt: company.updatedAt,
     notes: company.notes,
   };
+}
+
+export function billingTypeLabel(value: BillingType | undefined): string {
+  return value === "monthly" ? "月結（不自動開 AR）" : "逐筆（成交後自動開 AR）";
 }

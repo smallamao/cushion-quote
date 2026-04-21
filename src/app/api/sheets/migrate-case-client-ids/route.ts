@@ -4,7 +4,7 @@ import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { caseRowToRecord, caseRecordToRow, getCaseRows } from "@/app/api/sheets/_v2-utils";
 import type { Channel, ClientSource, ClientType, CommissionMode } from "@/lib/types";
-import type { Company } from "@/lib/types/company";
+import type { BillingType, Company } from "@/lib/types/company";
 
 interface MatchChange {
   caseId: string;
@@ -66,6 +66,7 @@ function rowToCompany(row: string[]): Company {
       notes: row[19] ?? "",
       commissionFixedAmount: Number(row[20] ?? 0),
       leadSource: "unknown" as ClientSource,
+      billingType: "per_quote" as BillingType,
     };
   }
   return {
@@ -86,6 +87,7 @@ function rowToCompany(row: string[]): Company {
     notes: row[14] ?? "",
     commissionFixedAmount: Number(row[15] ?? 0),
     leadSource: (row[16] as ClientSource) ?? "unknown",
+    billingType: ((row[17] as BillingType) === "monthly" ? "monthly" : "per_quote") as BillingType,
   };
 }
 

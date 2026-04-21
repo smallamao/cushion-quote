@@ -1,7 +1,30 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
-import type { CaseRecord, QuotePlanRecord, QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
+import type {
+  ARRecord,
+  ARScheduleRecord,
+  CaseRecord,
+  QuotePlanRecord,
+  QuoteVersionRecord,
+  VersionLineRecord,
+} from "@/lib/types";
+import type { BillingType } from "@/lib/types/company";
+import {
+  AR_RANGE_DATA,
+  AR_RANGE_FULL,
+  AR_ROW_RANGE,
+  AR_SCHEDULE_RANGE_DATA,
+  AR_SCHEDULE_RANGE_FULL,
+  AR_SCHEDULE_ROW_RANGE,
+  arRecordToRow,
+  arRowToRecord,
+  arScheduleRecordToRow,
+  arScheduleRowToRecord,
+  calcARStatusFromSchedules,
+  generateArId,
+  generateArScheduleId,
+} from "@/lib/ar-utils";
 
 import {
   caseRecordToRow,
@@ -75,6 +98,183 @@ function copyLinesToVersion(
   }));
 }
 
+const DEFAULT_AR_DUE_DAYS = 7;
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+async function getCompanyBillingType(
+  client: NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>,
+  clientId: string,
+): Promise<BillingType> {
+  if (!clientId) return "per_quote";
+  try {
+    const res = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: "客戶資料庫!A2:R",
+    });
+    const rows = (res.data.values ?? []) as string[][];
+    const hit = rows.find((r) => (r[0] ?? "") === clientId);
+    if (!hit) return "per_quote";
+    const raw = hit[17] ?? "per_quote";
+    return raw === "monthly" ? "monthly" : "per_quote";
+  } catch {
+    return "per_quote";
+  }
+}
+
+async function syncARFromVersion(
+  client: NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>,
+  version: QuoteVersionRecord,
+  caseClientId: string,
+): Promise<void> {
+  const now = isoNow();
+  const today = isoDateNow();
+
+  const arRes = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: AR_RANGE_DATA,
+  });
+  const arRows = (arRes.data.values ?? []) as string[][];
+  const ars = arRows.map(arRowToRecord);
+  const existing = ars.find(
+    (ar) => ar.versionId === version.versionId && ar.createdBy === "auto",
+  );
+
+  if (version.versionStatus === "accepted") {
+    // Cancel path never applies here; only create if nothing active exists.
+    if (existing && existing.arStatus !== "cancelled") return; // already there
+    if (
+      ars.some(
+        (ar) =>
+          ar.versionId === version.versionId &&
+          ar.arStatus !== "cancelled" &&
+          ar.createdBy !== "auto",
+      )
+    ) {
+      // A user manually made an AR for this version; do not double-book.
+      return;
+    }
+
+    const billingType = await getCompanyBillingType(client, caseClientId);
+    if (billingType !== "per_quote") return;
+
+    const totalAmount = version.totalAmount;
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) return;
+
+    const arId = await generateArId(ars.map((ar) => ar.arId));
+    const schedule: ARScheduleRecord = {
+      scheduleId: generateArScheduleId(arId, 1),
+      arId,
+      seq: 1,
+      label: "全額",
+      ratio: 1,
+      amount: totalAmount,
+      dueDate: addDays(today, DEFAULT_AR_DUE_DAYS),
+      receivedAmount: 0,
+      receivedDate: "",
+      paymentMethod: "",
+      scheduleStatus: "pending",
+      adjustmentAmount: 0,
+      notes: "",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const { arStatus, hasOverdue } = calcARStatusFromSchedules([schedule], today);
+
+    const arRecord: ARRecord = {
+      arId,
+      issueDate: today,
+      caseId: version.caseId,
+      caseNameSnapshot: version.projectNameSnapshot,
+      quoteId: version.quoteId,
+      versionId: version.versionId,
+      clientId: caseClientId,
+      clientNameSnapshot: version.clientNameSnapshot,
+      contactNameSnapshot: version.contactNameSnapshot,
+      clientPhoneSnapshot: version.clientPhoneSnapshot,
+      projectNameSnapshot: version.projectNameSnapshot,
+      totalAmount,
+      receivedAmount: 0,
+      outstandingAmount: totalAmount,
+      scheduleCount: 1,
+      arStatus,
+      hasOverdue,
+      lastReceivedAt: "",
+      notes: "報價成交自動開立",
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "auto",
+    };
+
+    await client.sheets.spreadsheets.values.append({
+      spreadsheetId: client.spreadsheetId,
+      range: AR_RANGE_FULL,
+      valueInputOption: "RAW",
+      requestBody: { values: [arRecordToRow(arRecord)] },
+    });
+    await client.sheets.spreadsheets.values.append({
+      spreadsheetId: client.spreadsheetId,
+      range: AR_SCHEDULE_RANGE_FULL,
+      valueInputOption: "RAW",
+      requestBody: { values: [arScheduleRecordToRow(schedule)] },
+    });
+    return;
+  }
+
+  // Version moved away from "accepted" (rejected / superseded / reverted):
+  // cancel any auto-created AR + its pending schedules so the ledger stays
+  // consistent without deleting audit data.
+  if (existing && existing.arStatus !== "cancelled") {
+    const arRowIdx = arRows.findIndex((r) => (r[0] ?? "") === existing.arId);
+    if (arRowIdx >= 0) {
+      const cancelled: ARRecord = {
+        ...existing,
+        arStatus: "cancelled",
+        notes: existing.notes
+          ? `${existing.notes}\n版本狀態變更,自動取消`
+          : "版本狀態變更,自動取消",
+        updatedAt: now,
+      };
+      await client.sheets.spreadsheets.values.update({
+        spreadsheetId: client.spreadsheetId,
+        range: AR_ROW_RANGE(arRowIdx + 2),
+        valueInputOption: "RAW",
+        requestBody: { values: [arRecordToRow(cancelled)] },
+      });
+
+      // Waive schedules that have no money received so reports don't
+      // count them as outstanding anymore.
+      const schedRes = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: AR_SCHEDULE_RANGE_DATA,
+      });
+      const schedRows = (schedRes.data.values ?? []) as string[][];
+      for (let i = 0; i < schedRows.length; i++) {
+        const sched = arScheduleRowToRecord(schedRows[i]);
+        if (sched.arId !== existing.arId) continue;
+        if (sched.receivedAmount > 0) continue;
+        if (sched.scheduleStatus === "paid" || sched.scheduleStatus === "waived") continue;
+        const next: ARScheduleRecord = {
+          ...sched,
+          scheduleStatus: "waived",
+          updatedAt: now,
+        };
+        await client.sheets.spreadsheets.values.update({
+          spreadsheetId: client.spreadsheetId,
+          range: AR_SCHEDULE_ROW_RANGE(i + 2),
+          valueInputOption: "RAW",
+          requestBody: { values: [arScheduleRecordToRow(next)] },
+        });
+      }
+    }
+  }
+}
+
 async function syncVersionToParents(client: NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>, version: QuoteVersionRecord): Promise<void> {
   const now = isoNow();
   const quoteRows = await getQuoteRows(client);
@@ -105,10 +305,12 @@ async function syncVersionToParents(client: NonNullable<Awaited<ReturnType<typeo
     });
   }
 
+  let caseClientId = "";
   const caseRows = await getCaseRows(client);
   const caseRowIndex = caseRows.findIndex((row) => row[0] === version.caseId);
   if (caseRowIndex !== -1) {
     const caseRecord = caseRowToRecord(caseRows[caseRowIndex] ?? []);
+    caseClientId = caseRecord.clientId;
     const nextCase: CaseRecord = {
       ...caseRecord,
       latestQuoteId: version.quoteId,
@@ -128,10 +330,16 @@ async function syncVersionToParents(client: NonNullable<Awaited<ReturnType<typeo
     const sheetRow = caseRowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `案件!A${sheetRow}:X${sheetRow}`,
+      range: `案件!A${sheetRow}:AA${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(nextCase)] },
     });
+  }
+
+  try {
+    await syncARFromVersion(client, version, caseClientId);
+  } catch {
+    // AR sync is best-effort; never block the status update itself.
   }
 }
 

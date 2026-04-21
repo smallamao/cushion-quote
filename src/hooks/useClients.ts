@@ -19,6 +19,7 @@ function clientToCompany(client: Client): Company {
     paymentTerms: client.paymentTerms,
     defaultNotes: client.defaultNotes,
     leadSource: "unknown",
+    billingType: "per_quote",
     isActive: client.isActive,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt,
