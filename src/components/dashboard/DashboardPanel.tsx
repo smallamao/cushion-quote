@@ -4,6 +4,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { OverdueARAlert } from "@/components/ar/OverdueARAlert";
 import { CHANNEL_LABELS } from "@/lib/constants";
 import type { Channel, QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -150,6 +151,8 @@ export function DashboardPanel() {
           重新載入
         </Button>
       </div>
+
+      <OverdueARAlert />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map((card) => (

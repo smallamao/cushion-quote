@@ -30,6 +30,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
+import { useContacts } from "@/hooks/useContacts";
 import { ClientCombobox } from "./ClientCombobox";
 import { useHistory } from "@/hooks/useHistory";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -593,6 +594,13 @@ function SortableQuoteItemRow({
   );
 }
 
+function formatContactLabel(name: string, role: string): string {
+  const trimmedName = name.trim();
+  const trimmedRole = role.trim();
+  if (!trimmedName) return "";
+  return trimmedRole ? `${trimmedName} ${trimmedRole}` : trimmedName;
+}
+
 export function QuoteEditor() {
   const { settings } = useSettings();
   const { clients, loading: clientsLoading } = useClients();
@@ -608,6 +616,8 @@ export function QuoteEditor() {
   const [channel, setChannel] = useState<Channel>("retail");
 
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [selectedContactId, setSelectedContactId] = useState("");
+  const { contacts: availableContacts } = useContacts(selectedClientId || null);
   const [companyName, setCompanyName] = useState("");
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
@@ -1311,6 +1321,7 @@ export function QuoteEditor() {
   const selectClient = useCallback(
     (clientId: string) => {
       setSelectedClientId(clientId);
+      setSelectedContactId("");
       if (clientId === "__new__") {
         setCompanyName("");
         setContactName("");
@@ -2417,14 +2428,58 @@ export function QuoteEditor() {
         </button>
         {clientSectionOpen && (
           <div className="border-t border-[var(--border)] px-6 py-4">
-            <div className="mb-4">
-              <Label>選擇客戶</Label>
-              <ClientCombobox
-                value={selectedClientId}
-                clients={clients}
-                onChange={selectClient}
-                loading={clientsLoading}
-              />
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>選擇客戶</Label>
+                <ClientCombobox
+                  value={selectedClientId}
+                  clients={clients}
+                  onChange={selectClient}
+                  loading={clientsLoading}
+                />
+              </div>
+              {selectedClientId && availableContacts.length > 0 && (
+                <div>
+                  <Label>選擇聯絡人</Label>
+                  <Select
+                    value={selectedContactId || "__primary__"}
+                    onValueChange={(v) => {
+                      if (v === "__primary__") {
+                        setSelectedContactId("");
+                        const primary = availableContacts.find((c) => c.isPrimary);
+                        if (primary) {
+                          setContactName(formatContactLabel(primary.name, primary.role));
+                          if (primary.phone) setPhone(primary.phone);
+                          if (primary.email) setEmail(primary.email);
+                        }
+                        return;
+                      }
+                      setSelectedContactId(v);
+                      const contact = availableContacts.find((c) => c.id === v);
+                      if (contact) {
+                        setContactName(formatContactLabel(contact.name, contact.role));
+                        if (contact.phone) setPhone(contact.phone);
+                        if (contact.email) setEmail(contact.email);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="選擇聯絡人" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__primary__">
+                        主要聯絡人（預設）
+                      </SelectItem>
+                      {availableContacts.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {formatContactLabel(c.name, c.role) || c.name}
+                          {c.isPrimary ? "（主要）" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>

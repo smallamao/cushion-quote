@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MonthlyARReportCard } from "@/components/ar/MonthlyARReportCard";
 
 interface TrendPoint {
   month: string;
@@ -267,13 +268,15 @@ export function ReportsClient() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <BarChart3 className="h-6 w-6" />
-            採購報表
+            報表總覽
           </h1>
           <p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-            依月份、區間或年度統計商品採購量與金額，預設本月
+            月度應收概況與採購統計
           </p>
         </div>
       </div>
+
+      <MonthlyARReportCard />
 
       <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
         <div className="w-full">
