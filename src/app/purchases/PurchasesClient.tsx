@@ -224,7 +224,7 @@ export function PurchasesClient() {
             className="pl-8"
           />
         </div>
-        <div className="w-full lg:w-auto overflow-x-auto flex-nowrap flex items-center gap-1.5">
+        <div className="w-full lg:w-auto flex flex-wrap items-center gap-1.5 lg:flex-nowrap lg:overflow-x-auto">
           {(["all", "draft", "sent", "confirmed", "received", "cancelled"] as const).map(
             (status) => (
               <button

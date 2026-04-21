@@ -120,7 +120,7 @@ export function AfterSalesListClient() {
             className="pl-9"
           />
         </div>
-        <div className="w-full lg:w-auto flex items-center gap-1.5 overflow-x-auto flex-nowrap pb-1 -mx-1 px-1">
+        <div className="w-full lg:w-auto flex flex-wrap items-center gap-1.5 lg:flex-nowrap lg:overflow-x-auto">
           {(
             [
               ["all", "全部"],
