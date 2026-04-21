@@ -35,6 +35,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useEquipment } from "@/hooks/useEquipment";
 import { useSettings } from "@/hooks/useSettings";
 import { useUsers } from "@/hooks/useUsers";
+import { parseAfterSalesText } from "@/lib/after-sales-paste-parser";
 import type {
   AfterSalesReply,
   AfterSalesService,
@@ -130,6 +131,31 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+
+  // Paste-to-parse state (create mode only)
+  const [pasteText, setPasteText] = useState("");
+  const [pasteMatched, setPasteMatched] = useState<string[] | null>(null);
+
+  function handleParsePaste() {
+    const result = parseAfterSalesText(pasteText);
+    if (result.matchedFields.length === 0) {
+      setPasteMatched([]);
+      return;
+    }
+    setDraft((prev) => ({
+      ...prev,
+      shipmentDate: result.shipmentDate || prev.shipmentDate,
+      relatedOrderNo: result.relatedOrderNo || prev.relatedOrderNo,
+      clientName: result.clientName || prev.clientName,
+      clientPhone: result.clientPhone || prev.clientPhone,
+      clientContact2: result.clientContact2 || prev.clientContact2,
+      clientPhone2: result.clientPhone2 || prev.clientPhone2,
+      deliveryAddress: result.deliveryAddress || prev.deliveryAddress,
+      modelCode: result.modelCode || prev.modelCode,
+      issueDescription: result.issueDescription || prev.issueDescription,
+    }));
+    setPasteMatched(result.matchedFields);
+  }
 
   async function handlePreviewPdf() {
     if (!meta) return;
@@ -469,6 +495,61 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
                 <div className="text-[11px] text-[var(--text-tertiary)]">問題描述</div>
                 <div className="whitespace-pre-wrap text-sm">{draft.issueDescription}</div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 快速貼上解析區 - 只在新增時顯示 */}
+      {mode === "create" && !readOnly && (
+        <div className="rounded-lg border border-dashed border-[var(--accent)]/50 bg-[var(--bg-subtle)] p-5">
+          <h2 className="mb-2 text-sm font-semibold text-[var(--text-secondary)]">
+            快速貼上解析
+          </h2>
+          <p className="mb-3 text-xs text-[var(--text-tertiary)]">
+            從 LINE/Email 複製客戶資訊整段貼入,系統自動解析出貨日 (民國/西元皆可)、地址、主要/次要聯絡人與電話、訂單編號、款式。範例:
+            <br />
+            <span className="font-mono text-[11px]">
+              114.07.17 / 桃園市楊梅區... / 0983335320 黃美宜 / 0963160081 張家耀
+            </span>
+          </p>
+          <Textarea
+            rows={4}
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            placeholder="貼上客戶訊息..."
+            className="font-mono text-sm"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <Button
+              size="sm"
+              type="button"
+              onClick={handleParsePaste}
+              disabled={!pasteText.trim()}
+            >
+              解析並填入
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setPasteText("");
+                setPasteMatched(null);
+              }}
+              disabled={!pasteText && !pasteMatched}
+            >
+              清空
+            </Button>
+            {pasteMatched && pasteMatched.length > 0 && (
+              <span className="text-xs text-green-700">
+                ✓ 已填入: {pasteMatched.join("、")}
+              </span>
+            )}
+            {pasteMatched && pasteMatched.length === 0 && (
+              <span className="text-xs text-amber-700">
+                未辨識到任何欄位,請手動輸入或檢查格式
+              </span>
             )}
           </div>
         </div>
