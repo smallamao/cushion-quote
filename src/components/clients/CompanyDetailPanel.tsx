@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/tabs";
 import { CLIENT_TYPE_LABELS, CHANNEL_LABELS } from "@/lib/constants";
 import type { Company, CompanyWithPrimaryContact } from "@/lib/types/company";
+import { ClientContributionTab } from "./ClientContributionTab";
 import { CompanyInfoTab } from "./CompanyInfoTab";
 import { ContactsTab } from "./ContactsTab";
 import { QuoteHistoryTab } from "./QuoteHistoryTab";
@@ -83,6 +84,9 @@ export function CompanyDetailPanel({
             {!isNew && (
               <TabsTrigger value="quotes">報價歷史</TabsTrigger>
             )}
+            {!isNew && (
+              <TabsTrigger value="contribution">貢獻度</TabsTrigger>
+            )}
           </TabsList>
 
           <div className="flex-1 overflow-y-auto">
@@ -102,6 +106,15 @@ export function CompanyDetailPanel({
                   companyId={company.id}
                   companyName={company.companyName}
                 />
+              </TabsContent>
+            )}
+
+            {!isNew && (
+              <TabsContent
+                value="contribution"
+                className="mt-0 px-4 py-4 sm:px-6"
+              >
+                <ClientContributionTab companyId={company.id} />
               </TabsContent>
             )}
           </div>
