@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -9,7 +9,26 @@ const ERROR_MESSAGES: Record<string, string> = {
   token_exchange_failed: "Google 授權失敗,請重試",
   unauthorized: "您的 Google 帳號未被授權,請聯繫管理員",
   bootstrap_failed: "初始化管理員失敗",
+  disallowed_useragent: "請用 Safari 或 Chrome 開啟,LINE/FB 等內建瀏覽器無法登入 Google",
 };
+
+type EmbeddedBrowser = "line" | "fb" | "ig" | "messenger" | "wechat" | "other" | null;
+
+function detectEmbeddedBrowser(): EmbeddedBrowser {
+  if (typeof navigator === "undefined") return null;
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes("line/")) return "line";
+  if (ua.includes("fban") || ua.includes("fbav")) return "fb";
+  if (ua.includes("instagram")) return "ig";
+  if (ua.includes("messenger")) return "messenger";
+  if (ua.includes("micromessenger")) return "wechat";
+  // Generic WebView heuristic: mobile + no common browser id
+  const isMobile = /iphone|ipad|ipod|android/.test(ua);
+  const hasStandardBrowser =
+    ua.includes("safari") || ua.includes("chrome") || ua.includes("firefox") || ua.includes("edg");
+  if (isMobile && !hasStandardBrowser) return "other";
+  return null;
+}
 
 function LoginContent() {
   const searchParams = useSearchParams();
@@ -17,7 +36,31 @@ function LoginContent() {
   const returnTo = searchParams.get("returnTo") ?? "/";
   const errorMessage = errorCode ? ERROR_MESSAGES[errorCode] ?? `登入失敗: ${errorCode}` : null;
 
+  const [embedded, setEmbedded] = useState<EmbeddedBrowser>(null);
+  const [currentUrl, setCurrentUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setEmbedded(detectEmbeddedBrowser());
+    setCurrentUrl(window.location.href);
+  }, []);
+
   const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
+
+  async function handleCopyUrl() {
+    try {
+      await navigator.clipboard.writeText(currentUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  }
+
+  // LINE supports ?openExternalBrowser=1 to force external browser
+  const lineExternalUrl = embedded === "line"
+    ? `${currentUrl}${currentUrl.includes("?") ? "&" : "?"}openExternalBrowser=1`
+    : "";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--bg-subtle)] p-4">
@@ -37,9 +80,52 @@ function LoginContent() {
           </div>
         )}
 
+        {embedded && (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+            <div className="mb-2 font-semibold">
+              ⚠️ 請改用 Safari 或 Chrome 開啟
+            </div>
+            <p className="mb-2 text-xs leading-relaxed">
+              您目前在
+              {embedded === "line"
+                ? " LINE"
+                : embedded === "fb" || embedded === "messenger"
+                  ? " Facebook/Messenger"
+                  : embedded === "ig"
+                    ? " Instagram"
+                    : embedded === "wechat"
+                      ? " 微信"
+                      : ""}
+              {" 內建瀏覽器中,Google 基於安全政策會拒絕在這裡登入。"}
+            </p>
+            {embedded === "line" && lineExternalUrl && (
+              <a
+                href={lineExternalUrl}
+                className="mb-2 block w-full rounded-md bg-amber-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-amber-700"
+              >
+                以外部瀏覽器開啟
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleCopyUrl()}
+              className="w-full rounded-md border border-amber-400 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+            >
+              {copied ? "✓ 已複製網址" : "複製網址到 Safari/Chrome 開啟"}
+            </button>
+            <p className="mt-2 text-[11px] text-amber-800">
+              複製後請開啟 Safari 或 Chrome,貼上網址再登入。
+            </p>
+          </div>
+        )}
+
         <a
           href={loginUrl}
-          className="flex w-full items-center justify-center gap-3 rounded-md border border-[var(--border)] bg-white px-4 py-3 text-sm font-medium text-[var(--text-primary)] shadow-sm transition-colors hover:bg-[var(--bg-subtle)]"
+          className={[
+            "flex w-full items-center justify-center gap-3 rounded-md border border-[var(--border)] bg-white px-4 py-3 text-sm font-medium text-[var(--text-primary)] shadow-sm transition-colors",
+            embedded ? "pointer-events-none opacity-50" : "hover:bg-[var(--bg-subtle)]",
+          ].join(" ")}
+          aria-disabled={embedded !== null}
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path
