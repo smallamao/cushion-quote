@@ -11,6 +11,8 @@ interface Props {
   onChange: (clientId: string) => void;
   loading?: boolean;
   maxResults?: number;
+  /** Snapshot name shown when `value` is a real ID but not found in `clients` (e.g. client was hard-deleted). */
+  fallbackName?: string;
 }
 
 export function ClientCombobox({
@@ -19,6 +21,7 @@ export function ClientCombobox({
   onChange,
   loading = false,
   maxResults = 50,
+  fallbackName,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -113,6 +116,15 @@ export function ClientCombobox({
             </>
           ) : value === "__new__" ? (
             <span>新客戶（手動輸入）</span>
+          ) : value && fallbackName ? (
+            <>
+              <span className="font-medium text-[var(--text-secondary)]">
+                {fallbackName}
+              </span>
+              <span className="ml-2 text-[var(--text-tertiary)]">（已刪除）</span>
+            </>
+          ) : value ? (
+            <span className="text-[var(--text-tertiary)]">無客戶（已刪除）</span>
           ) : (
             <span className="text-[var(--text-tertiary)]">選擇客戶或新建</span>
           )}

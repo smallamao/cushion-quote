@@ -2435,6 +2435,7 @@ export function QuoteEditor() {
                   clients={clients}
                   onChange={selectClient}
                   loading={clientsLoading}
+                  fallbackName={companyName}
                 />
               </div>
               {selectedClientId && availableContacts.length > 0 && (

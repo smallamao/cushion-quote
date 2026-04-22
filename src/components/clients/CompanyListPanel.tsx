@@ -1,10 +1,18 @@
 "use client";
 
-import { Ban, Check, CheckCheck, Loader2, Plus, Upload, X, ZoomIn } from "lucide-react";
+import { AlertTriangle, Ban, Check, CheckCheck, GitMerge, Loader2, Plus, Trash2, Upload, X, ZoomIn } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,7 +26,12 @@ import { CLIENT_TYPE_LABELS, CHANNEL_LABELS } from "@/lib/constants";
 import type { ClientType, Channel } from "@/lib/types";
 import type { Company, CompanyWithPrimaryContact } from "@/lib/types/company";
 import type { BusinessCardData } from "@/lib/gemini-client";
-import { useCompanies, type SortField } from "@/hooks/useCompanies";
+import {
+  scanClientImpact,
+  useCompanies,
+  type ClientImpactResult,
+  type SortField,
+} from "@/hooks/useCompanies";
 import { BusinessCardUpload } from "./BusinessCardUpload";
 import { CompanyDetailPanel } from "./CompanyDetailPanel";
 
@@ -62,6 +75,8 @@ export function CompanyListPanel() {
     addCompany,
     updateCompany,
     batchSetActive,
+    batchDelete,
+    mergeCompanies,
   } = useCompanies();
 
   const [selectedCompany, setSelectedCompany] =
@@ -107,6 +122,152 @@ export function CompanyListPanel() {
       setSelectedIds(new Set());
     } catch (err) {
       alert(err instanceof Error ? err.message : `批次${verb}失敗`);
+    } finally {
+      setBatchLoading(false);
+    }
+  }
+
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    ids: string[];
+    names: string[];
+    impact: ClientImpactResult | null;
+    scanning: boolean;
+    error: string | null;
+  }>({
+    open: false,
+    ids: [],
+    names: [],
+    impact: null,
+    scanning: false,
+    error: null,
+  });
+
+  async function handleBulkHardDelete() {
+    const ids = [...effectiveSelected];
+    if (ids.length === 0) return;
+    const names = companies.filter((c) => ids.includes(c.id)).map((c) => c.companyName);
+    setDeleteDialog({ open: true, ids, names, impact: null, scanning: true, error: null });
+    try {
+      const impact = await scanClientImpact(ids);
+      setDeleteDialog((prev) => ({ ...prev, impact, scanning: false }));
+    } catch (err) {
+      setDeleteDialog((prev) => ({
+        ...prev,
+        scanning: false,
+        error: err instanceof Error ? err.message : "掃描失敗",
+      }));
+    }
+  }
+
+  async function confirmHardDelete() {
+    const { ids } = deleteDialog;
+    if (ids.length === 0) return;
+    setBatchLoading(true);
+    try {
+      await batchDelete(ids);
+      setSelectedIds(new Set());
+      setDeleteDialog((prev) => ({ ...prev, open: false }));
+    } catch (err) {
+      setDeleteDialog((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : "刪除失敗",
+      }));
+    } finally {
+      setBatchLoading(false);
+    }
+  }
+
+  const [mergeDialog, setMergeDialog] = useState<{
+    open: boolean;
+    candidates: CompanyWithPrimaryContact[];
+    targetId: string;
+    moveContacts: boolean;
+    impact: ClientImpactResult | null;
+    scanning: boolean;
+    error: string | null;
+  }>({
+    open: false,
+    candidates: [],
+    targetId: "",
+    moveContacts: true,
+    impact: null,
+    scanning: false,
+    error: null,
+  });
+
+  async function handleOpenMergeDialog() {
+    const ids = [...effectiveSelected];
+    const candidates = companies.filter((c) => ids.includes(c.id));
+    if (candidates.length < 2) return;
+    const targetId = candidates[0]?.id ?? "";
+    setMergeDialog({
+      open: true,
+      candidates,
+      targetId,
+      moveContacts: true,
+      impact: null,
+      scanning: true,
+      error: null,
+    });
+    const sourceIds = candidates.filter((c) => c.id !== targetId).map((c) => c.id);
+    try {
+      const impact = await scanClientImpact(sourceIds);
+      setMergeDialog((prev) =>
+        prev.open && prev.targetId === targetId
+          ? { ...prev, impact, scanning: false }
+          : prev,
+      );
+    } catch (err) {
+      setMergeDialog((prev) => ({
+        ...prev,
+        scanning: false,
+        error: err instanceof Error ? err.message : "掃描失敗",
+      }));
+    }
+  }
+
+  async function refreshMergeImpact(targetId: string) {
+    setMergeDialog((prev) => ({
+      ...prev,
+      targetId,
+      scanning: true,
+      impact: null,
+      error: null,
+    }));
+    const sourceIds = mergeDialog.candidates
+      .filter((c) => c.id !== targetId)
+      .map((c) => c.id);
+    try {
+      const impact = await scanClientImpact(sourceIds);
+      setMergeDialog((prev) =>
+        prev.open && prev.targetId === targetId
+          ? { ...prev, impact, scanning: false }
+          : prev,
+      );
+    } catch (err) {
+      setMergeDialog((prev) => ({
+        ...prev,
+        scanning: false,
+        error: err instanceof Error ? err.message : "掃描失敗",
+      }));
+    }
+  }
+
+  async function confirmMerge() {
+    const { candidates, targetId, moveContacts } = mergeDialog;
+    const sourceIds = candidates.filter((c) => c.id !== targetId).map((c) => c.id);
+    if (sourceIds.length === 0 || !targetId) return;
+    setBatchLoading(true);
+    try {
+      await mergeCompanies(sourceIds, targetId, moveContacts);
+      setSelectedIds(new Set());
+      setMergeDialog((prev) => ({ ...prev, open: false }));
+    } catch (err) {
+      setMergeDialog((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : "合併失敗",
+      }));
     } finally {
       setBatchLoading(false);
     }
@@ -313,6 +474,27 @@ export function CompanyListPanel() {
                 <Ban className="h-3.5 w-3.5" />
               )}
               批次停用
+            </Button>
+            {effectiveSelected.size >= 2 && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={batchLoading}
+                onClick={handleOpenMergeDialog}
+              >
+                <GitMerge className="h-3.5 w-3.5" />
+                合併
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-[var(--error)] hover:bg-red-50"
+              disabled={batchLoading}
+              onClick={handleBulkHardDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              徹底刪除
             </Button>
             <Button
               variant="ghost"
@@ -696,6 +878,231 @@ export function CompanyListPanel() {
         />
       )}
 
+      {/* Hard-delete confirmation */}
+      <Dialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => {
+          if (batchLoading) return;
+          if (!open) setDeleteDialog((prev) => ({ ...prev, open: false }));
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[var(--error)]">
+              <AlertTriangle className="h-4 w-4" />
+              徹底刪除客戶
+            </DialogTitle>
+            <DialogDescription>
+              此操作會從 Google Sheets 徹底移除下列公司與其聯絡人，無法復原。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 px-6 py-4">
+            <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs">
+              <div className="mb-1 font-medium text-[var(--text-primary)]">
+                將刪除 {deleteDialog.ids.length} 家公司：
+              </div>
+              <ul className="max-h-32 space-y-0.5 overflow-y-auto text-[var(--text-secondary)]">
+                {deleteDialog.names.map((name, i) => (
+                  <li key={i}>・{name}</li>
+                ))}
+              </ul>
+            </div>
+
+            {deleteDialog.scanning ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                正在掃描關聯資料...
+              </div>
+            ) : deleteDialog.impact ? (
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-[var(--text-primary)]">
+                  關聯資料（不會被刪除，但會變「無客戶」）：
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <ImpactItem label="案件" count={deleteDialog.impact.cases} />
+                  <ImpactItem label="應收帳款" count={deleteDialog.impact.ar} />
+                  <ImpactItem label="付款紀錄" count={deleteDialog.impact.arPayments} />
+                  <ImpactItem label="月結待出" count={deleteDialog.impact.pendingMonthly} />
+                  <ImpactItem
+                    label="聯絡人"
+                    count={deleteDialog.impact.contacts}
+                    warn
+                    note="會一起刪除"
+                  />
+                </div>
+                {(deleteDialog.impact.cases > 0 ||
+                  deleteDialog.impact.ar > 0 ||
+                  deleteDialog.impact.pendingMonthly > 0) && (
+                  <div className="rounded-[var(--radius)] bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    建議改用「合併到其他公司」功能保留歷史關聯。
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {deleteDialog.error && (
+              <div className="rounded-[var(--radius)] bg-red-50 px-3 py-2 text-xs text-red-700">
+                {deleteDialog.error}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={batchLoading}
+              onClick={() =>
+                setDeleteDialog((prev) => ({ ...prev, open: false }))
+              }
+            >
+              取消
+            </Button>
+            <Button
+              size="sm"
+              className="bg-[var(--error)] text-white hover:bg-red-700"
+              disabled={batchLoading || deleteDialog.scanning}
+              onClick={confirmHardDelete}
+            >
+              {batchLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              確認徹底刪除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Merge dialog */}
+      <Dialog
+        open={mergeDialog.open}
+        onOpenChange={(open) => {
+          if (batchLoading) return;
+          if (!open) setMergeDialog((prev) => ({ ...prev, open: false }));
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitMerge className="h-4 w-4" />
+              合併客戶
+            </DialogTitle>
+            <DialogDescription>
+              將其他公司的案件、應收、聯絡人全部搬到保留的公司，再徹底刪除來源。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 px-6 py-4">
+            <div>
+              <div className="mb-2 text-xs font-medium text-[var(--text-primary)]">
+                保留哪一家公司？
+              </div>
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-[var(--radius)] border border-[var(--border)] p-1">
+                {mergeDialog.candidates.map((c) => (
+                  <label
+                    key={c.id}
+                    className={`flex cursor-pointer items-start gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-xs hover:bg-[var(--bg-hover)] ${
+                      mergeDialog.targetId === c.id ? "bg-[var(--bg-subtle)]" : ""
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="merge-target"
+                      checked={mergeDialog.targetId === c.id}
+                      onChange={() => refreshMergeImpact(c.id)}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-[var(--text-primary)]">
+                        {c.companyName}
+                      </div>
+                      <div className="truncate text-[var(--text-tertiary)]">
+                        {CLIENT_TYPE_LABELS[c.clientType]} ·{" "}
+                        {CHANNEL_LABELS[c.channel]?.label ?? c.channel} ·{" "}
+                        {c.primaryContact?.name ?? "—"}
+                        {c.createdAt && ` · 建立 ${c.createdAt.slice(0, 10)}`}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+              <Checkbox
+                checked={mergeDialog.moveContacts}
+                onCheckedChange={(checked) =>
+                  setMergeDialog((prev) => ({
+                    ...prev,
+                    moveContacts: checked === true,
+                  }))
+                }
+              />
+              也把其他公司的聯絡人搬到保留的公司（不勾選會連同聯絡人一起刪除）
+            </label>
+
+            {mergeDialog.scanning ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                正在掃描將被搬移的資料...
+              </div>
+            ) : mergeDialog.impact ? (
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-[var(--text-primary)]">
+                  將從其他公司搬到保留公司：
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <ImpactItem label="案件" count={mergeDialog.impact.cases} />
+                  <ImpactItem label="應收帳款" count={mergeDialog.impact.ar} />
+                  <ImpactItem label="付款紀錄" count={mergeDialog.impact.arPayments} />
+                  <ImpactItem label="月結待出" count={mergeDialog.impact.pendingMonthly} />
+                  <ImpactItem
+                    label="聯絡人"
+                    count={mergeDialog.impact.contacts}
+                    warn={!mergeDialog.moveContacts}
+                    note={mergeDialog.moveContacts ? "搬移" : "一起刪除"}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {mergeDialog.error && (
+              <div className="rounded-[var(--radius)] bg-red-50 px-3 py-2 text-xs text-red-700">
+                {mergeDialog.error}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={batchLoading}
+              onClick={() =>
+                setMergeDialog((prev) => ({ ...prev, open: false }))
+              }
+            >
+              取消
+            </Button>
+            <Button
+              size="sm"
+              disabled={batchLoading || mergeDialog.scanning || !mergeDialog.targetId}
+              onClick={confirmMerge}
+            >
+              {batchLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <GitMerge className="h-3.5 w-3.5" />
+              )}
+              確認合併
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Image lightbox */}
       {lightboxUrl && (
         <div
@@ -716,6 +1123,34 @@ export function CompanyListPanel() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function ImpactItem({
+  label,
+  count,
+  warn = false,
+  note,
+}: {
+  label: string;
+  count: number;
+  warn?: boolean;
+  note?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1.5">
+      <span className="text-[var(--text-secondary)]">{label}</span>
+      <span
+        className={`font-medium ${warn && count > 0 ? "text-[var(--error)]" : "text-[var(--text-primary)]"}`}
+      >
+        {count}
+        {note && count > 0 && (
+          <span className="ml-1 text-[10px] font-normal text-[var(--text-tertiary)]">
+            ({note})
+          </span>
+        )}
+      </span>
     </div>
   );
 }

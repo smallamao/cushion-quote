@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
+import { ClientCombobox } from "@/components/quote-editor/ClientCombobox";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LEAD_SOURCE_DETAIL_ENABLED, LEAD_SOURCE_LABELS, LEAD_SOURCE_OPTIONS } from "@/lib/constants";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
@@ -153,6 +154,8 @@ export function CasesClient() {
     open: boolean;
     caseId: string;
     caseName: string;
+    clientId: string;
+    clientNameSnapshot: string;
     projectAddress: string;
     leadSource: LeadSource;
     leadSourceDetail: string;
@@ -165,6 +168,8 @@ export function CasesClient() {
     open: false,
     caseId: "",
     caseName: "",
+    clientId: "",
+    clientNameSnapshot: "",
     projectAddress: "",
     leadSource: "unknown",
     leadSourceDetail: "",
@@ -427,6 +432,8 @@ export function CasesClient() {
       open: true,
       caseId: caseRecord.caseId,
       caseName: caseRecord.caseName,
+      clientId: caseRecord.clientId ?? "",
+      clientNameSnapshot: caseRecord.clientNameSnapshot ?? "",
       projectAddress: caseRecord.projectAddress,
       leadSource: caseRecord.leadSource,
       leadSourceDetail: caseRecord.leadSourceDetail,
@@ -442,6 +449,25 @@ export function CasesClient() {
     if (!editDialog.caseId) return;
     setEditing(true);
     try {
+      const originalCase = cases.find((c) => c.caseId === editDialog.caseId);
+      const clientChanged =
+        (originalCase?.clientId ?? "") !== (editDialog.clientId ?? "");
+      const pickedClient = editDialog.clientId
+        ? clients.find((c) => c.id === editDialog.clientId)
+        : null;
+
+      // When the client changes, refresh downstream snapshots from the new client
+      // so case list / quote history / AR display the current name+phone.
+      const clientFields = clientChanged
+        ? {
+            clientId: editDialog.clientId,
+            clientNameSnapshot: pickedClient?.companyName ?? "",
+            contactNameSnapshot: pickedClient?.contactName ?? "",
+            phoneSnapshot: pickedClient?.phone ?? "",
+            channelSnapshot: pickedClient?.channel ?? originalCase?.channelSnapshot ?? "wholesale",
+          }
+        : {};
+
       const response = await fetch("/api/sheets/cases", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -456,6 +482,7 @@ export function CasesClient() {
           shippingStatus: editDialog.shippingStatus,
           trackingNo: editDialog.trackingNo.trim(),
           shippedAt: editDialog.shippedAt.trim(),
+          ...clientFields,
         }),
       });
 
@@ -468,6 +495,8 @@ export function CasesClient() {
         open: false,
         caseId: "",
         caseName: "",
+        clientId: "",
+        clientNameSnapshot: "",
         projectAddress: "",
         leadSource: "unknown",
         leadSourceDetail: "",
@@ -1556,6 +1585,28 @@ export function CasesClient() {
               />
             </div>
             <div>
+              <Label>客戶</Label>
+              <ClientCombobox
+                value={editDialog.clientId}
+                clients={clients}
+                onChange={(id) =>
+                  setEditDialog((prev) => ({
+                    ...prev,
+                    clientId: id === "__new__" ? "" : id,
+                  }))
+                }
+                loading={clientsLoading}
+                fallbackName={editDialog.clientNameSnapshot}
+              />
+              {editDialog.clientId &&
+                !clients.find((c) => c.id === editDialog.clientId) &&
+                editDialog.clientNameSnapshot && (
+                  <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                    原客戶「{editDialog.clientNameSnapshot}」已不在名單中，請重新選擇或建立。
+                  </p>
+                )}
+            </div>
+            <div>
               <Label>專案地址</Label>
               <Input
                 value={editDialog.projectAddress}
@@ -1674,6 +1725,8 @@ export function CasesClient() {
                   open: false,
                   caseId: "",
                   caseName: "",
+                  clientId: "",
+                  clientNameSnapshot: "",
                   projectAddress: "",
                   leadSource: "unknown",
                   leadSourceDetail: "",

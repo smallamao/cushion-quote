@@ -82,6 +82,19 @@ const STATUS_OPTIONS: Array<{ value: AfterSalesStatus; label: string }> = [
   { value: "cancelled", label: "取消" },
 ];
 
+function isVideoUrl(url: string): boolean {
+  // Cloudinary URLs contain /video/upload/ for videos, /image/upload/ for images.
+  if (url.includes("/video/upload/")) return true;
+  // Fallback: inspect file extension.
+  const pathOnly = url.split("?")[0].toLowerCase();
+  return (
+    pathOnly.endsWith(".mp4") ||
+    pathOnly.endsWith(".mov") ||
+    pathOnly.endsWith(".webm") ||
+    pathOnly.endsWith(".m4v")
+  );
+}
+
 async function uploadImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
@@ -681,14 +694,29 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           />
         </div>
 
-        {/* 問題照片 */}
+        {/* 問題照片 / 影片 */}
         <div className="mt-4">
-          <Label>問題照片</Label>
+          <Label>問題照片 / 影片</Label>
+          <p className="text-[11px] text-[var(--text-tertiary)]">
+            客戶可拍短片說明問題(例:吱吱聲、皮革裂開)。影片上限 50 MB。
+          </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {draft.issuePhotos.map((url, idx) => (
-              <div key={idx} className="relative h-24 w-24 overflow-hidden rounded-md border border-[var(--border)]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="問題照片" className="h-full w-full object-cover" />
+              <div
+                key={idx}
+                className="relative h-24 w-24 overflow-hidden rounded-md border border-[var(--border)]"
+              >
+                {isVideoUrl(url) ? (
+                  <video
+                    src={url}
+                    className="h-full w-full object-cover"
+                    controls
+                    preload="metadata"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={url} alt="問題照片" className="h-full w-full object-cover" />
+                )}
                 <button
                   type="button"
                   onClick={() => removePhoto("issue", idx)}
@@ -705,12 +733,12 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
               className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               <ImagePlus className="h-5 w-5" />
-              <span className="text-[10px]">加照片</span>
+              <span className="text-[10px]">加照片/影片</span>
             </button>
             <input
               ref={issuePhotoInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -810,14 +838,26 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           </div>
         </div>
 
-        {/* 完工照片 */}
+        {/* 完工照片 / 影片 */}
         <div className="mt-4">
-          <Label>完工照片</Label>
+          <Label>完工照片 / 影片</Label>
           <div className="mt-2 flex flex-wrap gap-2">
             {draft.completionPhotos.map((url, idx) => (
-              <div key={idx} className="relative h-24 w-24 overflow-hidden rounded-md border border-[var(--border)]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="完工照片" className="h-full w-full object-cover" />
+              <div
+                key={idx}
+                className="relative h-24 w-24 overflow-hidden rounded-md border border-[var(--border)]"
+              >
+                {isVideoUrl(url) ? (
+                  <video
+                    src={url}
+                    className="h-full w-full object-cover"
+                    controls
+                    preload="metadata"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={url} alt="完工照片" className="h-full w-full object-cover" />
+                )}
                 <button
                   type="button"
                   onClick={() => removePhoto("completion", idx)}
@@ -833,12 +873,12 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
               className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               <ImagePlus className="h-5 w-5" />
-              <span className="text-[10px]">加照片</span>
+              <span className="text-[10px]">加照片/影片</span>
             </button>
             <input
               ref={completionPhotoInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -870,9 +910,21 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
             {newReplyAttachments.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {newReplyAttachments.map((url, idx) => (
-                  <div key={idx} className="relative h-16 w-16 overflow-hidden rounded border border-[var(--border)]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt="附件" className="h-full w-full object-cover" />
+                  <div
+                    key={idx}
+                    className="relative h-16 w-16 overflow-hidden rounded border border-[var(--border)]"
+                  >
+                    {isVideoUrl(url) ? (
+                      <video
+                        src={url}
+                        className="h-full w-full object-cover"
+                        controls
+                        preload="metadata"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={url} alt="附件" className="h-full w-full object-cover" />
+                    )}
                     <button
                       type="button"
                       onClick={() =>
@@ -896,12 +948,12 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
                 onClick={() => replyPhotoInputRef.current?.click()}
               >
                 <ImagePlus className="mr-1 h-3 w-3" />
-                附圖
+                附圖/影片
               </Button>
               <input
                 ref={replyPhotoInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -953,8 +1005,17 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
                         rel="noreferrer"
                         className="block h-16 w-16 overflow-hidden rounded border border-[var(--border)]"
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="附件" className="h-full w-full object-cover" />
+                        {isVideoUrl(url) ? (
+                          <video
+                            src={url}
+                            className="h-full w-full object-cover"
+                            preload="metadata"
+                            muted
+                          />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={url} alt="附件" className="h-full w-full object-cover" />
+                        )}
                       </a>
                     ))}
                   </div>

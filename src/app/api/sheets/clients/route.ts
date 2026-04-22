@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
+import { hardDeleteClients } from "@/lib/client-cleanup";
 import type { BillingType, Company, Contact, CompanyWithPrimaryContact } from "@/lib/types/company";
 import { companyToClient } from "@/lib/types/company";
 import type { Channel, Client, ClientType, CommissionMode } from "@/lib/types";
@@ -236,6 +237,35 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ ok: true, company: payload });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  let ids: string[] = [];
+  try {
+    const body = await request.json().catch(() => ({}));
+    if (Array.isArray((body as { ids?: unknown }).ids)) {
+      ids = (body as { ids: unknown[] }).ids.map((id) => String(id)).filter(Boolean);
+    }
+  } catch {
+    // ignore
+  }
+
+  if (ids.length === 0) {
+    return NextResponse.json({ ok: false, error: "ids is required" }, { status: 400 });
+  }
+
+  const sheetsClient = await getSheetsClient();
+  if (!sheetsClient) {
+    return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+  }
+
+  try {
+    const result = await hardDeleteClients(sheetsClient, ids);
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

@@ -173,6 +173,49 @@ export function useCompanies() {
     [companies, load],
   );
 
+  const batchDelete = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const response = await fetch("/api/sheets/clients", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "刪除失敗");
+      }
+      localStorage.removeItem(CACHE_KEY);
+      await load(true);
+    },
+    [load],
+  );
+
+  const mergeCompanies = useCallback(
+    async (sourceIds: string[], targetId: string, moveContacts = true) => {
+      const response = await fetch("/api/sheets/clients/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceIds, targetId, moveContacts }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "合併失敗");
+      }
+      localStorage.removeItem(CACHE_KEY);
+      await load(true);
+      return (await response.json()) as {
+        cases: number;
+        ar: number;
+        arPayments: number;
+        pendingMonthly: number;
+        contacts: number;
+        deletedClients: number;
+      };
+    },
+    [load],
+  );
+
   return {
     companies: filtered,
     allCompanies: companies,
@@ -184,5 +227,25 @@ export function useCompanies() {
     addCompany,
     updateCompany,
     batchSetActive,
+    batchDelete,
+    mergeCompanies,
   };
+}
+
+export interface ClientImpactResult {
+  cases: number;
+  ar: number;
+  arPayments: number;
+  pendingMonthly: number;
+  contacts: number;
+}
+
+export async function scanClientImpact(ids: string[]): Promise<ClientImpactResult> {
+  const response = await fetch(`/api/sheets/clients/impact?ids=${encodeURIComponent(ids.join(","))}`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? "掃描失敗");
+  }
+  const data = (await response.json()) as { ok: boolean; impact: ClientImpactResult };
+  return data.impact;
 }

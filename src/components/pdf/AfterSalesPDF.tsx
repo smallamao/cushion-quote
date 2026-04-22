@@ -323,20 +323,27 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
           </View>
         ) : null}
 
-        {/* 問題照片 */}
-        {service.issuePhotos.length > 0 && (
-          <>
-            <View style={s.sectionBar}>
-              <Text style={s.sectionTitle}>問題照片</Text>
-            </View>
-            <View style={s.photoGrid}>
-              {service.issuePhotos.slice(0, 6).map((url, i) => (
-                /* eslint-disable-next-line jsx-a11y/alt-text */
-                <Image key={i} src={url} style={s.photo} />
-              ))}
-            </View>
-          </>
-        )}
+        {/* 問題照片 — 只渲染圖片,影片 URL 略過 (react-pdf 不支援 video) */}
+        {(() => {
+          const imagePhotos = service.issuePhotos.filter(
+            (url) =>
+              !url.includes("/video/upload/") &&
+              !/\.(mp4|mov|webm|m4v)(\?|$)/i.test(url),
+          );
+          return imagePhotos.length > 0 ? (
+            <>
+              <View style={s.sectionBar}>
+                <Text style={s.sectionTitle}>問題照片</Text>
+              </View>
+              <View style={s.photoGrid}>
+                {imagePhotos.slice(0, 6).map((url, i) => (
+                  /* eslint-disable-next-line jsx-a11y/alt-text */
+                  <Image key={i} src={url} style={s.photo} />
+                ))}
+              </View>
+            </>
+          ) : null;
+        })()}
 
         {/* 派工 / 維修 */}
         {(service.status !== "pending" ||

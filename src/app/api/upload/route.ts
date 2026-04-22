@@ -9,13 +9,27 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const MAX_FILE_BYTES = 15 * 1024 * 1024;
-const ALLOWED_MIME_PREFIXES = ["image/"];
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // 15 MB
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50 MB (~30s @ 1080p from iPhone)
+const MAX_PDF_BYTES = 15 * 1024 * 1024;
+const ALLOWED_MIME_PREFIXES = ["image/", "video/"];
 const ALLOWED_MIME_EXACT = new Set(["application/pdf"]);
 
 function isAllowedMime(type: string): boolean {
   if (ALLOWED_MIME_EXACT.has(type)) return true;
   return ALLOWED_MIME_PREFIXES.some((prefix) => type.startsWith(prefix));
+}
+
+function maxBytesFor(type: string): number {
+  if (type.startsWith("video/")) return MAX_VIDEO_BYTES;
+  if (type === "application/pdf") return MAX_PDF_BYTES;
+  return MAX_IMAGE_BYTES;
+}
+
+function resourceTypeFor(type: string): "image" | "video" | "raw" {
+  if (type.startsWith("video/")) return "video";
+  if (type === "application/pdf") return "raw";
+  return "image";
 }
 
 export async function POST(request: Request) {
@@ -33,27 +47,32 @@ export async function POST(request: Request) {
 
     if (!isAllowedMime(entry.type)) {
       return NextResponse.json(
-        { ok: false, error: "僅支援圖片或 PDF 檔案" },
+        { ok: false, error: "僅支援圖片、影片或 PDF 檔案" },
         { status: 400 },
       );
     }
 
-    if (entry.size > MAX_FILE_BYTES) {
+    const maxBytes = maxBytesFor(entry.type);
+    if (entry.size > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
       return NextResponse.json(
-        { ok: false, error: "檔案大小不可超過 15MB" },
+        { ok: false, error: `檔案大小不可超過 ${mb}MB` },
         { status: 400 },
       );
     }
 
     const isPdf = entry.type === "application/pdf";
+    const isVideo = entry.type.startsWith("video/");
     const folder = typeof folderOverride === "string" && folderOverride
       ? folderOverride
       : isPdf
         ? "contract-attachments"
-        : "quote-attachments";
+        : isVideo
+          ? "after-sales-videos"
+          : "quote-attachments";
 
     const data = Buffer.from(await entry.arrayBuffer());
-    const prefix = isPdf ? "doc" : "img";
+    const prefix = isPdf ? "doc" : isVideo ? "vid" : "img";
     const publicId = `${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     const result = await new Promise<{
@@ -67,7 +86,7 @@ export async function POST(request: Request) {
           {
             folder,
             public_id: publicId,
-            resource_type: isPdf ? "raw" : "image",
+            resource_type: resourceTypeFor(entry.type),
           },
           (error, uploadResult) => {
             if (error || !uploadResult) {
