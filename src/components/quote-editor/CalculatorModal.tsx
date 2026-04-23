@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useMaterials } from "@/hooks/useMaterials";
+import { usePurchaseProducts } from "@/hooks/usePurchaseProducts";
 import {
   CATEGORY_LABELS,
   EXTRA_DEFS,
@@ -39,6 +39,35 @@ import type {
   SplitDirection,
 } from "@/lib/types";
 import { calculateQuotedUnitPrice, caiToYard, formatCurrency, roundPriceToTens } from "@/lib/utils";
+
+// Mapping functions for PurchaseProduct to Material compatibility
+const mapPurchaseCategoryToMaterialCategory = (category: PurchaseProductCategory): Category => {
+  // Simple mapping - adjust based on actual needs
+  switch (category) {
+    case "面料":
+      return "fabric";
+    case "皮革":
+      // Could be pu_leather, pvc_leather, or genuine_leather - default to pu_leather
+      return "pu_leather";
+    case "泡棉":
+      // Not really a fabric material, but we'll map it to fabric for now
+      return "fabric";
+    case "木料":
+      return "fabric"; // Not ideal but avoids errors
+    case "五金":
+      return "fabric"; // Not ideal but avoids errors
+    case "其他":
+      return "fabric"; // Default
+    default:
+      return "fabric";
+  }
+};
+
+const mapPurchaseUnitToStockStatus = (unit: PurchaseUnit): StockStatus => {
+  // Simple mapping - most purchasable items are considered in stock
+  // This could be enhanced based on actual inventory data
+  return "in_stock";
+};
 import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -94,7 +123,31 @@ export function CalculatorModal({
   channel: defaultChannel,
   settings,
 }: CalculatorModalProps) {
-  const { materials, favoriteIds, recentIds, toggleFavorite, addRecent } = useMaterials();
+  const { products: purchaseProducts, favoriteIds, recentIds, toggleFavorite, addRecent } = usePurchaseProducts();
+
+  // Convert PurchaseProduct to Material-compatible object
+  const materials = useMemo(() => {
+    return purchaseProducts.map(p => ({
+      id: p.id,
+      brand: p.brand ?? '',
+      series: p.series ?? '',
+      colorCode: p.colorCode ?? '',
+      colorName: p.colorName ?? '',
+      category: mapPurchaseCategoryToMaterialCategory(p.category),
+      costPerCai: p.costPerCai ?? p.unitPrice ?? 0,
+      listPricePerCai: p.listPricePerCai ?? p.unitPrice ?? 0,
+      supplier: p.supplierName ?? '',
+      widthCm: p.widthCm ?? 137, // Default width if not specified
+      minOrder: '',
+      leadTimeDays: 0,
+      stockStatus: mapPurchaseUnitToStockStatus(p.unit),
+      features: [],
+      notes: p.notes ?? '',
+      isActive: p.isActive,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    }));
+  }, [purchaseProducts]);
 
   const [channel, setChannel] = useState<Channel>(defaultChannel);
   const [method, setMethod] = useState<Method>("single_headboard");

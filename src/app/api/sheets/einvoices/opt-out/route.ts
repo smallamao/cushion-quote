@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
-import type { VersionRecord } from "@/lib/types";
+import type { QuoteVersionRecord } from "@/lib/types";
 
 import { getSession } from "../_auth";
 
@@ -47,9 +47,9 @@ export async function POST(request: Request) {
       const rows = (res.data.values ?? []) as string[][];
       const idx = rows.findIndex((r) => r[0] === body.versionId);
       if (idx >= 0) {
-        await client.sheets.spreadsheets.values.batchClear({
+        await client.sheets.spreadsheets.values.clear({
           spreadsheetId,
-          ranges: [`${OPT_OUT_SHEET}!A${idx + 1}:B${idx + 1}`],
+          range: `${OPT_OUT_SHEET}!A${idx + 2}:B${idx + 2}`,
         });
       }
       return NextResponse.json({ ok: true, message: `已將 ${body.versionId} 恢復開票` });

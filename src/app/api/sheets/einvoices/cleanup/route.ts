@@ -34,9 +34,9 @@ export async function POST(request: Request) {
 
     for (let i = failedIndices.length - 1; i >= 0; i--) {
       const rowIndex = failedIndices[i];
-      await client.sheets.spreadsheets.values.batchClear({
+      await client.sheets.spreadsheets.values.clear({
         spreadsheetId: client.spreadsheetId,
-        ranges: [`${sheetName}!A${rowIndex}:AL${rowIndex}`],
+        range: `${sheetName}!A${rowIndex}:AL${rowIndex}`,
       });
     }
 

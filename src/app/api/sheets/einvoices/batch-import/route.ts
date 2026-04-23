@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
-import type { EInvoiceRecord } from "@/lib/types";
+import type { EInvoiceRecord, EInvoiceBuyerType, EInvoiceCarrierType } from "@/lib/types";
 
 import { getSession } from "../_auth";
-import { appendEInvoiceRecord } from "./_shared";
+import { appendEInvoiceRecord } from "../_shared";
 
 interface EinvoceImportItem {
   sourceType: string;
@@ -152,12 +152,12 @@ export async function POST(request: Request) {
     for (const invoice of body.invoices) {
       try {
         // 產生發票編號
-        const invoiceId = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g)}-${String(
-          Math.floor(Math.random() * 9000) + 1000
-        ).padStart(4, "0")}`;
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        const randomSuffix = String(Math.floor(Math.random() * 9000) + 1000).padStart(4, "0");
+        const invoiceId = `INV-${today}-${randomSuffix}`;
 
         // 準備發票紀錄
-        const record = {
+        const record: EInvoiceRecord = {
           invoiceId,
           retryOfInvoiceId: "",
           sourceType: invoice.sourceType as EInvoiceRecord["sourceType"],
@@ -167,11 +167,11 @@ export async function POST(request: Request) {
           versionId: "",
           caseId: "",
           clientId: "",
-          buyerType: invoice.buyerUbn ? "b2b" : "b2c",
+          buyerType: (invoice.buyerUbn ? "b2b" : "b2c") as EInvoiceBuyerType,
           buyerName: invoice.buyerName,
           buyerTaxId: invoice.buyerUbn,
           email: invoice.email,
-          carrierType: "none",
+          carrierType: "none" as EInvoiceCarrierType,
           carrierValue: "",
           donationCode: "",
           invoiceDate: new Date().toISOString().slice(0, 10),
@@ -183,7 +183,7 @@ export async function POST(request: Request) {
           itemCount: invoice.items.length,
           itemsJson: JSON.stringify(invoice.items.map((item) => ({ name: item.name, quantity: item.quantity, unitPrice: item.unitPrice }))),
           content: invoice.content ?? "",
-          status: "draft",
+          status: "draft" as const,
           providerName: "",
           providerInvoiceNo: "",
           providerTrackNo: "",

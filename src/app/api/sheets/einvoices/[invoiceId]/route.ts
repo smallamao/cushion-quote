@@ -40,9 +40,9 @@ export async function DELETE(request: Request) {
 
       for (let i = failedIndices.length - 1; i >= 0; i--) {
         const rowIndex = failedIndices[i];
-        await client.sheets.spreadsheets.values.batchClear({
+        await client.sheets.spreadsheets.values.clear({
           spreadsheetId,
-          ranges: [`${sheetName}!A${rowIndex}:AL${rowIndex}`],
+          range: `${sheetName}!A${rowIndex}:AL${rowIndex}`,
         });
       }
 
@@ -64,9 +64,9 @@ export async function DELETE(request: Request) {
     }
 
     const sheetRowIndex = rowIndex + 2;
-    await client.sheets.spreadsheets.values.batchClear({
+    await client.sheets.spreadsheets.values.clear({
       spreadsheetId: client.spreadsheetId,
-      ranges: [`${EINVOICE_RANGE_FULL.split("!")[0]}!A${sheetRowIndex}:AL${sheetRowIndex}`],
+      range: `電子發票紀錄!A${sheetRowIndex}:AL${sheetRowIndex}`,
     });
 
     return NextResponse.json({ ok: true, invoiceId });
