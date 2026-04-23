@@ -44,9 +44,9 @@ function isPublicPath(pathname: string): boolean {
   return (
     pathname === "/login" ||
     pathname.startsWith("/api/auth") ||
-    // /api/sheets/init 為公開:idempotent、不回傳敏感資料、首次 bootstrap 需要
     pathname === "/api/sheets/init" ||
     pathname.startsWith("/api/sheets/einvoices") ||
+    pathname.startsWith("/api/sheets/migrate") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
     pathname === "/logo.png" ||
