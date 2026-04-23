@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, DollarSign, ImagePlus, Layers, Loader2, Pencil, Plus, Save, Trash2, TrendingUp, Wand2, X, ZoomIn } from "lucide-react";
+import { Copy, DollarSign, ImagePlus, Layers, Loader2, MinusCircle, Pencil, Plus, Save, Trash2, TrendingUp, Wand2, X, ZoomIn } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -48,9 +48,9 @@ const EMPTY_PRODUCT: PurchaseProduct = {
   unit: "碼",
   supplierId: "",
   supplierName: "",
-  costPerCai: 0,
+  costPerCai: undefined,
   widthCm: undefined,
-  listPricePerCai: 0,
+  listPricePerCai: undefined,
   imageUrl: "",
   notes: "",
   isActive: true,
@@ -62,13 +62,12 @@ interface BulkRow {
   productCode: string;
   productName: string;
   specification: string;
-  unitPrice: number;
-  costPerCai: number;
-  listPricePerCai: number;
+  costPerCai?: number;
+  listPricePerCai?: number;
 }
 
 function emptyBulkRow(): BulkRow {
-  return { productCode: "", productName: "", specification: "", unitPrice: 0, costPerCai: 0, listPricePerCai: 0 };
+  return { productCode: "", productName: "", specification: "", costPerCai: undefined, listPricePerCai: undefined };
 }
 
 interface BulkCommon {
@@ -136,12 +135,11 @@ export function PurchaseProductsClient() {
    const [seriesBase, setSeriesBase] = useState("");
    const [seriesVariants, setSeriesVariants] = useState("");
    const [seriesName, setSeriesName] = useState("");
-   const [seriesCostPerCai, setSeriesCostPerCai] = useState<number>(0);
-   const [seriesListPricePerCai, setSeriesListPricePerCai] = useState<number>(0);
+   const [seriesCostPerCai, setSeriesCostPerCai] = useState<number | undefined>(undefined);
+   const [seriesListPricePerCai, setSeriesListPricePerCai] = useState<number | undefined>(undefined);
 
    // Batch price update modal state
    const [showBatchPrice, setShowBatchPrice] = useState(false);
-   const [seriesPrice, setSeriesPrice] = useState<number>(0);
 
   const supplierMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -208,7 +206,7 @@ export function PurchaseProductsClient() {
 
   function sanitizeForDraft(p: PurchaseProduct): PurchaseProduct {
     const safeNumber = (v: unknown): number =>
-      typeof v === "number" && Number.isFinite(v) ? v : 0;
+      typeof v === "number" && Number.isFinite(v) ? v : undefined;
     return {
       ...EMPTY_PRODUCT,
       ...p,
@@ -216,7 +214,6 @@ export function PurchaseProductsClient() {
       productName: p.productName ?? "",
       specification: p.specification ?? "",
       supplierProductCode: p.supplierProductCode ?? "",
-      unitPrice: safeNumber(p.unitPrice),
       imageUrl: p.imageUrl ?? "",
       notes: p.notes ?? "",
     };
@@ -309,7 +306,8 @@ export function PurchaseProductsClient() {
     setSeriesBase("");
     setSeriesVariants("");
     setSeriesName("");
-    setSeriesPrice(0);
+    setSeriesCostPerCai(undefined);
+    setSeriesListPricePerCai(undefined);
     setShowBulk(true);
   }
 
@@ -353,14 +351,13 @@ export function PurchaseProductsClient() {
          v.startsWith("-") || v.startsWith("_") || v.startsWith("/")
            ? `${base}${v}`
            : `${base}-${v}`;
-       return {
-         productCode: code,
-         productName: seriesName || base,
-         specification: v.replace(/^[-_/]/, ""),
-         unitPrice: seriesPrice,
-         costPerCai: seriesCostPerCai,
-         listPricePerCai: seriesListPricePerCai,
-       };
+return {
+          productCode: code,
+          productName: seriesName || base,
+          specification: v.replace(/^[-_/]/, ""),
+          costPerCai: seriesCostPerCai,
+          listPricePerCai: seriesListPricePerCai,
+        };
      });
 
      // Replace existing rows if the only row is empty, else append
@@ -410,24 +407,23 @@ export function PurchaseProductsClient() {
       if (!ok) return;
     }
 
-     const payload: PurchaseProduct[] = validRows.map((r) => ({
-       id: `${r.productCode.trim()}-${bulkCommon.supplierId}`,
-       productCode: r.productCode.trim(),
-       supplierProductCode: "",
-       productName: r.productName.trim(),
-       specification: r.specification.trim(),
-       category: bulkCommon.category,
-       unit: bulkCommon.unit,
-       supplierId: bulkCommon.supplierId,
-       unitPrice: r.unitPrice,
-       costPerCai: r.costPerCai,
-       listPricePerCai: r.listPricePerCai,
-       imageUrl: "",
-       notes: bulkCommon.notes.trim(),
-       isActive: true,
-       createdAt: "",
-       updatedAt: "",
-     }));
+const payload: PurchaseProduct[] = validRows.map((r) => ({
+        id: `${r.productCode.trim()}-${bulkCommon.supplierId}`,
+        productCode: r.productCode.trim(),
+        supplierProductCode: "",
+        productName: r.productName.trim(),
+        specification: r.specification.trim(),
+        category: bulkCommon.category,
+        unit: bulkCommon.unit,
+        supplierId: bulkCommon.supplierId,
+        costPerCai: r.costPerCai,
+        listPricePerCai: r.listPricePerCai,
+        imageUrl: "",
+        notes: bulkCommon.notes.trim(),
+        isActive: true,
+        createdAt: "",
+        updatedAt: "",
+      }));
 
     setBulkSaving(true);
     try {
@@ -552,7 +548,8 @@ export function PurchaseProductsClient() {
               <th className="px-3 py-2 text-left">規格</th>
               <th className="px-3 py-2 text-left">分類</th>
               <th className="px-3 py-2 text-left">廠商</th>
-              <th className="px-3 py-2 text-right">單價</th>
+              <th className="px-3 py-2 text-right">進價</th>
+              <th className="px-3 py-2 text-right">牌價</th>
               <th className="px-3 py-2 text-left">單位</th>
               <th className="px-3 py-2 text-right">操作</th>
             </tr>
@@ -597,7 +594,10 @@ export function PurchaseProductsClient() {
                   {supplierMap[p.supplierId] || p.supplierId}
                 </td>
                 <td className="px-3 py-2 text-right font-mono">
-                  {(p.unitPrice ?? 0).toLocaleString()}
+                  {(p.costPerCai ?? 0).toLocaleString()}
+                </td>
+                <td className="px-3 py-2 text-right font-mono">
+                  {(p.listPricePerCai ?? 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-xs">{p.unit}</td>
                 <td className="px-3 py-2 text-right">
@@ -753,30 +753,24 @@ export function PurchaseProductsClient() {
                       </SelectItem>
                     ))}
                   </SelectContent>
-                </Select>
-              </div>
+</Select>
+               </div>
                <div>
-                 <Label>單價</Label>
+                 <Label>進價</Label>
                  <Input
                    type="number"
-                   value={draft.unitPrice ?? 0}
-                   onChange={(e) => update("unitPrice", Number(e.target.value) || 0)}
+                   value={draft.costPerCai ?? ""}
+                   onChange={(e) => update("costPerCai", Number(e.target.value) || undefined)}
+                   placeholder="0"
                  />
                </div>
                <div>
-                 <Label>進價/才</Label>
+                 <Label>牌價</Label>
                  <Input
                    type="number"
-                   value={draft.costPerCai ?? 0}
-                   onChange={(e) => update("costPerCai", Number(e.target.value) || 0)}
-                 />
-               </div>
-               <div>
-                 <Label>牌價/才</Label>
-                 <Input
-                   type="number"
-                   value={draft.listPricePerCai ?? 0}
-                   onChange={(e) => update("listPricePerCai", Number(e.target.value) || 0)}
+                   value={draft.listPricePerCai ?? ""}
+                   onChange={(e) => update("listPricePerCai", Number(e.target.value) || undefined)}
+                   placeholder="0"
                  />
                </div>
                <div className="md:col-span-2">
@@ -1016,12 +1010,21 @@ export function PurchaseProductsClient() {
                   />
                 </div>
                 <div>
-                  <Label className="mb-1 block text-[11px]">共同單價</Label>
+                  <Label className="mb-1 block text-[11px]">共同進價</Label>
                   <Input
                     type="number"
-                    value={seriesPrice || ""}
-                    onChange={(e) => setSeriesPrice(Number(e.target.value) || 0)}
-                    placeholder="500"
+                    value={seriesCostPerCai ?? ""}
+                    onChange={(e) => setSeriesCostPerCai(Number(e.target.value) || undefined)}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1 block text-[11px]">共同牌價</Label>
+                  <Input
+                    type="number"
+                    value={seriesListPricePerCai ?? ""}
+                    onChange={(e) => setSeriesListPricePerCai(Number(e.target.value) || undefined)}
+                    placeholder="0"
                   />
                 </div>
               </div>
@@ -1052,9 +1055,8 @@ export function PurchaseProductsClient() {
                        <th className="px-2 py-2 text-left font-medium">商品編號 *</th>
                        <th className="px-2 py-2 text-left font-medium">商品名稱 *</th>
                        <th className="px-2 py-2 text-left font-medium">規格 / 色號</th>
-                       <th className="w-24 px-2 py-2 text-right font-medium">單價</th>
-                       <th className="w-24 px-2 py-2 text-right font-medium">進價/才</th>
-                       <th className="w-24 px-2 py-2 text-right font-medium">牌價/才</th>
+                       <th className="w-24 px-2 py-2 text-right font-medium">進價</th>
+                        <th className="w-24 px-2 py-2 text-right font-medium">牌價</th>
                        <th className="w-8 px-2 py-2"></th>
                      </tr>
                    </thead>
@@ -1093,21 +1095,44 @@ export function PurchaseProductsClient() {
                              placeholder="3139-1"
                              className="h-8 text-xs"
                            />
-                         </td>
-                         <td className="px-2 py-1.5">
-                           <Input
-                             type="number"
-                             value={row.unitPrice || ""}
-                             onChange={(e) =>
-                               updateBulkRow(
-                                 idx,
-                                 "unitPrice",
-                                 Number(e.target.value) || 0,
-                               )
-                             }
-                             className="h-8 text-right font-mono text-xs"
-                           />
-                         </td>
+</td>
+                          <td className="px-2 py-1.5">
+                            <Input
+                              type="number"
+                              value={row.costPerCai ?? ""}
+                              onChange={(e) =>
+                                updateBulkRow(
+                                  idx,
+                                  "costPerCai",
+                                  Number(e.target.value) || undefined,
+                                )
+                              }
+                              className="h-8 text-right font-mono text-xs"
+                            />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <Input
+                              type="number"
+                              value={row.listPricePerCai ?? ""}
+                              onChange={(e) =>
+                                updateBulkRow(
+                                  idx,
+                                  "listPricePerCai",
+                                  Number(e.target.value) || undefined,
+                                )
+                              }
+                              className="h-8 text-right font-mono text-xs"
+                            />
+                          </td>
+                          <td className="w-8 px-2 py-1.5 text-center">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => removeBulkRow(idx)}
+                            >
+                              <MinusCircle className="h-4 w-4 text-[var(--error)]" />
+                            </Button>
+                          </td>
                          <td className="px-2 py-1.5">
                            <Input
                              type="number"

@@ -91,7 +91,8 @@ export function BulkCreateProductDialog({
   const [category, setCategory] = useState<PurchaseProductCategory>("面料");
   const [unit, setUnit] = useState<PurchaseUnit>(initialUnit ?? "碼");
   const [productName, setProductName] = useState("");
-  const [unitPrice, setUnitPrice] = useState<number>(0);
+  const [costPerCai, setCostPerCai] = useState<number | undefined>(undefined);
+  const [listPricePerCai, setListPricePerCai] = useState<number | undefined>(undefined);
   const [notes, setNotes] = useState("");
   const [codesText, setCodesText] = useState(
     (initialCodes ?? []).join("\n"),
@@ -106,7 +107,8 @@ export function BulkCreateProductDialog({
       setCategory("面料");
       setUnit(initialUnit ?? "碼");
       setProductName("");
-      setUnitPrice(0);
+      setCostPerCai(undefined);
+      setListPricePerCai(undefined);
       setNotes("");
       setCodesText((initialCodes ?? []).join("\n"));
       setError(null);
@@ -178,7 +180,8 @@ export function BulkCreateProductDialog({
         category,
         unit,
         supplierId,
-        unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+        costPerCai: costPerCai,
+        listPricePerCai: listPricePerCai,
         imageUrl: "",
         notes: notes.trim(),
         isActive: true,
@@ -274,11 +277,21 @@ export function BulkCreateProductDialog({
                 </Select>
               </div>
               <div>
-                <Label>單價</Label>
+                <Label>進價</Label>
                 <Input
                   type="number"
-                  value={unitPrice}
-                  onChange={(e) => setUnitPrice(Number(e.target.value))}
+                  value={costPerCai ?? ""}
+                  onChange={(e) => setCostPerCai(Number(e.target.value) || undefined)}
+                  min={0}
+                  step={1}
+                />
+              </div>
+              <div>
+                <Label>牌價</Label>
+                <Input
+                  type="number"
+                  value={listPricePerCai ?? ""}
+                  onChange={(e) => setListPricePerCai(Number(e.target.value) || undefined)}
                   min={0}
                   step={1}
                 />

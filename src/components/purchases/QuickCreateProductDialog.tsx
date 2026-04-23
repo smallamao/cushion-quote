@@ -56,7 +56,8 @@ export interface QuickCreateProductInitial {
   productCode: string;
   supplierId: string;
   unit: PurchaseUnit;
-  unitPrice?: number;
+  costPerCai?: number;
+  listPricePerCai?: number;
 }
 
 interface Props {
@@ -64,12 +65,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   initial: QuickCreateProductInitial;
   suppliers: Supplier[];
-  /**
-   * 由父元件提供的儲存函式 (通常是 usePurchaseProducts.addProduct)。
-   * 必須回傳新建的 PurchaseProduct(s),這樣父元件才能拿到 id 回填採購單。
-   */
   onSubmit: (product: PurchaseProduct) => Promise<PurchaseProduct[]>;
-  /** 儲存成功後的 callback,父元件用來把 productId 回填到採購單品項 */
   onCreated: (product: PurchaseProduct) => void;
 }
 
@@ -87,12 +83,12 @@ export function QuickCreateProductDialog({
   const [category, setCategory] = useState<PurchaseProductCategory>("面料");
   const [supplierId, setSupplierId] = useState(initial.supplierId);
   const [unit, setUnit] = useState<PurchaseUnit>(initial.unit);
-  const [unitPrice, setUnitPrice] = useState<number>(initial.unitPrice ?? 0);
+  const [costPerCai, setCostPerCai] = useState<number | undefined>(initial.costPerCai);
+  const [listPricePerCai, setListPricePerCai] = useState<number | undefined>(initial.listPricePerCai);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 每次開啟對話框時用最新 initial 重新填入
   useEffect(() => {
     if (open) {
       setProductCode(initial.productCode);
@@ -101,7 +97,8 @@ export function QuickCreateProductDialog({
       setCategory("面料");
       setSupplierId(initial.supplierId);
       setUnit(initial.unit);
-      setUnitPrice(initial.unitPrice ?? 0);
+      setCostPerCai(initial.costPerCai);
+      setListPricePerCai(initial.listPricePerCai);
       setNotes("");
       setError(null);
     }
@@ -136,7 +133,8 @@ export function QuickCreateProductDialog({
         category,
         unit,
         supplierId,
-        unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+        costPerCai: costPerCai,
+        listPricePerCai: listPricePerCai,
         imageUrl: "",
         notes: notes.trim(),
         isActive: true,
@@ -247,11 +245,21 @@ export function QuickCreateProductDialog({
               </Select>
             </div>
             <div>
-              <Label>單價</Label>
+              <Label>進價</Label>
               <Input
                 type="number"
-                value={unitPrice}
-                onChange={(e) => setUnitPrice(Number(e.target.value))}
+                value={costPerCai ?? ""}
+                onChange={(e) => setCostPerCai(Number(e.target.value) || undefined)}
+                min={0}
+                step={1}
+              />
+            </div>
+            <div>
+              <Label>牌價</Label>
+              <Input
+                type="number"
+                value={listPricePerCai ?? ""}
+                onChange={(e) => setListPricePerCai(Number(e.target.value) || undefined)}
                 min={0}
                 step={1}
               />
