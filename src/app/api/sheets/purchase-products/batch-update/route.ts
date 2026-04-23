@@ -184,7 +184,8 @@ export async function POST(request: Request) {
     const results: UpdateResult[] = [];
 
     for (const product of productsToUpdate) {
-      const newPrice = calculateAdjustedPrice(product.unitPrice, adjustment);
+      const currentPrice = product.unitPrice ?? 0;
+      const newPrice = calculateAdjustedPrice(currentPrice, adjustment);
 
       // Validate new price
       const priceError = validateAdjustedPrice(newPrice);
@@ -203,7 +204,7 @@ export async function POST(request: Request) {
       results.push({
         productId: product.id,
         productCode: product.productCode,
-        oldPrice: product.unitPrice,
+        oldPrice: currentPrice,
         newPrice,
       });
     }

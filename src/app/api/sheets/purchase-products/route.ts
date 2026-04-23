@@ -4,11 +4,47 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import type { PurchaseProduct, PurchaseProductCategory, PurchaseUnit } from "@/lib/types";
 
 const SHEET = "採購商品";
-const RANGE_FULL = `${SHEET}!A:Z`;
-const RANGE_DATA = `${SHEET}!A2:Z`;
+// Actual sheet schema (25 columns A:Y) — matches the user's header row.
+// Migration endpoint /migrate-to-25col converts any legacy 13-col rows
+// to this layout. New writes always use this layout going forward.
+//
+//  A  ID            → id
+//  B  商品編號       → productCode
+//  C  廠商產品編號    → supplierProductCode
+//  D  商品名稱       → productName
+//  E  規格           → specification
+//  F  分類           → category
+//  G  單位           → unit
+//  H  廠商編號       → supplierId
+//  I  廠商名稱       → supplierName
+//  J  幅寬(cm)       → widthCm
+//  K  進價           → unitPrice (主要單價,UI 顯示)
+//  L  牌價           → listPricePerCai
+//  M  品牌           → brand
+//  N  系列           → series
+//  O  色號           → colorCode
+//  P  色名           → colorName
+//  Q  圖片URL        → imageUrl
+//  R  備註           → notes
+//  S  最小訂量       → (not in type yet, written empty)
+//  T  交期           → (not in type yet, written empty)
+//  U  庫存狀態       → (not in type yet, written empty)
+//  V  啟用           → isActive
+//  W  建立時間       → createdAt
+//  X  更新時間       → updatedAt
+//  Y  更新時間 (dup) → updatedAt (mirrored)
+const RANGE_FULL = `${SHEET}!A:Y`;
+const RANGE_DATA = `${SHEET}!A2:Y`;
 const RANGE_IDS = `${SHEET}!A2:A`;
 
+function safeNumber(v: string | undefined): number | undefined {
+  if (v == null || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function rowToProduct(row: string[]): PurchaseProduct {
+  const legacyUnitPrice = safeNumber(row[10]) ?? 0;
   return {
     id: row[0] ?? "",
     productCode: row[1] ?? "",
@@ -19,49 +55,51 @@ function rowToProduct(row: string[]): PurchaseProduct {
     unit: (row[6] as PurchaseUnit) ?? "碼",
     supplierId: row[7] ?? "",
     supplierName: row[8] ?? "",
-    widthCm: row[9] ? Number(row[9]) : undefined,
-    costPerCai: row[10] ? Number(row[10]) : undefined,
-    listPricePerCai: row[11] ? Number(row[11]) : undefined,
-    brand: row[12] ?? undefined,
-    series: row[13] ?? undefined,
-    colorCode: row[14] ?? undefined,
-    colorName: row[15] ?? undefined,
+    widthCm: safeNumber(row[9]),
+    unitPrice: legacyUnitPrice,
+    costPerCai: legacyUnitPrice,
+    listPricePerCai: safeNumber(row[11]),
+    brand: row[12] ?? "",
+    series: row[13] ?? "",
+    colorCode: row[14] ?? "",
+    colorName: row[15] ?? "",
     imageUrl: row[16] ?? "",
     notes: row[17] ?? "",
-    minOrder: row[18] ?? undefined,
-    leadTimeDays: row[19] ? Number(row[19]) : undefined,
-    isActive: row[21] !== "FALSE",
+    // S(18)=最小訂量, T(19)=交期, U(20)=庫存狀態 — not modeled in type yet
+    isActive: (row[21] ?? "TRUE") !== "FALSE",
     createdAt: row[22] ?? "",
     updatedAt: row[23] ?? "",
   };
 }
 
 function productToRow(p: PurchaseProduct): string[] {
+  const effectiveCost = p.costPerCai ?? p.unitPrice ?? 0;
   return [
-    p.id,
-    p.productCode,
-    p.supplierProductCode,
-    p.productName,
-    p.specification,
-    p.category,
-    p.unit,
-    p.supplierId,
-    p.supplierName ?? "",
-    String(p.widthCm ?? ""),
-    String(p.costPerCai ?? ""),
-    String(p.listPricePerCai ?? ""),
-    p.brand ?? "",
-    p.series ?? "",
-    p.colorCode ?? "",
-    p.colorName ?? "",
-    p.imageUrl ?? "",
-    p.notes ?? "",
-    p.minOrder ?? "",
-    String(p.leadTimeDays ?? ""),
-    "",
-    p.isActive ? "TRUE" : "FALSE",
-    p.createdAt,
-    p.updatedAt,
+    p.id,                                                   // A
+    p.productCode,                                          // B
+    p.supplierProductCode || p.productCode,                 // C — fallback
+    p.productName,                                          // D
+    p.specification,                                        // E
+    p.category,                                             // F
+    p.unit,                                                 // G
+    p.supplierId,                                           // H
+    p.supplierName ?? "",                                   // I
+    p.widthCm != null ? String(p.widthCm) : "",             // J
+    String(effectiveCost),                                  // K (進價)
+    p.listPricePerCai != null ? String(p.listPricePerCai) : "", // L (牌價)
+    p.brand ?? "",                                          // M
+    p.series ?? "",                                         // N
+    p.colorCode ?? "",                                      // O
+    p.colorName ?? "",                                      // P
+    p.imageUrl ?? "",                                       // Q
+    p.notes ?? "",                                          // R
+    "",                                                     // S 最小訂量
+    "",                                                     // T 交期
+    "",                                                     // U 庫存狀態
+    p.isActive ? "TRUE" : "FALSE",                          // V
+    p.createdAt,                                            // W
+    p.updatedAt,                                            // X
+    p.updatedAt,                                            // Y (mirror — dup header)
   ];
 }
 
@@ -115,7 +153,7 @@ export async function POST(request: Request) {
 
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `${SHEET}!A${startRow}:Z${endRow}`,
+      range: `${SHEET}!A${startRow}:Y${endRow}`,
       valueInputOption: "RAW",
       requestBody: { values: items.map(productToRow) },
     });
@@ -152,7 +190,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `${SHEET}!A${sheetRow}:Z${sheetRow}`,
+      range: `${SHEET}!A${sheetRow}:Y${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [productToRow(payload)] },
     });

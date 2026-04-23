@@ -198,7 +198,7 @@ export function ProductCombobox({
                       )}
                     </span>
                     <span className="shrink-0 font-mono text-[10px] text-[var(--text-tertiary)]">
-                      ${p.unitPrice.toLocaleString()}
+                      ${(p.unitPrice ?? 0).toLocaleString()}
                     </span>
                   </button>
                 );

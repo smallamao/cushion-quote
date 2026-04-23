@@ -56,19 +56,20 @@ export function BatchPriceUpdateModal({
 
   const previewResults = useMemo(() => {
     return filteredProducts.map((p) => {
-      const newPrice = calculateAdjustedPrice(p.unitPrice, {
+      const currentPrice = p.unitPrice ?? 0;
+      const newPrice = calculateAdjustedPrice(currentPrice, {
         mode,
         value,
         isIncrease,
       });
-      const diff = newPrice - p.unitPrice;
+      const diff = newPrice - currentPrice;
       const diffPercent =
-        p.unitPrice > 0 ? ((diff / p.unitPrice) * 100).toFixed(1) : "—";
+        currentPrice > 0 ? ((diff / currentPrice) * 100).toFixed(1) : "—";
 
       return {
         productCode: p.productCode,
         productName: p.productName,
-        oldPrice: p.unitPrice,
+        oldPrice: currentPrice,
         newPrice,
         diff,
         diffPercent,

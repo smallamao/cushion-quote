@@ -28,11 +28,15 @@ import {
   inferPanelSizeTier,
 } from "@/lib/pricing-engine";
 import type {
+  Category,
   Channel,
   ExtraItem,
   FlexQuoteItem,
   InstallHeightTier,
   Method,
+  PurchaseProductCategory,
+  PurchaseUnit,
+  StockStatus,
   SystemSettings,
   PanelInputMode,
   CaiRoundingMode,
@@ -365,7 +369,10 @@ export function CalculatorModal({
   const listPricePerYard = useMemo(() => {
     if (isFoamCore) return 0;
     if (selectedMaterial) {
-      return caiToYard(selectedMaterial.listPricePerCai, selectedMaterial.widthCm);
+      return caiToYard(
+        selectedMaterial.listPricePerCai ?? 0,
+        selectedMaterial.widthCm ?? 0,
+      );
     }
     return customMaterialCostYard;
   }, [isFoamCore, selectedMaterial, customMaterialCostYard]);
@@ -382,7 +389,10 @@ export function CalculatorModal({
 
   const costPricePerYard = useMemo(() => {
     if (isFoamCore || !selectedMaterial) return 0;
-    return caiToYard(selectedMaterial.costPerCai, selectedMaterial.widthCm);
+    return caiToYard(
+      selectedMaterial.costPerCai ?? 0,
+      selectedMaterial.widthCm ?? 0,
+    );
   }, [isFoamCore, selectedMaterial]);
 
   const materialRate = useMemo(() => {
@@ -1038,7 +1048,7 @@ export function CalculatorModal({
                 <div className="mt-1 flex flex-wrap gap-3 text-[var(--text-secondary)]">
                   <span>{CATEGORY_LABELS[selectedMaterial.category]}</span>
                   <span>{STOCK_STATUS_LABELS[selectedMaterial.stockStatus]}</span>
-                  <span>牌價 {formatCurrency(caiToYard(selectedMaterial.listPricePerCai, selectedMaterial.widthCm))}/碼</span>
+                  <span>牌價 {formatCurrency(caiToYard(selectedMaterial.listPricePerCai ?? 0, selectedMaterial.widthCm ?? 0))}/碼</span>
                   <span>報價 {formatCurrency(pricePerYard)}/碼（{settings.fabricDiscount * 10}折）</span>
                 </div>
                 <div className="mt-1.5 text-[11px] text-[var(--text-tertiary)]">

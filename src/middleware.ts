@@ -36,8 +36,17 @@ const TECHNICIAN_ALLOWED_PREFIXES = [
   "/api/auth",
   "/api/sheets/after-sales",
   "/api/sheets/equipment",
+  "/api/sheets/cases",
+  "/api/sheets/versions",
   "/api/upload",
   "/login",
+  "/calendar",
+];
+
+const TECHNICIAN_BLOCKED_API = [
+  "/api/sheets/ar",
+  "/api/sheets/commissions",
+  "/api/sheets/receivables",
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -64,6 +73,10 @@ function isApiPath(pathname: string): boolean {
 
 function isTechnicianAllowed(pathname: string): boolean {
   return TECHNICIAN_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
+function isTechnicianBlockedApi(pathname: string): boolean {
+  return TECHNICIAN_BLOCKED_API.some((p) => pathname.startsWith(p));
 }
 
 export function middleware(request: NextRequest) {
@@ -96,16 +109,28 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 技師擋路由
-  if (session.role === "technician" && !isTechnicianAllowed(pathname)) {
-    if (isApiPath(pathname)) {
-      return NextResponse.json(
-        { ok: false, error: "forbidden" },
-        { status: 403 },
-      );
+  // 技師權限控制
+  if (session.role === "technician") {
+    // 封鎖特定財務 API
+    if (isTechnicianBlockedApi(pathname)) {
+      if (isApiPath(pathname)) {
+        return NextResponse.json(
+          { ok: false, error: "forbidden" },
+          { status: 403 },
+        );
+      }
     }
-    const url = new URL("/after-sales", request.url);
-    return NextResponse.redirect(url);
+    // 封鎖未允許的頁面
+    if (!isTechnicianAllowed(pathname)) {
+      if (isApiPath(pathname)) {
+        return NextResponse.json(
+          { ok: false, error: "forbidden" },
+          { status: 403 },
+        );
+      }
+      const url = new URL("/after-sales", request.url);
+      return NextResponse.redirect(url);
+    }
   }
 
   return NextResponse.next({ request: { headers: requestHeaders } });

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { PurchaseProduct } from "@/lib/types";
 
-const CACHE_KEY = "cq-purchase-products-cache";
+// Bump version suffix when sheet schema changes to invalidate stale caches
+const CACHE_KEY = "cq-purchase-products-cache-v2-25col";
 const TTL = 5 * 60 * 1000;
 
 function readCachedPurchaseProducts(): PurchaseProduct[] | null {

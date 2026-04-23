@@ -67,7 +67,11 @@ export function MobilePurchaseItemCard({
   const subtotal = item.quantity * item.unitPrice;
   const isResolved =
     !!item.productId && supplierProducts.some((p) => p.id === item.productId);
-  const hasSnapshot = !!(item.productCode || item.productName);
+  // Only treat as "saved orphan" when there's evidence the row came from saved
+  // data (has itemId) or paste/snapshot (has productName). A row where the user
+  // is just typing into an empty productCode field should stay in Input view.
+  const hasSnapshot =
+    (!!item.itemId || !!item.productName) && !!item.productCode;
   const stillLoading = loadingProducts && !!item.productId;
   const showCombobox = isResolved || stillLoading;
 

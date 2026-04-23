@@ -297,6 +297,44 @@ export function PurchaseEditorClient({ orderId }: Props) {
     [products, supplierId]
   );
 
+  // Auto re-link orphan items: when an item was saved with empty productId
+  // (paste before product existed in catalog, or older data with productId
+  // not stored) and the catalog now has a unique product matching the
+  // snapshot's productCode, auto-fill productId so the row shows as resolved
+  // and saves correctly going forward.
+  useEffect(() => {
+    if (loadingProducts || items.length === 0 || supplierProducts.length === 0) {
+      return;
+    }
+    let didChange = false;
+    const updated = items.map((it) => {
+      // Skip rows already resolved
+      if (it.productId && supplierProducts.some((p) => p.id === it.productId)) {
+        return it;
+      }
+      const codeRaw = (it.productCode ?? "").trim().toLowerCase();
+      if (!codeRaw) return it;
+      // Match by exact productCode (case-insensitive). Require uniqueness to
+      // avoid ambiguous auto-link.
+      const matches = supplierProducts.filter(
+        (p) => p.productCode.trim().toLowerCase() === codeRaw,
+      );
+      if (matches.length !== 1) return it;
+      const matched = matches[0];
+      didChange = true;
+      return {
+        ...it,
+        productId: matched.id,
+        productName: it.productName || matched.productName,
+        specification: it.specification || matched.specification,
+      };
+    });
+    if (didChange) setItems(updated);
+    // Intentionally exclude `items` from deps — we trigger re-link only when
+    // the catalog/supplier scope changes; otherwise we'd loop after setItems.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supplierProducts, loadingProducts]);
+
   const subtotal = useMemo(
     () => items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0),
     [items]
@@ -469,7 +507,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
             productName: product.productName,
             specification: product.specification,
             unit: it.unit || product.unit,
-            unitPrice: it.unitPrice || product.unitPrice,
+            unitPrice: it.unitPrice || product.unitPrice || 0,
             matched: true,
             warning: undefined,
           };
@@ -500,7 +538,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
           productName: hit.productName,
           specification: hit.specification,
           unit: it.unit || hit.unit,
-          unitPrice: it.unitPrice || hit.unitPrice,
+          unitPrice: it.unitPrice || hit.unitPrice || 0,
           matched: true,
           warning: undefined,
         };
@@ -1040,7 +1078,13 @@ export function PurchaseEditorClient({ orderId }: Props) {
                       const isResolved =
                         !!it.productId &&
                         supplierProducts.some((p) => p.id === it.productId);
-                      const hasSnapshot = !!(it.productCode || it.productName);
+                      // Only treat as a "saved orphan" needing the warning view
+                      // when there's evidence this row came from saved data
+                      // (has itemId) OR was filled from paste/snapshot (has
+                      // productName). A row where the user is just typing into
+                      // an empty productCode field should stay in the Input view.
+                      const hasSnapshot =
+                        (!!it.itemId || !!it.productName) && !!it.productCode;
                       // While supplier's product list is still loading, don't
                       // prematurely declare a saved item as "not found".
                       const stillLoading = loadingProducts && !!it.productId;
@@ -1308,10 +1352,10 @@ export function PurchaseEditorClient({ orderId }: Props) {
             quickCreateItemIdx !== null
               ? items[quickCreateItemIdx]?.unit ?? "碼"
               : "碼",
-          unitPrice:
+          costPerCai:
             quickCreateItemIdx !== null
               ? items[quickCreateItemIdx]?.unitPrice
-              : 0,
+              : undefined,
         }}
         suppliers={suppliers}
         onSubmit={async (product) => addProduct(product)}

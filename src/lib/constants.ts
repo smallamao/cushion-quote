@@ -1,5 +1,6 @@
 import type {
   AddonType,
+  Category,
   Channel,
   ClientType,
   ExtraItem,
@@ -7,6 +8,7 @@ import type {
   InstallHeightTier,
   ClientSource,
   LeadSource,
+  Material,
   MethodConfig,
   PanelSizeTier,
   SystemSettings,

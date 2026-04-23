@@ -70,6 +70,10 @@ function emptyBulkRow(): BulkRow {
   return { productCode: "", productName: "", specification: "", costPerCai: undefined, listPricePerCai: undefined };
 }
 
+function getEffectiveCost(product: Pick<PurchaseProduct, "costPerCai" | "unitPrice">): number | undefined {
+  return product.costPerCai ?? product.unitPrice;
+}
+
 interface BulkCommon {
   category: PurchaseProductCategory;
   supplierId: string;
@@ -205,8 +209,6 @@ export function PurchaseProductsClient() {
   }
 
   function sanitizeForDraft(p: PurchaseProduct): PurchaseProduct {
-    const safeNumber = (v: unknown): number =>
-      typeof v === "number" && Number.isFinite(v) ? v : undefined;
     return {
       ...EMPTY_PRODUCT,
       ...p,
@@ -214,6 +216,7 @@ export function PurchaseProductsClient() {
       productName: p.productName ?? "",
       specification: p.specification ?? "",
       supplierProductCode: p.supplierProductCode ?? "",
+      costPerCai: getEffectiveCost(p),
       imageUrl: p.imageUrl ?? "",
       notes: p.notes ?? "",
     };
@@ -270,6 +273,7 @@ export function PurchaseProductsClient() {
       productCode: draft.productCode.trim(),
       productName: draft.productName.trim(),
       specification: (draft.specification ?? "").trim(),
+      unitPrice: draft.costPerCai ?? draft.unitPrice,
       imageUrl: (draft.imageUrl ?? "").trim(),
       notes: (draft.notes ?? "").trim(),
     };
@@ -594,7 +598,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
                   {supplierMap[p.supplierId] || p.supplierId}
                 </td>
                 <td className="px-3 py-2 text-right font-mono">
-                  {(p.costPerCai ?? 0).toLocaleString()}
+                  {(getEffectiveCost(p) ?? 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-right font-mono">
                   {(p.listPricePerCai ?? 0).toLocaleString()}
