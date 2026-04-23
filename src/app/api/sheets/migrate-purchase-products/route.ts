@@ -4,7 +4,7 @@ import { getSheetsClient } from "@/lib/sheets-client";
 
 const SHEET = "採購商品";
 
-const NEW_HEADERS = [
+const CORRECT_HEADERS = [
   "ID",
   "商品編號",
   "廠商產品編號",
@@ -38,41 +38,18 @@ export async function POST(request: Request) {
   }
 
   try {
-    const currentHeaders = await client.sheets.spreadsheets.values.get({
+    await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `${SHEET}!A1:Z1`,
+      range: `${SHEET}!A1:X1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [CORRECT_HEADERS] },
     });
-
-    const existingHeaders = (currentHeaders.data.values?.[0] ?? []) as string[];
-    const existingCount = existingHeaders.length;
-
-    if (existingCount >= NEW_HEADERS.length) {
-      return NextResponse.json({
-        ok: true,
-        message: "採購商品工作表已是最新的 26 欄格式",
-        columns: existingCount,
-      });
-    }
-
-    const startCol = String.fromCharCode(65 + existingCount);
-    const endCol = "Z";
-    const newHeadersCount = NEW_HEADERS.length - existingCount;
-
-    if (newHeadersCount > 0) {
-      const headersToAdd = NEW_HEADERS.slice(existingCount).map((h) => h ?? "");
-      await client.sheets.spreadsheets.values.update({
-        spreadsheetId: client.spreadsheetId,
-        range: `${SHEET}!${startCol}1:${endCol}1`,
-        valueInputOption: "RAW",
-        requestBody: { values: [headersToAdd] },
-      });
-    }
 
     return NextResponse.json({
       ok: true,
-      message: `已新增 ${newHeadersCount} 個欄位 (${startCol}~${endCol})`,
-      columns: NEW_HEADERS.length,
-      newHeaders: NEW_HEADERS.slice(existingCount),
+      message: "已更新欄位標題為正確的 24 欄格式",
+      columns: CORRECT_HEADERS.length,
+      headers: CORRECT_HEADERS,
     });
   } catch (err) {
     return NextResponse.json(
@@ -91,7 +68,7 @@ export async function GET() {
   try {
     const response = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: `${SHEET}!A1:Z1`,
+      range: `${SHEET}!A1:X1`,
     });
 
     const headers = (response.data.values?.[0] ?? []) as string[];
@@ -100,8 +77,8 @@ export async function GET() {
       sheet: SHEET,
       currentColumns: headers.length,
       headers: headers,
-      requiredColumns: NEW_HEADERS.length,
-      isUpToDate: headers.length >= NEW_HEADERS.length,
+      requiredColumns: CORRECT_HEADERS.length,
+      isUpToDate: JSON.stringify(headers) === JSON.stringify(CORRECT_HEADERS),
     });
   } catch (err) {
     return NextResponse.json(
