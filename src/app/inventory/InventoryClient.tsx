@@ -28,6 +28,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useInventory, useInventoryTransactions } from "@/hooks/useInventory";
+import { useInventoryLots } from "@/hooks/useInventoryLots";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePurchaseProducts } from "@/hooks/usePurchaseProducts";
 import { useSuppliers } from "@/hooks/useSuppliers";
@@ -88,7 +89,7 @@ export function InventoryClient() {
   const { suppliers } = useSuppliers();
   const { user } = useCurrentUser();
   const isMobile = useIsMobile();
-  const canAdjust = user?.role === "admin";
+  const canAdjust = user?.role === "admin" || user?.role === "technician";
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<PurchaseProductCategory | "all">("all");
@@ -106,6 +107,12 @@ export function InventoryClient() {
   const [adjReferenceNumber, setAdjReferenceNumber] = useState("");
   const [adjProductId, setAdjProductId] = useState("");
   const [adjSaving, setAdjSaving] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  // Lot-related state
+  const [adjCreateLot, setAdjCreateLot] = useState(false);
+  const [adjLotSourceRef, setAdjLotSourceRef] = useState("");
+  const [adjLotDescription, setAdjLotDescription] = useState("");
+  const [adjLotId, setAdjLotId] = useState(""); // for 出庫: select existing lot
 
   // Remainder-report dialog state
   const [reportTarget, setReportTarget] = useState<InventorySummary | null>(null);
@@ -136,6 +143,12 @@ export function InventoryClient() {
 
   // Transaction history dialog
   const [historyTarget, setHistoryTarget] = useState<InventorySummary | null>(null);
+
+  // Fetch lots for the currently-open adjustment target (出庫 lot selection)
+  const adjInventoryId =
+    adjustTarget !== null && adjustTarget !== "new" ? adjustTarget.inventoryId : "";
+  const { lots: adjLots } = useInventoryLots(adjInventoryId);
+  const activeLots = adjLots.filter((l) => (l.remainingQty ?? 0) > 0);
 
   const supplierMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -192,6 +205,10 @@ export function InventoryClient() {
     setAdjType("manual_adjustment");
     setAdjNotes("");
     setAdjReferenceNumber("");
+    setAdjCreateLot(false);
+    setAdjLotSourceRef("");
+    setAdjLotDescription("");
+    setAdjLotId("");
   }
 
   function openNewStock() {
@@ -201,6 +218,11 @@ export function InventoryClient() {
     setAdjType("opening");
     setAdjNotes("");
     setAdjReferenceNumber("");
+    setProductSearch("");
+    setAdjCreateLot(false);
+    setAdjLotSourceRef("");
+    setAdjLotDescription("");
+    setAdjLotId("");
   }
 
   function closeAdjust() {
@@ -266,6 +288,11 @@ export function InventoryClient() {
     }
   }
 
+  const isEntryType = (t: InventoryTransactionType) =>
+    t === "opening" || t === "purchase_receipt" || t === "return_in";
+  const isExitType = (t: InventoryTransactionType) =>
+    t === "issue_out" || t === "return_out";
+
   async function submitAdjust() {
     const delta = Number(adjDelta);
     if (!Number.isFinite(delta) || delta === 0) {
@@ -285,6 +312,11 @@ export function InventoryClient() {
         transactionType: adjType,
         notes: adjNotes.trim(),
         referenceNumber: adjReferenceNumber.trim(),
+        lotId: isExitType(adjType) && adjLotId ? adjLotId : undefined,
+        createLot:
+          isEntryType(adjType) && adjCreateLot
+            ? { sourceRef: adjLotSourceRef.trim(), description: adjLotDescription.trim() }
+            : undefined,
       });
       closeAdjust();
     } catch (err) {
@@ -638,21 +670,36 @@ export function InventoryClient() {
               {adjustTarget === "new" && (
                 <div>
                   <Label>選擇品項</Label>
-                  <Select value={adjProductId} onValueChange={setAdjProductId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="搜尋/選擇採購商品" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products
-                        .filter((p) => p.isActive)
-                        .sort((a, b) => a.productCode.localeCompare(b.productCode))
-                        .map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.productCode} {p.productName} {p.specification}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="搜尋商品編號、名稱、規格..."
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      autoFocus
+                    />
+                    <Select value={adjProductId} onValueChange={setAdjProductId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="選擇採購商品" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-80">
+                        {products
+                          .filter((p) => {
+                            if (!p.isActive) return false;
+                            const q = productSearch.trim().toLowerCase();
+                            if (!q) return true;
+                            const haystack = `${p.productCode} ${p.productName} ${p.specification}`.toLowerCase();
+                            return haystack.includes(q);
+                          })
+                          .sort((a, b) => a.productCode.localeCompare(b.productCode))
+                          .slice(0, 50)
+                          .map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.productCode} {p.productName} {p.specification}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               )}
 
@@ -704,6 +751,64 @@ export function InventoryClient() {
                   placeholder="說明為何調整,以便日後追查"
                 />
               </div>
+
+              {/* Lot tracking: 入庫 → create lot; 出庫 → select lot */}
+              {isEntryType(adjType) && (
+                <div className="rounded-md border border-dashed border-[var(--border)] p-3 space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={adjCreateLot}
+                      onChange={(e) => setAdjCreateLot(e.target.checked)}
+                      className="rounded"
+                    />
+                    建立批次追蹤（可區分不同批布料）
+                  </label>
+                  {adjCreateLot && (
+                    <div className="space-y-2 pt-1">
+                      <div>
+                        <Label>來源參考 (選填)</Label>
+                        <Input
+                          value={adjLotSourceRef}
+                          onChange={(e) => setAdjLotSourceRef(e.target.value)}
+                          placeholder="例：採購單 #P5570、布廠批號 A-231"
+                        />
+                      </div>
+                      <div>
+                        <Label>批次說明 (選填)</Label>
+                        <Input
+                          value={adjLotDescription}
+                          onChange={(e) => setAdjLotDescription(e.target.value)}
+                          placeholder="例：裁剩回庫、第二批入庫"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isExitType(adjType) && activeLots.length > 0 && (
+                <div>
+                  <Label>指定扣哪批 (選填)</Label>
+                  <Select value={adjLotId || "__none__"} onValueChange={(v) => setAdjLotId(v === "__none__" ? "" : v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="不指定批次" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— 不指定 —</SelectItem>
+                      {activeLots.map((lot) => (
+                        <SelectItem key={lot.lotId} value={lot.lotId}>
+                          {lot.lotId}
+                          {lot.description ? ` · ${lot.description}` : ""}
+                          {lot.sourceRef ? ` (${lot.sourceRef})` : ""}
+                          {" · 剩 "}
+                          {lot.remainingQty ?? 0}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 flex items-center justify-end gap-2">
@@ -855,9 +960,12 @@ function InventoryHistoryDialog({
   summary: InventorySummary;
   onClose: () => void;
 }) {
-  const { transactions, loading } = useInventoryTransactions({
+  const [tab, setTab] = useState<"lots" | "transactions">("lots");
+  const { transactions, loading: txLoading } = useInventoryTransactions({
     inventoryId: summary.inventoryId,
   });
+  const { lots, loading: lotsLoading } = useInventoryLots(summary.inventoryId);
+
   const sorted = useMemo(
     () =>
       [...transactions].sort((a, b) =>
@@ -866,76 +974,173 @@ function InventoryHistoryDialog({
     [transactions],
   );
 
+  const sortedLots = useMemo(
+    () => [...lots].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [lots],
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] p-5 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold">
-              異動紀錄 ({sorted.length})
+              {summary.productSnapshot.productCode} {summary.productSnapshot.productName}
             </h2>
             <div className="text-xs text-[var(--text-tertiary)]">
-              {summary.productSnapshot.productCode} {summary.productSnapshot.productName}
-              {summary.productSnapshot.specification
-                ? ` / ${summary.productSnapshot.specification}`
-                : ""}
+              {summary.productSnapshot.specification || ""}
+              {" · 目前庫存："}
+              <span className="font-semibold text-[var(--text-primary)]">
+                {fmtQty(summary.quantityOnHand)} {summary.productSnapshot.unit}
+              </span>
             </div>
           </div>
           <button type="button" onClick={onClose}>
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Tab switcher */}
+        <div className="mb-3 flex gap-1 border-b border-[var(--border)]">
+          {(["lots", "transactions"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={[
+                "px-3 py-1.5 text-xs font-medium rounded-t transition-colors",
+                tab === t
+                  ? "border-b-2 border-[var(--accent)] text-[var(--accent)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+              ].join(" ")}
+            >
+              {t === "lots" ? `批次子項 (${lots.length})` : `異動紀錄 (${sorted.length})`}
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="py-6 text-center text-sm text-[var(--text-secondary)]">
-              <Loader2 className="inline h-4 w-4 animate-spin" /> 載入中…
-            </div>
+          {/* Lots tab */}
+          {tab === "lots" && (
+            <>
+              {lotsLoading && (
+                <div className="py-6 text-center text-sm text-[var(--text-secondary)]">
+                  <Loader2 className="inline h-4 w-4 animate-spin" /> 載入批次…
+                </div>
+              )}
+              {!lotsLoading && sortedLots.length === 0 && (
+                <p className="py-6 text-center text-sm text-[var(--text-tertiary)]">
+                  尚無批次紀錄。入庫時勾選「建立批次追蹤」即可建立。
+                </p>
+              )}
+              {sortedLots.length > 0 && (
+                <table className="w-full text-xs">
+                  <thead className="bg-[var(--bg-subtle)]">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left">批次ID</th>
+                      <th className="px-2 py-1.5 text-left">說明</th>
+                      <th className="px-2 py-1.5 text-left">來源</th>
+                      <th className="px-2 py-1.5 text-right">入庫量</th>
+                      <th className="px-2 py-1.5 text-right">剩餘</th>
+                      <th className="px-2 py-1.5 text-left">建立時間</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {sortedLots.map((lot) => {
+                      const remaining = lot.remainingQty ?? 0;
+                      const isExhausted = remaining <= 0;
+                      return (
+                        <tr key={lot.lotId} className={isExhausted ? "opacity-40" : ""}>
+                          <td className="px-2 py-2 font-mono text-[var(--accent)]">
+                            {lot.lotId}
+                          </td>
+                          <td className="px-2 py-2 text-[var(--text-primary)]">
+                            {lot.description || "—"}
+                          </td>
+                          <td className="px-2 py-2 text-[var(--text-secondary)]">
+                            {lot.sourceRef || "—"}
+                          </td>
+                          <td className="px-2 py-2 text-right font-mono">
+                            {fmtQty(lot.initialQty)} {lot.unit}
+                          </td>
+                          <td
+                            className={`px-2 py-2 text-right font-mono font-semibold ${
+                              isExhausted
+                                ? "text-[var(--text-tertiary)]"
+                                : remaining < lot.initialQty * 0.2
+                                ? "text-orange-600"
+                                : "text-green-700"
+                            }`}
+                          >
+                            {isExhausted ? "用完" : `${fmtQty(remaining)} ${lot.unit}`}
+                          </td>
+                          <td className="px-2 py-2 text-[var(--text-tertiary)]">
+                            {fmtDate(lot.createdAt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </>
           )}
-          {!loading && sorted.length === 0 && (
-            <p className="py-6 text-center text-sm text-[var(--text-tertiary)]">
-              尚無異動紀錄
-            </p>
-          )}
-          {sorted.length > 0 && (
-            <table className="w-full text-xs">
-              <thead className="bg-[var(--bg-subtle)]">
-                <tr>
-                  <th className="px-2 py-1.5 text-left">時間</th>
-                  <th className="px-2 py-1.5 text-left">類型</th>
-                  <th className="px-2 py-1.5 text-right">數量</th>
-                  <th className="px-2 py-1.5 text-right">成本</th>
-                  <th className="px-2 py-1.5 text-left">參考</th>
-                  <th className="px-2 py-1.5 text-left">備註</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {sorted.map((tx) => (
-                  <tr key={tx.transactionId}>
-                    <td className="px-2 py-1.5 font-mono text-[var(--text-secondary)]">
-                      {fmtDate(tx.occurredAt)}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {TRANSACTION_TYPE_LABEL[tx.transactionType] || tx.transactionType}
-                    </td>
-                    <td
-                      className={`px-2 py-1.5 text-right font-mono ${tx.quantityDelta >= 0 ? "text-green-700" : "text-red-700"}`}
-                    >
-                      {tx.quantityDelta >= 0 ? "+" : ""}
-                      {fmtQty(tx.quantityDelta)} {tx.unit}
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-mono">
-                      {fmtMoney(tx.unitCost)}
-                    </td>
-                    <td className="px-2 py-1.5 font-mono text-[var(--text-tertiary)]">
-                      {tx.orderId || tx.referenceNumber || "—"}
-                    </td>
-                    <td className="px-2 py-1.5 text-[var(--text-secondary)]">
-                      {tx.notes || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          {/* Transactions tab */}
+          {tab === "transactions" && (
+            <>
+              {txLoading && (
+                <div className="py-6 text-center text-sm text-[var(--text-secondary)]">
+                  <Loader2 className="inline h-4 w-4 animate-spin" /> 載入中…
+                </div>
+              )}
+              {!txLoading && sorted.length === 0 && (
+                <p className="py-6 text-center text-sm text-[var(--text-tertiary)]">
+                  尚無異動紀錄
+                </p>
+              )}
+              {sorted.length > 0 && (
+                <table className="w-full text-xs">
+                  <thead className="bg-[var(--bg-subtle)]">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left">時間</th>
+                      <th className="px-2 py-1.5 text-left">類型</th>
+                      <th className="px-2 py-1.5 text-right">數量</th>
+                      <th className="px-2 py-1.5 text-right">成本</th>
+                      <th className="px-2 py-1.5 text-left">批次</th>
+                      <th className="px-2 py-1.5 text-left">備註</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {sorted.map((tx) => (
+                      <tr key={tx.transactionId}>
+                        <td className="px-2 py-1.5 font-mono text-[var(--text-secondary)]">
+                          {fmtDate(tx.occurredAt)}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {TRANSACTION_TYPE_LABEL[tx.transactionType] || tx.transactionType}
+                        </td>
+                        <td
+                          className={`px-2 py-1.5 text-right font-mono ${tx.quantityDelta >= 0 ? "text-green-700" : "text-red-700"}`}
+                        >
+                          {tx.quantityDelta >= 0 ? "+" : ""}
+                          {fmtQty(tx.quantityDelta)} {tx.unit}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono">
+                          {fmtMoney(tx.unitCost)}
+                        </td>
+                        <td className="px-2 py-1.5 font-mono text-[var(--text-tertiary)]">
+                          {tx.lotId || (tx.orderId || tx.referenceNumber) || "—"}
+                        </td>
+                        <td className="px-2 py-1.5 text-[var(--text-secondary)]">
+                          {tx.notes || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
           )}
         </div>
       </div>

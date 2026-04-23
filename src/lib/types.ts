@@ -996,6 +996,20 @@ export interface InventoryTransaction {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  lotId: string;
+}
+
+export interface InventoryLot {
+  lotId: string;         // LOT-YYYYMMDD-###
+  inventoryId: string;
+  productId: string;
+  sourceRef: string;     // 來源參考，e.g. "採購單 #P5570"
+  description: string;   // 批次說明，e.g. "裁剩回庫"
+  initialQty: number;
+  unit: PurchaseUnit;
+  createdAt: string;
+  notes: string;
+  remainingQty?: number; // computed: sum of transactions for this lot
 }
 
 export interface PurchaseProductHistoryItem {

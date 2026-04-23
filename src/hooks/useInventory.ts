@@ -23,6 +23,8 @@ export interface ManualAdjustmentPayload {
   occurredAt?: string;
   referenceNumber?: string;
   notes?: string;
+  lotId?: string;
+  createLot?: { sourceRef: string; description: string; notes?: string };
 }
 
 export function useInventory() {

@@ -450,6 +450,7 @@ export async function POST(request: Request, context: RouteContext) {
         notes: requested.notes?.trim() ?? "",
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
+        lotId: "",
       });
       transactionSequence.nextSeq += 1;
     }

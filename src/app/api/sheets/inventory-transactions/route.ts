@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
 import type {
+  InventoryLot,
   InventorySummary,
   InventoryTransaction,
   InventoryTransactionType,
@@ -11,8 +12,10 @@ import type {
 } from "@/lib/types";
 
 const TRANSACTION_SHEET = "庫存異動";
-const TRANSACTION_RANGE_FULL = `${TRANSACTION_SHEET}!A:O`;
-const TRANSACTION_RANGE_DATA = `${TRANSACTION_SHEET}!A2:O`;
+const TRANSACTION_RANGE_FULL = `${TRANSACTION_SHEET}!A:P`;
+const TRANSACTION_RANGE_DATA = `${TRANSACTION_SHEET}!A2:P`;
+const LOT_SHEET = "庫存批次";
+const LOT_RANGE_FULL = `${LOT_SHEET}!A:I`;
 const INVENTORY_SHEET = "庫存主檔";
 const INVENTORY_RANGE_DATA = `${INVENTORY_SHEET}!A2:K`;
 const PRODUCT_SHEET = "採購商品";
@@ -44,6 +47,7 @@ function rowToInventoryTransaction(row: string[]): InventoryTransaction {
     notes: row[12] ?? "",
     createdAt: row[13] ?? "",
     updatedAt: row[14] ?? "",
+    lotId: row[15] ?? "",
   };
 }
 
@@ -64,7 +68,28 @@ function transactionToRow(record: InventoryTransaction): string[] {
     record.notes,
     record.createdAt,
     record.updatedAt,
+    record.lotId ?? "",
   ];
+}
+
+async function generateLotId(
+  client: NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>,
+  now = new Date(),
+): Promise<string> {
+  const dateToken = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const prefix = `LOT-${dateToken}-`;
+  const response = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: `${LOT_SHEET}!A2:A`,
+  });
+  const ids = (response.data.values ?? []).flat() as string[];
+  const maxSeq = ids
+    .filter((id) => id.startsWith(prefix))
+    .reduce((max, id) => {
+      const seq = Number(id.slice(prefix.length));
+      return Number.isFinite(seq) ? Math.max(max, seq) : max;
+    }, 0);
+  return `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
 }
 
 function rowToInventorySummary(row: string[]): InventorySummary {
@@ -218,6 +243,7 @@ export async function POST(request: Request) {
   const payload = (await request.json()) as Partial<InventoryTransaction> & {
     productId?: string;
     quantityDelta?: number;
+    createLot?: { sourceRef: string; description: string; notes?: string };
   };
 
   const productId = payload.productId?.trim() ?? "";
@@ -246,6 +272,35 @@ export async function POST(request: Request) {
     const nowIso = now.toISOString();
     const quantityDelta = toNumber(payload.quantityDelta);
 
+    // Auto-create a lot if requested (for 入庫 transactions)
+    let resolvedLotId = payload.lotId?.trim() ?? "";
+    if (payload.createLot && quantityDelta > 0) {
+      resolvedLotId = await generateLotId(client, now);
+      const lot: InventoryLot = {
+        lotId: resolvedLotId,
+        inventoryId: requestedInventoryId,
+        productId,
+        sourceRef: payload.createLot.sourceRef?.trim() ?? "",
+        description: payload.createLot.description?.trim() ?? "",
+        initialQty: quantityDelta,
+        unit: payload.unit ?? product.unit,
+        createdAt: nowIso,
+        notes: payload.createLot.notes?.trim() ?? "",
+      };
+      await client.sheets.spreadsheets.values.append({
+        spreadsheetId: client.spreadsheetId,
+        range: LOT_RANGE_FULL,
+        valueInputOption: "RAW",
+        requestBody: {
+          values: [[
+            lot.lotId, lot.inventoryId, lot.productId,
+            lot.sourceRef, lot.description, String(lot.initialQty),
+            lot.unit, lot.createdAt, lot.notes,
+          ]],
+        },
+      });
+    }
+
     const transaction: InventoryTransaction = {
       transactionId: payload.transactionId?.trim() || (await generateTransactionId(client, now)),
       inventoryId: requestedInventoryId,
@@ -262,6 +317,7 @@ export async function POST(request: Request) {
       notes: payload.notes?.trim() ?? "",
       createdAt: payload.createdAt?.trim() || nowIso,
       updatedAt: nowIso,
+      lotId: resolvedLotId,
     };
 
     const nextQuantityOnHand = toNumber(existingInventory?.quantityOnHand) + quantityDelta;
