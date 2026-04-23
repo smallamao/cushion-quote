@@ -46,6 +46,7 @@ interface Props {
   item: EditableItem;
   supplierProducts: readonly PurchaseProduct[];
   inventoryByProductId?: Map<string, { qty: number; unit: string }>;
+  loadingProducts?: boolean;
   onUpdate: (patch: Partial<EditableItem>) => void;
   onRemove: () => void;
   onSelectProduct: (productId: string) => void;
@@ -57,19 +58,25 @@ export function MobilePurchaseItemCard({
   item,
   supplierProducts,
   inventoryByProductId,
+  loadingProducts = false,
   onUpdate,
   onRemove,
   onSelectProduct,
   onOpenQuickCreate,
 }: Props) {
   const subtotal = item.quantity * item.unitPrice;
+  const isResolved =
+    !!item.productId && supplierProducts.some((p) => p.id === item.productId);
+  const hasSnapshot = !!(item.productCode || item.productName);
+  const stillLoading = loadingProducts && !!item.productId;
+  const showCombobox = isResolved || stillLoading;
 
   return (
     <div
       className={`rounded-[var(--radius-md)] border p-3 space-y-2.5 ${
-        !item.matched
-          ? "border-amber-300 bg-amber-50/50"
-          : "border-[var(--border)] bg-[var(--bg-elevated)]"
+        showCombobox
+          ? "border-[var(--border)] bg-[var(--bg-elevated)]"
+          : "border-amber-300 bg-amber-50/50"
       }`}
     >
       {/* Header: index + delete */}
@@ -88,7 +95,7 @@ export function MobilePurchaseItemCard({
       </div>
 
       {/* Product combobox (full-width) */}
-      {item.matched && item.productCode ? (
+      {showCombobox ? (
         <div>
           <ProductCombobox
             value={item.productId}
@@ -96,7 +103,7 @@ export function MobilePurchaseItemCard({
             onChange={onSelectProduct}
             placeholder="選擇商品..."
           />
-          {item.productId && inventoryByProductId && (
+          {item.productId && inventoryByProductId && !stillLoading && (
             <div
               className={`mt-1 text-[11px] ${
                 (inventoryByProductId.get(item.productId)?.qty ?? 0) <= 0
@@ -116,6 +123,39 @@ export function MobilePurchaseItemCard({
                 "目前庫存: 無紀錄"
               )}
             </div>
+          )}
+        </div>
+      ) : hasSnapshot ? (
+        <div className="space-y-1.5">
+          <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+            ⚠ 原商品「
+            <span className="font-mono">{item.productCode || "（無編號）"}</span>
+            {item.productName ? ` · ${item.productName}` : ""}
+            {item.specification ? ` · ${item.specification}` : ""}
+            」在商品庫找不到,請重新對應或新增
+          </div>
+          <ProductCombobox
+            value=""
+            products={supplierProducts}
+            onChange={onSelectProduct}
+            placeholder={
+              item.productCode
+                ? `重新對應「${item.productCode}」...`
+                : "重新對應商品..."
+            }
+          />
+          {item.productCode && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-2 text-[11px]"
+              onClick={onOpenQuickCreate}
+              title="把這筆商品新增到商品庫"
+            >
+              <Sparkles className="h-3 w-3" />
+              新增「{item.productCode}」到商品庫
+            </Button>
           )}
         </div>
       ) : (

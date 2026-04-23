@@ -48,8 +48,8 @@ const EMPTY_PRODUCT: PurchaseProduct = {
   unit: "碼",
   supplierId: "",
   supplierName: "",
-  unitPrice: 0,
   costPerCai: 0,
+  widthCm: undefined,
   listPricePerCai: 0,
   imageUrl: "",
   notes: "",
@@ -63,10 +63,12 @@ interface BulkRow {
   productName: string;
   specification: string;
   unitPrice: number;
+  costPerCai: number;
+  listPricePerCai: number;
 }
 
 function emptyBulkRow(): BulkRow {
-  return { productCode: "", productName: "", specification: "", unitPrice: 0 };
+  return { productCode: "", productName: "", specification: "", unitPrice: 0, costPerCai: 0, listPricePerCai: 0 };
 }
 
 interface BulkCommon {
@@ -125,19 +127,21 @@ export function PurchaseProductsClient() {
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [showInactive, setShowInactive] = useState(false);
 
-  // Bulk create modal state
-  const [showBulk, setShowBulk] = useState(false);
-  const [bulkCommon, setBulkCommon] = useState<BulkCommon>(defaultBulkCommon);
-  const [bulkRows, setBulkRows] = useState<BulkRow[]>([emptyBulkRow()]);
-  const [bulkSaving, setBulkSaving] = useState(false);
-  // Series generator
-  const [seriesBase, setSeriesBase] = useState("");
-  const [seriesVariants, setSeriesVariants] = useState("");
-  const [seriesName, setSeriesName] = useState("");
+   // Bulk create modal state
+   const [showBulk, setShowBulk] = useState(false);
+   const [bulkCommon, setBulkCommon] = useState<BulkCommon>(defaultBulkCommon);
+   const [bulkRows, setBulkRows] = useState<BulkRow[]>([emptyBulkRow()]);
+   const [bulkSaving, setBulkSaving] = useState(false);
+   // Series generator
+   const [seriesBase, setSeriesBase] = useState("");
+   const [seriesVariants, setSeriesVariants] = useState("");
+   const [seriesName, setSeriesName] = useState("");
+   const [seriesCostPerCai, setSeriesCostPerCai] = useState<number>(0);
+   const [seriesListPricePerCai, setSeriesListPricePerCai] = useState<number>(0);
 
-  // Batch price update modal state
-  const [showBatchPrice, setShowBatchPrice] = useState(false);
-  const [seriesPrice, setSeriesPrice] = useState<number>(0);
+   // Batch price update modal state
+   const [showBatchPrice, setShowBatchPrice] = useState(false);
+   const [seriesPrice, setSeriesPrice] = useState<number>(0);
 
   const supplierMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -329,41 +333,43 @@ export function PurchaseProductsClient() {
     );
   }
 
-  function generateFromSeries() {
-    const base = seriesBase.trim();
-    if (!base) {
-      alert("請輸入系列代號（例如：LY3139）");
-      return;
-    }
-    const variants = seriesVariants
-      .split(/[,，\s]+/)
-      .map((v) => v.trim())
-      .filter(Boolean);
-    if (variants.length === 0) {
-      alert("請輸入色號清單（例如：1,2,3 或 -1,-2,-3）");
-      return;
-    }
-    const generated: BulkRow[] = variants.map((v) => {
-      // If variant already contains separator char, use as-is; else join with `-`
-      const code =
-        v.startsWith("-") || v.startsWith("_") || v.startsWith("/")
-          ? `${base}${v}`
-          : `${base}-${v}`;
-      return {
-        productCode: code,
-        productName: seriesName || base,
-        specification: v.replace(/^[-_/]/, ""),
-        unitPrice: seriesPrice,
-      };
-    });
+   function generateFromSeries() {
+     const base = seriesBase.trim();
+     if (!base) {
+       alert("請輸入系列代號（例如：LY3139）");
+       return;
+     }
+     const variants = seriesVariants
+       .split(/[,，\s]+/)
+       .map((v) => v.trim())
+       .filter(Boolean);
+     if (variants.length === 0) {
+       alert("請輸入色號清單（例如：1,2,3 或 -1,-2,-3）");
+       return;
+     }
+     const generated: BulkRow[] = variants.map((v) => {
+       // If variant already contains separator char, use as-is; else join with `-`
+       const code =
+         v.startsWith("-") || v.startsWith("_") || v.startsWith("/")
+           ? `${base}${v}`
+           : `${base}-${v}`;
+       return {
+         productCode: code,
+         productName: seriesName || base,
+         specification: v.replace(/^[-_/]/, ""),
+         unitPrice: seriesPrice,
+         costPerCai: seriesCostPerCai,
+         listPricePerCai: seriesListPricePerCai,
+       };
+     });
 
-    // Replace existing rows if the only row is empty, else append
-    const isEmpty =
-      bulkRows.length === 1 &&
-      !bulkRows[0].productCode &&
-      !bulkRows[0].productName;
-    setBulkRows(isEmpty ? generated : [...bulkRows, ...generated]);
-  }
+     // Replace existing rows if the only row is empty, else append
+     const isEmpty =
+       bulkRows.length === 1 &&
+       !bulkRows[0].productCode &&
+       !bulkRows[0].productName;
+     setBulkRows(isEmpty ? generated : [...bulkRows, ...generated]);
+   }
 
   async function handleBulkSave() {
     if (!bulkCommon.supplierId) {
@@ -404,22 +410,24 @@ export function PurchaseProductsClient() {
       if (!ok) return;
     }
 
-    const payload: PurchaseProduct[] = validRows.map((r) => ({
-      id: `${r.productCode.trim()}-${bulkCommon.supplierId}`,
-      productCode: r.productCode.trim(),
-      supplierProductCode: "",
-      productName: r.productName.trim(),
-      specification: r.specification.trim(),
-      category: bulkCommon.category,
-      unit: bulkCommon.unit,
-      supplierId: bulkCommon.supplierId,
-      unitPrice: r.unitPrice,
-      imageUrl: "",
-      notes: bulkCommon.notes.trim(),
-      isActive: true,
-      createdAt: "",
-      updatedAt: "",
-    }));
+     const payload: PurchaseProduct[] = validRows.map((r) => ({
+       id: `${r.productCode.trim()}-${bulkCommon.supplierId}`,
+       productCode: r.productCode.trim(),
+       supplierProductCode: "",
+       productName: r.productName.trim(),
+       specification: r.specification.trim(),
+       category: bulkCommon.category,
+       unit: bulkCommon.unit,
+       supplierId: bulkCommon.supplierId,
+       unitPrice: r.unitPrice,
+       costPerCai: r.costPerCai,
+       listPricePerCai: r.listPricePerCai,
+       imageUrl: "",
+       notes: bulkCommon.notes.trim(),
+       isActive: true,
+       createdAt: "",
+       updatedAt: "",
+     }));
 
     setBulkSaving(true);
     try {
@@ -747,16 +755,32 @@ export function PurchaseProductsClient() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>單價</Label>
-                <Input
-                  type="number"
-                  value={draft.unitPrice ?? 0}
-                  onChange={(e) => update("unitPrice", Number(e.target.value) || 0)}
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Label>圖片</Label>
+               <div>
+                 <Label>單價</Label>
+                 <Input
+                   type="number"
+                   value={draft.unitPrice ?? 0}
+                   onChange={(e) => update("unitPrice", Number(e.target.value) || 0)}
+                 />
+               </div>
+               <div>
+                 <Label>進價/才</Label>
+                 <Input
+                   type="number"
+                   value={draft.costPerCai ?? 0}
+                   onChange={(e) => update("costPerCai", Number(e.target.value) || 0)}
+                 />
+               </div>
+               <div>
+                 <Label>牌價/才</Label>
+                 <Input
+                   type="number"
+                   value={draft.listPricePerCai ?? 0}
+                   onChange={(e) => update("listPricePerCai", Number(e.target.value) || 0)}
+                 />
+               </div>
+               <div className="md:col-span-2">
+                 <Label>圖片</Label>
                 <div className="mt-1 flex flex-wrap items-start gap-3">
                   {draft.imageUrl ? (
                     <div className="relative inline-block">
@@ -1020,83 +1044,113 @@ export function PurchaseProductsClient() {
                   新增空白列
                 </Button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
-                    <tr>
-                      <th className="w-10 px-2 py-2 text-left font-medium">#</th>
-                      <th className="px-2 py-2 text-left font-medium">商品編號 *</th>
-                      <th className="px-2 py-2 text-left font-medium">商品名稱 *</th>
-                      <th className="px-2 py-2 text-left font-medium">規格 / 色號</th>
-                      <th className="w-28 px-2 py-2 text-right font-medium">單價</th>
-                      <th className="w-8 px-2 py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--border)]">
-                    {bulkRows.map((row, idx) => (
-                      <tr key={idx}>
-                        <td className="px-2 py-1.5 text-xs text-[var(--text-tertiary)]">
-                          {idx + 1}
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <Input
-                            value={row.productCode}
-                            onChange={(e) =>
-                              updateBulkRow(idx, "productCode", e.target.value)
-                            }
-                            placeholder="LY3139-1"
-                            className="h-8 font-mono text-xs"
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <Input
-                            value={row.productName}
-                            onChange={(e) =>
-                              updateBulkRow(idx, "productName", e.target.value)
-                            }
-                            placeholder="貓抓皮"
-                            className="h-8 text-xs"
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <Input
-                            value={row.specification}
-                            onChange={(e) =>
-                              updateBulkRow(idx, "specification", e.target.value)
-                            }
-                            placeholder="3139-1"
-                            className="h-8 text-xs"
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <Input
-                            type="number"
-                            value={row.unitPrice || ""}
-                            onChange={(e) =>
-                              updateBulkRow(
-                                idx,
-                                "unitPrice",
-                                Number(e.target.value) || 0,
-                              )
-                            }
-                            className="h-8 text-right font-mono text-xs"
-                          />
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => removeBulkRow(idx)}
-                            className="text-[var(--text-tertiary)] hover:text-red-500"
-                            aria-label="刪除列"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+               <div className="overflow-x-auto">
+                 <table className="w-full text-sm">
+                   <thead className="bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
+                     <tr>
+                       <th className="w-10 px-2 py-2 text-left font-medium">#</th>
+                       <th className="px-2 py-2 text-left font-medium">商品編號 *</th>
+                       <th className="px-2 py-2 text-left font-medium">商品名稱 *</th>
+                       <th className="px-2 py-2 text-left font-medium">規格 / 色號</th>
+                       <th className="w-24 px-2 py-2 text-right font-medium">單價</th>
+                       <th className="w-24 px-2 py-2 text-right font-medium">進價/才</th>
+                       <th className="w-24 px-2 py-2 text-right font-medium">牌價/才</th>
+                       <th className="w-8 px-2 py-2"></th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-[var(--border)]">
+                     {bulkRows.map((row, idx) => (
+                       <tr key={idx}>
+                         <td className="px-2 py-1.5 text-xs text-[var(--text-tertiary)]">
+                           {idx + 1}
+                         </td>
+                         <td className="px-2 py-1.5">
+                           <Input
+                             value={row.productCode}
+                             onChange={(e) =>
+                               updateBulkRow(idx, "productCode", e.target.value)
+                             }
+                             placeholder="LY3139-1"
+                             className="h-8 font-mono text-xs"
+                           />
+                         </td>
+                         <td className="px-2 py-1.5">
+                           <Input
+                             value={row.productName}
+                             onChange={(e) =>
+                               updateBulkRow(idx, "productName", e.target.value)
+                             }
+                             placeholder="貓抓皮"
+                             className="h-8 text-xs"
+                           />
+                         </td>
+                         <td className="px-2 py-1.5">
+                           <Input
+                             value={row.specification}
+                             onChange={(e) =>
+                               updateBulkRow(idx, "specification", e.target.value)
+                             }
+                             placeholder="3139-1"
+                             className="h-8 text-xs"
+                           />
+                         </td>
+                         <td className="px-2 py-1.5">
+                           <Input
+                             type="number"
+                             value={row.unitPrice || ""}
+                             onChange={(e) =>
+                               updateBulkRow(
+                                 idx,
+                                 "unitPrice",
+                                 Number(e.target.value) || 0,
+                               )
+                             }
+                             className="h-8 text-right font-mono text-xs"
+                           />
+                         </td>
+                         <td className="px-2 py-1.5">
+                           <Input
+                             type="number"
+                             value={row.costPerCai || ""}
+                             onChange={(e) =>
+                               updateBulkRow(
+                                 idx,
+                                 "costPerCai",
+                                 Number(e.target.value) || 0,
+                               )
+                             }
+                             className="h-8 text-right font-mono text-xs"
+                           />
+                         </td>
+                         <td className="px-2 py-1.5">
+                           <Input
+                             type="number"
+                             value={row.listPricePerCai || ""}
+                             onChange={(e) =>
+                               updateBulkRow(
+                                 idx,
+                                 "listPricePerCai",
+                                 Number(e.target.value) || 0,
+                               )
+                             }
+                             className="h-8 text-right font-mono text-xs"
+                           />
+                         </td>
+                         <td className="px-2 py-1.5 text-center">
+                           <button
+                             type="button"
+                             onClick={() => removeBulkRow(idx)}
+                             className="text-[var(--text-tertiary)] hover:text-red-500"
+                             aria-label="刪除列"
+                           >
+                             <Trash2 className="h-3.5 w-3.5" />
+                           </button>
+                         </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
             </div>
 
             <div className="mt-6 flex items-center justify-between">

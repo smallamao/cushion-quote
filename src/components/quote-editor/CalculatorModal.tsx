@@ -123,31 +123,47 @@ export function CalculatorModal({
   channel: defaultChannel,
   settings,
 }: CalculatorModalProps) {
-  const { products: purchaseProducts, favoriteIds, recentIds, toggleFavorite, addRecent } = usePurchaseProducts();
+  const purchaseProductsHook = usePurchaseProducts() as ReturnType<typeof usePurchaseProducts> & {
+    favoriteIds?: string[];
+    recentIds?: string[];
+    toggleFavorite?: (id: string) => void;
+    addRecent?: (id: string) => void;
+  };
+  const purchaseProducts = purchaseProductsHook.products;
+  const favoriteIds = useMemo(() => purchaseProductsHook.favoriteIds ?? [], [purchaseProductsHook.favoriteIds]);
+  const recentIds = useMemo(() => purchaseProductsHook.recentIds ?? [], [purchaseProductsHook.recentIds]);
+  const toggleFavorite = useCallback(
+    (id: string) => purchaseProductsHook.toggleFavorite?.(id),
+    [purchaseProductsHook],
+  );
+  const addRecent = useCallback(
+    (id: string) => purchaseProductsHook.addRecent?.(id),
+    [purchaseProductsHook],
+  );
 
-  // Convert PurchaseProduct to Material-compatible object
-  const materials = useMemo(() => {
-    return purchaseProducts.map(p => ({
-      id: p.id,
-      brand: p.brand ?? '',
-      series: p.series ?? '',
-      colorCode: p.colorCode ?? '',
-      colorName: p.colorName ?? '',
-      category: mapPurchaseCategoryToMaterialCategory(p.category),
-      costPerCai: p.costPerCai ?? p.unitPrice ?? 0,
-      listPricePerCai: p.listPricePerCai ?? p.unitPrice ?? 0,
-      supplier: p.supplierName ?? '',
-      widthCm: p.widthCm ?? 137, // Default width if not specified
-      minOrder: '',
-      leadTimeDays: 0,
-      stockStatus: mapPurchaseUnitToStockStatus(p.unit),
-      features: [],
-      notes: p.notes ?? '',
-      isActive: p.isActive,
-      createdAt: p.createdAt,
-      updatedAt: p.updatedAt,
-    }));
-  }, [purchaseProducts]);
+   // Convert PurchaseProduct to Material-compatible object
+   const materials = useMemo(() => {
+     return purchaseProducts.map(p => ({
+       id: p.id,
+       brand: p.brand ?? '',
+       series: p.series ?? '',
+       colorCode: p.colorCode ?? '',
+       colorName: p.colorName ?? '',
+       category: mapPurchaseCategoryToMaterialCategory(p.category),
+       costPerCai: p.costPerCai,
+       listPricePerCai: p.listPricePerCai,
+       supplier: p.supplierName ?? '',
+       widthCm: p.widthCm ?? 137, // Default width if not specified
+       minOrder: '',
+       leadTimeDays: 0,
+       stockStatus: mapPurchaseUnitToStockStatus(p.unit),
+       features: [],
+       notes: p.notes ?? '',
+       isActive: p.isActive,
+       createdAt: p.createdAt,
+       updatedAt: p.updatedAt,
+     }));
+   }, [purchaseProducts]);
 
   const [channel, setChannel] = useState<Channel>(defaultChannel);
   const [method, setMethod] = useState<Method>("single_headboard");

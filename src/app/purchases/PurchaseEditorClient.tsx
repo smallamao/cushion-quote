@@ -321,7 +321,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
     let effectiveSupplierId = supplierId;
     let detectionMessage = "";
     if (!supplierId) {
-      const detection = detectSupplierFromCodes(codes, products);
+      const detection = detectSupplierFromCodes(codes, products, suppliers);
       if (detection.detected) {
         effectiveSupplierId = detection.detected.supplierId;
         setSupplierId(effectiveSupplierId);
@@ -351,6 +351,11 @@ export function PurchaseEditorClient({ orderId }: Props) {
 
     const resolved = resolveParsedLines(lines, effectiveSupplierProducts);
 
+    // Fallback note: when pasting into an existing order that already has a
+    // 附註 (案件編號) set, use it for any line that didn't include its own #caseRef.
+    // Paste text with explicit #P6xxx wins over this fallback.
+    const fallbackNote = notes.trim();
+
     const newItems: EditableItem[] = resolved.map((r) => ({
       itemId: "",
       productId: r.productId,
@@ -361,7 +366,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
       quantity: r.quantity,
       receivedQuantity: 0,
       unitPrice: r.unitPrice,
-      notes: r.notes,
+      notes: r.notes || fallbackNote,
       matched: r.matched,
       warning: r.warning,
     }));
@@ -372,9 +377,21 @@ export function PurchaseEditorClient({ orderId }: Props) {
     );
     setItems(isEmpty ? newItems : [...items, ...newItems]);
 
-    // Auto-fill notes with case refs if empty
+    // Merge new case refs into existing 附註. Dedupe by comma-separated
+    // comparison so re-pasting the same refs doesn't duplicate them.
     const refs = summarizeCaseRefs(lines);
-    if (!notes && refs) setNotes(refs);
+    if (refs) {
+      const existing = notes
+        .split(/[,，、\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const incoming = refs
+        .split(/[,，、\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const merged = Array.from(new Set([...existing, ...incoming]));
+      setNotes(merged.join(", "));
+    }
 
     // Smart case detection: auto-select if only one case detected or most common
     const detectedCaseId = detectPrimaryCaseId(lines);
@@ -989,6 +1006,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
                 item={it}
                 supplierProducts={supplierProducts}
                 inventoryByProductId={inventoryByProductId}
+                loadingProducts={loadingProducts}
                 onUpdate={(patch) => updateItem(idx, patch)}
                 onRemove={() => removeItem(idx)}
                 onSelectProduct={(productId) => selectProduct(idx, productId)}
@@ -1018,65 +1036,125 @@ export function PurchaseEditorClient({ orderId }: Props) {
                     {idx + 1}
                   </td>
                   <td className="px-2 py-1.5">
-                    {it.matched && it.productCode ? (
-                      <div>
-                        <ProductCombobox
-                          value={it.productId}
-                          products={supplierProducts}
-                          onChange={(v) => selectProduct(idx, v)}
-                        />
-                        {it.productId && inventoryByProductId.has(it.productId) && (
-                          <div
-                            className={`mt-0.5 text-[11px] ${
-                              (inventoryByProductId.get(it.productId)?.qty ?? 0) <= 0
-                                ? "text-amber-600"
-                                : "text-[var(--text-tertiary)]"
-                            }`}
-                          >
-                            庫存:{" "}
-                            {inventoryByProductId.get(it.productId)?.qty.toLocaleString(
-                              "zh-TW",
-                              { maximumFractionDigits: 2 },
-                            )}{" "}
-                            {inventoryByProductId.get(it.productId)?.unit}
+                    {(() => {
+                      const isResolved =
+                        !!it.productId &&
+                        supplierProducts.some((p) => p.id === it.productId);
+                      const hasSnapshot = !!(it.productCode || it.productName);
+                      // While supplier's product list is still loading, don't
+                      // prematurely declare a saved item as "not found".
+                      const stillLoading = loadingProducts && !!it.productId;
+
+                      if (isResolved || stillLoading) {
+                        return (
+                          <div>
+                            <ProductCombobox
+                              value={it.productId}
+                              products={supplierProducts}
+                              onChange={(v) => selectProduct(idx, v)}
+                            />
+                            {it.productId && inventoryByProductId.has(it.productId) && (
+                              <div
+                                className={`mt-0.5 text-[11px] ${
+                                  (inventoryByProductId.get(it.productId)?.qty ?? 0) <= 0
+                                    ? "text-amber-600"
+                                    : "text-[var(--text-tertiary)]"
+                                }`}
+                              >
+                                庫存:{" "}
+                                {inventoryByProductId
+                                  .get(it.productId)
+                                  ?.qty.toLocaleString("zh-TW", {
+                                    maximumFractionDigits: 2,
+                                  })}{" "}
+                                {inventoryByProductId.get(it.productId)?.unit}
+                              </div>
+                            )}
+                            {it.productId &&
+                              !inventoryByProductId.has(it.productId) &&
+                              !stillLoading && (
+                                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
+                                  庫存: 無紀錄
+                                </div>
+                              )}
                           </div>
-                        )}
-                        {it.productId && !inventoryByProductId.has(it.productId) && (
-                          <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
-                            庫存: 無紀錄
+                        );
+                      }
+
+                      // Unresolved with snapshot — old item whose product was
+                      // deleted/never created. Surface the snapshot so the user
+                      // can re-link or add it to the catalog without losing context.
+                      if (hasSnapshot) {
+                        return (
+                          <div className="space-y-1">
+                            <div className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
+                              ⚠ 原商品「
+                              <span className="font-mono">{it.productCode || "（無編號）"}</span>
+                              {it.productName ? ` · ${it.productName}` : ""}
+                              {it.specification ? ` · ${it.specification}` : ""}
+                              」在商品庫找不到,請重新對應或新增
+                            </div>
+                            <ProductCombobox
+                              value=""
+                              products={supplierProducts}
+                              onChange={(v) => selectProduct(idx, v)}
+                              placeholder={
+                                it.productCode
+                                  ? `重新對應「${it.productCode}」...`
+                                  : "重新對應商品..."
+                              }
+                            />
+                            {it.productCode && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-[10px]"
+                                onClick={() => openQuickCreate(idx)}
+                                title="把這筆商品新增到商品庫"
+                              >
+                                <Sparkles className="h-3 w-3" />
+                                新增「{it.productCode}」到商品庫
+                              </Button>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1">
-                          <Input
-                            placeholder="商品編號"
-                            value={it.productCode}
-                            onChange={(e) =>
-                              updateItem(idx, { productCode: e.target.value })
-                            }
-                            className="h-7 flex-1 text-xs font-mono"
-                          />
-                          {it.productCode && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-7 shrink-0 px-2 text-[10px]"
-                              onClick={() => openQuickCreate(idx)}
-                              title="新增到商品庫"
-                            >
-                              <Sparkles className="h-3 w-3" />
-                              新增
-                            </Button>
+                        );
+                      }
+
+                      // Truly empty new row — original free-input flow
+                      return (
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1">
+                            <Input
+                              placeholder="商品編號"
+                              value={it.productCode}
+                              onChange={(e) =>
+                                updateItem(idx, { productCode: e.target.value })
+                              }
+                              className="h-7 flex-1 text-xs font-mono"
+                            />
+                            {it.productCode && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 shrink-0 px-2 text-[10px]"
+                                onClick={() => openQuickCreate(idx)}
+                                title="新增到商品庫"
+                              >
+                                <Sparkles className="h-3 w-3" />
+                                新增
+                              </Button>
+                            )}
+                          </div>
+                          {it.warning && (
+                            <div className="text-[10px] text-amber-600">
+                              ⚠ {it.warning}
+                            </div>
                           )}
                         </div>
-                        {it.warning && (
-                          <div className="text-[10px] text-amber-600">⚠ {it.warning}</div>
-                        )}
-                      </div>
-                    )}
+                      );
+                    })()}
                   </td>
                   <td className="px-2 py-1.5">
                     <Select

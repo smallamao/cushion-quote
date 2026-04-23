@@ -12,57 +12,56 @@ function rowToProduct(row: string[]): PurchaseProduct {
   return {
     id: row[0] ?? "",
     productCode: row[1] ?? "",
-    supplierProductCode: row[14] ?? "",
-    productName: row[2] ?? "",
-    specification: row[3] ?? "",
-    category: (row[4] as PurchaseProductCategory) ?? "其他",
-    unit: (row[5] as PurchaseUnit) ?? "碼",
-    supplierId: row[6] ?? "",
+    supplierProductCode: row[2] ?? "",
+    productName: row[3] ?? "",
+    specification: row[4] ?? "",
+    category: (row[5] as PurchaseProductCategory) ?? "其他",
+    unit: (row[6] as PurchaseUnit) ?? "碼",
+    supplierId: row[7] ?? "",
     supplierName: row[8] ?? "",
-    unitPrice: Number(row[7] ?? 0),
-    costPerCai: row[13] ? Number(row[13]) : undefined,
-    listPricePerCai: row[13] ? Number(row[13]) : undefined,
-    brand: undefined,
-    series: undefined,
-    colorCode: undefined,
-    colorName: undefined,
-    imageUrl: row[8] ?? "",
-    notes: row[9] ?? "",
-    minOrder: undefined,
-    leadTimeDays: undefined,
-    isActive: row[10] !== "FALSE",
-    createdAt: row[11] ?? "",
-    updatedAt: row[12] ?? "",
+    widthCm: row[9] ? Number(row[9]) : undefined,
+    costPerCai: row[10] ? Number(row[10]) : undefined,
+    listPricePerCai: row[11] ? Number(row[11]) : undefined,
+    brand: row[12] ?? undefined,
+    series: row[13] ?? undefined,
+    colorCode: row[14] ?? undefined,
+    colorName: row[15] ?? undefined,
+    imageUrl: row[16] ?? "",
+    notes: row[17] ?? "",
+    minOrder: row[18] ?? undefined,
+    leadTimeDays: row[19] ? Number(row[19]) : undefined,
+    isActive: row[21] !== "FALSE",
+    createdAt: row[22] ?? "",
+    updatedAt: row[23] ?? "",
   };
 }
 
 function productToRow(p: PurchaseProduct): string[] {
   return [
-    p.id,                    // ID
-    p.productCode,           // 商品編號
-    p.supplierProductCode,  // 廠商產品編號
-    p.productName,           // 商品名稱
-    p.specification,         // 規格
-    p.category,              // 分類
-    p.unit,                   // 單位
-    p.supplierId,             // 廠商編號
-    p.supplierName ?? "",     // 廠商名稱
-    String(p.unitPrice ?? 0), // 單價
-    String(p.widthCm ?? ""),  // 幅寬(cm)
-    String(p.costPerCai ?? 0), // 進價/才
-    String(p.listPricePerCai ?? 0), // 牌價/才
-    p.brand ?? "",            // 品牌
-    p.series ?? "",           // 系列
-    p.colorCode ?? "",        // 色號
-    p.colorName ?? "",        // 色名
-    p.imageUrl ?? "",          // 圖片URL
-    p.notes ?? "",            // 備註
-    p.minOrder ?? "",         // 最小訂量
-    String(p.leadTimeDays ?? 0), // 交期
-    "",                       // 庫存狀態 (由庫存系統管理)
-    p.isActive ? "TRUE" : "FALSE", // 啟用
-    p.createdAt,              // 建立時間
-    p.updatedAt,              // 更新時間
+    p.id,
+    p.productCode,
+    p.supplierProductCode,
+    p.productName,
+    p.specification,
+    p.category,
+    p.unit,
+    p.supplierId,
+    p.supplierName ?? "",
+    String(p.widthCm ?? ""),
+    String(p.costPerCai ?? ""),
+    String(p.listPricePerCai ?? ""),
+    p.brand ?? "",
+    p.series ?? "",
+    p.colorCode ?? "",
+    p.colorName ?? "",
+    p.imageUrl ?? "",
+    p.notes ?? "",
+    p.minOrder ?? "",
+    String(p.leadTimeDays ?? ""),
+    "",
+    p.isActive ? "TRUE" : "FALSE",
+    p.createdAt,
+    p.updatedAt,
   ];
 }
 

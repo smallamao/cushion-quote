@@ -148,38 +148,138 @@ export interface ResolvedItem {
  * Unmatched items are still returned with matched=false so the user can
  * fix them manually.
  */
+/**
+ * Normalize a product code for fuzzy comparison.
+ *  - Lowercase
+ *  - Strip everything except a-z and 0-9 (removes CJK prefixes like「勝」,
+ *    hyphens, dots, whitespace, dashes, underscores, etc.)
+ *
+ *   "勝598-85"  → "59885"
+ *   "SC59885"   → "sc59885"
+ *   "SC-598.85" → "sc59885"
+ *   "勝 598 85" → "59885"
+ */
+function normalizeCode(s: string): string {
+  return s.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function digitsOf(s: string): string {
+  return s.replace(/\D/g, "");
+}
+
 export function resolveParsedLines(
   lines: ParsedPasteLine[],
   catalog: PurchaseProduct[]
 ): ResolvedItem[] {
+  // Pre-build multiple indexes for layered matching
   const byCode = new Map<string, PurchaseProduct>();
+  const byNorm = new Map<string, PurchaseProduct[]>();
+  const byDigits = new Map<string, PurchaseProduct[]>();
+
   for (const p of catalog) {
-    // 跳過空 productCode 的髒資料,避免 "".includes() 造成全比對命中
     const pcode = p.productCode.trim().toLowerCase();
     if (!pcode) continue;
     byCode.set(pcode, p);
+
+    const norm = normalizeCode(p.productCode);
+    if (norm) {
+      (byNorm.get(norm) ?? byNorm.set(norm, []).get(norm)!).push(p);
+    }
+
+    // Also index on specification's normalized form (helps when paste uses
+    // just the color portion like「598-85」to match a product whose
+    // productCode is「SC59885」and specification is「598-85 湛雪藍」)
+    const specNorm = normalizeCode(p.specification);
+    if (specNorm && specNorm !== norm) {
+      (byNorm.get(specNorm) ?? byNorm.set(specNorm, []).get(specNorm)!).push(p);
+    }
+
+    const digits = digitsOf(p.productCode);
+    if (digits.length >= 4) {
+      (byDigits.get(digits) ?? byDigits.set(digits, []).get(digits)!).push(p);
+    }
+    const specDigits = digitsOf(p.specification);
+    if (specDigits.length >= 4 && specDigits !== digits) {
+      (byDigits.get(specDigits) ?? byDigits.set(specDigits, []).get(specDigits)!).push(p);
+    }
+  }
+
+  /**
+   * Try progressively looser strategies to find the best catalog match.
+   * Order matters — stricter strategies win so we don't over-match.
+   */
+  function findMatch(rawCode: string): PurchaseProduct | undefined {
+    if (!rawCode) return undefined;
+    const codeLower = rawCode.trim().toLowerCase();
+    if (!codeLower) return undefined;
+
+    // 1. Exact productCode (case-insensitive)
+    const exact = byCode.get(codeLower);
+    if (exact) return exact;
+
+    // 2. Normalized exact (strip CJK / punctuation / whitespace both sides)
+    const codeNorm = normalizeCode(rawCode);
+    if (codeNorm.length >= 3) {
+      const hits = byNorm.get(codeNorm);
+      if (hits?.length === 1) return hits[0];
+      if (hits && hits.length > 1) {
+        // prefer shorter productCode (usually the cleaner canonical one)
+        return hits.slice().sort(
+          (a, b) => a.productCode.length - b.productCode.length,
+        )[0];
+      }
+    }
+
+    // 3. Normalized suffix / prefix match
+    //    e.g. paste "59885" → catalog "SC59885" (sc59885 endsWith 59885)
+    //    e.g. paste "勝SC59885" (norm: "sc59885") → catalog "SC59885" (norm equals)
+    if (codeNorm.length >= 4) {
+      const suffixHits: PurchaseProduct[] = [];
+      for (const [norm, products] of byNorm) {
+        if (norm === codeNorm) continue; // already handled above
+        if (norm.endsWith(codeNorm) || codeNorm.endsWith(norm)) {
+          suffixHits.push(...products);
+        }
+      }
+      const unique = Array.from(new Set(suffixHits));
+      if (unique.length === 1) return unique[0];
+      if (unique.length > 1) {
+        // prefer the one whose normalized length is closest to codeNorm
+        return unique.slice().sort((a, b) => {
+          const la = normalizeCode(a.productCode).length;
+          const lb = normalizeCode(b.productCode).length;
+          return Math.abs(la - codeNorm.length) - Math.abs(lb - codeNorm.length);
+        })[0];
+      }
+    }
+
+    // 4. Digit-signature match (strips ALL letters; last-resort for cases
+    //    where paste uses digits only or entirely different alphabetic prefix)
+    const codeDigits = digitsOf(rawCode);
+    if (codeDigits.length >= 4) {
+      const hits = byDigits.get(codeDigits);
+      if (hits?.length === 1) return hits[0];
+    }
+
+    // 5. Substring match on productCode / spec / name (existing behaviour)
+    const hit = catalog.find((p) => {
+      const pCode = p.productCode.trim().toLowerCase();
+      const pSpec = p.specification.trim().toLowerCase();
+      const pName = p.productName.trim().toLowerCase();
+      return (
+        (pCode.length > 0 &&
+          (pCode.includes(codeLower) || codeLower.includes(pCode))) ||
+        (pSpec.length >= 3 && pSpec.includes(codeLower)) ||
+        (pName.length >= 3 && pName.includes(codeLower))
+      );
+    });
+    return hit;
   }
 
   const result: ResolvedItem[] = [];
   for (const line of lines) {
     const code = line.productCode;
-    const codeLower = code.toLowerCase();
-
-    let match = byCode.get(codeLower);
-    if (!match && codeLower.length > 0) {
-      // 模糊比對,但兩邊字串都必須非空 (避免空字串 includes 永遠 true 的陷阱)
-      match = catalog.find((p) => {
-        const pCode = p.productCode.trim().toLowerCase();
-        const pSpec = p.specification.trim().toLowerCase();
-        const pName = p.productName.trim().toLowerCase();
-        return (
-          (pCode.length > 0 &&
-            (pCode.includes(codeLower) || codeLower.includes(pCode))) ||
-          (pSpec.length > 0 && pSpec.includes(codeLower)) ||
-          (pName.length > 0 && pName.includes(codeLower))
-        );
-      });
-    }
+    const match = findMatch(code);
 
     if (line.subItems.length === 0) {
       result.push({

@@ -884,10 +884,9 @@ export interface PurchaseProduct {
   unit: PurchaseUnit;
   supplierId: string;
   supplierName?: string;
-  unitPrice: number;
-  widthCm?: number;
   costPerCai?: number;
   listPricePerCai?: number;
+  widthCm?: number;
   brand?: string;
   series?: string;
   colorCode?: string;

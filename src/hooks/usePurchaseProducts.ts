@@ -74,15 +74,30 @@ export function usePurchaseProducts() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(p),
       });
-      if (!res.ok) throw new Error("新增商品失敗");
-      const payload = (await res.json()) as {
-        ok: boolean;
+      const payload = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
         products?: PurchaseProduct[];
         count?: number;
+        error?: string;
       };
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload.error ?? `新增商品失敗 (HTTP ${res.status})`);
+      }
+
+      const added = payload.products ?? (Array.isArray(p) ? p : [p]);
+
+      // Optimistic local update — show the new item(s) immediately,
+      // in case Sheets API has propagation lag before re-fetch sees them.
+      setProducts((prev) => {
+        const addedIds = new Set(added.map((x) => x.id));
+        const dedup = prev.filter((x) => !addedIds.has(x.id));
+        return [...dedup, ...added];
+      });
       localStorage.removeItem(CACHE_KEY);
-      await load(true);
-      return payload.products ?? (Array.isArray(p) ? p : [p]);
+
+      // Background re-fetch to verify Sheets state (will overwrite optimistic if Sheets differs)
+      void load(true);
+      return added;
     },
     [load]
   );
@@ -94,7 +109,10 @@ export function usePurchaseProducts() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(p),
       });
-      if (!res.ok) throw new Error("更新商品失敗");
+      const payload = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload.error ?? `更新商品失敗 (HTTP ${res.status})`);
+      }
       localStorage.removeItem(CACHE_KEY);
       await load(true);
     },

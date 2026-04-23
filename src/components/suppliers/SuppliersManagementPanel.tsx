@@ -1,12 +1,19 @@
 "use client";
 
-import { FileText, Pencil, Plus, Save, X } from "lucide-react";
+import { FileText, Pencil, Plus, Save } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { StatementModal } from "@/components/suppliers/StatementModal";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import type { Supplier } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,6 +53,7 @@ export function SuppliersManagementPanel() {
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<Supplier>(EMPTY_SUPPLIER);
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [statementModalOpen, setStatementModalOpen] = useState(false);
@@ -86,16 +94,27 @@ export function SuppliersManagementPanel() {
   }
 
   async function handleSave() {
+    if (saving) return;
     if (!draft.name.trim()) {
       alert("請輸入廠商名稱");
       return;
     }
-    if (editing) {
-      await updateSupplier(draft);
-    } else {
-      await addSupplier(draft);
+    setSaving(true);
+    try {
+      if (editing) {
+        await updateSupplier(draft);
+      } else {
+        await addSupplier(draft);
+      }
+      setShowForm(false);
+    } catch (err) {
+      alert(
+        (editing ? "更新失敗：" : "新增失敗：") +
+          (err instanceof Error ? err.message : "unknown"),
+      );
+    } finally {
+      setSaving(false);
     }
-    setShowForm(false);
   }
 
   function update<K extends keyof Supplier>(key: K, value: Supplier[K]) {
@@ -201,32 +220,23 @@ export function SuppliersManagementPanel() {
         </table>
       </div>
 
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-lg bg-[var(--surface)] p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-semibold">
-                {editing ? "編輯廠商" : "新增廠商"}
-              </h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowForm(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="max-h-[90vh] w-full max-w-2xl overflow-hidden p-0">
+          <DialogHeader>
+            <DialogTitle>{editing ? "編輯廠商" : "新增廠商"}</DialogTitle>
+          </DialogHeader>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="max-h-[calc(90vh-140px)] overflow-auto px-6 py-4">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
               <div>
                 <Label>廠商編號</Label>
                 <Input
-                  value={draft.supplierId}
+                  value={draft.supplierId ?? ""}
                   onChange={(e) => update("supplierId", e.target.value)}
                   disabled={editing}
                 />
               </div>
-              <div>
+              <div className="flex flex-col">
                 <Label>狀態</Label>
                 <label className="mt-2 flex items-center gap-2 text-sm">
                   <input
@@ -240,70 +250,70 @@ export function SuppliersManagementPanel() {
               <div>
                 <Label>廠商全名 *</Label>
                 <Input
-                  value={draft.name}
+                  value={draft.name ?? ""}
                   onChange={(e) => update("name", e.target.value)}
                 />
               </div>
               <div>
                 <Label>廠商簡稱</Label>
                 <Input
-                  value={draft.shortName}
+                  value={draft.shortName ?? ""}
                   onChange={(e) => update("shortName", e.target.value)}
                 />
               </div>
               <div>
                 <Label>聯絡人</Label>
                 <Input
-                  value={draft.contactPerson}
+                  value={draft.contactPerson ?? ""}
                   onChange={(e) => update("contactPerson", e.target.value)}
                 />
               </div>
               <div>
                 <Label>統一編號</Label>
                 <Input
-                  value={draft.taxId}
+                  value={draft.taxId ?? ""}
                   onChange={(e) => update("taxId", e.target.value)}
                 />
               </div>
               <div>
                 <Label>電話</Label>
                 <Input
-                  value={draft.phone}
+                  value={draft.phone ?? ""}
                   onChange={(e) => update("phone", e.target.value)}
                 />
               </div>
               <div>
                 <Label>行動電話</Label>
                 <Input
-                  value={draft.mobile}
+                  value={draft.mobile ?? ""}
                   onChange={(e) => update("mobile", e.target.value)}
                 />
               </div>
               <div>
                 <Label>傳真</Label>
                 <Input
-                  value={draft.fax}
+                  value={draft.fax ?? ""}
                   onChange={(e) => update("fax", e.target.value)}
                 />
               </div>
               <div>
                 <Label>E-mail</Label>
                 <Input
-                  value={draft.email}
+                  value={draft.email ?? ""}
                   onChange={(e) => update("email", e.target.value)}
                 />
               </div>
               <div className="md:col-span-2">
                 <Label>地址</Label>
                 <Input
-                  value={draft.address}
+                  value={draft.address ?? ""}
                   onChange={(e) => update("address", e.target.value)}
                 />
               </div>
               <div>
                 <Label>付款方式</Label>
                 <Input
-                  value={draft.paymentMethod}
+                  value={draft.paymentMethod ?? ""}
                   onChange={(e) => update("paymentMethod", e.target.value)}
                   placeholder="電匯 / 支票 / 現金"
                 />
@@ -311,7 +321,7 @@ export function SuppliersManagementPanel() {
               <div>
                 <Label>付款條件</Label>
                 <Input
-                  value={draft.paymentTerms}
+                  value={draft.paymentTerms ?? ""}
                   onChange={(e) => update("paymentTerms", e.target.value)}
                   placeholder="月結 30"
                 />
@@ -319,24 +329,29 @@ export function SuppliersManagementPanel() {
               <div className="md:col-span-2">
                 <Label>備註</Label>
                 <Textarea
-                  value={draft.notes}
+                  value={draft.notes ?? ""}
                   onChange={(e) => update("notes", e.target.value)}
                   rows={2}
                 />
               </div>
             </div>
-
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowForm(false)}>
-                取消
-              </Button>
-              <Button onClick={handleSave}>
-                <Save className="mr-1 h-4 w-4" /> 儲存
-              </Button>
-            </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowForm(false)}
+              disabled={saving}
+            >
+              取消
+            </Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              <Save className="mr-1 h-4 w-4" /> {saving ? "儲存中…" : "儲存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <StatementModal
         isOpen={statementModalOpen}
