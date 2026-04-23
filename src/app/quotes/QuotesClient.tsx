@@ -7,6 +7,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import { formatCurrency } from "@/lib/utils";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -81,6 +82,7 @@ export function QuotesClient() {
   const [versions, setVersions] = useState<VersionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
+  const debouncedSearch = useDebounce(searchText, 200);
   const [filterStatus, setFilterStatus] = useState<VersionStatus | "all">("all");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -110,7 +112,7 @@ export function QuotesClient() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchText, filterStatus, filterDateFrom, filterDateTo, showSuperseded]);
+  }, [debouncedSearch, filterStatus, filterDateFrom, filterDateTo, showSuperseded]);
 
   const load = useCallback(async (background = false) => {
     if (!background) setLoading(true);
@@ -301,7 +303,7 @@ export function QuotesClient() {
   }
 
   const filtered = useMemo(() => {
-    const query = searchText.trim().toLowerCase();
+    const query = debouncedSearch.trim().toLowerCase();
 
     return versions.filter((item) => {
       if (!showSuperseded && item.versionStatus === "superseded") return false;
@@ -322,7 +324,7 @@ export function QuotesClient() {
         .toLowerCase()
         .includes(query);
     });
-  }, [filterDateFrom, filterDateTo, filterStatus, searchText, showSuperseded, versions]);
+  }, [filterDateFrom, filterDateTo, filterStatus, debouncedSearch, showSuperseded, versions]);
 
   const groups = useMemo(() => {
     // Build a map of ALL versions per quoteId (for grouping)

@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { cachedFetch, invalidateCache } from "@/lib/fetch-cache";
 import type {
   InventorySummary,
   InventoryTransaction,
   InventoryTransactionType,
   PurchaseUnit,
 } from "@/lib/types";
+
+const CACHE_KEY = "cq-inventory-cache";
+const TTL = 2 * 60 * 1000;
 
 export interface ManualAdjustmentPayload {
   productId: string;
@@ -26,14 +30,18 @@ export function useInventory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/sheets/inventory", { cache: "no-store" });
-      const json = (await res.json()) as { inventory?: InventorySummary[]; error?: string };
-      if (json.error) setError(json.error);
-      setInventory(json.inventory ?? []);
+      if (force) invalidateCache(CACHE_KEY);
+      const data = await cachedFetch<InventorySummary[]>(CACHE_KEY, TTL, async () => {
+        const res = await fetch("/api/sheets/inventory", { cache: "no-store" });
+        const json = (await res.json()) as { inventory?: InventorySummary[]; error?: string };
+        if (json.error) throw new Error(json.error);
+        return json.inventory ?? [];
+      });
+      setInventory(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "載入庫存失敗");
     } finally {
@@ -61,13 +69,13 @@ export function useInventory() {
       if (!json.ok) {
         throw new Error(json.error ?? "庫存調整失敗");
       }
-      await load();
+      await load(true);
       return json;
     },
     [load],
   );
 
-  return { inventory, loading, error, reload: load, adjust };
+  return { inventory, loading, error, reload: () => load(true), adjust };
 }
 
 export function useInventoryTransactions(filter: {

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { useAfterSales } from "@/hooks/useAfterSales";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useUnreadReplies } from "@/hooks/useUnreadReplies";
 import type { AfterSalesStatus } from "@/lib/types";
@@ -48,16 +49,17 @@ export function AfterSalesListClient() {
     return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 200);
   const [statusFilter, setStatusFilter] = useState<AfterSalesStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
+  }, [debouncedSearch, statusFilter]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     return services
       .filter((s) => statusFilter === "all" || s.status === statusFilter)
       .filter((s) => {
@@ -73,7 +75,7 @@ export function AfterSalesListClient() {
         );
       })
       .sort((a, b) => b.serviceId.localeCompare(a.serviceId));
-  }, [services, search, statusFilter]);
+  }, [services, debouncedSearch, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);

@@ -6,6 +6,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 
 import { useClients } from "@/hooks/useClients";
 import { ClientCombobox } from "@/components/quote-editor/ClientCombobox";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LEAD_SOURCE_DETAIL_ENABLED, LEAD_SOURCE_LABELS, LEAD_SOURCE_OPTIONS } from "@/lib/constants";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
@@ -105,6 +106,7 @@ export function CasesClient() {
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
+  const debouncedSearch = useDebounce(searchText, 200);
   const [expandedCaseIds, setExpandedCaseIds] = useState<Set<string>>(new Set());
   const [details, setDetails] = useState<Record<string, CaseDetailPayload>>({});
   const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
@@ -563,7 +565,7 @@ export function CasesClient() {
   }, [cases]);
 
   const filtered = useMemo(() => {
-    const query = searchText.trim().toLowerCase();
+    const query = debouncedSearch.trim().toLowerCase();
     if (!query) return casesWithNames;
     return casesWithNames.filter((item) => {
       return [
@@ -580,7 +582,7 @@ export function CasesClient() {
         .toLowerCase()
         .includes(query);
     });
-  }, [casesWithNames, searchText]);
+  }, [casesWithNames, debouncedSearch]);
 
   const filteredBySource = useMemo(() => {
     if (leadSourceFilter === "all") return filtered;
@@ -596,7 +598,7 @@ export function CasesClient() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchText, leadSourceFilter]);
+  }, [debouncedSearch, leadSourceFilter]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);

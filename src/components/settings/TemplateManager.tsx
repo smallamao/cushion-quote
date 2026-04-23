@@ -88,7 +88,7 @@ export function TemplateManager({ currentItems, onClose }: TemplateManagerProps)
     return (
       <div className="rounded-[var(--radius-md)] border border-red-500/20 bg-red-500/10 p-4">
         <p className="text-sm text-red-600">載入範本時發生錯誤：{error}</p>
-        <Button variant="ghost" size="sm" onClick={loadTemplates} className="mt-2">
+        <Button variant="ghost" size="sm" onClick={() => void loadTemplates()} className="mt-2">
           重試
         </Button>
       </div>
