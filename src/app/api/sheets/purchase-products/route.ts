@@ -4,34 +4,36 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import type { PurchaseProduct, PurchaseProductCategory, PurchaseUnit } from "@/lib/types";
 
 const SHEET = "採購商品";
-// Sheet schema (matches init/route.ts — 15 columns A:O):
-// A ID | B 商品編號 | C 商品名稱 | D 規格 | E 分類 | F 單位 | G 廠商編號 |
-// H 單價 | I 進價/才 | J 牌價/才 | K 圖片URL | L 備註 | M 啟用 | N 建立時間 | O 更新時間
-const RANGE_FULL = `${SHEET}!A:O`;
-const RANGE_DATA = `${SHEET}!A2:O`;
+const RANGE_FULL = `${SHEET}!A:Z`;
+const RANGE_DATA = `${SHEET}!A2:Z`;
 const RANGE_IDS = `${SHEET}!A2:A`;
 
 function rowToProduct(row: string[]): PurchaseProduct {
   return {
     id: row[0] ?? "",
     productCode: row[1] ?? "",
-    productName: row[2] ?? "",
-    specification: row[3] ?? "",
-    category: (row[4] as PurchaseProductCategory) ?? "其他",
-    unit: (row[5] as PurchaseUnit) ?? "碼",
-    supplierId: row[6] ?? "",
-    unitPrice: Number(row[7] ?? 0),
-    costPerCai: Number(row[8] ?? 0),
-    listPricePerCai: Number(row[9] ?? 0),
-    imageUrl: row[10] ?? "",
-    notes: row[11] ?? "",
-    isActive: row[12] !== "FALSE",
-    createdAt: row[13] ?? "",
-    updatedAt: row[14] ?? "",
-    // Fields not persisted in this sheet — populated from suppliers lookup
-    // or left empty. Kept on the type for compatibility with downstream code.
-    supplierName: "",
-    supplierProductCode: "",
+    supplierProductCode: row[2] ?? "",
+    productName: row[3] ?? "",
+    specification: row[4] ?? "",
+    category: (row[5] as PurchaseProductCategory) ?? "其他",
+    unit: (row[6] as PurchaseUnit) ?? "碼",
+    supplierId: row[7] ?? "",
+    supplierName: row[8] ?? "",
+    unitPrice: Number(row[9] ?? 0),
+    widthCm: row[10] ? Number(row[10]) : undefined,
+    costPerCai: row[11] ? Number(row[11]) : undefined,
+    listPricePerCai: row[12] ? Number(row[12]) : undefined,
+    brand: row[13] ?? undefined,
+    series: row[14] ?? undefined,
+    colorCode: row[15] ?? undefined,
+    colorName: row[16] ?? undefined,
+    imageUrl: row[17] ?? "",
+    notes: row[18] ?? "",
+    minOrder: row[19] ?? undefined,
+    leadTimeDays: row[20] ? Number(row[20]) : undefined,
+    isActive: row[22] !== "FALSE",
+    createdAt: row[23] ?? "",
+    updatedAt: row[24] ?? "",
   };
 }
 
@@ -115,7 +117,7 @@ export async function POST(request: Request) {
 
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `${SHEET}!A${startRow}:M${endRow}`,
+      range: `${SHEET}!A${startRow}:Z${endRow}`,
       valueInputOption: "RAW",
       requestBody: { values: items.map(productToRow) },
     });
@@ -152,7 +154,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `${SHEET}!A${sheetRow}:M${sheetRow}`,
+      range: `${SHEET}!A${sheetRow}:Z${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [productToRow(payload)] },
     });
