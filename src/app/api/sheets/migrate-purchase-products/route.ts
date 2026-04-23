@@ -1,0 +1,113 @@
+import { NextResponse } from "next/server";
+
+import { getSheetsClient } from "@/lib/sheets-client";
+
+const SHEET = "採購商品";
+
+const NEW_HEADERS = [
+  "ID",
+  "商品編號",
+  "廠商產品編號",
+  "商品名稱",
+  "規格",
+  "分類",
+  "單位",
+  "廠商編號",
+  "廠商名稱",
+  "單價",
+  "幅寬(cm)",
+  "進價/才",
+  "牌價/才",
+  "品牌",
+  "系列",
+  "色號",
+  "色名",
+  "圖片URL",
+  "備註",
+  "最小訂量",
+  "交期",
+  "庫存狀態",
+  "啟用",
+  "建立時間",
+  "更新時間",
+];
+
+export async function POST(request: Request) {
+  const client = await getSheetsClient();
+  if (!client) {
+    return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+  }
+
+  try {
+    const currentHeaders = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: `${SHEET}!A1:Z1`,
+    });
+
+    const existingHeaders = (currentHeaders.data.values?.[0] ?? []) as string[];
+    const existingCount = existingHeaders.length;
+
+    if (existingCount >= NEW_HEADERS.length) {
+      return NextResponse.json({
+        ok: true,
+        message: "採購商品工作表已是最新的 26 欄格式",
+        columns: existingCount,
+      });
+    }
+
+    const startCol = String.fromCharCode(65 + existingCount);
+    const endCol = "Z";
+    const newHeadersCount = NEW_HEADERS.length - existingCount;
+
+    if (newHeadersCount > 0) {
+      const headersToAdd = NEW_HEADERS.slice(existingCount).map((h) => h ?? "");
+      await client.sheets.spreadsheets.values.update({
+        spreadsheetId: client.spreadsheetId,
+        range: `${SHEET}!${startCol}1:${endCol}1`,
+        valueInputOption: "RAW",
+        requestBody: { values: [headersToAdd] },
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      message: `已新增 ${newHeadersCount} 個欄位 (${startCol}~${endCol})`,
+      columns: NEW_HEADERS.length,
+      newHeaders: NEW_HEADERS.slice(existingCount),
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : "遷移失敗" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET() {
+  const client = await getSheetsClient();
+  if (!client) {
+    return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+  }
+
+  try {
+    const response = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: `${SHEET}!A1:Z1`,
+    });
+
+    const headers = (response.data.values?.[0] ?? []) as string[];
+    return NextResponse.json({
+      ok: true,
+      sheet: SHEET,
+      currentColumns: headers.length,
+      headers: headers,
+      requiredColumns: NEW_HEADERS.length,
+      isUpToDate: headers.length >= NEW_HEADERS.length,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : "檢查失敗" },
+      { status: 500 }
+    );
+  }
+}
