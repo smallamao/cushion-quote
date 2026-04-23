@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { cachedFetch, invalidateCache } from "@/lib/fetch-cache";
 import type { UserRole } from "@/lib/types";
 
 export interface CurrentUser {
@@ -12,27 +13,42 @@ export interface CurrentUser {
   picture?: string | null;
 }
 
+const CACHE_KEY = "cq-current-user-cache";
+const TTL = 5 * 60 * 1000;
+
+function readCachedUser(): CurrentUser | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { data: CurrentUser | null; ts: number };
+    if (Date.now() - parsed.ts < TTL) return parsed.data;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function useCurrentUser(): {
   user: CurrentUser | null;
   loading: boolean;
   refresh: () => void;
 } {
-  const [user, setUser] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Initialise from localStorage so sidebar renders immediately on cached visits
+  const [user, setUser] = useState<CurrentUser | null>(() => readCachedUser());
+  const [loading, setLoading] = useState(() => readCachedUser() === null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        const json = (await res.json()) as {
-          ok: boolean;
-          user?: CurrentUser;
-        };
-        if (!cancelled) {
-          setUser(json.ok && json.user ? json.user : null);
-        }
+        const data = await cachedFetch<CurrentUser | null>(CACHE_KEY, TTL, async () => {
+          const res = await fetch("/api/auth/me", { cache: "no-store" });
+          const json = (await res.json()) as { ok: boolean; user?: CurrentUser };
+          return json.ok && json.user ? json.user : null;
+        });
+        if (!cancelled) setUser(data);
       } catch {
         if (!cancelled) setUser(null);
       } finally {
@@ -44,5 +60,12 @@ export function useCurrentUser(): {
     };
   }, [tick]);
 
-  return { user, loading, refresh: () => setTick((t) => t + 1) };
+  return {
+    user,
+    loading,
+    refresh: () => {
+      invalidateCache(CACHE_KEY);
+      setTick((t) => t + 1);
+    },
+  };
 }
