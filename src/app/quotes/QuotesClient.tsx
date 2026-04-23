@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Copy, Edit, FileCheck2, FilePlus2, Loader2, RefreshCw, Trash2, Wallet } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Edit, Eye, FileCheck2, FilePlus2, Loader2, ReceiptText, RefreshCw, Slash, Trash2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -427,6 +427,35 @@ export function QuotesClient() {
             <Wallet className="h-4 w-4" />
           </button>
         )}
+        {version.versionStatus === "accepted" && (
+          <button
+            onClick={(e) => { e.stopPropagation(); router.push(`/einvoices?versionId=${encodeURIComponent(version.versionId)}`); }}
+            className="text-sky-600 hover:text-sky-700 transition-colors"
+            title="前往電子發票開立"
+            disabled={isBusy}
+          >
+            <ReceiptText className="h-4 w-4" />
+          </button>
+        )}
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            if (!confirm("確定設定此報價單「不開發票」？")) return;
+            const res = await fetch("/api/sheets/einvoices/opt-out", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ versionId: version.versionId, action: "add" }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              void load();
+            }
+          }}
+          className="text-red-400 hover:text-red-600 transition-colors"
+          title="設定不開發票"
+        >
+          <Slash className="h-4 w-4" />
+        </button>
         {existingAr && (
           <button
             onClick={(e) => { e.stopPropagation(); router.push(`/receivables/${existingAr.arId}`); }}
@@ -568,13 +597,14 @@ export function QuotesClient() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      {hasOlder && (
-                        <button onClick={() => toggleExpand(group.quoteId)} className="text-[var(--text-tertiary)]">
-                          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                        </button>
-                      )}
+                      <button onClick={() => toggleExpand(group.quoteId)} className="text-[var(--text-tertiary)]">
+                        {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </button>
                       <span className="font-mono text-xs text-[var(--accent)]">{latest.quoteId}</span>
                       <span className="text-[11px] text-[var(--text-tertiary)]">V{latest.versionNo}</span>
+                      <button onClick={() => toggleExpand(group.quoteId)} className="ml-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]" title="展開預覽">
+                        <Eye className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                     <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
                   </div>
@@ -622,6 +652,50 @@ export function QuotesClient() {
                       </Button>
                     </div>
                   </div>
+                  {isExpanded && (
+                    <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div>
+                          <span className="text-[var(--text-tertiary)]">案件名稱：</span>
+                          <span className="text-[var(--text-primary)]">{latest.projectNameSnapshot || "—"}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--text-tertiary)]">案件地址：</span>
+                          <span className="text-[var(--text-primary)]">{latest.projectAddressSnapshot || "—"}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--text-tertiary)]">通路：</span>
+                          <span className="text-[var(--text-primary)]">{latest.channelSnapshot || "—"}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--text-tertiary)]">報價日期：</span>
+                          <span className="text-[var(--text-primary)]">{latest.quoteDate || "—"}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--text-tertiary)]">未稅金額：</span>
+                          <span className="text-[var(--text-primary)]">{formatCurrency(latest.subtotalBeforeTax)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--text-tertiary)]">折扣：</span>
+                          <span className="text-[var(--text-primary)]">{formatCurrency(latest.discountAmount)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--text-tertiary)]">稅額：</span>
+                          <span className="text-[var(--text-primary)]">{formatCurrency(latest.taxAmount)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--text-tertiary)]">含稅金額：</span>
+                          <span className="text-[var(--text-primary)] font-semibold">{formatCurrency(latest.totalAmount)}</span>
+                        </div>
+                      </div>
+                      {latest.internalNotes && (
+                        <div className="mt-2 rounded bg-[var(--surface-muted)] px-2 py-1.5 text-xs">
+                          <span className="text-[var(--text-tertiary)]">內部備註：</span>
+                          <span className="text-[var(--text-secondary)]">{latest.internalNotes}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {isExpanded && group.olderVersions.length > 0 && (
                     <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
                       <div className="text-xs font-medium text-[var(--text-secondary)]">歷史版本</div>

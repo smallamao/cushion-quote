@@ -502,6 +502,124 @@ export interface PendingMonthlyRecord {
   updatedAt: string;
 }
 
+// ===== 電子發票 (E-Invoice, v0.8) =====
+
+export type EInvoiceSourceType =
+  | "quote_version"
+  | "ar"
+  | "pending_monthly"
+  | "manual";
+
+export type EInvoiceBuyerType = "b2b" | "b2c";
+
+export type EInvoiceCarrierType = "none" | "mobile_barcode" | "member_code";
+
+export type EInvoiceStatus =
+  | "draft"
+  | "issuing"
+  | "issued"
+  | "failed"
+  | "cancelled";
+
+export type EInvoiceEventType =
+  | "draft_created"
+  | "issue_started"
+  | "issue_succeeded"
+  | "issue_failed"
+  | "sync_succeeded"
+  | "sync_failed"
+  | "cancel_succeeded"
+  | "cancel_failed";
+
+export interface EInvoiceItemSnapshot {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+  remark: string;
+  taxType: 0 | 1 | 2;
+}
+
+export interface EInvoiceRecord {
+  invoiceId: string;
+  retryOfInvoiceId: string;
+  sourceType: EInvoiceSourceType;
+  sourceId: string;
+  sourceSubId: string;
+  quoteId: string;
+  versionId: string;
+  caseId: string;
+  clientId: string;
+  buyerType: EInvoiceBuyerType;
+  buyerName: string;
+  buyerTaxId: string;
+  email: string;
+  carrierType: EInvoiceCarrierType;
+  carrierValue: string;
+  donationCode: string;
+  invoiceDate: string;
+  taxType: 0 | 1 | 2 | 4;
+  untaxedAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  taxRate: number;
+  itemCount: number;
+  itemsJson: string;
+  content: string;
+  status: EInvoiceStatus;
+  providerName: string;
+  providerInvoiceNo: string;
+  providerTrackNo: string;
+  providerResponseJson: string;
+  requestPayloadJson: string;
+  errorCode: string;
+  errorMessage: string;
+  cancelledAt: string;
+  cancelReason: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EInvoiceEventRecord {
+  eventId: string;
+  invoiceId: string;
+  eventType: EInvoiceEventType;
+  fromStatus: string;
+  toStatus: string;
+  message: string;
+  requestJson: string;
+  responseJson: string;
+  actor: string;
+  occurredAt: string;
+}
+
+export interface EInvoiceCandidate {
+  candidateId: string;
+  sourceType: EInvoiceSourceType;
+  sourceId: string;
+  sourceSubId: string;
+  quoteId: string;
+  versionId: string;
+  caseId: string;
+  clientId: string;
+  clientName: string;
+  contactName: string;
+  clientPhone: string;
+  clientEmail: string;
+  clientTaxId: string;
+  projectName: string;
+  amount: number;
+  untaxedAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  taxRate: number;
+  invoiceDate: string;
+  lineItems: EInvoiceItemSnapshot[];
+  existingInvoiceId: string;
+  existingInvoiceStatus: EInvoiceStatus | "";
+}
+
 export interface ConsolidatePendingPayload {
   clientId: string;
   pendingIds: string[];
@@ -765,7 +883,15 @@ export interface PurchaseProduct {
   category: PurchaseProductCategory;
   unit: PurchaseUnit;
   supplierId: string;
+  supplierName: string;
   unitPrice: number;
+  widthCm?: number;
+  costPerCai?: number;
+  listPricePerCai?: number;
+  brand?: string;
+  series?: string;
+  colorCode?: string;
+  colorName?: string;
   imageUrl: string;
   notes: string;
   isActive: boolean;
