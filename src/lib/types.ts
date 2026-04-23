@@ -883,7 +883,7 @@ export interface PurchaseProduct {
   category: PurchaseProductCategory;
   unit: PurchaseUnit;
   supplierId: string;
-  supplierName: string;
+  supplierName?: string;
   unitPrice: number;
   widthCm?: number;
   costPerCai?: number;
@@ -894,6 +894,8 @@ export interface PurchaseProduct {
   colorName?: string;
   imageUrl: string;
   notes: string;
+  minOrder?: string;
+  leadTimeDays?: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

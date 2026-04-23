@@ -1,6 +1,6 @@
 "use client";
 
-import { DollarSign, Layers, Pencil, Plus, Save, Trash2, TrendingUp, Wand2, X } from "lucide-react";
+import { Copy, DollarSign, ImagePlus, Layers, Loader2, Pencil, Plus, Save, Trash2, TrendingUp, Wand2, X, ZoomIn } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -47,7 +47,10 @@ const EMPTY_PRODUCT: PurchaseProduct = {
   category: "面料",
   unit: "碼",
   supplierId: "",
+  supplierName: "",
   unitPrice: 0,
+  costPerCai: 0,
+  listPricePerCai: 0,
   imageUrl: "",
   notes: "",
   isActive: true,
@@ -89,7 +92,34 @@ export function PurchaseProductsClient() {
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [copySource, setCopySource] = useState<string | null>(null);
   const [draft, setDraft] = useState<PurchaseProduct>(EMPTY_PRODUCT);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleImageUpload(file: File) {
+    if (!file.type.startsWith("image/")) {
+      alert("請選擇圖片檔");
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "purchase-products");
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = (await res.json()) as { ok: boolean; url?: string; error?: string };
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error ?? "上傳失敗");
+      }
+      update("imageUrl", data.url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "上傳失敗");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
   const [keyword, setKeyword] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"all" | PurchaseProductCategory>("all");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
@@ -168,16 +198,49 @@ export function PurchaseProductsClient() {
   function openNew() {
     setDraft({ ...EMPTY_PRODUCT });
     setEditing(false);
+    setCopySource(null);
     setShowForm(true);
   }
 
+  function sanitizeForDraft(p: PurchaseProduct): PurchaseProduct {
+    const safeNumber = (v: unknown): number =>
+      typeof v === "number" && Number.isFinite(v) ? v : 0;
+    return {
+      ...EMPTY_PRODUCT,
+      ...p,
+      productCode: p.productCode ?? "",
+      productName: p.productName ?? "",
+      specification: p.specification ?? "",
+      supplierProductCode: p.supplierProductCode ?? "",
+      unitPrice: safeNumber(p.unitPrice),
+      imageUrl: p.imageUrl ?? "",
+      notes: p.notes ?? "",
+    };
+  }
+
   function openEdit(p: PurchaseProduct) {
-    setDraft({ ...p });
+    setDraft(sanitizeForDraft(p));
     setEditing(true);
+    setCopySource(null);
+    setShowForm(true);
+  }
+
+  function openCopy(p: PurchaseProduct) {
+    // Pre-fill all series-level fields; user just tweaks productCode + specification
+    // for the new color variant. id/createdAt/updatedAt cleared so save creates new.
+    setDraft({
+      ...sanitizeForDraft(p),
+      id: "",
+      createdAt: "",
+      updatedAt: "",
+    });
+    setEditing(false);
+    setCopySource(p.productCode);
     setShowForm(true);
   }
 
   async function handleSave() {
+    if (saving) return;
     if (!draft.productCode.trim() || !draft.productName.trim()) {
       alert("請輸入商品編號與名稱");
       return;
@@ -186,16 +249,47 @@ export function PurchaseProductsClient() {
       alert("請選擇廠商");
       return;
     }
-    const saveDraft = {
-      ...draft,
-      id: draft.id || `${draft.productCode}-${draft.supplierId}`,
-    };
-    if (editing) {
-      await updateProduct(saveDraft);
-    } else {
-      await addProduct(saveDraft);
+
+    const newId = `${draft.productCode.trim()}-${draft.supplierId}`;
+
+    // Dup check on create (new + copy paths)
+    if (!editing) {
+      const conflict = products.find((p) => p.id === newId);
+      if (conflict) {
+        alert(
+          `編號「${draft.productCode}」在此廠商下已存在（${conflict.productName}）。請改一個編號再儲存。`,
+        );
+        return;
+      }
     }
-    setShowForm(false);
+
+    const saveDraft: PurchaseProduct = {
+      ...draft,
+      id: draft.id || newId,
+      productCode: draft.productCode.trim(),
+      productName: draft.productName.trim(),
+      specification: (draft.specification ?? "").trim(),
+      imageUrl: (draft.imageUrl ?? "").trim(),
+      notes: (draft.notes ?? "").trim(),
+    };
+
+    setSaving(true);
+    try {
+      if (editing) {
+        await updateProduct(saveDraft);
+      } else {
+        await addProduct(saveDraft);
+      }
+      setShowForm(false);
+      setCopySource(null);
+    } catch (err) {
+      alert(
+        (editing ? "更新失敗：" : "新增失敗：") +
+          (err instanceof Error ? err.message : "unknown"),
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   function update<K extends keyof PurchaseProduct>(key: K, value: PurchaseProduct[K]) {
@@ -444,6 +538,7 @@ export function PurchaseProductsClient() {
         <table className="w-full text-sm">
           <thead className="bg-[var(--surface-2)] text-xs uppercase text-[var(--text-secondary)]">
             <tr>
+              <th className="w-[56px] px-3 py-2 text-left">圖</th>
               <th className="px-3 py-2 text-left">編號</th>
               <th className="px-3 py-2 text-left">名稱</th>
               <th className="px-3 py-2 text-left">規格</th>
@@ -462,6 +557,30 @@ export function PurchaseProductsClient() {
                   p.isActive ? "" : "text-[var(--text-tertiary)]"
                 }`}
               >
+                <td className="px-3 py-2">
+                  {p.imageUrl ? (
+                    <button
+                      type="button"
+                      className="group relative h-10 w-10 overflow-hidden rounded border border-[var(--border)]"
+                      onClick={() => setLightboxUrl(p.imageUrl)}
+                      title="點擊放大"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.imageUrl}
+                        alt={p.productName || p.productCode}
+                        className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
+                        <ZoomIn className="h-3.5 w-3.5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded border border-dashed border-[var(--border)] text-[var(--text-tertiary)]">
+                      <ImagePlus className="h-3.5 w-3.5" />
+                    </div>
+                  )}
+                </td>
                 <td className="px-3 py-2 font-mono text-xs">{p.productCode}</td>
                 <td className="px-3 py-2">{p.productName}</td>
                 <td className="px-3 py-2 text-xs">{p.specification}</td>
@@ -470,7 +589,7 @@ export function PurchaseProductsClient() {
                   {supplierMap[p.supplierId] || p.supplierId}
                 </td>
                 <td className="px-3 py-2 text-right font-mono">
-                  {p.unitPrice.toLocaleString()}
+                  {(p.unitPrice ?? 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-xs">{p.unit}</td>
                 <td className="px-3 py-2 text-right">
@@ -480,6 +599,9 @@ export function PurchaseProductsClient() {
                         <TrendingUp className="h-4 w-4" />
                       </Button>
                     </Link>
+                    <Button size="sm" variant="ghost" onClick={() => openCopy(p)} title="複製商品（建立同系列新色號）">
+                      <Copy className="h-4 w-4" />
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => openEdit(p)} title="編輯商品">
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -490,7 +612,7 @@ export function PurchaseProductsClient() {
             {filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-3 py-6 text-center text-[var(--text-tertiary)]"
                 >
                   {loading ? "載入中..." : "沒有符合條件的商品"}
@@ -520,7 +642,7 @@ export function PurchaseProductsClient() {
           <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-lg bg-[var(--bg-elevated)] p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-semibold">
-                {editing ? "編輯商品" : "新增商品"}
+                {editing ? "編輯商品" : copySource ? "複製商品" : "新增商品"}
               </h2>
               <Button
                 variant="ghost"
@@ -531,12 +653,19 @@ export function PurchaseProductsClient() {
               </Button>
             </div>
 
+            {copySource && (
+              <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                複製自「{copySource}」，請修改下方<strong>商品編號</strong>與<strong>規格</strong>建立同系列新色號。
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label>商品編號 *</Label>
                 <Input
-                  value={draft.productCode}
+                  value={draft.productCode ?? ""}
                   onChange={(e) => update("productCode", e.target.value)}
+                  autoFocus={!!copySource}
                 />
               </div>
               <div>
@@ -553,14 +682,14 @@ export function PurchaseProductsClient() {
               <div className="md:col-span-2">
                 <Label>商品名稱 *</Label>
                 <Input
-                  value={draft.productName}
+                  value={draft.productName ?? ""}
                   onChange={(e) => update("productName", e.target.value)}
                 />
               </div>
               <div>
                 <Label>規格</Label>
                 <Input
-                  value={draft.specification}
+                  value={draft.specification ?? ""}
                   onChange={(e) => update("specification", e.target.value)}
                 />
               </div>
@@ -622,21 +751,70 @@ export function PurchaseProductsClient() {
                 <Label>單價</Label>
                 <Input
                   type="number"
-                  value={draft.unitPrice}
+                  value={draft.unitPrice ?? 0}
                   onChange={(e) => update("unitPrice", Number(e.target.value) || 0)}
                 />
               </div>
               <div className="md:col-span-2">
-                <Label>圖片 URL</Label>
-                <Input
-                  value={draft.imageUrl}
-                  onChange={(e) => update("imageUrl", e.target.value)}
-                />
+                <Label>圖片</Label>
+                <div className="mt-1 flex flex-wrap items-start gap-3">
+                  {draft.imageUrl ? (
+                    <div className="relative inline-block">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={draft.imageUrl}
+                        alt={draft.productName || "商品圖"}
+                        className="h-24 w-24 cursor-zoom-in rounded border border-[var(--border)] object-cover"
+                        onClick={() => setLightboxUrl(draft.imageUrl)}
+                      />
+                      <button
+                        type="button"
+                        className="absolute -right-2 -top-2 rounded-full bg-[var(--bg-elevated)] p-0.5 text-[var(--error)] shadow hover:bg-red-50"
+                        onClick={() => update("imageUrl", "")}
+                        title="移除圖片"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)]">
+                      {uploadingImage ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <>
+                          <ImagePlus className="h-5 w-5" />
+                          <span className="mt-1 text-[10px]">上傳圖片</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingImage}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void handleImageUpload(file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
+                  <div className="min-w-[200px] flex-1 space-y-1">
+                    <Input
+                      placeholder="或貼上圖片 URL"
+                      value={draft.imageUrl ?? ""}
+                      onChange={(e) => update("imageUrl", e.target.value)}
+                    />
+                    <p className="text-[10px] text-[var(--text-tertiary)]">
+                      支援拖曳上傳；圖片會存至 Cloudinary（最大 15MB）
+                    </p>
+                  </div>
+                </div>
               </div>
               <div className="md:col-span-2">
                 <Label>備註</Label>
                 <Textarea
-                  value={draft.notes}
+                  value={draft.notes ?? ""}
                   onChange={(e) => update("notes", e.target.value)}
                   rows={2}
                 />
@@ -644,11 +822,16 @@ export function PurchaseProductsClient() {
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowForm(false)}>
+              <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>
                 取消
               </Button>
-              <Button onClick={handleSave}>
-                <Save className="mr-1 h-4 w-4" /> 儲存
+              <Button onClick={handleSave} disabled={saving || uploadingImage}>
+                {saving ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1 h-4 w-4" />
+                )}
+                {saving ? "儲存中…" : "儲存"}
               </Button>
             </div>
           </div>
@@ -945,6 +1128,29 @@ export function PurchaseProductsClient() {
           void reload();
         }}
       />
+
+      {/* Image lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-4 text-white hover:text-gray-300"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <X className="h-6 w-6" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="商品圖放大"
+            className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
