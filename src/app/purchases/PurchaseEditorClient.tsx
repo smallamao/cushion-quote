@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Eye, PackagePlus, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Eye, Package, PackagePlus, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -1097,28 +1097,30 @@ export function PurchaseEditorClient({ orderId }: Props) {
                               products={supplierProducts}
                               onChange={(v) => selectProduct(idx, v)}
                             />
-                            {it.productId && inventoryByProductId.has(it.productId) && (
-                              <div
-                                className={`mt-0.5 text-[11px] ${
-                                  (inventoryByProductId.get(it.productId)?.qty ?? 0) <= 0
-                                    ? "text-amber-600"
-                                    : "text-[var(--text-tertiary)]"
-                                }`}
-                              >
-                                庫存:{" "}
-                                {inventoryByProductId
-                                  .get(it.productId)
-                                  ?.qty.toLocaleString("zh-TW", {
-                                    maximumFractionDigits: 2,
-                                  })}{" "}
-                                {inventoryByProductId.get(it.productId)?.unit}
-                              </div>
-                            )}
+                            {it.productId && inventoryByProductId.has(it.productId) && (() => {
+                              const inv = inventoryByProductId.get(it.productId)!;
+                              const qty = inv.qty ?? 0;
+                              const isLow = qty <= 0;
+                              const isWarning = !isLow && it.quantity != null && qty < it.quantity;
+                              return (
+                                <div className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  isLow
+                                    ? "bg-red-100 text-red-700"
+                                    : isWarning
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-emerald-100 text-emerald-700"
+                                }`}>
+                                  <Package className="h-3 w-3 shrink-0" />
+                                  庫存 {qty.toLocaleString("zh-TW", { maximumFractionDigits: 2 })} {inv.unit}
+                                </div>
+                              );
+                            })()}
                             {it.productId &&
                               !inventoryByProductId.has(it.productId) &&
                               !stillLoading && (
-                                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
-                                  庫存: 無紀錄
+                                <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                                  <Package className="h-3 w-3 shrink-0" />
+                                  無庫存紀錄
                                 </div>
                               )}
                           </div>
@@ -1165,31 +1167,30 @@ export function PurchaseEditorClient({ orderId }: Props) {
                         );
                       }
 
-                      // Truly empty new row — original free-input flow
+                      // Truly empty new row — use ProductCombobox for searchable product selection
                       return (
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1">
-                            <Input
-                              placeholder="商品編號"
-                              value={it.productCode}
-                              onChange={(e) =>
-                                updateItem(idx, { productCode: e.target.value })
-                              }
-                              className="h-7 flex-1 text-xs font-mono"
-                            />
-                            {it.productCode && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 shrink-0 px-2 text-[10px]"
-                                onClick={() => openQuickCreate(idx)}
-                                title="新增到商品庫"
-                              >
-                                <Sparkles className="h-3 w-3" />
-                                新增
-                              </Button>
-                            )}
+                            <div className="min-w-0 flex-1">
+                              <ProductCombobox
+                                value=""
+                                products={supplierProducts}
+                                onChange={(v) => selectProduct(idx, v)}
+                                placeholder={supplierId ? "商品編號" : "請先選擇廠商"}
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 shrink-0 px-2 text-[10px]"
+                              onClick={() => openQuickCreate(idx)}
+                              title="新增到商品庫"
+                              disabled={!supplierId}
+                            >
+                              <Sparkles className="h-3 w-3" />
+                              新增
+                            </Button>
                           </div>
                           {it.warning && (
                             <div className="text-[10px] text-amber-600">

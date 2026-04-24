@@ -38,9 +38,13 @@ const TECHNICIAN_ALLOWED_PREFIXES = [
   "/api/sheets/equipment",
   "/api/sheets/cases",
   "/api/sheets/versions",
+  "/api/sheets/inventory",
+  "/api/sheets/products",
+  "/api/sheets/suppliers",
   "/api/upload",
   "/login",
   "/calendar",
+  "/inventory",
 ];
 
 const TECHNICIAN_BLOCKED_API = [

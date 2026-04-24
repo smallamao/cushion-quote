@@ -73,6 +73,7 @@ const mapPurchaseUnitToStockStatus = (unit: PurchaseUnit): StockStatus => {
   return "in_stock";
 };
 import { Star } from "lucide-react";
+import { MaterialCombobox, type MaterialOption } from "@/components/quote-editor/MaterialCombobox";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -113,6 +114,26 @@ interface CalculatorModalProps {
   settings: SystemSettings;
 }
 
+type CalculatorMaterialOption = MaterialOption & {
+  brand: string;
+  series: string;
+  colorCode: string;
+  colorName: string;
+  category: Category;
+  costPerCai?: number;
+  listPricePerCai?: number;
+  supplier: string;
+  widthCm: number;
+  minOrder: string;
+  leadTimeDays: number;
+  stockStatus: StockStatus;
+  features: string[];
+  notes: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 const CHANNEL_OPTIONS = [
   { value: "wholesale", label: "批發" },
   { value: "designer", label: "設計師" },
@@ -145,28 +166,47 @@ export function CalculatorModal({
     [purchaseProductsHook],
   );
 
-   // Convert PurchaseProduct to Material-compatible object
-   const materials = useMemo(() => {
-     return purchaseProducts.map(p => ({
-       id: p.id,
-       brand: p.brand ?? '',
-       series: p.series ?? '',
-       colorCode: p.colorCode ?? '',
-       colorName: p.colorName ?? '',
-       category: mapPurchaseCategoryToMaterialCategory(p.category),
-       costPerCai: p.costPerCai,
-       listPricePerCai: p.listPricePerCai,
-       supplier: p.supplierName ?? '',
-       widthCm: p.widthCm ?? 137, // Default width if not specified
-       minOrder: '',
-       leadTimeDays: 0,
-       stockStatus: mapPurchaseUnitToStockStatus(p.unit),
-       features: [],
-       notes: p.notes ?? '',
-       isActive: p.isActive,
-       createdAt: p.createdAt,
-       updatedAt: p.updatedAt,
-     }));
+   // Convert purchase-products category=面料 to calculator material options.
+   const materials = useMemo<CalculatorMaterialOption[]>(() => {
+     return purchaseProducts
+       .filter((product) => product.category === "面料")
+       .map((product) => {
+         const brand = product.brand ?? "";
+         const series = product.series ?? "";
+         const colorCode = product.colorCode ?? "";
+         const colorName = product.colorName ?? "";
+         const productName = product.productName ?? "";
+         const specification = product.specification ?? "";
+         const supplier = product.supplierName ?? "";
+         const label = [brand, series, colorCode ? `${colorCode}${colorName ? ` ${colorName}` : ""}` : colorName]
+           .filter(Boolean)
+           .join(" / ") || productName || product.productCode;
+
+         return {
+           id: product.id,
+           label,
+           searchText: [brand, series, colorCode, colorName, product.productCode, product.supplierProductCode, productName, specification, supplier]
+             .filter(Boolean)
+             .join(" "),
+           brand,
+           series,
+           colorCode,
+           colorName,
+           category: mapPurchaseCategoryToMaterialCategory(product.category),
+           costPerCai: product.costPerCai ?? product.unitPrice,
+           listPricePerCai: product.listPricePerCai,
+           supplier,
+           widthCm: product.widthCm ?? 137,
+           minOrder: product.minOrder ?? "",
+           leadTimeDays: product.leadTimeDays ?? 0,
+           stockStatus: mapPurchaseUnitToStockStatus(product.unit),
+           features: [],
+           notes: product.notes ?? "",
+           isActive: product.isActive,
+           createdAt: product.createdAt,
+           updatedAt: product.updatedAt,
+         };
+       });
    }, [purchaseProducts]);
 
   const [channel, setChannel] = useState<Channel>(defaultChannel);
@@ -212,8 +252,16 @@ export function CalculatorModal({
 
   const handleMaterialChange = useCallback((value: string) => {
     setSelectedMaterialId(value);
-    addRecent(value);
+    if (value !== "custom") {
+      addRecent(value);
+    }
   }, [addRecent]);
+
+  useEffect(() => {
+    if (selectedMaterialId !== "custom" && !materials.some((material) => material.id === selectedMaterialId)) {
+      setSelectedMaterialId("custom");
+    }
+  }, [materials, selectedMaterialId]);
 
   // 整面分片：計算單片尺寸
   const customSplitSizes = useMemo(() => parseCustomSplitSizes(customSplitInput), [customSplitInput]);
@@ -986,46 +1034,14 @@ export function CalculatorModal({
 
           {!isFoamCore && <div>
             <Label>選擇材質</Label>
-            <Select
+            <MaterialCombobox
               value={selectedMaterialId}
-              onValueChange={handleMaterialChange}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="選擇材質或自訂" />
-              </SelectTrigger>
-              <SelectContent>
-                {favoriteMaterials.length > 0 && (
-                  <>
-                    <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">★ 常用材質</div>
-                    {favoriteMaterials.map((mat) => (
-                      <SelectItem key={`fav-${mat.id}`} value={mat.id}>
-                        ★ {mat.brand} {mat.series}{mat.colorCode ? ` / ${mat.colorCode} ${mat.colorName}` : ""}
-                      </SelectItem>
-                    ))}
-                    <div className="my-1 border-t border-[var(--border)]" />
-                  </>
-                )}
-                {recentMaterials.length > 0 && (
-                  <>
-                    <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">最近使用</div>
-                    {recentMaterials.map((mat) => (
-                      <SelectItem key={`recent-${mat.id}`} value={mat.id}>
-                    {mat.brand} {mat.series}{mat.colorCode ? ` / ${mat.colorCode} ${mat.colorName}` : ""}
-                  </SelectItem>
-                    ))}
-                    <div className="my-1 border-t border-[var(--border)]" />
-                  </>
-                )}
-                <SelectItem value="custom">自訂面料（手動輸入成本）</SelectItem>
-                <div className="my-1 border-t border-[var(--border)]" />
-                <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">全部材質</div>
-                {materials.map((mat) => (
-                  <SelectItem key={mat.id} value={mat.id}>
-                    {mat.brand} {mat.series}{mat.colorCode ? ` / ${mat.colorCode} ${mat.colorName}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              materials={materials}
+              favoriteMaterials={favoriteMaterials}
+              recentMaterials={recentMaterials}
+              onChange={handleMaterialChange}
+              placeholder="選擇面料或自訂"
+            />
 
             {selectedMaterial ? (
               <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">

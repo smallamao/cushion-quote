@@ -8,7 +8,7 @@ const INVENTORY_RANGE_FULL = `${INVENTORY_SHEET}!A:K`;
 const INVENTORY_RANGE_DATA = `${INVENTORY_SHEET}!A2:K`;
 const INVENTORY_RANGE_IDS = `${INVENTORY_SHEET}!A2:A`;
 const PRODUCT_SHEET = "採購商品";
-const PRODUCT_RANGE_DATA = `${PRODUCT_SHEET}!A2:M`;
+const PRODUCT_RANGE_DATA = `${PRODUCT_SHEET}!A2:O`;
 
 function rowToInventorySummary(row: string[]): InventorySummary {
   let productSnapshot: InventorySummary["productSnapshot"] = {
@@ -68,12 +68,15 @@ function rowToPurchaseProduct(row: string[]): PurchaseProduct {
     category: (row[4] as PurchaseProductCategory) ?? "其他",
     unit: (row[5] as PurchaseUnit) ?? "碼",
     supplierId: row[6] ?? "",
-    unitPrice: Number(row[7] ?? 0),
-    imageUrl: row[8] ?? "",
-    notes: row[9] ?? "",
-    isActive: row[10] !== "FALSE",
-    createdAt: row[11] ?? "",
-    updatedAt: row[12] ?? "",
+    costPerCai: Number(row[8] ?? 0),
+    widthCm: undefined,
+    listPricePerCai: Number(row[9] ?? 0),
+    supplierName: "",
+    imageUrl: row[10] ?? "",
+    notes: row[11] ?? "",
+    isActive: row[12] !== "FALSE",
+    createdAt: row[13] ?? "",
+    updatedAt: row[14] ?? "",
   };
 }
 
