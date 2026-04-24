@@ -9,6 +9,7 @@ import {
   ImagePlus,
   Loader2,
   MessageSquarePlus,
+  PenLine,
   Save,
   Send,
   Stethoscope,
@@ -31,6 +32,7 @@ import {
   generateAfterSalesPdfBlob,
 } from "@/components/pdf/AfterSalesPDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
+import { SignaturePad } from "@/components/after-sales/SignaturePad";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useEquipment } from "@/hooks/useEquipment";
 import { useSettings } from "@/hooks/useSettings";
@@ -71,6 +73,8 @@ function emptyDraft(): DraftService {
     completedDate: "",
     completionNotes: "",
     completionPhotos: [],
+    customerSignature: "",
+    customerSignedAt: "",
   };
 }
 
@@ -129,6 +133,8 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
 
   const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [signatureUploading, setSignatureUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [replies, setReplies] = useState<AfterSalesReply[]>([]);
@@ -251,6 +257,8 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           completedDate: service.completedDate,
           completionNotes: service.completionNotes,
           completionPhotos: service.completionPhotos ?? [],
+          customerSignature: service.customerSignature ?? "",
+          customerSignedAt: service.customerSignedAt ?? "",
         });
         setMeta({
           serviceId: service.serviceId,
@@ -310,6 +318,31 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
             completionPhotos: prev.completionPhotos.filter((_, i) => i !== idx),
           }),
     }));
+  }
+
+  async function handleSignatureSave(dataUrl: string) {
+    setSignatureUploading(true);
+    try {
+      const fetchRes = await fetch(dataUrl);
+      const blob = await fetchRes.blob();
+      const file = new File([blob], "signature.png", { type: "image/png" });
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "after-sales-signatures");
+      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+      const json = (await uploadRes.json()) as { ok?: boolean; url?: string; error?: string };
+      if (!uploadRes.ok || !json.url) throw new Error(json.error ?? "簽名上傳失敗");
+      setDraft((prev) => ({
+        ...prev,
+        customerSignature: json.url!,
+        customerSignedAt: new Date().toISOString(),
+      }));
+      setSignatureOpen(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "簽名上傳失敗");
+    } finally {
+      setSignatureUploading(false);
+    }
   }
 
   async function handleSave() {
@@ -888,6 +921,59 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
             />
           </div>
         </div>
+
+        {/* 客戶簽名 */}
+        <div className="mt-4">
+          <Label>客戶確認簽名</Label>
+          {draft.customerSignature ? (
+            <div className="mt-2 flex items-start gap-3">
+              <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-white p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={draft.customerSignature}
+                  alt="客戶簽名"
+                  className="h-16 w-auto"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {draft.customerSignedAt && (
+                  <span className="text-xs text-[var(--text-tertiary)]">
+                    {new Date(draft.customerSignedAt).toLocaleString("zh-TW")}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSignatureOpen(true)}
+                  className="text-left text-xs text-[var(--accent)] underline"
+                >
+                  重新簽名
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      customerSignature: "",
+                      customerSignedAt: "",
+                    }))
+                  }
+                  className="text-left text-xs text-red-500 underline"
+                >
+                  刪除簽名
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSignatureOpen(true)}
+              className="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-[var(--border)] px-4 py-3 text-sm text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              <PenLine className="h-4 w-4" />
+              點擊讓客戶簽名確認
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 聯繫紀錄 / 回應區 (只有 edit 模式才能用) */}
@@ -1039,6 +1125,12 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           createdBy: meta.createdBy,
         } as AfterSalesService) : "售後服務單.pdf"}
         loading={pdfLoading}
+      />
+      <SignaturePad
+        open={signatureOpen}
+        onClose={() => setSignatureOpen(false)}
+        onSave={(dataUrl) => void handleSignatureSave(dataUrl)}
+        uploading={signatureUploading}
       />
     </div>
   );
