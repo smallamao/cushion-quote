@@ -58,11 +58,11 @@ export function MobileDrawer() {
       {/* Bottom-sheet drawer */}
       <div
         className={[
-          "fixed inset-x-0 bottom-0 z-50 transform transition-transform duration-250 ease-out md:hidden",
+          "fixed inset-x-0 bottom-0 z-50 transform bg-[var(--sidebar-bg)] transition-transform duration-250 ease-out md:hidden",
           open ? "translate-y-0" : "translate-y-full",
         ].join(" ")}
       >
-        <div className="rounded-t-2xl bg-[var(--sidebar-bg)] px-3 pb-8 pt-3">
+        <div className="rounded-t-2xl px-3 pt-3" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
           {/* Drag indicator */}
           <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-white/30" />
 
