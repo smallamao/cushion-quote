@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { Loader2, Plus, Search, X } from "lucide-react";
+
+import { PurchasePreviewDrawer } from "@/components/purchases/PurchasePreviewDrawer";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -67,6 +69,7 @@ export function PurchasesClient() {
   const [batchApplying, setBatchApplying] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
 
   const supplierMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -336,18 +339,19 @@ export function PurchasesClient() {
                   <tr
                     key={o.orderId}
                     className={[
-                      "hover:bg-[var(--bg-hover)]",
+                      "cursor-pointer hover:bg-[var(--bg-hover)]",
                       isSelected ? "bg-blue-50/50" : "",
                     ].join(" ")}
+                    onClick={() => setPreviewOrderId(o.orderId)}
                   >
-                    <td className="px-3 py-2 text-center">
+                    <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={() => toggleSelect(o.orderId)}
                         aria-label={`選取 ${o.orderId}`}
                       />
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <Link
                         href={`/purchases/${o.orderId}`}
                         className="block font-mono text-xs text-[var(--accent)] hover:underline"
@@ -355,33 +359,23 @@ export function PurchasesClient() {
                         {o.orderId}
                       </Link>
                     </td>
+                    <td className="px-3 py-2 text-xs">{o.orderDate}</td>
                     <td className="px-3 py-2 text-xs">
-                      <Link href={`/purchases/${o.orderId}`} className="block">
-                        {o.orderDate}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2 text-xs">
-                      <Link href={`/purchases/${o.orderId}`} className="block">
-                        {supplierMap.get(o.supplierId) || o.supplierSnapshot?.shortName || o.supplierSnapshot?.name || o.supplierId}
-                      </Link>
+                      {supplierMap.get(o.supplierId) || o.supplierSnapshot?.shortName || o.supplierSnapshot?.name || o.supplierId}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs">
-                      <Link href={`/purchases/${o.orderId}`} className="block">
-                        ${fmtMoney(o.totalAmount)}
-                      </Link>
+                      ${fmtMoney(o.totalAmount)}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <Link href={`/purchases/${o.orderId}`} className="block">
-                        {itemCountByOrder[o.orderId] != null ? (
-                          <span className="inline-block rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
-                            {itemCountByOrder[o.orderId]}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-[var(--text-tertiary)]">—</span>
-                        )}
-                      </Link>
+                      {itemCountByOrder[o.orderId] != null ? (
+                        <span className="inline-block rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
+                          {itemCountByOrder[o.orderId]}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-tertiary)]">—</span>
+                      )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <Select
                         value={safeStatus}
                         disabled={isBusy}
@@ -403,10 +397,8 @@ export function PurchasesClient() {
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
-                      <Link href={`/purchases/${o.orderId}`} className="block truncate">
-                        {o.notes}
-                      </Link>
+                    <td className="max-w-[200px] truncate px-3 py-2 text-xs text-[var(--text-secondary)]">
+                      {o.notes}
                     </td>
                   </tr>
                 );
@@ -486,6 +478,11 @@ export function PurchasesClient() {
           </div>
         </div>
       )}
+
+      <PurchasePreviewDrawer
+        orderId={previewOrderId}
+        onClose={() => setPreviewOrderId(null)}
+      />
     </div>
   );
 }
