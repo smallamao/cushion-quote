@@ -370,6 +370,24 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
                   </View>
                 </View>
               ) : null}
+              {service.customerSignature ? (
+                <View style={s.infoRow}>
+                  <View style={{ flexDirection: "row", flex: 1 }}>
+                    <Text style={s.infoLabel}>客戶簽名</Text>
+                    <View style={{ flex: 1, padding: 5 }}>
+                      <Image
+                        src={service.customerSignature}
+                        style={{ width: 120, height: 40, objectFit: "contain" }}
+                      />
+                      {service.customerSignedAt ? (
+                        <Text style={{ fontSize: 8, color: C.muted, marginTop: 2 }}>
+                          {new Date(service.customerSignedAt).toLocaleString("zh-TW")}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                </View>
+              ) : null}
             </View>
           </>
         )}
