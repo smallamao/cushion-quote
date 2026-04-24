@@ -124,6 +124,11 @@ export async function POST(request: Request) {
       }
     }
 
+    // Wait for Sheets propagation before returning so the client's reload sees the new rows
+    if (repaired > 0 || updated > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
+
     return NextResponse.json({ ok: true, repaired, updated, message: `修復完成：新建 ${repaired} 筆，更新狀態 ${updated} 筆` });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "修復失敗" }, { status: 500 });
