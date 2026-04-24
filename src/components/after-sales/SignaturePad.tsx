@@ -56,7 +56,7 @@ export function SignaturePad({ open, onClose, onSave, uploading }: SignaturePadP
             className="flex-1"
             disabled={empty || uploading}
             onClick={() => {
-              const dataUrl = sigRef.current?.getTrimmedCanvas().toDataURL("image/png");
+              const dataUrl = sigRef.current?.toDataURL("image/png");
               if (dataUrl) onSave(dataUrl);
             }}
           >
