@@ -62,6 +62,7 @@ function readCachedOrders(): PurchaseOrder[] | null {
 export function usePurchases() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [itemCountByOrder, setItemCountByOrder] = useState<Record<string, number>>({});
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
@@ -94,6 +95,21 @@ export function usePurchases() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/sheets/purchases?includeItemCounts=true", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const payload = (await res.json()) as { itemCountByOrder?: Record<string, number> };
+        if (!cancelled && payload.itemCountByOrder) setItemCountByOrder(payload.itemCountByOrder);
+      } catch {
+        // counts are non-critical, silently skip
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const createOrder = useCallback(
     async (order: PurchaseOrder, items: PurchaseOrderItem[]) => {
@@ -165,6 +181,7 @@ export function usePurchases() {
   return {
     orders,
     loading,
+    itemCountByOrder,
     reload: () => load(true),
     createOrder,
     updateOrder,

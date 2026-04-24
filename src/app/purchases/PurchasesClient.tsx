@@ -56,7 +56,7 @@ function getSafeStatus(status: PurchaseOrderStatus | string | null | undefined):
 }
 
 export function PurchasesClient() {
-  const { orders, loading, reload } = usePurchases();
+  const { orders, loading, itemCountByOrder, reload } = usePurchases();
   const { suppliers } = useSuppliers();
   const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
@@ -308,6 +308,7 @@ export function PurchasesClient() {
                 <th className="px-3 py-2 text-left font-medium">日期</th>
                 <th className="px-3 py-2 text-left font-medium">廠商</th>
                 <th className="px-3 py-2 text-right font-medium">合計金額</th>
+                <th className="px-3 py-2 text-center font-medium">項目</th>
                 <th className="w-28 px-3 py-2 text-left font-medium">狀態</th>
                 <th className="px-3 py-2 text-left font-medium">附註</th>
               </tr>
@@ -315,14 +316,14 @@ export function PurchasesClient() {
             <tbody className="divide-y divide-[var(--border)]">
               {loading && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
+                  <td colSpan={8} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
                     載入中…
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
+                  <td colSpan={8} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
                     尚無採購單
                   </td>
                 </tr>
@@ -367,6 +368,17 @@ export function PurchasesClient() {
                     <td className="px-3 py-2 text-right font-mono text-xs">
                       <Link href={`/purchases/${o.orderId}`} className="block">
                         ${fmtMoney(o.totalAmount)}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <Link href={`/purchases/${o.orderId}`} className="block">
+                        {itemCountByOrder[o.orderId] != null ? (
+                          <span className="inline-block rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
+                            {itemCountByOrder[o.orderId]}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-[var(--text-tertiary)]">—</span>
+                        )}
                       </Link>
                     </td>
                     <td className="px-3 py-2">

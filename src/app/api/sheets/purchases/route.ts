@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const maxDuration = 60;
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import type {
   PurchaseOrder,
@@ -172,38 +174,56 @@ function deriveOrderStatus(items: PurchaseOrderItem[], requestedStatus: Purchase
 }
 
 /**
- * GET = list all purchase orders (without items by default)
- * Query param: ?includeItems=true to include line items
+ * GET = list all purchase orders
+ * Query params:
+ *   ?includeItems=true       → include full line items per order
+ *   ?includeItemCounts=true  → include item counts per order (lightweight)
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const includeItems = searchParams.get("includeItems") === "true";
+  const includeItemCounts = searchParams.get("includeItemCounts") === "true";
 
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json({ orders: [] as PurchaseOrder[], source: "defaults" as const });
   }
 
+  const needItems = includeItems || includeItemCounts;
+
   try {
-    const orderRes = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: ORDER_RANGE_DATA,
-    });
+    const [orderRes, itemRes] = await Promise.all([
+      client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: ORDER_RANGE_DATA,
+      }),
+      needItems
+        ? client.sheets.spreadsheets.values.get({
+            spreadsheetId: client.spreadsheetId,
+            range: ITEM_RANGE_DATA,
+          })
+        : Promise.resolve(null),
+    ]);
+
     const orders = (orderRes.data.values ?? [])
       .map(rowToOrder)
       .filter((o) => o.orderId);
 
-    if (!includeItems) {
+    if (!needItems || !itemRes) {
       return NextResponse.json({ orders, source: "sheets" as const });
     }
 
-    const itemRes = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: ITEM_RANGE_DATA,
-    });
     const items = (itemRes.data.values ?? [])
       .map(rowToItem)
       .filter((i) => i.itemId);
+
+    if (includeItemCounts && !includeItems) {
+      const itemCountByOrder: Record<string, number> = {};
+      for (const it of items) {
+        itemCountByOrder[it.orderId] = (itemCountByOrder[it.orderId] ?? 0) + 1;
+      }
+      return NextResponse.json({ orders, itemCountByOrder, source: "sheets" as const });
+    }
 
     const itemsByOrder: Record<string, PurchaseOrderItem[]> = {};
     for (const it of items) {
