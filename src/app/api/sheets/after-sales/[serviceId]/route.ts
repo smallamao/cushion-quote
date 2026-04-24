@@ -67,6 +67,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     completedDate?: string;
     completionNotes?: string;
     completionPhotos?: string[];
+    customerSignature?: string;
+    customerSignedAt?: string;
   }
 
   let body: PatchBody;
