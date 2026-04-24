@@ -8,8 +8,8 @@ import type {
 } from "@/lib/types";
 
 const MAIN_SHEET = "售後服務";
-const MAIN_RANGE_FULL = `${MAIN_SHEET}!A:W`;
-const MAIN_RANGE_DATA = `${MAIN_SHEET}!A2:W`;
+const MAIN_RANGE_FULL = `${MAIN_SHEET}!A:Y`;
+const MAIN_RANGE_DATA = `${MAIN_SHEET}!A2:Y`;
 const MAIN_RANGE_IDS = `${MAIN_SHEET}!A2:A`;
 
 const REPLY_SHEET = "售後服務回應";
@@ -49,6 +49,8 @@ function rowToService(row: string[]): AfterSalesService {
     completedDate: row[17] ?? "",
     completionNotes: row[18] ?? "",
     completionPhotos: parseJsonArray(row[19]),
+    customerSignature: row[23] || undefined,
+    customerSignedAt: row[24] || undefined,
     createdAt: row[20] ?? "",
     updatedAt: row[21] ?? "",
     createdBy: row[22] ?? "",
@@ -80,6 +82,8 @@ function serviceToRow(s: AfterSalesService): string[] {
     s.createdAt,
     s.updatedAt,
     s.createdBy,
+    s.customerSignature ?? "",
+    s.customerSignedAt ?? "",
   ];
 }
 
@@ -186,7 +190,7 @@ export async function updateService(
   };
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${MAIN_SHEET}!A${sheetRow}:W${sheetRow}`,
+    range: `${MAIN_SHEET}!A${sheetRow}:Y${sheetRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(updated)] },
   });
