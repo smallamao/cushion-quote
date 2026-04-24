@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, ReceiptText, RefreshCw, RotateCcw, XCircle } from "lucide-react";
+import { Download, Loader2, ReceiptText, RefreshCw, RotateCcw, SendHorizonal, XCircle } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -39,6 +39,7 @@ interface BatchIssueItemResult {
   detail: string;
   invoiceId?: string;
   providerInvoiceNo?: string;
+  invoiceRecord?: EInvoiceRecord;
 }
 
 interface BatchIssueReport {
@@ -117,11 +118,11 @@ export function EInvoicesClient() {
   const [loading, setLoading] = useState(true);
   const [issuing, setIssuing] = useState(false);
   const [syncingInvoiceId, setSyncingInvoiceId] = useState("");
+  const [reissueDate, setReissueDate] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [batchReport, setBatchReport] = useState<BatchIssueReport | null>(null);
   const [pasteData, setPasteData] = useState("");
   const [parsedRows, setParsedRows] = useState<Array<{ buyerName: string; buyerUbn: string; email: string; itemName: string; quantity: number; unitPrice: number; totalAmount: number }>>([]);
-  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async (options: LoadOptions = {}) => {
     setLoading(true);
@@ -189,7 +190,8 @@ export function EInvoicesClient() {
     setSelectedIds((current) => checked ? [...new Set([...current, candidateId])] : current.filter((id) => id !== candidateId));
   }
 
-  function removeCandidate(candidateId: string) {
+  async function removeCandidate(candidateId: string) {
+    const candidate = candidates.find((c) => c.candidateId === candidateId);
     setCandidates((current) => current.filter((c) => c.candidateId !== candidateId));
     setSelectedIds((current) => current.filter((id) => id !== candidateId));
     setDrafts((current) => {
@@ -197,6 +199,13 @@ export function EInvoicesClient() {
       delete next[candidateId];
       return next;
     });
+    if (candidate?.versionId) {
+      await fetch("/api/sheets/einvoices/opt-out", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionId: candidate.versionId, action: "add" }),
+      }).catch(() => undefined);
+    }
   }
 
   function parsePasteData() {
@@ -211,7 +220,10 @@ export function EInvoicesClient() {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (!line.trim()) continue;
-      const cols = line.split(separator).map((c) => c.trim());
+      const rawCols = line.split(separator).map((c) => c.trim());
+      // Strip trailing empty columns (common from Excel copy-paste)
+      while (rawCols.length > 0 && rawCols[rawCols.length - 1] === "") rawCols.pop();
+      const cols = rawCols;
       if (cols.length < 2) continue;
 
       // Try to map by header names if first row looks like headers
@@ -230,7 +242,7 @@ export function EInvoicesClient() {
           for (let j = i + 1; j < lines.length; j++) {
             const dataLine = lines[j];
             if (!dataLine.trim()) continue;
-            const dataCols = dataLine.split(separator).map((c) => c.trim()).filter(Boolean);
+            const dataCols = dataLine.split(separator).map((c) => c.trim());
             if (dataCols.length < 2) continue;
             rows.push({
               buyerName: headerMap.buyerName !== undefined ? (dataCols[headerMap.buyerName] || "") : dataCols[0] || "",
@@ -264,43 +276,62 @@ export function EInvoicesClient() {
     setParsedRows(rows);
   }
 
-  async function handleBatchImport() {
+  function handleBatchImport() {
     if (parsedRows.length === 0) return;
-    setImporting(true);
-    try {
-      const response = await fetch("/api/sheets/einvoices/batch-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "commit",
-          invoices: parsedRows.map((row) => ({
-            sourceType: "manual",
-            sourceId: `MANUAL-${Date.now()}`,
-            buyerName: row.buyerName,
-            buyerUbn: row.buyerUbn,
-            email: row.email,
-            taxType: "應稅",
-            untaxedAmount: Math.round(row.totalAmount / 1.05),
-            taxAmount: row.totalAmount - Math.round(row.totalAmount / 1.05),
-            totalAmount: row.totalAmount,
-            items: [{ name: row.itemName, quantity: row.quantity, unitPrice: row.unitPrice }],
-          })),
-        }),
-      });
-      const result = await response.json();
-      if (result.ok) {
-        setNotice({ tone: "success", title: `已匯入 ${result.created} 筆發票草稿` });
-        setPasteData("");
-        setParsedRows([]);
-        void load({ preserveFeedback: true });
-      } else {
-        setNotice({ tone: "error", title: "匯入失敗", detail: result.error });
+    const now = Date.now();
+    const today = new Date().toISOString().slice(0, 10);
+    const newCandidates: EInvoiceCandidate[] = parsedRows.map((row, idx) => {
+      const sourceId = `MANUAL-${now}-${idx}`;
+      const total = row.totalAmount;
+      const untaxed = Math.round(total / 1.05);
+      return {
+        candidateId: `manual:${sourceId}`,
+        sourceType: "manual",
+        sourceId,
+        sourceSubId: "",
+        quoteId: "",
+        versionId: "",
+        caseId: "",
+        clientId: "",
+        clientName: row.buyerName,
+        contactName: "",
+        clientPhone: "",
+        clientEmail: row.email,
+        clientTaxId: row.buyerUbn,
+        projectName: row.buyerName,
+        amount: total,
+        untaxedAmount: untaxed,
+        taxAmount: total - untaxed,
+        totalAmount: total,
+        taxRate: 5,
+        invoiceDate: today,
+        lineItems: [{ name: row.itemName, quantity: row.quantity, unitPrice: row.unitPrice, amount: total, remark: "", taxType: 0 as const }],
+        existingInvoiceId: "",
+        existingInvoiceStatus: "",
+      };
+    });
+
+    setCandidates((prev) => [...prev, ...newCandidates]);
+    setDrafts((prev) => {
+      const next = { ...prev };
+      for (const c of newCandidates) {
+        next[c.candidateId] = {
+          buyerType: c.clientTaxId ? "b2b" : "b2c",
+          buyerName: c.clientName,
+          buyerTaxId: c.clientTaxId,
+          email: c.clientEmail,
+          carrierType: "none",
+          carrierValue: "",
+          donationCode: "",
+          content: c.projectName,
+        };
       }
-    } catch {
-      setNotice({ tone: "error", title: "匯入失敗", detail: "網路錯誤" });
-    } finally {
-      setImporting(false);
-    }
+      return next;
+    });
+    setSelectedIds((prev) => [...prev, ...newCandidates.map((c) => c.candidateId)]);
+    setPasteData("");
+    setParsedRows([]);
+    setNotice({ tone: "success", title: `已加入 ${newCandidates.length} 筆到待開立候選，請確認資料後點「批次開立」` });
   }
 
   async function createAndIssue(snapshot: CandidateDraftSnapshot): Promise<BatchIssueItemResult> {
@@ -355,6 +386,8 @@ export function EInvoicesClient() {
       try {
         const issueResponse = await fetch(`/api/sheets/einvoices/${encodeURIComponent(createPayload.invoice.invoiceId)}/issue`, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invoiceRecord: createPayload.invoice }),
         });
         const issuePayload = (await issueResponse.json().catch(() => ({}))) as { invoice?: EInvoiceRecord; error?: string; provider?: { msg?: string } };
         if (!issueResponse.ok) {
@@ -368,16 +401,22 @@ export function EInvoicesClient() {
           };
         }
 
+        const finalInvoiceNo = issuePayload.invoice?.providerInvoiceNo ?? "";
+        const finalRecord: EInvoiceRecord = issuePayload.invoice ?? {
+          ...createPayload.invoice,
+          status: "issued",
+          providerInvoiceNo: finalInvoiceNo,
+          updatedAt: new Date().toISOString(),
+        };
         return {
           candidateId: candidate.candidateId,
           displayName,
           success: true,
           stage: "issue",
-          invoiceId: issuePayload.invoice?.invoiceId ?? createPayload.invoice.invoiceId,
-          providerInvoiceNo: issuePayload.invoice?.providerInvoiceNo,
-          detail: issuePayload.invoice?.providerInvoiceNo
-            ? `已成功送出，發票號碼 ${issuePayload.invoice.providerInvoiceNo}`
-            : "已成功送出 Giveme",
+          invoiceId: finalRecord.invoiceId,
+          providerInvoiceNo: finalInvoiceNo,
+          invoiceRecord: finalRecord,
+          detail: finalInvoiceNo ? `已成功送出，發票號碼 ${finalInvoiceNo}` : "已成功送出 Giveme",
         };
       } catch (err) {
         return {
@@ -439,7 +478,20 @@ export function EInvoicesClient() {
               detail: "請看下方批次開立結果，失敗項目已列出具體階段與錯誤原因。",
             },
       );
+      const newInvoiceRecords = results.flatMap((r) => (r.invoiceRecord ? [r.invoiceRecord] : []));
+
+      const mergeNewInvoices = (prev: EInvoiceRecord[]) => {
+        if (newInvoiceRecords.length === 0) return prev;
+        const existingIds = new Set(prev.map((inv) => inv.invoiceId));
+        const toAdd = newInvoiceRecords.filter((inv) => !existingIds.has(inv.invoiceId));
+        return toAdd.length > 0 ? [...toAdd, ...prev] : prev;
+      };
+
+      // Immediately show new records before Sheets propagates
+      setInvoices(mergeNewInvoices);
       await load({ preserveFeedback: true });
+      // Re-merge after load in case Sheets still hadn't propagated
+      setInvoices(mergeNewInvoices);
     } finally {
       setIssuing(false);
     }
@@ -457,6 +509,29 @@ export function EInvoicesClient() {
       await load();
     } catch (err) {
       setNotice({ tone: "error", title: "同步失敗", detail: err instanceof Error ? err.message : "同步失敗" });
+    } finally {
+      setSyncingInvoiceId("");
+    }
+  }
+
+  async function handleIssue(invoiceId: string, dateOverride?: string) {
+    setSyncingInvoiceId(invoiceId);
+    try {
+      const body = dateOverride ? { invoiceDate: dateOverride } : {};
+      const response = await fetch(`/api/sheets/einvoices/${encodeURIComponent(invoiceId)}/issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { invoice?: EInvoiceRecord; error?: string; provider?: { msg?: string } };
+      if (!response.ok) {
+        throw new Error(buildUnknownErrorDetail(payload, "開立失敗"));
+      }
+      const no = (payload.invoice as EInvoiceRecord | undefined)?.providerInvoiceNo;
+      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : `${invoiceId} 已送出 Giveme` });
+      await load({ preserveFeedback: true });
+    } catch (err) {
+      setNotice({ tone: "error", title: "開立失敗", detail: err instanceof Error ? err.message : "開立失敗" });
     } finally {
       setSyncingInvoiceId("");
     }
@@ -591,7 +666,7 @@ export function EInvoicesClient() {
                           </div>
                         </div>
                         {!disabled && (
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => removeCandidate(candidate.candidateId)}>
+                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => void removeCandidate(candidate.candidateId)}>
                             移除
                           </Button>
                         )}
@@ -736,8 +811,7 @@ export function EInvoicesClient() {
               <Button size="sm" variant="outline" onClick={() => parsePasteData()}>
                 預覽
               </Button>
-              <Button size="sm" onClick={() => handleBatchImport()} disabled={parsedRows.length === 0 || importing}>
-                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <Button size="sm" onClick={() => handleBatchImport()} disabled={parsedRows.length === 0}>
                 匯入 ({parsedRows.length} 筆)
               </Button>
             </div>
@@ -789,13 +863,46 @@ export function EInvoicesClient() {
                       ) : null}
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => void handleSync(invoice.invoiceId)} disabled={syncingInvoiceId === invoice.invoiceId}>
-                        {syncingInvoiceId === invoice.invoiceId ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                      </Button>
-                      {invoice.status === "issued" ? (
-                        <Button variant="ghost" size="sm" onClick={() => void handleCancel(invoice)} disabled={syncingInvoiceId === invoice.invoiceId}>
-                          <XCircle className="h-4 w-4 text-red-600" />
+                      {invoice.status === "draft" || invoice.status === "failed" ? (
+                        <>
+                          {invoice.status === "failed" && (
+                            <input
+                              type="date"
+                              className="h-8 rounded border border-[var(--border)] px-1 text-xs"
+                              value={reissueDate[invoice.invoiceId] ?? invoice.invoiceDate.slice(0, 10)}
+                              onChange={(e) => setReissueDate((prev) => ({ ...prev, [invoice.invoiceId]: e.target.value }))}
+                              title="修改發票日期後重新送出"
+                            />
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="送出開立"
+                            onClick={() => void handleIssue(invoice.invoiceId, invoice.status === "failed" ? (reissueDate[invoice.invoiceId] ?? invoice.invoiceDate.slice(0, 10)) : undefined)}
+                            disabled={syncingInvoiceId === invoice.invoiceId}
+                          >
+                            {syncingInvoiceId === invoice.invoiceId ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4 text-blue-600" />}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => void handleSync(invoice.invoiceId)} disabled={syncingInvoiceId === invoice.invoiceId}>
+                          {syncingInvoiceId === invoice.invoiceId ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                         </Button>
+                      )}
+                      {invoice.status === "issued" ? (
+                        <>
+                          <a
+                            href={`/api/sheets/einvoices/${encodeURIComponent(invoice.invoiceId)}/picture?type=1${invoice.providerInvoiceNo ? `&code=${encodeURIComponent(invoice.providerInvoiceNo)}` : ""}`}
+                            download
+                            title="下載發票圖片"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
+                          >
+                            <Download className="h-4 w-4 text-emerald-600" />
+                          </a>
+                          <Button variant="ghost" size="sm" onClick={() => void handleCancel(invoice)} disabled={syncingInvoiceId === invoice.invoiceId}>
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </>
                       ) : null}
                     </div>
                   </div>

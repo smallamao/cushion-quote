@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { issueB2BInvoice, issueB2CInvoice } from "@/lib/giveme-client";
 import { parseEInvoiceItems, isoNow } from "@/lib/einvoice-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
+import type { EInvoiceRecord } from "@/lib/types";
 
 import { getSession } from "../../_auth";
 import { appendEInvoiceEvent, getEInvoiceRecordById, updateEInvoiceRecord } from "../../_shared";
@@ -38,20 +39,44 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
   }
 
+  let inlineRecord: EInvoiceRecord | undefined;
+  let bodyInvoiceDate: string | undefined;
   try {
-    const current = await getEInvoiceRecordById(client, invoiceId);
+    const body = (await request.json().catch(() => ({}))) as { invoiceRecord?: EInvoiceRecord; invoiceDate?: string };
+    if (body.invoiceRecord && body.invoiceRecord.invoiceId === invoiceId &&
+        (body.invoiceRecord.status === "draft" || body.invoiceRecord.status === "failed")) {
+      inlineRecord = body.invoiceRecord;
+    }
+    if (typeof body.invoiceDate === "string" && body.invoiceDate.trim()) {
+      bodyInvoiceDate = body.invoiceDate.trim();
+    }
+  } catch {
+    // body parse failure is non-fatal; fall through to Sheets lookup
+  }
+
+  try {
+    const current = inlineRecord ?? await getEInvoiceRecordById(client, invoiceId);
     if (!current) {
       return NextResponse.json({ ok: false, error: "invoice not found" }, { status: 404 });
     }
-    if (current.status !== "draft") {
+    if (current.status !== "draft" && current.status !== "failed") {
       return NextResponse.json({ ok: false, error: `invoice status ${current.status} cannot issue` }, { status: 409 });
     }
 
-    let draftRecord = await updateEInvoiceRecord(client, invoiceId, (record) => ({
-      ...record,
-      status: "issuing",
-      updatedAt: isoNow(),
-    }));
+    // When we have the inline record (just created), skip the intermediate "issuing" write
+    // to avoid spending the propagation-retry budget before the Giveme call.
+    // The final status write below will handle the Sheets update.
+    let draftRecord: EInvoiceRecord | null;
+    if (inlineRecord) {
+      draftRecord = { ...inlineRecord, status: "issuing", ...(bodyInvoiceDate ? { invoiceDate: bodyInvoiceDate } : {}), updatedAt: isoNow() };
+    } else {
+      draftRecord = await updateEInvoiceRecord(client, invoiceId, (record) => ({
+        ...record,
+        status: "issuing",
+        ...(bodyInvoiceDate ? { invoiceDate: bodyInvoiceDate } : {}),
+        updatedAt: isoNow(),
+      }));
+    }
     if (!draftRecord) {
       return NextResponse.json({ ok: false, error: "invoice not found" }, { status: 404 });
     }
@@ -120,7 +145,7 @@ export async function POST(
     });
 
     const nextStatus = result.success ? "issued" : "failed";
-    draftRecord = await updateEInvoiceRecord(client, invoiceId, (record) => ({
+    const finalUpdater = (record: EInvoiceRecord): EInvoiceRecord => ({
       ...record,
       status: nextStatus,
       providerInvoiceNo: result.code || record.providerInvoiceNo,
@@ -129,7 +154,13 @@ export async function POST(
       errorCode: result.success ? "" : result.code,
       errorMessage: result.success ? "" : result.msg || "Giveme 開立失敗",
       updatedAt: isoNow(),
-    }));
+    });
+    draftRecord = await updateEInvoiceRecord(client, invoiceId, finalUpdater);
+    // If Sheets still hasn't propagated (row not found), build final record in memory so the
+    // client receives a valid record for immediate local-state update.
+    if (!draftRecord && inlineRecord) {
+      draftRecord = finalUpdater({ ...inlineRecord, status: "issuing" as const });
+    }
 
     await appendEInvoiceEvent(client, {
       invoiceId,

@@ -1,6 +1,20 @@
 import "server-only";
 
+import https from "node:https";
+import type http from "node:http";
+
 import { createGivemeAuthFields } from "@/lib/giveme-signer";
+
+function buildProxyAgent(): http.Agent | undefined {
+  const proxyUrl = process.env.FIXIE_URL?.trim();
+  if (!proxyUrl) return undefined;
+  // https-proxy-agent is a transitive dep — always available at runtime
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { HttpsProxyAgent } = require("https-proxy-agent") as typeof import("https-proxy-agent");
+  return new HttpsProxyAgent(proxyUrl);
+}
+
+const proxyAgent = buildProxyAgent();
 
 export interface GivemeIssueItem {
   name: string;
@@ -104,29 +118,102 @@ async function postJson(action: string, body: Record<string, unknown>): Promise<
     password: config.password,
   });
 
-  const response = await fetch(`${config.baseUrl}?action=${action}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...auth, ...body }),
-    cache: "no-store",
-    redirect: "error",
-    signal: AbortSignal.timeout(15000),
+  const payload = JSON.stringify({ ...auth, ...body });
+  const reqUrl = new URL(`${config.baseUrl}?action=${action}`);
+
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    const options: https.RequestOptions = {
+      hostname: reqUrl.hostname,
+      port: reqUrl.port || 443,
+      path: reqUrl.pathname + reqUrl.search,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+      ...(proxyAgent ? { agent: proxyAgent } : {}),
+    };
+
+    const timer = setTimeout(() => req.destroy(new Error("Giveme API timeout (15s)")), 15_000);
+
+    const req = https.request(options, (res) => {
+      clearTimeout(timer);
+      let raw = "";
+      res.on("data", (chunk: Buffer) => { raw += chunk.toString(); });
+      res.on("end", () => {
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`Giveme API HTTP ${res.statusCode}`));
+          return;
+        }
+        const ct = res.headers["content-type"] ?? "";
+        if (!ct.includes("application/json")) {
+          reject(new Error("Giveme API 回應不是 JSON"));
+          return;
+        }
+        try {
+          resolve(JSON.parse(raw) as Record<string, unknown>);
+        } catch {
+          reject(new Error("Giveme API 回應格式錯誤"));
+        }
+      });
+    });
+
+    req.on("error", (err) => { clearTimeout(timer); reject(err); });
+    req.write(payload);
+    req.end();
   });
+}
 
-  if (!response.ok) {
-    throw new Error(`Giveme API HTTP ${response.status}`);
-  }
+async function postBinary(action: string, body: Record<string, unknown>): Promise<{ contentType: string; buffer: Buffer }> {
+  const config = getGivemeConfig();
+  if (!config) throw new Error("Giveme 電子發票憑證未設定");
 
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    throw new Error("Giveme API 回應不是 JSON");
-  }
+  const auth = createGivemeAuthFields({ uncode: config.uncode, idno: config.idno, password: config.password });
+  const payload = JSON.stringify({ ...auth, ...body });
+  const reqUrl = new URL(`${config.baseUrl}?action=${action}`);
 
-  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!payload) {
-    throw new Error(`Giveme API 回應格式錯誤 (${response.status})`);
-  }
-  return payload;
+  return new Promise((resolve, reject) => {
+    const options: https.RequestOptions = {
+      hostname: reqUrl.hostname,
+      port: reqUrl.port || 443,
+      path: reqUrl.pathname + reqUrl.search,
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
+      ...(proxyAgent ? { agent: proxyAgent } : {}),
+    };
+    const timer = setTimeout(() => req.destroy(new Error("Giveme API timeout (30s)")), 30_000);
+    const req = https.request(options, (res) => {
+      clearTimeout(timer);
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => {
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`Giveme API HTTP ${res.statusCode}`));
+          return;
+        }
+        const buf = Buffer.concat(chunks);
+        const ct = res.headers["content-type"] ?? "application/octet-stream";
+        // If JSON came back it means an error
+        if (ct.includes("application/json")) {
+          try {
+            const json = JSON.parse(buf.toString()) as Record<string, unknown>;
+            reject(new Error(typeof json.msg === "string" ? json.msg : "Giveme 圖片請求失敗"));
+          } catch {
+            reject(new Error("Giveme API 回應格式錯誤"));
+          }
+          return;
+        }
+        resolve({ contentType: ct, buffer: buf });
+      });
+    });
+    req.on("error", (err) => { clearTimeout(timer); reject(err); });
+    req.write(payload);
+    req.end();
+  });
+}
+
+export async function getInvoicePicture(code: string, type: 1 | 2 | 3 = 1): Promise<{ contentType: string; buffer: Buffer }> {
+  return postBinary("picture", { code, type: String(type) });
 }
 
 export async function issueB2CInvoice(input: GivemeIssueB2CInput): Promise<GivemeBaseResponse> {

@@ -123,20 +123,27 @@ export async function appendEInvoiceRecord(client: SheetsClient, record: EInvoic
 }
 
 export async function updateEInvoiceRecord(client: SheetsClient, invoiceId: string, updater: (record: EInvoiceRecord) => EInvoiceRecord): Promise<EInvoiceRecord | null> {
-  const rows = await getEInvoiceRows(client);
-  const rowIndex = rows.findIndex((row) => (row[0] ?? "") === invoiceId);
-  if (rowIndex === -1) return null;
-
-  const current = eInvoiceRowToRecord(rows[rowIndex]);
-  const next = updater(current);
   const { EINVOICE_ROW_RANGE, eInvoiceRecordToRow } = await import("@/lib/einvoice-utils");
-  await client.sheets.spreadsheets.values.update({
-    spreadsheetId: client.spreadsheetId,
-    range: EINVOICE_ROW_RANGE(rowIndex + 2),
-    valueInputOption: "RAW",
-    requestBody: { values: [eInvoiceRecordToRow(next)] },
-  });
-  return next;
+
+  async function tryOnce(): Promise<EInvoiceRecord | null> {
+    const rows = await getEInvoiceRows(client);
+    const rowIndex = rows.findIndex((row) => (row[0] ?? "") === invoiceId);
+    if (rowIndex === -1) return null;
+    const next = updater(eInvoiceRowToRecord(rows[rowIndex]));
+    await client.sheets.spreadsheets.values.update({
+      spreadsheetId: client.spreadsheetId,
+      range: EINVOICE_ROW_RANGE(rowIndex + 2),
+      valueInputOption: "RAW",
+      requestBody: { values: [eInvoiceRecordToRow(next)] },
+    });
+    return next;
+  }
+
+  const first = await tryOnce();
+  if (first) return first;
+  // Row may not have propagated yet (append → GET delay) — wait and retry once
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  return tryOnce();
 }
 
 async function getCompanyLookup(client: SheetsClient): Promise<{ companyMap: Map<string, Company>; primaryContactMap: Map<string, Contact> }> {
@@ -267,7 +274,7 @@ export async function buildEInvoiceCandidates(client: SheetsClient, options: { v
   if (options.versionId) {
     const version = versionMap.get(options.versionId);
     if (!version) return [];
-    if (optOutVersionIds.has(version.versionId)) return [];
+    // Do NOT apply opt-out when navigating directly to a version — the user explicitly came here
     const caseRecord = caseMap.get(version.caseId);
     const company = caseRecord ? companyMap.get(caseRecord.clientId) : undefined;
     const contact = caseRecord ? primaryContactMap.get(caseRecord.clientId) : undefined;

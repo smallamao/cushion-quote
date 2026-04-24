@@ -187,10 +187,13 @@ export function generateEInvoiceId(rows: string[][], now: Date = new Date()): st
     .map((row) => row[0] ?? "")
     .filter((id) => id.startsWith(prefix))
     .reduce((currentMax, id) => {
-      const seq = Number(id.slice(prefix.length));
+      // Strip optional millisecond suffix (e.g. "INV-20260424-001-042") before parsing sequence
+      const seqPart = id.slice(prefix.length).split("-")[0];
+      const seq = Number(seqPart);
       return Number.isFinite(seq) ? Math.max(currentMax, seq) : currentMax;
     }, 0);
-  return `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
+  const msSuffix = String(Date.now() % 1000).padStart(3, "0");
+  return `${prefix}${String(maxSeq + 1).padStart(3, "0")}-${msSuffix}`;
 }
 
 export function generateEInvoiceEventId(invoiceId: string, now: Date = new Date()): string {
