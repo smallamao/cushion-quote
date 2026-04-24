@@ -830,9 +830,23 @@ export function EInvoicesClient() {
               title="從事件紀錄重建遺失的主紀錄，並修正卡在 draft/issuing 的已開立發票"
               onClick={async () => {
                 const res = await fetch("/api/sheets/einvoices/reconcile", { method: "POST" });
-                const data = (await res.json()) as { ok: boolean; message?: string; error?: string };
+                const data = (await res.json()) as { ok: boolean; message?: string; error?: string; newRecords?: EInvoiceRecord[]; updatedRecords?: EInvoiceRecord[] };
                 if (data.ok) {
                   setNotice({ tone: "success", title: data.message ?? "修復完成" });
+                  // Merge recovered records immediately into state (don't wait for Sheets propagation)
+                  const recovered = [...(data.newRecords ?? []), ...(data.updatedRecords ?? [])];
+                  if (recovered.length > 0) {
+                    setInvoices((prev) => {
+                      const existingIds = new Set(prev.map((inv) => inv.invoiceId));
+                      const toAdd = recovered.filter((inv) => !existingIds.has(inv.invoiceId));
+                      const updated = prev.map((inv) => {
+                        const u = recovered.find((r) => r.invoiceId === inv.invoiceId);
+                        return u ?? inv;
+                      });
+                      return toAdd.length > 0 ? [...toAdd, ...updated] : updated;
+                    });
+                  }
+                  // Also reload in background so Sheets eventually catches up
                   void load({ preserveFeedback: true });
                 } else {
                   setNotice({ tone: "error", title: "修復失敗", detail: data.error });

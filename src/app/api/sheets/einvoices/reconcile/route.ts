@@ -41,8 +41,8 @@ export async function POST(request: Request) {
       byInvoice.set(ev.invoiceId, list);
     }
 
-    let repaired = 0;
-    let updated = 0;
+    const newRecords: EInvoiceRecord[] = [];
+    const updatedRecords: EInvoiceRecord[] = [];
 
     for (const [invoiceId, evList] of byInvoice) {
       const successEv = evList.find((e) => e.eventType === "issue_succeeded");
@@ -66,7 +66,6 @@ export async function POST(request: Request) {
       const existing = existingById.get(invoiceId);
 
       if (!existing) {
-        // Record missing entirely — create stub from event data
         const now = isoNow();
         const stub: EInvoiceRecord = {
           invoiceId,
@@ -109,27 +108,27 @@ export async function POST(request: Request) {
           updatedAt: now,
         };
         await appendEInvoiceRecord(client, stub);
-        existingById.set(invoiceId, stub);
-        repaired++;
+        newRecords.push(stub);
       } else if (existing.status === "draft" || existing.status === "issuing") {
-        // Record exists but status not updated — fix it
-        await updateEInvoiceRecord(client, invoiceId, (record) => ({
+        const next = await updateEInvoiceRecord(client, invoiceId, (record) => ({
           ...record,
           status: "issued",
           providerInvoiceNo: providerInvoiceNo || record.providerInvoiceNo,
           providerResponseJson: successEv.responseJson || record.providerResponseJson,
           updatedAt: isoNow(),
         }));
-        updated++;
+        if (next) updatedRecords.push(next);
       }
     }
 
-    // Wait for Sheets propagation before returning so the client's reload sees the new rows
-    if (repaired > 0 || updated > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 4000));
-    }
-
-    return NextResponse.json({ ok: true, repaired, updated, message: `修復完成：新建 ${repaired} 筆，更新狀態 ${updated} 筆` });
+    return NextResponse.json({
+      ok: true,
+      repaired: newRecords.length,
+      updated: updatedRecords.length,
+      newRecords,
+      updatedRecords,
+      message: `修復完成：新建 ${newRecords.length} 筆，更新狀態 ${updatedRecords.length} 筆`,
+    });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "修復失敗" }, { status: 500 });
   }
