@@ -11,6 +11,7 @@ import type {
 } from "@/lib/types";
 import type { Company, Contact } from "@/lib/types/company";
 import {
+  EINVOICE_EVENT_RANGE_DATA,
   EINVOICE_EVENT_RANGE_FULL,
   EINVOICE_RANGE_DATA,
   EINVOICE_RANGE_FULL,
@@ -92,6 +93,7 @@ export async function appendEInvoiceEvent(
     spreadsheetId: client.spreadsheetId,
     range: EINVOICE_EVENT_RANGE_FULL,
     valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
     requestBody: { values: [eInvoiceEventRecordToRow(record)] },
   });
 }
@@ -118,8 +120,21 @@ export async function appendEInvoiceRecord(client: SheetsClient, record: EInvoic
     spreadsheetId: client.spreadsheetId,
     range: EINVOICE_RANGE_FULL,
     valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
     requestBody: { values: [eInvoiceRecordToRow(record)] },
   });
+}
+
+export async function getEInvoiceEventRows(client: SheetsClient): Promise<string[][]> {
+  try {
+    const response = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: EINVOICE_EVENT_RANGE_DATA,
+    });
+    return (response.data.values ?? []) as string[][];
+  } catch {
+    return [];
+  }
 }
 
 export async function updateEInvoiceRecord(client: SheetsClient, invoiceId: string, updater: (record: EInvoiceRecord) => EInvoiceRecord): Promise<EInvoiceRecord | null> {

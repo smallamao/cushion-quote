@@ -823,25 +823,44 @@ export function EInvoicesClient() {
             <h2 className="text-sm font-medium">開票歷史</h2>
             <span className="text-xs text-[var(--text-secondary)]">{invoices.length} 筆</span>
           </div>
-          {invoices.some((inv) => inv.status === "failed") && (
+          <div className="flex gap-2">
             <Button
               size="sm"
-              variant="destructive"
+              variant="outline"
+              title="從事件紀錄重建遺失的主紀錄，並修正卡在 draft/issuing 的已開立發票"
               onClick={async () => {
-                if (!confirm("確定刪除所有失敗記錄？")) return;
-                const res = await fetch("/api/sheets/einvoices/cleanup", { method: "POST" });
-                const data = await res.json();
+                const res = await fetch("/api/sheets/einvoices/reconcile", { method: "POST" });
+                const data = (await res.json()) as { ok: boolean; message?: string; error?: string };
                 if (data.ok) {
-                  setNotice({ tone: "success", title: data.message });
+                  setNotice({ tone: "success", title: data.message ?? "修復完成" });
                   void load({ preserveFeedback: true });
                 } else {
-                  setNotice({ tone: "error", title: "刪除失敗", detail: data.error });
+                  setNotice({ tone: "error", title: "修復失敗", detail: data.error });
                 }
               }}
             >
-              刪除失敗記錄
+              修復遺失記錄
             </Button>
-          )}
+            {invoices.some((inv) => inv.status === "failed") && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={async () => {
+                  if (!confirm("確定刪除所有失敗記錄？")) return;
+                  const res = await fetch("/api/sheets/einvoices/cleanup", { method: "POST" });
+                  const data = (await res.json()) as { ok: boolean; message?: string; error?: string };
+                  if (data.ok) {
+                    setNotice({ tone: "success", title: data.message ?? "刪除完成" });
+                    void load({ preserveFeedback: true });
+                  } else {
+                    setNotice({ tone: "error", title: "刪除失敗", detail: data.error });
+                  }
+                }}
+              >
+                刪除失敗記錄
+              </Button>
+            )}
+          </div>
 
           <div className="space-y-3">
             {invoices.length === 0 ? (
