@@ -151,6 +151,8 @@ export interface AfterSalesService {
   completedDate: string;
   completionNotes: string;
   completionPhotos: string[];
+  customerSignature?: string;
+  customerSignedAt?: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
