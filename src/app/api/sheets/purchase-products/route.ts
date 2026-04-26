@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
+import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { cacheGet, cacheInvalidate, cacheSet, singleFlight } from "@/lib/sheets-cache";
 import { getSheetsClient } from "@/lib/sheets-client";
+import { yardToCai } from "@/lib/utils";
 import type { PurchaseProduct, PurchaseProductCategory, PurchaseUnit } from "@/lib/types";
 
 const SHEET = "採購商品";
@@ -44,7 +47,16 @@ function safeNumber(v: string | undefined): number | undefined {
 }
 
 function rowToProduct(row: string[]): PurchaseProduct {
+  const unit = (row[6] as PurchaseUnit) ?? "碼";
+  const widthCm = safeNumber(row[9]);
   const legacyUnitPrice = safeNumber(row[10]) ?? 0;
+  // Convert per-unit purchase price to per-才 for calculator use
+  const costPerCai = (() => {
+    if (!legacyUnitPrice) return 0;
+    if (unit === "才") return legacyUnitPrice;
+    if (unit === "碼") return yardToCai(legacyUnitPrice, widthCm ?? 137);
+    return legacyUnitPrice;
+  })();
   return {
     id: row[0] ?? "",
     productCode: row[1] ?? "",
@@ -52,12 +64,12 @@ function rowToProduct(row: string[]): PurchaseProduct {
     productName: row[3] ?? "",
     specification: row[4] ?? "",
     category: (row[5] as PurchaseProductCategory) ?? "其他",
-    unit: (row[6] as PurchaseUnit) ?? "碼",
+    unit,
     supplierId: row[7] ?? "",
     supplierName: row[8] ?? "",
-    widthCm: safeNumber(row[9]),
+    widthCm,
     unitPrice: legacyUnitPrice,
-    costPerCai: legacyUnitPrice,
+    costPerCai,
     listPricePerCai: safeNumber(row[11]),
     brand: row[12] ?? "",
     series: row[13] ?? "",
@@ -73,7 +85,6 @@ function rowToProduct(row: string[]): PurchaseProduct {
 }
 
 function productToRow(p: PurchaseProduct): string[] {
-  const effectiveCost = p.costPerCai ?? p.unitPrice ?? 0;
   return [
     p.id,                                                   // A
     p.productCode,                                          // B
@@ -85,7 +96,7 @@ function productToRow(p: PurchaseProduct): string[] {
     p.supplierId,                                           // H
     p.supplierName ?? "",                                   // I
     p.widthCm != null ? String(p.widthCm) : "",             // J
-    String(effectiveCost),                                  // K (進價)
+    String(p.unitPrice ?? 0),                               // K (進價，per-unit price)
     p.listPricePerCai != null ? String(p.listPricePerCai) : "", // L (牌價)
     p.brand ?? "",                                          // M
     p.series ?? "",                                         // N
@@ -103,20 +114,33 @@ function productToRow(p: PurchaseProduct): string[] {
   ];
 }
 
+const CACHE_KEY = "purchase-products:all";
+const CACHE_TTL = 60_000; // 1 min
+
+async function getPurchaseProducts(
+  client: NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>,
+): Promise<PurchaseProduct[]> {
+  const response = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: RANGE_DATA,
+  });
+  return (response.data.values ?? []).map(rowToProduct).filter((p) => p.id);
+}
+
 export async function GET() {
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json({ products: [] as PurchaseProduct[], source: "defaults" as const });
   }
 
+  const cached = cacheGet<PurchaseProduct[]>(CACHE_KEY);
+  if (cached) {
+    return NextResponse.json({ products: cached, source: "sheets" as const });
+  }
+
   try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: RANGE_DATA,
-    });
-    const products = (response.data.values ?? [])
-      .map(rowToProduct)
-      .filter((p) => p.id);
+    const products = await singleFlight(CACHE_KEY, () => getPurchaseProducts(client));
+    cacheSet(CACHE_KEY, products, CACHE_TTL);
     return NextResponse.json({ products, source: "sheets" as const });
   } catch {
     return NextResponse.json({ products: [] as PurchaseProduct[], source: "defaults" as const });
@@ -124,6 +148,15 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const token = request.headers
+    .get("cookie")
+    ?.split(";")
+    .find((item) => item.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
+    ?.split("=")[1];
+  const session = verifySession(token);
+  if (!session) return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
+  if (session.role !== "admin") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+
   const payload = (await request.json()) as PurchaseProduct | PurchaseProduct[];
   const now = new Date().toISOString().slice(0, 10);
   const items = Array.isArray(payload) ? payload : [payload];
@@ -140,14 +173,31 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Determine next empty row explicitly — avoid values.append table-detection,
-    // which can land at wrong columns when the sheet has unusual data layout
-    // (e.g., from legacy Ragic import that left gaps in column A).
-    const idRes = await sheetsClient.sheets.spreadsheets.values.get({
+    // Fetch existing rows to check for duplicates and find next empty row
+    const existingRes = await sheetsClient.sheets.spreadsheets.values.get({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: RANGE_IDS,
+      range: `${SHEET}!A2:H`,
     });
-    const existingCount = (idRes.data.values ?? []).length;
+    const existingRows = existingRes.data.values ?? [];
+
+    // Check for duplicate productCode within the same supplier
+    const duplicates: string[] = [];
+    for (const item of items) {
+      const conflict = existingRows.find(
+        (row) => row[1] === item.productCode && row[7] === item.supplierId,
+      );
+      if (conflict) {
+        duplicates.push(`${item.productCode}（廠商 ${item.supplierId}）`);
+      }
+    }
+    if (duplicates.length > 0) {
+      return NextResponse.json(
+        { ok: false, error: `以下商品編號在此廠商下已存在，請使用不同編號：${duplicates.join("、")}` },
+        { status: 409 },
+      );
+    }
+
+    const existingCount = existingRows.length;
     const startRow = existingCount + 2; // +2: skip header row (1) + 1-indexed
     const endRow = startRow + items.length - 1;
 
@@ -157,6 +207,7 @@ export async function POST(request: Request) {
       valueInputOption: "RAW",
       requestBody: { values: items.map(productToRow) },
     });
+    cacheInvalidate(CACHE_KEY);
     return NextResponse.json(
       { ok: true, products: items, count: items.length },
       { status: 201 }
@@ -168,6 +219,15 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const token = request.headers
+    .get("cookie")
+    ?.split(";")
+    .find((item) => item.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
+    ?.split("=")[1];
+  const session = verifySession(token);
+  if (!session) return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
+  if (session.role !== "admin") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+
   const payload = (await request.json()) as PurchaseProduct;
   payload.updatedAt = new Date().toISOString().slice(0, 10);
 
@@ -194,6 +254,7 @@ export async function PATCH(request: Request) {
       valueInputOption: "RAW",
       requestBody: { values: [productToRow(payload)] },
     });
+    cacheInvalidate(CACHE_KEY);
     return NextResponse.json({ ok: true, product: payload });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

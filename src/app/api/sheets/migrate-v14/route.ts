@@ -5,7 +5,7 @@ import { getSheetsClient } from "@/lib/sheets-client";
 const SHEETS = [
   {
     title: "電子發票紀錄",
-    range: "A1:AL1",
+    range: "A1:AM1",
     headers: [
       "發票ID",
       "重試來源ID",
@@ -45,6 +45,7 @@ const SHEETS = [
       "建立者",
       "建立時間",
       "更新時間",
+      "買方地址",
     ],
   },
   {

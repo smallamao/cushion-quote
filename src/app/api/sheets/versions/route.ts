@@ -880,7 +880,7 @@ export async function POST(request: Request) {
 
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-      range: "案件!A:X",
+      range: "案件!A:AA",
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(caseRecord)] },
     });

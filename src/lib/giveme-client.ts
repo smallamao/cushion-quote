@@ -70,6 +70,9 @@ export interface GivemeQueryResponse extends GivemeBaseResponse {
   status?: string;
   delRemark?: string;
   delTime?: string;
+  customerName?: string;
+  phone?: string;
+  customerRemark?: string;
   details?: Array<{ name: string; number: string; money: string }>;
 }
 
@@ -213,7 +216,7 @@ async function postBinary(action: string, body: Record<string, unknown>): Promis
 }
 
 export async function getInvoicePicture(code: string, type: 1 | 2 | 3 = 1): Promise<{ contentType: string; buffer: Buffer }> {
-  return postBinary("picture", { code, type: String(type) });
+  return postBinary("picture", { code, type });
 }
 
 export async function issueB2CInvoice(input: GivemeIssueB2CInput): Promise<GivemeBaseResponse> {
@@ -268,6 +271,10 @@ export async function queryInvoice(code: string): Promise<GivemeQueryResponse> {
     status: typeof payload.status === "string" ? payload.status : undefined,
     delRemark: typeof payload.delRemark === "string" ? payload.delRemark : undefined,
     delTime: typeof payload.delTime === "string" ? payload.delTime : undefined,
+    customerName: typeof payload.customerName === "string" ? payload.customerName : undefined,
+    phone: typeof payload.phone === "string" ? payload.phone : undefined,
+    customerRemark: typeof payload.customerRemark === "string" ? payload.customerRemark
+      : typeof payload.remark === "string" ? payload.remark : undefined,
     details: Array.isArray(payload.details)
       ? payload.details.flatMap((detail) => {
           if (!detail || typeof detail !== "object") return [];

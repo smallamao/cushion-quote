@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { Contact } from "@/lib/types/company";
 
+const COMPANIES_CACHE_KEY = "cq-companies-cache";
+
 export function useContacts(companyId: string | null) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,6 +43,7 @@ export function useContacts(companyId: string | null) {
         body: JSON.stringify(contact),
       });
       if (!response.ok) throw new Error("新增聯絡人失敗");
+      localStorage.removeItem(COMPANIES_CACHE_KEY);
       await load();
     },
     [load],
@@ -54,6 +57,7 @@ export function useContacts(companyId: string | null) {
         body: JSON.stringify(contact),
       });
       if (!response.ok) throw new Error("更新聯絡人失敗");
+      localStorage.removeItem(COMPANIES_CACHE_KEY);
       await load();
     },
     [load],

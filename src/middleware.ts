@@ -58,7 +58,6 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/login" ||
     pathname.startsWith("/api/auth") ||
     pathname === "/api/sheets/init" ||
-    pathname.startsWith("/api/sheets/einvoices") ||
     pathname.startsWith("/api/sheets/migrate") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||

@@ -43,6 +43,13 @@ export default function RootLayout({
   return (
     <html lang="zh-Hant" className={dmSans.variable}>
       <body>
+        {/* Runs before React hydrates to avoid sidebar-width flash */}
+        <script
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var c=localStorage.getItem('cq-sidebar-collapsed');document.documentElement.style.setProperty('--sidebar-width',c==='true'?'56px':'220px')}catch(e){}})()`,
+          }}
+        />
         <div className="app-shell">
           <Sidebar />
           <div className="main-area">

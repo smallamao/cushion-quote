@@ -8,9 +8,9 @@ import type {
 export const EINVOICE_SHEET = "電子發票紀錄";
 export const EINVOICE_EVENT_SHEET = "電子發票事件";
 
-export const EINVOICE_RANGE_FULL = `${EINVOICE_SHEET}!A:AL`;
-export const EINVOICE_RANGE_DATA = `${EINVOICE_SHEET}!A2:AL10000`;
-export const EINVOICE_ROW_RANGE = (sheetRow: number) => `${EINVOICE_SHEET}!A${sheetRow}:AL${sheetRow}`;
+export const EINVOICE_RANGE_FULL = `${EINVOICE_SHEET}!A:AM`;
+export const EINVOICE_RANGE_DATA = `${EINVOICE_SHEET}!A2:AM10000`;
+export const EINVOICE_ROW_RANGE = (sheetRow: number) => `${EINVOICE_SHEET}!A${sheetRow}:AM${sheetRow}`;
 
 export const EINVOICE_EVENT_RANGE_FULL = `${EINVOICE_EVENT_SHEET}!A:J`;
 export const EINVOICE_EVENT_RANGE_DATA = `${EINVOICE_EVENT_SHEET}!A2:J10000`;
@@ -77,6 +77,7 @@ export function eInvoiceRecordToRow(record: EInvoiceRecord): string[] {
     record.createdBy,
     record.createdAt,
     record.updatedAt,
+    record.buyerAddress,
   ];
 }
 
@@ -94,6 +95,7 @@ export function eInvoiceRowToRecord(row: string[]): EInvoiceRecord {
     buyerType: (row[9] as EInvoiceRecord["buyerType"]) ?? "b2c",
     buyerName: row[10] ?? "",
     buyerTaxId: row[11] ?? "",
+    buyerAddress: row[38] ?? "",
     email: row[12] ?? "",
     carrierType: (row[13] as EInvoiceRecord["carrierType"]) ?? "none",
     carrierValue: row[14] ?? "",
@@ -199,4 +201,41 @@ export function generateEInvoiceId(rows: string[][], now: Date = new Date()): st
 export function generateEInvoiceEventId(invoiceId: string, now: Date = new Date()): string {
   const timestamp = now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 17);
   return `${invoiceId}-EVT-${timestamp}`;
+}
+
+export type FilingPeriod = "monthly" | "bimonthly";
+
+/**
+ * 台灣電子發票作廢截止日計算（依申報期）。
+ * 雙月制（預設）：發票月份所屬雙月期的次月 15 日 23:59:59 +08:00。
+ * 例：1-2月發票 → 3/15 23:59:59 +08:00
+ */
+export function getCancellationDeadline(
+  invoiceDateIso: string,
+  period: FilingPeriod = "bimonthly",
+): Date {
+  const datePart = invoiceDateIso.slice(0, 10);
+  const [y, m] = datePart.split("-").map(Number);
+  if (!y || !m) throw new Error(`Invalid invoiceDate: ${invoiceDateIso}`);
+
+  let deadlineYear = y;
+  let deadlineMonth: number;
+  if (period === "bimonthly") {
+    const periodEndMonth = m % 2 === 0 ? m : m + 1;
+    deadlineMonth = periodEndMonth + 1;
+    if (deadlineMonth > 12) { deadlineMonth -= 12; deadlineYear += 1; }
+  } else {
+    deadlineMonth = m + 1;
+    if (deadlineMonth > 12) { deadlineMonth = 1; deadlineYear += 1; }
+  }
+  const mm = String(deadlineMonth).padStart(2, "0");
+  return new Date(`${deadlineYear}-${mm}-15T23:59:59+08:00`);
+}
+
+export function isWithinCancellationDeadline(
+  invoiceDateIso: string,
+  period: FilingPeriod = "bimonthly",
+  now: Date = new Date(),
+): boolean {
+  return now <= getCancellationDeadline(invoiceDateIso, period);
 }

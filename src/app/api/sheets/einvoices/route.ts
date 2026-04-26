@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { EInvoiceItemSnapshot, EInvoiceRecord } from "@/lib/types";
 import { isoDateNow, isoNow } from "@/lib/einvoice-utils";
+import { validateTaiwanTaxId } from "@/lib/tax-id";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 import { getSession } from "./_auth";
 import {
@@ -24,6 +26,7 @@ interface CreateEInvoicePayload {
   buyerType: EInvoiceRecord["buyerType"];
   buyerName: string;
   buyerTaxId?: string;
+  buyerAddress?: string;
   email?: string;
   carrierType?: EInvoiceRecord["carrierType"];
   carrierValue?: string;
@@ -37,6 +40,62 @@ interface CreateEInvoicePayload {
   items: EInvoiceItemSnapshot[];
   content?: string;
   createdBy?: string;
+}
+
+interface DraftCreatedEventPayload {
+  sourceType: EInvoiceRecord["sourceType"];
+  sourceId: string;
+  sourceSubId: string;
+  quoteId: string;
+  versionId: string;
+  caseId: string;
+  clientId: string;
+  buyerType: EInvoiceRecord["buyerType"];
+  buyerName: string;
+  buyerTaxId: string;
+  buyerAddress: string;
+  email: string;
+  carrierType: EInvoiceRecord["carrierType"];
+  carrierValue: string;
+  donationCode: string;
+  invoiceDate: string;
+  taxType: EInvoiceRecord["taxType"];
+  untaxedAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  taxRate: number;
+  itemCount: number;
+  items: EInvoiceItemSnapshot[];
+  content: string;
+}
+
+function buildDraftCreatedEventPayload(payload: CreateEInvoicePayload): DraftCreatedEventPayload {
+  return {
+    sourceType: payload.sourceType,
+    sourceId: payload.sourceId,
+    sourceSubId: payload.sourceSubId?.trim() ?? "",
+    quoteId: payload.quoteId?.trim() ?? "",
+    versionId: payload.versionId?.trim() ?? "",
+    caseId: payload.caseId?.trim() ?? "",
+    clientId: payload.clientId?.trim() ?? "",
+    buyerType: payload.buyerType,
+    buyerName: payload.buyerName.trim(),
+    buyerTaxId: payload.buyerTaxId?.trim() ?? "",
+    buyerAddress: payload.buyerAddress?.trim() ?? "",
+    email: payload.email?.trim() ?? "",
+    carrierType: payload.carrierType ?? "none",
+    carrierValue: payload.carrierValue?.trim() ?? "",
+    donationCode: payload.donationCode?.trim() ?? "",
+    invoiceDate: payload.invoiceDate?.trim() || isoDateNow(),
+    taxType: payload.taxType ?? 0,
+    untaxedAmount: Math.round(payload.untaxedAmount),
+    taxAmount: Math.round(payload.taxAmount),
+    totalAmount: Math.round(payload.totalAmount),
+    taxRate: payload.taxRate ?? 5,
+    itemCount: payload.items.length,
+    items: payload.items,
+    content: payload.content?.trim() || payload.buyerName.trim(),
+  };
 }
 
 function parseString(value: unknown): string {
@@ -83,6 +142,7 @@ function parseCreatePayload(input: unknown): CreateEInvoicePayload | null {
     buyerType: parseString(body.buyerType) as CreateEInvoicePayload["buyerType"],
     buyerName: parseString(body.buyerName),
     buyerTaxId: parseString(body.buyerTaxId),
+    buyerAddress: parseString(body.buyerAddress),
     email: parseString(body.email),
     carrierType: parseString(body.carrierType) as CreateEInvoicePayload["carrierType"],
     carrierValue: parseString(body.carrierValue),
@@ -92,7 +152,7 @@ function parseCreatePayload(input: unknown): CreateEInvoicePayload | null {
     untaxedAmount: parseNumber(body.untaxedAmount),
     taxAmount: parseNumber(body.taxAmount),
     totalAmount: parseNumber(body.totalAmount),
-    taxRate: parseNumber(body.taxRate),
+    taxRate: parseNumber(body.taxRate) || 5,
     items: parseItems(body.items),
     content: parseString(body.content),
     createdBy: parseString(body.createdBy),
@@ -105,6 +165,10 @@ function validatePayload(payload: CreateEInvoicePayload): string | null {
   if (payload.buyerType !== "b2b" && payload.buyerType !== "b2c") return "buyerType is invalid";
   if (!payload.buyerName) return "buyerName is required";
   if (payload.buyerType === "b2b" && !payload.buyerTaxId) return "buyerTaxId is required for B2B";
+  if (payload.buyerType === "b2b" && payload.buyerTaxId) {
+    const taxIdError = validateTaiwanTaxId(payload.buyerTaxId);
+    if (taxIdError) return taxIdError;
+  }
   if (!["none", "mobile_barcode", "member_code", ""].includes(payload.carrierType ?? "none")) return "carrierType is invalid";
   if (payload.carrierType === "mobile_barcode" && !payload.carrierValue) return "carrierValue is required for mobile_barcode";
   if (payload.carrierType === "member_code" && !payload.carrierValue) return "carrierValue is required for member_code";
@@ -164,8 +228,9 @@ export async function GET(request: Request) {
       .map(sanitizeInvoiceRecord);
     return NextResponse.json({ ok: true, invoices });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    const logDetail = err instanceof Error ? err.message : "unknown";
+    console.error("[einvoices]", logDetail);
+    return NextResponse.json({ ok: false, error: "系統錯誤，請稍後再試" }, { status: 500 });
   }
 }
 
@@ -176,6 +241,9 @@ export async function POST(request: Request) {
   }
   if (session.role !== "admin") {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+  if (!checkRateLimit(`einvoice:${session.email}`, 10, 60_000)) {
+    return NextResponse.json({ ok: false, error: "請求過於頻繁，請稍後再試" }, { status: 429 });
   }
 
   let payload: CreateEInvoicePayload | null = null;
@@ -203,7 +271,7 @@ export async function POST(request: Request) {
       (record) =>
         record.sourceType === payload.sourceType &&
         record.sourceId === payload.sourceId &&
-        ["draft", "issuing", "issued"].includes(record.status),
+        ["draft", "issuing", "issued", "needs_review"].includes(record.status),
     );
     if (duplicateActive) {
       return NextResponse.json(
@@ -227,6 +295,7 @@ export async function POST(request: Request) {
       buyerType: payload.buyerType,
       buyerName: payload.buyerName.trim(),
       buyerTaxId: payload.buyerTaxId?.trim() ?? "",
+      buyerAddress: payload.buyerAddress?.trim() ?? "",
       email: payload.email?.trim() ?? "",
       carrierType: payload.carrierType ?? "none",
       carrierValue: payload.carrierValue?.trim() ?? "",
@@ -262,20 +331,15 @@ export async function POST(request: Request) {
       fromStatus: "",
       toStatus: "draft",
       message: "建立電子發票草稿",
-      requestJson: JSON.stringify({
-        sourceType: payload.sourceType,
-        sourceId: payload.sourceId,
-        buyerType: payload.buyerType,
-        itemCount: payload.items.length,
-        totalAmount: payload.totalAmount,
-      }),
+      requestJson: JSON.stringify(buildDraftCreatedEventPayload(payload)),
       responseJson: "",
       actor: invoice.createdBy,
     });
 
     return NextResponse.json({ ok: true, invoice }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    const logDetail = err instanceof Error ? err.message : "unknown";
+    console.error("[einvoices]", logDetail);
+    return NextResponse.json({ ok: false, error: "系統錯誤，請稍後再試" }, { status: 500 });
   }
 }

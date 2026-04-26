@@ -1,13 +1,14 @@
 "use client";
 
-import { Download, Loader2, ReceiptText, RefreshCw, RotateCcw, SendHorizonal, XCircle } from "lucide-react";
+import { Download, FileText, Loader2, ReceiptText, RefreshCw, RotateCcw, SendHorizonal, XCircle } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { EInvoiceCandidate, EInvoiceRecord } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,6 +17,7 @@ interface DraftOverride {
   buyerType: "b2b" | "b2c";
   buyerName: string;
   buyerTaxId: string;
+  buyerAddress: string;
   email: string;
   carrierType: "none" | "mobile_barcode" | "member_code";
   carrierValue: string;
@@ -54,10 +56,33 @@ interface LoadOptions {
   preserveFeedback?: boolean;
 }
 
+interface SnackbarState {
+  message: string;
+  invoiceId?: string;
+}
+
 interface CandidateDraftSnapshot {
   candidate: EInvoiceCandidate;
   draft: DraftOverride;
 }
+
+const INVOICE_STATUS_LABEL: Record<string, string> = {
+  draft: "草稿",
+  issuing: "開立中",
+  issued: "已開立",
+  failed: "失敗",
+  cancelled: "已作廢",
+  needs_review: "待確認",
+};
+
+const INVOICE_STATUS_CLASS: Record<string, string> = {
+  draft: "bg-slate-100 text-slate-700",
+  issuing: "bg-blue-100 text-blue-700",
+  issued: "bg-emerald-100 text-emerald-700",
+  failed: "bg-red-100 text-red-700",
+  cancelled: "bg-gray-100 text-gray-500",
+  needs_review: "bg-amber-100 text-amber-700",
+};
 
 function extractErrorMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== "object") return fallback;
@@ -99,6 +124,7 @@ function buildDefaultDraft(candidate: EInvoiceCandidate): DraftOverride {
     buyerType: candidate.clientTaxId ? "b2b" : "b2c",
     buyerName,
     buyerTaxId: candidate.clientTaxId,
+    buyerAddress: candidate.clientAddress,
     email: candidate.clientEmail,
     carrierType: "none",
     carrierValue: "",
@@ -123,6 +149,38 @@ export function EInvoicesClient() {
   const [batchReport, setBatchReport] = useState<BatchIssueReport | null>(null);
   const [pasteData, setPasteData] = useState("");
   const [parsedRows, setParsedRows] = useState<Array<{ buyerName: string; buyerUbn: string; email: string; itemName: string; quantity: number; unitPrice: number; totalAmount: number }>>([]);
+  const [historySelectedIds, setHistorySelectedIds] = useState<Set<string>>(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [batchDownloading, setBatchDownloading] = useState(false);
+  const [historyLimit, setHistoryLimit] = useState(20);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<string>("all");
+  const [confirmReviewTarget, setConfirmReviewTarget] = useState<EInvoiceRecord | null>(null);
+  const [confirmReviewForm, setConfirmReviewForm] = useState<{ taxType: 0 | 1 | 2 | 4; notes: string }>({
+    taxType: 0,
+    notes: "",
+  });
+  const [cancelTarget, setCancelTarget] = useState<EInvoiceRecord | null>(null);
+  const [cancelRemark, setCancelRemark] = useState("");
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [confirmDeleteBatch, setConfirmDeleteBatch] = useState(false);
+  const [confirmDeleteFailed, setConfirmDeleteFailed] = useState(false);
+  const [expandedCandidateIds, setExpandedCandidateIds] = useState<Set<string>>(new Set());
+  const [batchIssueConfirm, setBatchIssueConfirm] = useState<{ candidates: EInvoiceCandidate[] } | null>(null);
+
+  const [snackbar, setSnackbar] = useState<SnackbarState | null>(null);
+  const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
+  const invoiceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickCreateForm, setQuickCreateForm] = useState({
+    buyerName: "",
+    buyerTaxId: "",
+    totalAmount: "",
+    content: "",
+    invoiceDate: new Date().toISOString().slice(0, 10),
+  });
+  const [quickCreating, setQuickCreating] = useState(false);
 
   const load = useCallback(async (options: LoadOptions = {}) => {
     setLoading(true);
@@ -178,6 +236,20 @@ export function EInvoicesClient() {
     () => candidates.filter((candidate) => selectedIds.includes(candidate.candidateId)),
     [candidates, selectedIds],
   );
+
+  const filteredInvoices = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    return invoices.filter((inv) => {
+      if (historyStatusFilter !== "all" && inv.status !== historyStatusFilter) return false;
+      if (!q) return true;
+      return (
+        inv.invoiceId.toLowerCase().includes(q) ||
+        inv.buyerName.toLowerCase().includes(q) ||
+        (inv.providerInvoiceNo ?? "").toLowerCase().includes(q) ||
+        (inv.buyerTaxId ?? "").includes(q)
+      );
+    });
+  }, [invoices, historySearch, historyStatusFilter]);
 
   function updateDraft(candidateId: string, patch: Partial<DraftOverride>) {
     setDrafts((current) => ({
@@ -298,6 +370,7 @@ export function EInvoicesClient() {
         clientPhone: "",
         clientEmail: row.email,
         clientTaxId: row.buyerUbn,
+        clientAddress: "",
         projectName: row.buyerName,
         amount: total,
         untaxedAmount: untaxed,
@@ -319,6 +392,7 @@ export function EInvoicesClient() {
           buyerType: c.clientTaxId ? "b2b" : "b2c",
           buyerName: c.clientName,
           buyerTaxId: c.clientTaxId,
+          buyerAddress: c.clientAddress,
           email: c.clientEmail,
           carrierType: "none",
           carrierValue: "",
@@ -339,8 +413,9 @@ export function EInvoicesClient() {
     const displayName = candidate.projectName || candidate.clientName || candidate.candidateId;
     try {
       const effectiveTotal = draft.totalAmount ?? candidate.totalAmount;
-      const effectiveRatePercent = (draft.taxRate ?? candidate.taxRate) / 100;
-      const effectiveUntaxed = effectiveRatePercent > 0 ? Math.round(effectiveTotal / (1 + effectiveRatePercent)) : effectiveTotal;
+      const effectiveTaxRate = draft.taxRate ?? candidate.taxRate;
+      const effectiveRateRatio = effectiveTaxRate / 100;
+      const effectiveUntaxed = effectiveRateRatio > 0 ? Math.round(effectiveTotal / (1 + effectiveRateRatio)) : effectiveTotal;
       const effectiveTax = effectiveTotal - effectiveUntaxed;
 
       const createResponse = await fetch("/api/sheets/einvoices", {
@@ -357,6 +432,7 @@ export function EInvoicesClient() {
           buyerType: draft.buyerType,
           buyerName: draft.buyerName,
           buyerTaxId: draft.buyerTaxId,
+          buyerAddress: draft.buyerAddress,
           email: draft.email,
           carrierType: draft.carrierType,
           carrierValue: draft.carrierValue,
@@ -364,7 +440,7 @@ export function EInvoicesClient() {
           invoiceDate: candidate.invoiceDate,
           taxType: 0,
           totalAmount: effectiveTotal,
-          taxRate: effectiveRatePercent,
+          taxRate: effectiveTaxRate,
           untaxedAmount: effectiveUntaxed,
           taxAmount: effectiveTax,
           items: candidate.lineItems,
@@ -439,15 +515,78 @@ export function EInvoicesClient() {
     }
   }
 
-  async function handleBatchIssue() {
+  async function handleQuickCreate() {
+    const total = Number(quickCreateForm.totalAmount.replace(/[,$]/g, ""));
+    if (!quickCreateForm.buyerName.trim()) return;
+    if (!total || total <= 0) return;
+    setQuickCreating(true);
+    try {
+      const untaxed = Math.round(total / 1.05);
+      const tax = total - untaxed;
+      const content = quickCreateForm.content.trim() || quickCreateForm.buyerName.trim();
+      const now = Date.now();
+      const createRes = await fetch("/api/sheets/einvoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType: "manual",
+          sourceId: `QUICK-${now}`,
+          buyerType: quickCreateForm.buyerTaxId.trim() ? "b2b" : "b2c",
+          buyerName: quickCreateForm.buyerName.trim(),
+          buyerTaxId: quickCreateForm.buyerTaxId.trim(),
+          invoiceDate: quickCreateForm.invoiceDate,
+          taxType: 0,
+          taxRate: 5,
+          untaxedAmount: untaxed,
+          taxAmount: tax,
+          totalAmount: total,
+          content,
+          items: [{ name: content, quantity: 1, unitPrice: untaxed, amount: untaxed, remark: "", taxType: 0 }],
+        }),
+      });
+      const createPayload = (await createRes.json().catch(() => ({}))) as { ok?: boolean; invoice?: EInvoiceRecord; error?: string };
+      if (!createRes.ok || !createPayload.invoice) {
+        throw new Error(createPayload.error ?? "建立草稿失敗");
+      }
+      const invoiceId = createPayload.invoice.invoiceId;
+      const issueRes = await fetch(`/api/sheets/einvoices/${encodeURIComponent(invoiceId)}/issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceDate: quickCreateForm.invoiceDate }),
+      });
+      const issuePayload = (await issueRes.json().catch(() => ({}))) as { ok?: boolean; invoice?: EInvoiceRecord; error?: string; provider?: { msg?: string } };
+      if (!issueRes.ok) {
+        throw new Error(buildUnknownErrorDetail(issuePayload, "送出開立失敗"));
+      }
+      const no = issuePayload.invoice?.providerInvoiceNo ?? "";
+      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : "已送出 Giveme" });
+      setSnackbar({ message: "電子發票已開立", invoiceId });
+      setTimeout(() => setSnackbar(null), 3000);
+      setQuickCreateOpen(false);
+      setQuickCreateForm({ buyerName: "", buyerTaxId: "", totalAmount: "", content: "", invoiceDate: new Date().toISOString().slice(0, 10) });
+      await load({ preserveFeedback: true });
+    } catch (err) {
+      setNotice({ tone: "error", title: "快速開立失敗", detail: err instanceof Error ? err.message : "未知錯誤" });
+      setQuickCreateOpen(false);
+    } finally {
+      setQuickCreating(false);
+    }
+  }
+
+  function handleBatchIssue() {
     if (selectedCandidates.length === 0) {
       setNotice({ tone: "info", title: "請至少勾選一筆待開資料" });
       return;
     }
+    setBatchIssueConfirm({ candidates: selectedCandidates });
+  }
+
+  async function executeBatchIssue(candidatesToIssue: EInvoiceCandidate[]) {
+    setBatchIssueConfirm(null);
     setIssuing(true);
     setBatchReport(null);
-    setNotice({ tone: "info", title: `正在批次開立 ${selectedCandidates.length} 筆電子發票...` });
-    const snapshots: CandidateDraftSnapshot[] = selectedCandidates.map((candidate) => ({
+    setNotice({ tone: "info", title: `正在批次開立 ${candidatesToIssue.length} 筆電子發票...` });
+    const snapshots: CandidateDraftSnapshot[] = candidatesToIssue.map((candidate) => ({
       candidate,
       draft: { ...(drafts[candidate.candidateId] ?? buildDefaultDraft(candidate)) },
     }));
@@ -478,6 +617,11 @@ export function EInvoicesClient() {
               detail: "請看下方批次開立結果，失敗項目已列出具體階段與錯誤原因。",
             },
       );
+      if (successCount > 0) {
+        const firstSuccessId = results.find((r) => r.success)?.invoiceId;
+        setSnackbar({ message: `電子發票已開立（${successCount} 筆）`, invoiceId: firstSuccessId });
+        setTimeout(() => setSnackbar(null), 3000);
+      }
       const newInvoiceRecords = results.flatMap((r) => (r.invoiceRecord ? [r.invoiceRecord] : []));
 
       const mergeNewInvoices = (prev: EInvoiceRecord[]) => {
@@ -501,11 +645,16 @@ export function EInvoicesClient() {
     setSyncingInvoiceId(invoiceId);
     try {
       const response = await fetch(`/api/sheets/einvoices/${encodeURIComponent(invoiceId)}/sync`, { method: "POST" });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; invoice?: EInvoiceRecord; provider?: { status?: string; msg?: string } };
       if (!response.ok) {
         throw new Error(payload.error ?? "同步失敗");
       }
-      setNotice({ tone: "success", title: `已同步發票 ${invoiceId}` });
+      const newStatus = payload.invoice?.status;
+      const providerMsg = payload.provider?.msg ?? "";
+      const title = newStatus === "cancelled"
+        ? `已同步：${invoiceId} 已標記為作廢`
+        : `已同步：${invoiceId} 在 giveme 仍有效${providerMsg ? `（${providerMsg}）` : ""}`;
+      setNotice({ tone: newStatus === "cancelled" ? "error" : "success", title });
       await load();
     } catch (err) {
       setNotice({ tone: "error", title: "同步失敗", detail: err instanceof Error ? err.message : "同步失敗" });
@@ -529,6 +678,9 @@ export function EInvoicesClient() {
       }
       const no = (payload.invoice as EInvoiceRecord | undefined)?.providerInvoiceNo;
       setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : `${invoiceId} 已送出 Giveme` });
+      const issuedInvoiceId = (payload.invoice as EInvoiceRecord | undefined)?.invoiceId ?? invoiceId;
+      setSnackbar({ message: "電子發票已開立", invoiceId: issuedInvoiceId });
+      setTimeout(() => setSnackbar(null), 3000);
       await load({ preserveFeedback: true });
     } catch (err) {
       setNotice({ tone: "error", title: "開立失敗", detail: err instanceof Error ? err.message : "開立失敗" });
@@ -537,9 +689,139 @@ export function EInvoicesClient() {
     }
   }
 
-  async function handleCancel(invoice: EInvoiceRecord) {
-    const remark = window.prompt("請輸入作廢原因", invoice.cancelReason || "客戶要求作廢");
-    if (!remark) return;
+  async function handleDownloadPicture(invoice: EInvoiceRecord) {
+    setSyncingInvoiceId(invoice.invoiceId);
+    try {
+      // B2B → A4 (type=2)；B2C → 電子發票 (type=1)
+      // Also check buyerTaxId as fallback — stubs from reconcile may have incorrect buyerType
+      const pictureType = (invoice.buyerType === "b2b" || Boolean(invoice.buyerTaxId?.trim())) ? 2 : 1;
+      const url = `/api/sheets/einvoices/${encodeURIComponent(invoice.invoiceId)}/picture?type=${pictureType}${invoice.providerInvoiceNo ? `&code=${encodeURIComponent(invoice.providerInvoiceNo)}` : ""}`;
+      const res = await fetch(url);
+      if (res.status === 410) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string; delRemark?: string };
+        setInvoices((prev) =>
+          prev.map((inv) =>
+            inv.invoiceId === invoice.invoiceId ? { ...inv, status: "cancelled" as const } : inv,
+          ),
+        );
+        setNotice({
+          tone: "error",
+          title: "此發票已在 giveme 作廢，系統狀態已同步",
+          detail: data.delRemark ? `作廢原因：${data.delRemark}` : undefined,
+        });
+        return;
+      }
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "下載失敗");
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      const safeNo = (invoice.providerInvoiceNo ?? invoice.invoiceId).replace(/[/\\?%*:|"<>]/g, "-");
+      const safeName = invoice.buyerName.replace(/[/\\?%*:|"<>（）]/g, "").trim();
+      a.download = `${safeNo} ${safeName}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setNotice({ tone: "error", title: err instanceof Error ? err.message : "下載失敗" });
+    } finally {
+      setSyncingInvoiceId("");
+    }
+  }
+
+  function toggleHistorySelect(invoiceId: string) {
+    setHistorySelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(invoiceId)) next.delete(invoiceId);
+      else next.add(invoiceId);
+      return next;
+    });
+  }
+
+  function toggleHistorySelectAll(visibleInvoices: EInvoiceRecord[]) {
+    setHistorySelectedIds((prev) => {
+      const allSelected = visibleInvoices.every((inv) => prev.has(inv.invoiceId));
+      if (allSelected) return new Set();
+      return new Set(visibleInvoices.map((inv) => inv.invoiceId));
+    });
+  }
+
+  async function handleBatchDelete() {
+    if (historySelectedIds.size === 0) return;
+    setConfirmDeleteBatch(true);
+  }
+
+  async function submitBatchDelete() {
+    setConfirmDeleteBatch(false);
+    setBatchDeleting(true);
+    try {
+      const res = await fetch("/api/sheets/einvoices/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceIds: Array.from(historySelectedIds) }),
+      });
+      const data = (await res.json()) as { ok: boolean; deleted?: number; message?: string; error?: string };
+      if (data.ok) {
+        setNotice({ tone: "success", title: data.message ?? "刪除完成" });
+        setHistorySelectedIds(new Set());
+        void load({ preserveFeedback: true });
+      } else {
+        setNotice({ tone: "error", title: "刪除失敗", detail: data.error });
+      }
+    } catch (err) {
+      setNotice({ tone: "error", title: err instanceof Error ? err.message : "刪除失敗" });
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
+  async function handleBatchDownload(visibleInvoices: EInvoiceRecord[]) {
+    const targets = visibleInvoices.filter(
+      (inv) => historySelectedIds.has(inv.invoiceId) && inv.status === "issued",
+    );
+    if (targets.length === 0) {
+      setNotice({ tone: "info", title: "選取的記錄中沒有已開立的發票可下載" });
+      return;
+    }
+    setBatchDownloading(true);
+    try {
+      const res = await fetch("/api/sheets/einvoices/batch-download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceIds: targets.map((inv) => inv.invoiceId) }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "批次下載失敗");
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `invoices-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      setNotice({ tone: "success", title: `已下載 ${targets.length} 張發票 ZIP` });
+    } catch (err) {
+      setNotice({ tone: "error", title: err instanceof Error ? err.message : "批次下載失敗" });
+    } finally {
+      setBatchDownloading(false);
+    }
+  }
+
+  function handleCancel(invoice: EInvoiceRecord) {
+    setCancelRemark(invoice.cancelReason || "客戶要求作廢");
+    setCancelTarget(invoice);
+  }
+
+  async function submitCancel(invoice: EInvoiceRecord, remark: string) {
+    setCancelTarget(null);
     setSyncingInvoiceId(invoice.invoiceId);
     try {
       const response = await fetch(`/api/sheets/einvoices/${encodeURIComponent(invoice.invoiceId)}/cancel`, {
@@ -583,7 +865,11 @@ export function EInvoicesClient() {
             <RefreshCw className="h-4 w-4" />
             重新整理
           </Button>
-          <Button onClick={() => void handleBatchIssue()} disabled={issuing || selectedCandidates.length === 0}>
+          <Button variant="outline" onClick={() => setQuickCreateOpen(true)}>
+            <ReceiptText className="h-4 w-4" />
+            快速開立
+          </Button>
+          <Button onClick={() => handleBatchIssue()} disabled={issuing || selectedCandidates.length === 0}>
             {issuing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ReceiptText className="h-4 w-4" />}
             {issuing ? "批次開立中..." : `批次開立 (${selectedCandidates.length})`}
           </Button>
@@ -644,39 +930,55 @@ export function EInvoicesClient() {
           </div>
 
           <div className="space-y-4">
-            {candidates.length === 0 ? (
+            {candidates.filter((c) => !c.existingInvoiceId || c.existingInvoiceStatus === "cancelled").length === 0 ? (
               <div className="rounded-md bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--text-secondary)]">目前沒有可開立的候選資料。</div>
             ) : (
-              candidates.map((candidate) => {
+              candidates
+                .filter((c) => !c.existingInvoiceId || c.existingInvoiceStatus === "cancelled")
+                .map((candidate) => {
                 const draft = drafts[candidate.candidateId] ?? buildDefaultDraft(candidate);
                 const disabled = issuing || Boolean(candidate.existingInvoiceId);
+                const isExpanded = expandedCandidateIds.has(candidate.candidateId);
                 return (
-                  <div key={candidate.candidateId} className="rounded-lg border border-[var(--border)] p-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-<div className="flex items-start gap-3">
-                          <Checkbox checked={selectedIds.includes(candidate.candidateId)} onCheckedChange={(checked) => toggleCandidate(candidate.candidateId, checked === true)} disabled={disabled} />
-                          <div>
-                            <div className="font-medium text-[var(--text-primary)]">{candidate.projectName || candidate.clientName}</div>
-                            <div className="mt-1 text-xs text-[var(--text-secondary)]">
-                              {candidate.sourceType} / {candidate.sourceId} / 金額 {formatCurrency(draft.totalAmount ?? candidate.totalAmount)}
-                            </div>
-                            {candidate.existingInvoiceId ? (
-                              <div className="mt-1 text-xs text-emerald-700">已開立：{candidate.existingInvoiceId}（{candidate.existingInvoiceStatus}）</div>
-                            ) : null}
-                          </div>
+                  <div key={candidate.candidateId} className="rounded-lg border border-[var(--border)]">
+                    {/* 摘要列 */}
+                    <div className="flex items-center gap-2 p-3">
+                      <Checkbox checked={selectedIds.includes(candidate.candidateId)} onCheckedChange={(checked) => toggleCandidate(candidate.candidateId, checked === true)} disabled={disabled} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-[var(--text-primary)]">{candidate.projectName || candidate.clientName}</div>
+                        <div className="text-xs text-[var(--text-secondary)]">
+                          {draft.buyerName}
+                          {candidate.existingInvoiceId ? (
+                            <span className="ml-1 text-emerald-700">· 已開立：{candidate.existingInvoiceId}</span>
+                          ) : (
+                            <span> · <span className="font-medium text-[var(--text-primary)]">{formatCurrency(draft.totalAmount ?? candidate.totalAmount)}</span></span>
+                          )}
                         </div>
-                        {!disabled && (
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => void removeCandidate(candidate.candidateId)}>
+                      </div>
+                      {!disabled && (
+                        <>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                            onClick={() => setExpandedCandidateIds((prev) => {
+                              const next = new Set(prev);
+                              next.has(candidate.candidateId) ? next.delete(candidate.candidateId) : next.add(candidate.candidateId);
+                              return next;
+                            })}
+                          >
+                            {isExpanded ? "收起 ▲" : "編輯 ▼"}
+                          </button>
+                          <Button variant="ghost" size="sm" className="shrink-0 text-red-600 hover:text-red-700" onClick={() => void removeCandidate(candidate.candidateId)}>
                             移除
                           </Button>
-                        )}
-                      <div className="text-xs text-[var(--text-secondary)]">
-                        客戶：{candidate.clientName} / 聯絡人：{candidate.contactName || "—"}
-                      </div>
+                        </>
+                      )}
                     </div>
 
-                    {!disabled ? (
-                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {/* 可展開的輸入區 */}
+                    {isExpanded && !disabled && (
+                      <div className="border-t border-[var(--border)] p-4">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         <div>
                           <Label>買方類型</Label>
                           <Select value={draft.buyerType} onValueChange={(value) => updateDraft(candidate.candidateId, { buyerType: value as DraftOverride["buyerType"] })}>
@@ -699,6 +1001,16 @@ export function EInvoicesClient() {
                           <Label>Email</Label>
                           <Input value={draft.email} onChange={(e) => updateDraft(candidate.candidateId, { email: e.target.value })} />
                         </div>
+                        {draft.buyerType === "b2b" ? (
+                          <div className="md:col-span-2 xl:col-span-4">
+                            <Label>買方地址</Label>
+                            <Input
+                              value={draft.buyerAddress}
+                              onChange={(e) => updateDraft(candidate.candidateId, { buyerAddress: e.target.value })}
+                              placeholder="請輸入買方地址"
+                            />
+                          </div>
+                        ) : null}
                         {draft.buyerType === "b2c" ? (
                           <>
                             <div>
@@ -736,11 +1048,15 @@ export function EInvoicesClient() {
                             type="number"
                             step="0.1"
                             value={draft.taxRate ?? candidate.taxRate}
-                            onChange={(e) => updateDraft(candidate.candidateId, { taxRate: Number(e.target.value) / 100 })}
+                            onChange={(e) => {
+                              const rate = e.target.value === "" ? 5 : Number(e.target.value);
+                              updateDraft(candidate.candidateId, { taxRate: rate });
+                            }}
                           />
                         </div>
+                        </div>
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 );
               })
@@ -820,47 +1136,503 @@ export function EInvoicesClient() {
 
         <section className="space-y-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium">開票歷史</h2>
-            <span className="text-xs text-[var(--text-secondary)]">{invoices.length} 筆</span>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={filteredInvoices.length > 0 && filteredInvoices.slice(0, historyLimit).every((inv) => historySelectedIds.has(inv.invoiceId))}
+                onCheckedChange={() => toggleHistorySelectAll(filteredInvoices.slice(0, historyLimit))}
+                disabled={filteredInvoices.length === 0}
+              />
+              <h2 className="text-sm font-medium">開票歷史</h2>
+            </div>
+            <span className="text-xs text-[var(--text-secondary)]">
+              {filteredInvoices.length !== invoices.length ? `${filteredInvoices.length} / ` : ""}{invoices.length} 筆
+            </span>
           </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              title="從事件紀錄重建遺失的主紀錄，並修正卡在 draft/issuing 的已開立發票"
-              onClick={async () => {
-                const res = await fetch("/api/sheets/einvoices/reconcile", { method: "POST" });
-                const data = (await res.json()) as { ok: boolean; message?: string; error?: string; newRecords?: EInvoiceRecord[]; updatedRecords?: EInvoiceRecord[] };
-                if (data.ok) {
-                  setNotice({ tone: "success", title: data.message ?? "修復完成" });
-                  // Merge recovered records immediately into state (don't wait for Sheets propagation)
-                  const recovered = [...(data.newRecords ?? []), ...(data.updatedRecords ?? [])];
-                  if (recovered.length > 0) {
-                    setInvoices((prev) => {
-                      const existingIds = new Set(prev.map((inv) => inv.invoiceId));
-                      const toAdd = recovered.filter((inv) => !existingIds.has(inv.invoiceId));
-                      const updated = prev.map((inv) => {
-                        const u = recovered.find((r) => r.invoiceId === inv.invoiceId);
-                        return u ?? inv;
-                      });
-                      return toAdd.length > 0 ? [...toAdd, ...updated] : updated;
-                    });
-                  }
-                  // Also reload in background so Sheets eventually catches up
-                  void load({ preserveFeedback: true });
-                } else {
-                  setNotice({ tone: "error", title: "修復失敗", detail: data.error });
-                }
-              }}
-            >
-              修復遺失記錄
-            </Button>
-            {invoices.some((inv) => inv.status === "failed") && (
+
+          <div className="flex flex-wrap gap-2">
+            <Input
+              placeholder="搜尋客戶名稱、發票號碼、統編…"
+              value={historySearch}
+              onChange={(e) => { setHistorySearch(e.target.value); setHistoryLimit(20); }}
+              className="h-8 max-w-xs text-xs"
+            />
+            <Select value={historyStatusFilter} onValueChange={(v) => { setHistoryStatusFilter(v); setHistoryLimit(20); }}>
+              <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部狀態</SelectItem>
+                {Object.entries(INVOICE_STATUS_LABEL).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {historySelectedIds.size > 0 && (
+            <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2">
+              <span className="flex-1 text-xs text-[var(--text-secondary)]">已選 {historySelectedIds.size} 筆</span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={batchDownloading || batchDeleting}
+                onClick={() => void handleBatchDownload(filteredInvoices.slice(0, historyLimit))}
+              >
+                {batchDownloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                批次下載圖檔
+              </Button>
               <Button
                 size="sm"
                 variant="destructive"
+                disabled={batchDeleting || batchDownloading}
+                onClick={() => void handleBatchDelete()}
+              >
+                {batchDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                刪除選取
+              </Button>
+              <button
+                type="button"
+                className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                onClick={() => setHistorySelectedIds(new Set())}
+              >
+                取消
+              </button>
+            </div>
+          )}
+          <div className="relative">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs hover:bg-[var(--surface-muted)]"
+              onClick={() => setMaintenanceOpen((v) => !v)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              維護工具
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${maintenanceOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {maintenanceOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMaintenanceOpen(false)} />
+                <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-lg border border-[var(--border)] bg-white py-1 shadow-lg">
+                  <button
+                    type="button"
+                    className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-[var(--surface-muted)]"
+                    onClick={async () => {
+                      setMaintenanceOpen(false);
+                      const res = await fetch("/api/sheets/einvoices/reconcile", { method: "POST" });
+                      const data = (await res.json()) as { ok: boolean; message?: string; error?: string; newRecords?: EInvoiceRecord[]; updatedRecords?: EInvoiceRecord[] };
+                      if (data.ok) {
+                        setNotice({ tone: "success", title: data.message ?? "修復完成" });
+                        const recovered = [...(data.newRecords ?? []), ...(data.updatedRecords ?? [])];
+                        if (recovered.length > 0) {
+                          setInvoices((prev) => {
+                            const existingIds = new Set(prev.map((inv) => inv.invoiceId));
+                            const toAdd = recovered.filter((inv) => !existingIds.has(inv.invoiceId));
+                            const updated = prev.map((inv) => {
+                              const u = recovered.find((r) => r.invoiceId === inv.invoiceId);
+                              return u ?? inv;
+                            });
+                            return toAdd.length > 0 ? [...toAdd, ...updated] : updated;
+                          });
+                        }
+                        void load({ preserveFeedback: true });
+                      } else {
+                        setNotice({ tone: "error", title: "修復失敗", detail: data.error });
+                      }
+                    }}
+                  >
+                    <div className="mt-0.5 shrink-0 text-[var(--text-secondary)]">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium">修復遺失記錄</div>
+                      <div className="text-xs text-[var(--text-secondary)]">從事件日誌重建卡在草稿的發票</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-[var(--surface-muted)]"
+                    onClick={async () => {
+                      setMaintenanceOpen(false);
+                      const res = await fetch("/api/sheets/einvoices/batch-sync", { method: "POST" });
+                      const data = (await res.json()) as {
+                        ok: boolean;
+                        message?: string;
+                        error?: string;
+                        cancelledRecords?: EInvoiceRecord[];
+                        skippedDetails?: Array<{ invoiceId: string; reason: string }>;
+                      };
+                      if (data.ok) {
+                        const skipped = data.skippedDetails ?? [];
+                        const skippedDetail = skipped.length > 0
+                          ? skipped.map((s) => `${s.invoiceId}：${s.reason}`).join("\n")
+                          : undefined;
+                        setNotice({
+                          tone: (data.cancelledRecords ?? []).length > 0 ? "success" : "info",
+                          title: data.message ?? "批次同步完成",
+                          detail: skippedDetail,
+                        });
+                        if ((data.cancelledRecords ?? []).length > 0) {
+                          setInvoices((prev) =>
+                            prev.map((inv) => {
+                              const updated = data.cancelledRecords!.find((r) => r.invoiceId === inv.invoiceId);
+                              return updated ?? inv;
+                            }),
+                          );
+                        }
+                        void load({ preserveFeedback: true });
+                      } else {
+                        setNotice({ tone: "error", title: "批次同步失敗", detail: data.error });
+                      }
+                    }}
+                  >
+                    <div className="mt-0.5 shrink-0 text-[var(--text-secondary)]">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium">批次同步狀態</div>
+                      <div className="text-xs text-[var(--text-secondary)]">向 Giveme 查詢已作廢發票並同步</div>
+                    </div>
+                  </button>
+                  {invoices.some((inv) => inv.status === "failed") && (
+                    <>
+                      <div className="my-1 border-t border-[var(--border)]" />
+                      <button
+                        type="button"
+                        className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-red-50"
+                        onClick={() => { setMaintenanceOpen(false); setConfirmDeleteFailed(true); }}
+                      >
+                        <div className="mt-0.5 shrink-0 text-red-500">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-red-600">刪除失敗記錄</div>
+                          <div className="text-xs text-red-400">清除所有失敗草稿，無法復原</div>
+                        </div>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {filteredInvoices.some((inv) => inv.status === "needs_review") && (
+              <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs">
+                <svg xmlns="http://www.w3.org/2000/svg" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="flex-1">
+                  <span className="font-medium text-amber-900">
+                    {filteredInvoices.filter((inv) => inv.status === "needs_review").length} 筆發票需人工確認稅型
+                  </span>
+                  <span className="ml-1 text-amber-700">請點擊各筆記錄旁的確認按鈕，核對稅率後標記為已開立。</span>
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 text-xs font-medium text-amber-800 underline hover:text-amber-900"
+                  onClick={() => setHistoryStatusFilter("needs_review")}
+                >
+                  僅顯示
+                </button>
+              </div>
+            )}
+            {filteredInvoices.length === 0 ? (
+              <div className="rounded-md bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--text-secondary)]">
+                {invoices.length === 0 ? "尚無開票紀錄。" : "沒有符合搜尋條件的記錄。"}
+              </div>
+            ) : (
+              filteredInvoices.slice(0, historyLimit).map((invoice) => (
+                <div
+                  key={invoice.invoiceId}
+                  id={`invoice-row-${invoice.invoiceId}`}
+                  ref={(el) => { invoiceRowRefs.current[invoice.invoiceId] = el; }}
+                  className={`rounded-lg border p-3 space-y-2 transition-shadow ${highlightedInvoiceId === invoice.invoiceId ? "ring-2 ring-blue-400" : ""} ${historySelectedIds.has(invoice.invoiceId) ? "border-[var(--accent)] bg-[var(--accent-muted)]/20" : "border-[var(--border)]"}`}
+                >
+                  {/* 第一行：checkbox + 發票號碼 + 狀態 badge */}
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      className="shrink-0"
+                      checked={historySelectedIds.has(invoice.invoiceId)}
+                      onCheckedChange={() => toggleHistorySelect(invoice.invoiceId)}
+                    />
+                    <span className="font-medium text-[var(--text-primary)]">{invoice.invoiceId}</span>
+                    <span className={`ml-auto inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${INVOICE_STATUS_CLASS[invoice.status] ?? "bg-slate-100 text-slate-700"}`}>
+                      {INVOICE_STATUS_LABEL[invoice.status] ?? invoice.status}
+                    </span>
+                  </div>
+                  {/* 第二行：買方名稱 + buyerType 標籤 */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-[var(--text-primary)]">{invoice.buyerName}</span>
+                    <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${invoice.buyerType === "b2b" || Boolean(invoice.buyerTaxId?.trim()) ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-600"}`}>
+                      {invoice.buyerType === "b2b" || Boolean(invoice.buyerTaxId?.trim()) ? "B2B" : "B2C"}
+                    </span>
+                  </div>
+                  {/* 第三行：金額 + 開票日期 */}
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-[var(--text-primary)]">{formatCurrency(invoice.totalAmount)}</span>
+                    <span className="text-xs text-[var(--text-secondary)]">{invoice.invoiceDate ? invoice.invoiceDate.slice(0, 10) : ""}</span>
+                  </div>
+                  {/* 發票號碼（已開立才顯示）*/}
+                  {invoice.providerInvoiceNo ? (
+                    <div className="text-xs text-emerald-700">發票號碼：{invoice.providerInvoiceNo}</div>
+                  ) : null}
+                  {invoice.errorMessage ? (
+                    <div className="text-xs text-red-600">{invoice.errorMessage}</div>
+                  ) : null}
+                  {/* 操作按鈕列 */}
+                  <div className="flex items-center gap-1 pt-1">
+                    {invoice.status === "needs_review" && (
+                      <button
+                        type="button"
+                        title="確認稅率後標記為已開立"
+                        className="rounded p-1 text-amber-600 hover:bg-amber-50"
+                        onClick={() => {
+                          setConfirmReviewForm({ taxType: invoice.taxType ?? 0, notes: "" });
+                          setConfirmReviewTarget(invoice);
+                        }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </button>
+                    )}
+                    {invoice.status === "draft" || invoice.status === "failed" ? (
+                      <>
+                        {invoice.status === "failed" && (
+                          <input
+                            type="date"
+                            className="h-8 rounded border border-[var(--border)] px-1 text-xs"
+                            value={reissueDate[invoice.invoiceId] ?? invoice.invoiceDate.slice(0, 10)}
+                            onChange={(e) => setReissueDate((prev) => ({ ...prev, [invoice.invoiceId]: e.target.value }))}
+                            title="修改發票日期後重新送出"
+                          />
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="送出開立"
+                          onClick={() => void handleIssue(invoice.invoiceId, invoice.status === "failed" ? (reissueDate[invoice.invoiceId] ?? invoice.invoiceDate.slice(0, 10)) : undefined)}
+                          disabled={syncingInvoiceId === invoice.invoiceId}
+                        >
+                          {syncingInvoiceId === invoice.invoiceId ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4 text-blue-600" />}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => void handleSync(invoice.invoiceId)} disabled={syncingInvoiceId === invoice.invoiceId}>
+                        {syncingInvoiceId === invoice.invoiceId ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                      </Button>
+                    )}
+                    {invoice.status === "issued" ? (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="下載發票圖片"
+                          disabled={syncingInvoiceId === invoice.invoiceId}
+                          onClick={() => void handleDownloadPicture(invoice)}
+                        >
+                          {syncingInvoiceId === invoice.invoiceId ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4 text-emerald-600" />
+                          )}
+                        </Button>
+                        {(invoice.buyerType === "b2b" || Boolean(invoice.buyerTaxId?.trim())) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="列印 A4 證明聯"
+                            onClick={() => window.open(`/api/sheets/einvoices/${encodeURIComponent(invoice.invoiceId)}/print`, "_blank")}
+                          >
+                            <FileText className="h-4 w-4 text-blue-600" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => void handleCancel(invoice)} disabled={syncingInvoiceId === invoice.invoiceId}>
+                          <XCircle className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+            {filteredInvoices.length > historyLimit && (
+              <button
+                type="button"
+                className="w-full rounded-md border border-[var(--border)] py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                onClick={() => setHistoryLimit((prev) => prev + 20)}
+              >
+                顯示更多（已顯示 {Math.min(historyLimit, filteredInvoices.length)} / {filteredInvoices.length} 筆）
+              </button>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {/* 修改 1c：confirm-review modal */}
+      {confirmReviewTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+            <h2 className="mb-1 text-sm font-semibold">確認稅型</h2>
+            <p className="mb-3 text-xs text-[var(--text-secondary)]">
+              {confirmReviewTarget.invoiceId} · {confirmReviewTarget.buyerName}
+            </p>
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium">稅型</label>
+              <select
+                className="w-full rounded border border-[var(--border)] px-2 py-1.5 text-sm"
+                value={confirmReviewForm.taxType}
+                onChange={(e) => setConfirmReviewForm((f) => ({ ...f, taxType: Number(e.target.value) as 0 | 1 | 2 | 4 }))}
+              >
+                <option value={0}>應稅（5%）</option>
+                <option value={1}>零稅率</option>
+                <option value={2}>免稅</option>
+                <option value={4}>特殊稅率</option>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="mb-1 block text-xs font-medium">備註（選填）</label>
+              <input
+                className="w-full rounded border border-[var(--border)] px-2 py-1.5 text-sm"
+                value={confirmReviewForm.notes}
+                onChange={(e) => setConfirmReviewForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="說明確認依據..."
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-muted)]"
+                onClick={() => setConfirmReviewTarget(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="rounded bg-amber-600 px-3 py-1.5 text-sm text-white hover:bg-amber-700"
                 onClick={async () => {
-                  if (!confirm("確定刪除所有失敗記錄？")) return;
+                  if (!confirmReviewTarget) return;
+                  try {
+                    const res = await fetch(`/api/sheets/einvoices/${encodeURIComponent(confirmReviewTarget.invoiceId)}/confirm-review`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(confirmReviewForm),
+                    });
+                    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+                    if (!data.ok) throw new Error(data.error ?? "確認失敗");
+                    setConfirmReviewTarget(null);
+                    void load({ preserveFeedback: true });
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : "確認失敗";
+                    setNotice({ tone: "error", title: "確認稅率失敗", detail: msg });
+                  }
+                }}
+              >
+                確認開立
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 修改 2a：作廢原因 modal */}
+      {cancelTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+            <h2 className="mb-1 text-sm font-semibold">確認作廢</h2>
+            <p className="mb-3 text-xs text-[var(--text-secondary)]">
+              {cancelTarget.invoiceId} · {cancelTarget.buyerName}
+            </p>
+            <div className="mb-4">
+              <label className="mb-1 block text-xs font-medium">作廢原因</label>
+              <input
+                className="w-full rounded border border-[var(--border)] px-2 py-1.5 text-sm"
+                value={cancelRemark}
+                onChange={(e) => setCancelRemark(e.target.value)}
+                placeholder="請輸入作廢原因"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-muted)]"
+                onClick={() => setCancelTarget(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+                disabled={!cancelRemark.trim()}
+                onClick={() => void submitCancel(cancelTarget, cancelRemark)}
+              >
+                確認作廢
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 修改 2b：批次刪除確認 modal */}
+      {confirmDeleteBatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+            <h2 className="mb-1 text-sm font-semibold">確認刪除</h2>
+            <p className="mb-4 text-xs text-[var(--text-secondary)]">
+              確定刪除選取的 {historySelectedIds.size} 筆記錄？此操作無法復原。
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-muted)]"
+                onClick={() => setConfirmDeleteBatch(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+                onClick={() => void submitBatchDelete()}
+              >
+                確認刪除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 修改 2b：刪除失敗記錄確認 modal */}
+      {confirmDeleteFailed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+            <h2 className="mb-1 text-sm font-semibold">刪除失敗記錄</h2>
+            <p className="mb-4 text-xs text-[var(--text-secondary)]">
+              確定刪除所有失敗記錄？此操作無法復原。
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-muted)]"
+                onClick={() => setConfirmDeleteFailed(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+                onClick={async () => {
+                  setConfirmDeleteFailed(false);
                   const res = await fetch("/api/sheets/einvoices/cleanup", { method: "POST" });
                   const data = (await res.json()) as { ok: boolean; message?: string; error?: string };
                   if (data.ok) {
@@ -871,80 +1643,171 @@ export function EInvoicesClient() {
                   }
                 }}
               >
-                刪除失敗記錄
-              </Button>
-            )}
+                確認刪除
+              </button>
+            </div>
           </div>
+        </div>
+      )}
 
-          <div className="space-y-3">
-            {invoices.length === 0 ? (
-              <div className="rounded-md bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--text-secondary)]">尚無開票紀錄。</div>
-            ) : (
-              invoices.slice(0, 20).map((invoice) => (
-                <div key={invoice.invoiceId} className="rounded-lg border border-[var(--border)] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{invoice.invoiceId}</div>
-                      <div className="mt-1 text-xs text-[var(--text-secondary)]">
-                        {invoice.buyerName} / {formatCurrency(invoice.totalAmount)} / {invoice.status}
-                      </div>
-                      {invoice.providerInvoiceNo ? (
-                        <div className="mt-1 text-xs text-emerald-700">發票號碼：{invoice.providerInvoiceNo}</div>
-                      ) : null}
-                      {invoice.errorMessage ? (
-                        <div className="mt-1 text-xs text-red-600">{invoice.errorMessage}</div>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {invoice.status === "draft" || invoice.status === "failed" ? (
-                        <>
-                          {invoice.status === "failed" && (
-                            <input
-                              type="date"
-                              className="h-8 rounded border border-[var(--border)] px-1 text-xs"
-                              value={reissueDate[invoice.invoiceId] ?? invoice.invoiceDate.slice(0, 10)}
-                              onChange={(e) => setReissueDate((prev) => ({ ...prev, [invoice.invoiceId]: e.target.value }))}
-                              title="修改發票日期後重新送出"
-                            />
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="送出開立"
-                            onClick={() => void handleIssue(invoice.invoiceId, invoice.status === "failed" ? (reissueDate[invoice.invoiceId] ?? invoice.invoiceDate.slice(0, 10)) : undefined)}
-                            disabled={syncingInvoiceId === invoice.invoiceId}
-                          >
-                            {syncingInvoiceId === invoice.invoiceId ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4 text-blue-600" />}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button variant="ghost" size="sm" onClick={() => void handleSync(invoice.invoiceId)} disabled={syncingInvoiceId === invoice.invoiceId}>
-                          {syncingInvoiceId === invoice.invoiceId ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                        </Button>
-                      )}
-                      {invoice.status === "issued" ? (
-                        <>
-                          <a
-                            href={`/api/sheets/einvoices/${encodeURIComponent(invoice.invoiceId)}/picture?type=1${invoice.providerInvoiceNo ? `&code=${encodeURIComponent(invoice.providerInvoiceNo)}` : ""}`}
-                            download
-                            title="下載發票圖片"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
-                          >
-                            <Download className="h-4 w-4 text-emerald-600" />
-                          </a>
-                          <Button variant="ghost" size="sm" onClick={() => void handleCancel(invoice)} disabled={syncingInvoiceId === invoice.invoiceId}>
-                            <XCircle className="h-4 w-4 text-red-600" />
-                          </Button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ))
+      {/* 任務 5：批次開票確認 modal */}
+      <Dialog open={batchIssueConfirm !== null} onOpenChange={(open) => { if (!open) setBatchIssueConfirm(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>確認批次開立電子發票</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-4">
+            <div className="overflow-x-auto rounded border border-[var(--border)]">
+              <table className="w-full text-xs">
+                <thead className="bg-[var(--surface-muted)]">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">來源編號</th>
+                    <th className="px-3 py-2 text-left font-medium">買方名稱</th>
+                    <th className="px-3 py-2 text-right font-medium">金額</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(batchIssueConfirm?.candidates ?? []).map((c) => {
+                    const d = drafts[c.candidateId] ?? buildDefaultDraft(c);
+                    return (
+                      <tr key={c.candidateId} className="border-t border-[var(--border)]">
+                        <td className="px-3 py-1.5 text-[var(--text-secondary)]">{c.sourceId}</td>
+                        <td className="px-3 py-1.5">{d.buyerName}</td>
+                        <td className="px-3 py-1.5 text-right">{formatCurrency(d.totalAmount ?? c.totalAmount)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+              <span>共 {batchIssueConfirm?.candidates.length ?? 0} 張</span>
+              <span className="font-medium text-[var(--text-primary)]">
+                總金額 {formatCurrency(
+                  (batchIssueConfirm?.candidates ?? []).reduce((sum, c) => {
+                    const d = drafts[c.candidateId] ?? buildDefaultDraft(c);
+                    return sum + (d.totalAmount ?? c.totalAmount);
+                  }, 0),
+                )}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBatchIssueConfirm(null)}>取消</Button>
+            <Button
+              onClick={() => { if (batchIssueConfirm) void executeBatchIssue(batchIssueConfirm.candidates); }}
+              disabled={issuing}
+            >
+              {issuing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              確認開立
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 快速開立 modal */}
+      <Dialog open={quickCreateOpen} onOpenChange={setQuickCreateOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>快速開立電子發票</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 px-1 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">買方名稱 *</Label>
+              <Input
+                placeholder="公司名稱或個人姓名"
+                value={quickCreateForm.buyerName}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, buyerName: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">統編（B2B 填寫，B2C 留空）</Label>
+              <Input
+                placeholder="12345678"
+                maxLength={8}
+                value={quickCreateForm.buyerTaxId}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, buyerTaxId: e.target.value.replace(/\D/g, "") }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">含稅金額 *</Label>
+              <Input
+                placeholder="1050"
+                value={quickCreateForm.totalAmount}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, totalAmount: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">品項說明（留空同買方名稱）</Label>
+              <Input
+                placeholder="繃布安裝工程"
+                value={quickCreateForm.content}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, content: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">發票日期</Label>
+              <Input
+                type="date"
+                value={quickCreateForm.invoiceDate}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, invoiceDate: e.target.value }))}
+              />
+            </div>
+            {quickCreateForm.totalAmount && Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) > 0 && (
+              <p className="text-xs text-[var(--text-secondary)]">
+                含稅 {Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")).toLocaleString()} = 未稅 {Math.round(Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) / 1.05).toLocaleString()} + 稅 {(Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) - Math.round(Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) / 1.05)).toLocaleString()}
+              </p>
             )}
           </div>
-        </section>
-      </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQuickCreateOpen(false)} disabled={quickCreating}>取消</Button>
+            <Button
+              onClick={() => void handleQuickCreate()}
+              disabled={quickCreating || !quickCreateForm.buyerName.trim() || !quickCreateForm.totalAmount}
+            >
+              {quickCreating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              建立並開立
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 任務 13：開票成功 Snackbar */}
+      {snackbar && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
+          <span>{snackbar.message}</span>
+          {snackbar.invoiceId && (
+            <button
+              type="button"
+              className="underline hover:no-underline"
+              onClick={() => {
+                const targetId = snackbar.invoiceId;
+                if (!targetId) return;
+                setHistoryStatusFilter("all");
+                setHistorySearch("");
+                // Ensure the row is rendered, then scroll to it
+                setTimeout(() => {
+                  const el = invoiceRowRefs.current[targetId] ?? document.getElementById(`invoice-row-${targetId}`);
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    setHighlightedInvoiceId(targetId);
+                    setTimeout(() => setHighlightedInvoiceId(null), 1500);
+                  }
+                }, 100);
+              }}
+            >
+              查看
+            </button>
+          )}
+          <button
+            type="button"
+            className="ml-2 opacity-60 hover:opacity-100"
+            onClick={() => setSnackbar(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

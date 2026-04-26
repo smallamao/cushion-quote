@@ -13,6 +13,7 @@ interface Props {
   placeholder?: string;
   /** 打字後最多顯示幾筆 (預設 50) */
   maxResults?: number;
+  disabled?: boolean;
 }
 
 /**
@@ -30,6 +31,7 @@ export function ProductCombobox({
   onChange,
   placeholder = "選擇商品...",
   maxResults = 50,
+  disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -111,8 +113,9 @@ export function ProductCombobox({
     <div ref={wrapperRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-8 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-2 text-left text-xs hover:bg-[var(--bg-subtle)]"
+        onClick={() => !disabled && setOpen((v) => !v)}
+        disabled={disabled}
+        className={`flex h-8 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-2 text-left text-xs ${disabled ? "cursor-not-allowed opacity-50" : "hover:bg-[var(--bg-subtle)]"}`}
       >
         <span className="min-w-0 flex-1 truncate">
           {selected ? (

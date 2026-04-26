@@ -14,9 +14,10 @@ import {
   EINVOICE_EVENT_RANGE_DATA,
   EINVOICE_EVENT_RANGE_FULL,
   EINVOICE_RANGE_DATA,
-  EINVOICE_RANGE_FULL,
+  EINVOICE_ROW_RANGE,
   buildEInvoiceItemsFromVersionLines,
   eInvoiceEventRecordToRow,
+  eInvoiceRecordToRow,
   eInvoiceRowToRecord,
   generateEInvoiceEventId,
   generateEInvoiceId,
@@ -114,14 +115,39 @@ export async function generateNextEInvoiceId(client: SheetsClient): Promise<stri
   return generateEInvoiceId(rows);
 }
 
+function findNextSheetRow(rows: string[][]): number {
+  // rows[i] = sheet row (i + 2). Find last row with a non-empty invoiceId in col A.
+  let lastIdx = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i]?.[0]) { lastIdx = i; break; }
+  }
+  return lastIdx + 3; // idx→sheetRow(+2), then +1 for next row. Falls back to row 2 when empty.
+}
+
 export async function appendEInvoiceRecord(client: SheetsClient, record: EInvoiceRecord): Promise<void> {
-  const { eInvoiceRecordToRow } = await import("@/lib/einvoice-utils");
-  await client.sheets.spreadsheets.values.append({
+  const rows = await getEInvoiceRows(client);
+  const nextRow = findNextSheetRow(rows);
+  await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: EINVOICE_RANGE_FULL,
+    range: EINVOICE_ROW_RANGE(nextRow),
     valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
     requestBody: { values: [eInvoiceRecordToRow(record)] },
+  });
+}
+
+export async function batchAppendEInvoiceRecords(client: SheetsClient, records: EInvoiceRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  const rows = await getEInvoiceRows(client);
+  const firstRow = findNextSheetRow(rows);
+  await client.sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: client.spreadsheetId,
+    requestBody: {
+      valueInputOption: "RAW",
+      data: records.map((record, i) => ({
+        range: EINVOICE_ROW_RANGE(firstRow + i),
+        values: [eInvoiceRecordToRow(record)],
+      })),
+    },
   });
 }
 
@@ -141,7 +167,12 @@ export async function updateEInvoiceRecord(client: SheetsClient, invoiceId: stri
   const { EINVOICE_ROW_RANGE, eInvoiceRecordToRow } = await import("@/lib/einvoice-utils");
 
   async function tryOnce(): Promise<EInvoiceRecord | null> {
-    const rows = await getEInvoiceRows(client);
+    // Read directly (no silent catch) so real API errors propagate to the caller
+    const response = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: EINVOICE_RANGE_DATA,
+    });
+    const rows = (response.data.values ?? []) as string[][];
     const rowIndex = rows.findIndex((row) => (row[0] ?? "") === invoiceId);
     if (rowIndex === -1) return null;
     const next = updater(eInvoiceRowToRecord(rows[rowIndex]));
@@ -247,6 +278,7 @@ function buildCandidate(params: {
     clientPhone: params.primaryContact?.phone ?? params.version.clientPhoneSnapshot,
     clientEmail: params.primaryContact?.email ?? "",
     clientTaxId: params.company?.taxId ?? "",
+    clientAddress: params.company?.address ?? "",
     projectName: params.version.projectNameSnapshot,
     amount: totalAmount,
     untaxedAmount,
@@ -344,7 +376,10 @@ export async function buildEInvoiceCandidates(client: SheetsClient, options: { v
         lineItems: linesByVersionId.get(version.versionId) ?? [],
         amount: ar.totalAmount,
         invoiceDate: isoDateNow(),
-        existingInvoice: existingIssuedMap.get(`ar:${ar.arId}`),
+        // Fallback: invoice may have been issued via quote_version source instead of ar source
+        existingInvoice:
+          existingIssuedMap.get(`ar:${ar.arId}`) ??
+          existingIssuedMap.get(`quote_version:${ar.versionId}`),
       }),
     );
   }
@@ -366,7 +401,9 @@ export async function buildEInvoiceCandidates(client: SheetsClient, options: { v
         lineItems: linesByVersionId.get(version.versionId) ?? [],
         amount: record.amount,
         invoiceDate: isoDateNow(),
-        existingInvoice: existingIssuedMap.get(`pending_monthly:${record.pendingId}`),
+        existingInvoice:
+          existingIssuedMap.get(`pending_monthly:${record.pendingId}`) ??
+          existingIssuedMap.get(`quote_version:${record.versionId}`),
       }),
     );
   }

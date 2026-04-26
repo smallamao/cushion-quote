@@ -210,6 +210,8 @@ export function PurchaseEditorClient({ orderId }: Props) {
   const [receiveReferenceNumber, setReceiveReferenceNumber] = useState("");
   const [receiveNotes, setReceiveNotes] = useState("");
   const [receiveDraftItems, setReceiveDraftItems] = useState<ReceiveDraftItem[]>([]);
+  const [notice, setNotice] = useState<{ tone: "success" | "error" | "warning"; text: string } | null>(null);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
 
   // Preview next order ID for new orders (server will still authoritative-assign)
   const previewNextOrderId = useMemo(() => {
@@ -377,7 +379,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
           detectionMessage = `自動選擇廠商:${supplierName}`;
         }
       } else {
-        alert("無法自動偵測廠商,請手動選擇後再解析");
+        setNotice({ tone: "warning", text: "無法自動偵測廠商，請手動選擇後再解析" });
         return;
       }
     }
@@ -444,8 +446,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
     setShowPaste(false);
 
     if (detectionMessage) {
-      // 用 setTimeout 避免被 setState 重渲蓋掉
-      setTimeout(() => alert(detectionMessage), 50);
+      setNotice({ tone: "success", text: detectionMessage });
     }
   }
 
@@ -481,7 +482,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
   /** 開啟快速建商品 modal */
   function openQuickCreate(index: number) {
     if (!supplierId) {
-      alert("請先選擇廠商");
+      setNotice({ tone: "warning", text: "請先選擇廠商" });
       return;
     }
     setQuickCreateItemIdx(index);
@@ -561,12 +562,12 @@ export function PurchaseEditorClient({ orderId }: Props) {
 
   async function handleSave() {
     if (!supplierId) {
-      alert("請選擇廠商");
+      setNotice({ tone: "error", text: "請選擇廠商" });
       return;
     }
     const validItems = items.filter((it) => it.productCode && it.quantity > 0);
     if (validItems.length === 0) {
-      alert("請至少新增一筆有效品項");
+      setNotice({ tone: "error", text: "請至少新增一筆有效品項" });
       return;
     }
     setSaving(true);
@@ -617,7 +618,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "儲存失敗";
-      alert(msg);
+      setNotice({ tone: "error", text: msg });
     } finally {
       setSaving(false);
     }
@@ -626,11 +627,11 @@ export function PurchaseEditorClient({ orderId }: Props) {
   function openReceiveDialog() {
     if (!isEditing || !orderId) return;
     if (blockedReceiveItems.length > 0) {
-      alert("有未對應採購商品的品項，請先完成商品對應後再收貨入庫");
+      setNotice({ tone: "warning", text: "有未對應採購商品的品項，請先完成商品對應後再收貨入庫" });
       return;
     }
     if (receivableItems.length === 0) {
-      alert("目前沒有可收貨的品項");
+      setNotice({ tone: "warning", text: "目前沒有可收貨的品項" });
       return;
     }
 
@@ -659,7 +660,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
 
     const positiveItems = receiveDraftItems.filter((item) => item.receiveNow > 0);
     if (positiveItems.length === 0) {
-      alert("請至少輸入一筆本次收貨數量");
+      setReceiveError("請至少輸入一筆本次收貨數量");
       return;
     }
 
@@ -667,7 +668,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
       (item) => item.receivedQuantity + item.receiveNow > item.quantity,
     );
     if (invalidItem) {
-      alert(`收貨數量超過剩餘可收數量：${invalidItem.itemId}`);
+      setReceiveError(`收貨數量超過剩餘可收數量：${invalidItem.itemId}`);
       return;
     }
 
@@ -693,7 +694,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
       setStatus(result.order.status);
       setReceiveDialogOpen(false);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "收貨入庫失敗");
+      setReceiveError(err instanceof Error ? err.message : "收貨入庫失敗");
     } finally {
       setReceiving(false);
     }
@@ -704,12 +705,12 @@ export function PurchaseEditorClient({ orderId }: Props) {
     orderItems: PurchaseOrderItem[];
   } | null {
     if (!supplierId) {
-      alert("請先選擇廠商");
+      setNotice({ tone: "warning", text: "請先選擇廠商" });
       return null;
     }
     const validItems = items.filter((it) => it.productCode && it.quantity > 0);
     if (validItems.length === 0) {
-      alert("沒有可預覽的品項");
+      setNotice({ tone: "warning", text: "沒有可預覽的品項" });
       return null;
     }
     const orderItems: PurchaseOrderItem[] = validItems.map((it, idx) => ({
@@ -765,7 +766,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
       setPdfBlob(blob);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "PDF 預覽失敗";
-      alert(msg);
+      setNotice({ tone: "error", text: msg });
       setPdfPreviewOpen(false);
     } finally {
       setPdfLoading(false);
@@ -818,6 +819,15 @@ export function PurchaseEditorClient({ orderId }: Props) {
 
   return (
     <div className="space-y-6">
+      {notice && (
+        <div className={`rounded-md border px-3 py-2 text-xs ${
+          notice.tone === "error" ? "border-red-200 bg-red-50 text-red-700" :
+          notice.tone === "warning" ? "border-amber-200 bg-amber-50 text-amber-700" :
+          "border-green-200 bg-green-50 text-green-700"
+        }`}>
+          {notice.text}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
@@ -1176,7 +1186,8 @@ export function PurchaseEditorClient({ orderId }: Props) {
                                 value=""
                                 products={supplierProducts}
                                 onChange={(v) => selectProduct(idx, v)}
-                                placeholder={supplierId ? "商品編號" : "請先選擇廠商"}
+                                placeholder={supplierId ? "搜尋商品編號或名稱…" : "請先選擇廠商"}
+                                disabled={!supplierId}
                               />
                             </div>
                             <Button
@@ -1192,6 +1203,11 @@ export function PurchaseEditorClient({ orderId }: Props) {
                               新增
                             </Button>
                           </div>
+                          {!supplierId && (
+                            <div className="text-[10px] text-amber-600">
+                              ⚠ 請先在上方選擇廠商，才能搜尋商品
+                            </div>
+                          )}
                           {it.warning && (
                             <div className="text-[10px] text-amber-600">
                               ⚠ {it.warning}
@@ -1469,11 +1485,16 @@ export function PurchaseEditorClient({ orderId }: Props) {
             </div>
           </div>
 
+          {receiveError && (
+            <div className="mx-6 mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {receiveError}
+            </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReceiveDialogOpen(false)} disabled={receiving}>
+            <Button variant="outline" onClick={() => { setReceiveDialogOpen(false); setReceiveError(null); }} disabled={receiving}>
               取消
             </Button>
-            <Button onClick={handleReceiveSubmit} disabled={receiving}>
+            <Button onClick={() => { setReceiveError(null); void handleReceiveSubmit(); }} disabled={receiving}>
               {receiving ? "入庫中…" : "確認收貨入庫"}
             </Button>
           </DialogFooter>

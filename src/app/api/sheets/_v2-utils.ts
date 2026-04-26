@@ -605,7 +605,7 @@ export async function updateCaseById(client: SheetsClient, caseId: string, updat
   const sheetRow = rowIndex + 2;
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${CASE_SHEET}!A${sheetRow}:W${sheetRow}`,
+    range: `${CASE_SHEET}!A${sheetRow}:AA${sheetRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [caseRecordToRow(next)] },
   });

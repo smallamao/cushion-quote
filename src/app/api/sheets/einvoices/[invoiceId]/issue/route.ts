@@ -8,6 +8,75 @@ import type { EInvoiceRecord } from "@/lib/types";
 import { getSession } from "../../_auth";
 import { appendEInvoiceEvent, getEInvoiceRecordById, updateEInvoiceRecord } from "../../_shared";
 
+type PersistedIssueItemSummary = {
+  name: string;
+  money: number;
+  number: number;
+  remark: string;
+  taxType: 0 | 1 | 2;
+};
+
+interface PersistedIssuePayloadSummary {
+  sourceType: EInvoiceRecord["sourceType"];
+  sourceId: string;
+  sourceSubId: string;
+  quoteId: string;
+  versionId: string;
+  caseId: string;
+  clientId: string;
+  buyerType: EInvoiceRecord["buyerType"];
+  buyerName: string;
+  buyerTaxId: string;
+  buyerAddress: string;
+  email: string;
+  carrierType: EInvoiceRecord["carrierType"];
+  carrierValue: string;
+  donationCode: string;
+  invoiceDate: string;
+  taxType: EInvoiceRecord["taxType"];
+  untaxedAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  taxRate: number;
+  itemCount: number;
+  itemNames: string[];
+  items: PersistedIssueItemSummary[];
+  content: string;
+}
+
+function buildPersistedIssuePayloadSummary(
+  record: EInvoiceRecord,
+  items: PersistedIssueItemSummary[],
+): PersistedIssuePayloadSummary {
+  return {
+    sourceType: record.sourceType,
+    sourceId: record.sourceId,
+    sourceSubId: record.sourceSubId,
+    quoteId: record.quoteId,
+    versionId: record.versionId,
+    caseId: record.caseId,
+    clientId: record.clientId,
+    buyerType: record.buyerType,
+    buyerName: record.buyerName,
+    buyerTaxId: record.buyerTaxId,
+    buyerAddress: record.buyerAddress,
+    email: record.email,
+    carrierType: record.carrierType,
+    carrierValue: record.carrierValue,
+    donationCode: record.donationCode,
+    invoiceDate: record.invoiceDate,
+    taxType: record.taxType,
+    untaxedAmount: record.untaxedAmount,
+    taxAmount: record.taxAmount,
+    totalAmount: record.totalAmount,
+    taxRate: record.taxRate,
+    itemCount: items.length,
+    itemNames: items.map((item) => item.name),
+    items,
+    content: record.content,
+  };
+}
+
 function buildCarrierFields(record: {
   carrierType: string;
   carrierValue: string;
@@ -134,15 +203,7 @@ export async function POST(
       phone: result.phone ?? "",
       orderCode: result.orderCode ?? "",
     });
-    const requestSummary = JSON.stringify({
-      buyerType: draftRecord.buyerType,
-      sourceType: draftRecord.sourceType,
-      sourceId: draftRecord.sourceId,
-      totalAmount: draftRecord.totalAmount,
-      itemNames: items.map((item) => item.name),
-      buyerTaxIdMasked: draftRecord.buyerTaxId ? `${"*".repeat(Math.max(0, draftRecord.buyerTaxId.length - 4))}${draftRecord.buyerTaxId.slice(-4)}` : "",
-      emailMasked: draftRecord.email ? `${draftRecord.email.slice(0, 2)}***` : "",
-    });
+    const requestSummary = JSON.stringify(buildPersistedIssuePayloadSummary(draftRecord, items));
 
     const nextStatus = result.success ? "issued" : "failed";
     const finalUpdater = (record: EInvoiceRecord): EInvoiceRecord => ({

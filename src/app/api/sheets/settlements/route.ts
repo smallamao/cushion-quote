@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { CommissionSettlement } from "@/lib/types";
 
-import { isoDateNow, isoNow } from "../_v2-utils";
+import { getSheetId, isoDateNow, isoNow } from "../_v2-utils";
 
 const SHEET_NAME = "佣金結算";
 const SHEET_RANGE = `${SHEET_NAME}!A2:P`;
@@ -182,6 +182,56 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ ok: true, settlement: merged });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const settlementId = searchParams.get("settlementId")?.trim() ?? "";
+  if (!settlementId) {
+    return NextResponse.json({ ok: false, error: "settlementId is required" }, { status: 400 });
+  }
+
+  const client = await getSheetsClient();
+  if (!client) {
+    return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+  }
+
+  try {
+    const rows = await getSettlementRows(client);
+    const rowIndex = rows.findIndex((row) => row[0] === settlementId);
+    if (rowIndex === -1) {
+      return NextResponse.json({ ok: false, error: "settlement not found" }, { status: 404 });
+    }
+
+    const sheetId = await getSheetId(client, SHEET_NAME);
+    if (sheetId === null) {
+      return NextResponse.json({ ok: false, error: "找不到佣金結算工作表" }, { status: 500 });
+    }
+
+    const sheetRow = rowIndex + 1; // 0-based index in the data range (row 2 onward = index 0 → sheet row index 1)
+    await client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: client.spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: "ROWS",
+                startIndex: sheetRow + 1, // +1 for header row
+                endIndex: sheetRow + 2,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

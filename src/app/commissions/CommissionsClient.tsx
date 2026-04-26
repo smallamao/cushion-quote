@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Plus, RefreshCw } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -96,6 +96,7 @@ export function CommissionsClient() {
   const [editingPaymentMethod, setEditingPaymentMethod] = useState("");
   const [editingReceiptNotes, setEditingReceiptNotes] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingEdit, setDeletingEdit] = useState(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [savingCreate, setSavingCreate] = useState(false);
@@ -266,6 +267,24 @@ export function CommissionsClient() {
     setEditingPaidAt(item.paidAt || "");
     setEditingPaymentMethod(item.paymentMethod || "");
     setEditingReceiptNotes(item.receiptNotes || "");
+  }
+
+  async function deleteSettlement() {
+    if (!editing) return;
+    if (!confirm(`確定刪除這筆結算紀錄（${editing.partnerName}・${formatCurrency(editing.commissionAmount)}）？`)) return;
+    setDeletingEdit(true);
+    try {
+      const response = await fetch(`/api/sheets/settlements?settlementId=${encodeURIComponent(editing.settlementId)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("刪除失敗");
+      setEditing(null);
+      await load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "刪除失敗");
+    } finally {
+      setDeletingEdit(false);
+    }
   }
 
   async function submitEdit() {
@@ -567,14 +586,25 @@ export function CommissionsClient() {
               <Input value={editingReceiptNotes} onChange={(e) => setEditingReceiptNotes(e.target.value)} placeholder="例如：轉帳後五碼 12345" />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>
-              取消
+          <DialogFooter className="flex-row items-center justify-between sm:justify-between">
+            <Button
+              variant="ghost"
+              className="text-[var(--error)] hover:text-[var(--error)]"
+              disabled={deletingEdit || savingEdit}
+              onClick={() => void deleteSettlement()}
+            >
+              {deletingEdit ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              刪除
             </Button>
-            <Button disabled={savingEdit} onClick={() => void submitEdit()}>
-              {savingEdit ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              儲存
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEditing(null)}>
+                取消
+              </Button>
+              <Button disabled={savingEdit || deletingEdit} onClick={() => void submitEdit()}>
+                {savingEdit ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                儲存
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

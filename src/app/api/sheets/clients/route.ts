@@ -151,8 +151,8 @@ export async function GET() {
     const companies: CompanyWithPrimaryContact[] = [];
 
     for (const row of rawRows) {
-      // Detect schema: legacy has 21 columns, new has 16
-      const isLegacy = row.length > 17;
+      // Detect schema: legacy has 21 columns (A:U), new has 18 columns (A:R)
+      const isLegacy = row.length > 18;
 
       let company: Company;
       let inlineContact: Contact | null = null;

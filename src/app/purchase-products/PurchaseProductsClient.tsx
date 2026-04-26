@@ -74,6 +74,25 @@ function getEffectiveCost(product: Pick<PurchaseProduct, "costPerCai" | "unitPri
   return product.costPerCai ?? product.unitPrice;
 }
 
+function buildCalculatorLabel(p: PurchaseProduct): string {
+  const { productCode, productName, specification, brand, series, colorCode, colorName } = p;
+  const colorPart = [colorCode, colorName].filter(Boolean).join(" ");
+  const seriesForLabel = specification && series
+    ? series.replace(/\([^)]+\)\s*$/, "").trim()
+    : (series ?? "");
+  const namePart = [brand, seriesForLabel].filter(Boolean).join(" ");
+  const descriptivePart = colorPart
+    ? `${colorPart}${namePart ? ` · ${namePart}` : ""}`
+    : namePart || productName || "";
+  const specSuffix =
+    specification &&
+    !descriptivePart.includes(specification) &&
+    productCode !== specification
+      ? ` (${specification})`
+      : "";
+  return [productCode, descriptivePart + specSuffix].filter(Boolean).join(" ");
+}
+
 interface BulkCommon {
   category: PurchaseProductCategory;
   supplierId: string;
@@ -102,10 +121,13 @@ export function PurchaseProductsClient() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [bulkFormError, setBulkFormError] = useState<string | null>(null);
+  const [confirmDuplicate, setConfirmDuplicate] = useState<{ proceed: () => void } | null>(null);
 
   async function handleImageUpload(file: File) {
     if (!file.type.startsWith("image/")) {
-      alert("請選擇圖片檔");
+      setFormError("請選擇圖片檔");
       return;
     }
     setUploadingImage(true);
@@ -120,7 +142,7 @@ export function PurchaseProductsClient() {
       }
       update("imageUrl", data.url);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "上傳失敗");
+      setFormError(err instanceof Error ? err.message : "上傳失敗");
     } finally {
       setUploadingImage(false);
     }
@@ -205,6 +227,7 @@ export function PurchaseProductsClient() {
     setDraft({ ...EMPTY_PRODUCT });
     setEditing(false);
     setCopySource(null);
+    setFormError(null);
     setShowForm(true);
   }
 
@@ -226,6 +249,7 @@ export function PurchaseProductsClient() {
     setDraft(sanitizeForDraft(p));
     setEditing(true);
     setCopySource(null);
+    setFormError(null);
     setShowForm(true);
   }
 
@@ -240,17 +264,18 @@ export function PurchaseProductsClient() {
     });
     setEditing(false);
     setCopySource(p.productCode);
+    setFormError(null);
     setShowForm(true);
   }
 
   async function handleSave() {
     if (saving) return;
     if (!draft.productCode.trim() || !draft.productName.trim()) {
-      alert("請輸入商品編號與名稱");
+      setFormError("請輸入商品編號與名稱");
       return;
     }
     if (!draft.supplierId) {
-      alert("請選擇廠商");
+      setFormError("請選擇廠商");
       return;
     }
 
@@ -260,7 +285,7 @@ export function PurchaseProductsClient() {
     if (!editing) {
       const conflict = products.find((p) => p.id === newId);
       if (conflict) {
-        alert(
+        setFormError(
           `編號「${draft.productCode}」在此廠商下已存在（${conflict.productName}）。請改一個編號再儲存。`,
         );
         return;
@@ -288,7 +313,7 @@ export function PurchaseProductsClient() {
       setShowForm(false);
       setCopySource(null);
     } catch (err) {
-      alert(
+      setFormError(
         (editing ? "更新失敗：" : "新增失敗：") +
           (err instanceof Error ? err.message : "unknown"),
       );
@@ -312,6 +337,7 @@ export function PurchaseProductsClient() {
     setSeriesName("");
     setSeriesCostPerCai(undefined);
     setSeriesListPricePerCai(undefined);
+    setBulkFormError(null);
     setShowBulk(true);
   }
 
@@ -338,7 +364,7 @@ export function PurchaseProductsClient() {
    function generateFromSeries() {
      const base = seriesBase.trim();
      if (!base) {
-       alert("請輸入系列代號（例如：LY3139）");
+       setBulkFormError("請輸入系列代號（例如：LY3139）");
        return;
      }
      const variants = seriesVariants
@@ -346,7 +372,7 @@ export function PurchaseProductsClient() {
        .map((v) => v.trim())
        .filter(Boolean);
      if (variants.length === 0) {
-       alert("請輸入色號清單（例如：1,2,3 或 -1,-2,-3）");
+       setBulkFormError("請輸入色號清單（例如：1,2,3 或 -1,-2,-3）");
        return;
      }
      const generated: BulkRow[] = variants.map((v) => {
@@ -374,14 +400,14 @@ return {
 
   async function handleBulkSave() {
     if (!bulkCommon.supplierId) {
-      alert("請選擇廠商");
+      setBulkFormError("請選擇廠商");
       return;
     }
     const validRows = bulkRows.filter(
       (r) => r.productCode.trim() && r.productName.trim(),
     );
     if (validRows.length === 0) {
-      alert("請至少填寫一筆完整資料（商品編號與名稱）");
+      setBulkFormError("請至少填寫一筆完整資料（商品編號與名稱）");
       return;
     }
 
@@ -389,7 +415,7 @@ return {
     const codes = validRows.map((r) => r.productCode.trim());
     const duplicates = codes.filter((c, i) => codes.indexOf(c) !== i);
     if (duplicates.length > 0) {
-      alert(`批次內有重複的商品編號：${Array.from(new Set(duplicates)).join(", ")}`);
+      setBulkFormError(`批次內有重複的商品編號：${Array.from(new Set(duplicates)).join(", ")}`);
       return;
     }
 
@@ -403,14 +429,16 @@ return {
       existingIds.has(`${r.productCode.trim()}-${bulkCommon.supplierId}`),
     );
     if (conflicts.length > 0) {
-      const ok = confirm(
-        `以下商品已存在（${conflicts.length} 筆），繼續會建立新的重複記錄：\n${conflicts
-          .map((c) => c.productCode)
-          .join(", ")}\n\n仍要新增嗎？`,
-      );
-      if (!ok) return;
+      setConfirmDuplicate({
+        proceed: () => void doSaveBulk(validRows),
+      });
+      return;
     }
 
+    await doSaveBulk(validRows);
+  }
+
+  async function doSaveBulk(validRows: BulkRow[]) {
 const payload: PurchaseProduct[] = validRows.map((r) => ({
         id: `${r.productCode.trim()}-${bulkCommon.supplierId}`,
         productCode: r.productCode.trim(),
@@ -435,7 +463,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
       setShowBulk(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "批量新增失敗";
-      alert(msg);
+      setBulkFormError(msg);
     } finally {
       setBulkSaving(false);
     }
@@ -443,7 +471,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+<div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-[var(--text-primary)]">
             採購商品管理
@@ -542,7 +570,92 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+      {/* 行動版卡片列表 */}
+      <div className="space-y-3 md:hidden">
+        {filtered.length === 0 ? (
+          <div className="rounded-lg border border-[var(--border)] px-4 py-6 text-center text-sm text-[var(--text-tertiary)]">
+            {loading ? "載入中..." : "沒有符合條件的商品"}
+          </div>
+        ) : (
+          pageRows.map((p) => (
+            <div
+              key={p.id}
+              className={`rounded-lg border border-[var(--border)] p-4 space-y-2 ${p.isActive ? "" : "opacity-60"}`}
+            >
+              {/* 第一行：名稱 + 品牌 */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="font-medium text-[var(--text-primary)]">{p.productName}</span>
+                  {p.specification ? (
+                    <span className="ml-1 text-xs text-[var(--text-secondary)]">({p.specification})</span>
+                  ) : null}
+                </div>
+                <span className="shrink-0 text-xs text-[var(--text-secondary)]">{p.category}</span>
+              </div>
+              {/* 第二行：廠商 + 編號 */}
+              <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                <span>供應商: {supplierMap[p.supplierId] || p.supplierId}</span>
+                <span>·</span>
+                <span className="font-mono">{p.productCode}</span>
+              </div>
+              {/* 第三行：進價 / 牌價 */}
+              <div className="flex items-center gap-4 text-sm">
+                <span>
+                  <span className="text-xs text-[var(--text-secondary)]">進價: </span>
+                  <span className="font-mono font-medium">${(getEffectiveCost(p) ?? 0).toLocaleString()}</span>
+                </span>
+                <span>
+                  <span className="text-xs text-[var(--text-secondary)]">牌價: </span>
+                  <span className="font-mono font-medium">${(p.listPricePerCai ?? 0).toLocaleString()}</span>
+                </span>
+                <span className="text-xs text-[var(--text-secondary)]">{p.unit}</span>
+              </div>
+              {/* 第四行：備註（有才顯示）*/}
+              {p.notes ? (
+                <div className="text-xs text-[var(--text-secondary)]">{p.notes}</div>
+              ) : null}
+              {/* 底部操作列 */}
+              <div className="flex items-center justify-between pt-1">
+                {p.imageUrl ? (
+                  <button
+                    type="button"
+                    className="group relative h-10 w-10 overflow-hidden rounded border border-[var(--border)]"
+                    onClick={() => setLightboxUrl(p.imageUrl)}
+                    title="點擊放大"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.imageUrl}
+                      alt={p.productName || p.productCode}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                ) : (
+                  <div className="flex h-10 w-10 items-center justify-center rounded border border-dashed border-[var(--border)] text-[var(--text-tertiary)]">
+                    <ImagePlus className="h-3.5 w-3.5" />
+                  </div>
+                )}
+                <div className="flex items-center gap-1">
+                  <Link href={`/purchase-products/${p.id}/history`}>
+                    <Button size="sm" variant="ghost" title="查看採購歷史">
+                      <TrendingUp className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                  <Button size="sm" variant="ghost" onClick={() => openCopy(p)} title="複製商品（建立同系列新色號）">
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(p)} title="編輯商品">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* 桌面版表格 */}
+      <div className="hidden overflow-x-auto rounded-lg border border-[var(--border)] md:block">
         <table className="w-full text-sm">
           <thead className="bg-[var(--surface-2)] text-xs uppercase text-[var(--text-secondary)]">
             <tr>
@@ -555,6 +668,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
               <th className="px-3 py-2 text-right">進價</th>
               <th className="px-3 py-2 text-right">牌價</th>
               <th className="px-3 py-2 text-left">單位</th>
+              <th className="px-3 py-2 text-left">計算機標籤預覽</th>
               <th className="px-3 py-2 text-right">操作</th>
             </tr>
           </thead>
@@ -604,6 +718,9 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
                   {(p.listPricePerCai ?? 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-xs">{p.unit}</td>
+                <td className="max-w-[220px] px-3 py-2 text-xs text-[var(--text-secondary)]" title={buildCalculatorLabel(p)}>
+                  <span className="block truncate">{buildCalculatorLabel(p)}</span>
+                </td>
                 <td className="px-3 py-2 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Link href={`/purchase-products/${p.id}/history`}>
@@ -769,7 +886,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
                  />
                </div>
                <div>
-                 <Label>牌價</Label>
+                 <Label>牌價 <span className="font-normal text-[var(--text-tertiary)]">（每才售價，報價計算用）</span></Label>
                  <Input
                    type="number"
                    value={draft.listPricePerCai ?? ""}
@@ -843,11 +960,16 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
               </div>
             </div>
 
+            {formError && (
+              <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {formError}
+              </div>
+            )}
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>
+              <Button variant="outline" onClick={() => { setShowForm(false); setFormError(null); }} disabled={saving}>
                 取消
               </Button>
-              <Button onClick={handleSave} disabled={saving || uploadingImage}>
+              <Button onClick={() => { setFormError(null); void handleSave(); }} disabled={saving || uploadingImage}>
                 {saving ? (
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />
                 ) : (
@@ -1182,16 +1304,21 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
                </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-between">
+            {bulkFormError && (
+              <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {bulkFormError}
+              </div>
+            )}
+            <div className="mt-4 flex items-center justify-between">
               <p className="text-[11px] text-[var(--text-tertiary)]">
                 {bulkRows.filter((r) => r.productCode && r.productName).length}{" "}
                 筆有效資料 / 共 {bulkRows.length} 列
               </p>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowBulk(false)}>
+                <Button variant="outline" onClick={() => { setShowBulk(false); setBulkFormError(null); }}>
                   取消
                 </Button>
-                <Button onClick={handleBulkSave} disabled={bulkSaving}>
+                <Button onClick={() => { setBulkFormError(null); void handleBulkSave(); }} disabled={bulkSaving}>
                   <Save className="mr-1 h-4 w-4" />
                   {bulkSaving ? "儲存中…" : "儲存全部"}
                 </Button>
@@ -1211,6 +1338,22 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
           void reload();
         }}
       />
+
+      {/* Confirm duplicate modal */}
+      {confirmDuplicate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xs rounded-lg bg-white p-5 shadow-xl">
+            <h2 className="text-sm font-semibold">確認建立？</h2>
+            <p className="mt-1 text-xs text-gray-500">此廠商下已有相同編號的商品，確定要繼續？</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+                onClick={() => setConfirmDuplicate(null)}>取消</button>
+              <button type="button" className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                onClick={() => { setConfirmDuplicate(null); confirmDuplicate.proceed(); }}>確認建立</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image lightbox */}
       {lightboxUrl && (

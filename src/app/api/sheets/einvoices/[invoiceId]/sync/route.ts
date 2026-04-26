@@ -30,7 +30,7 @@ export async function POST(
     if (!current) {
       return NextResponse.json({ ok: false, error: "invoice not found" }, { status: 404 });
     }
-    if (current.status !== "issued" && current.status !== "cancelled") {
+    if (current.status !== "issued" && current.status !== "cancelled" && current.status !== "needs_review") {
       return NextResponse.json({ ok: false, error: `invoice status ${current.status} cannot sync` }, { status: 409 });
     }
     if (!current.providerInvoiceNo) {
@@ -76,6 +76,9 @@ export async function POST(
       }),
       actor: session.displayName,
     });
+    if (result.success && !next) {
+      return NextResponse.json({ ok: false, error: "Sheets 找不到此發票列，請確認記錄是否存在", provider: result }, { status: 404 });
+    }
     return NextResponse.json({ ok: result.success, invoice: next, provider: result }, { status: result.success ? 200 : 502 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

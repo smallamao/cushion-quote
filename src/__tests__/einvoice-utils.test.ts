@@ -26,6 +26,7 @@ function makeInvoiceRecord(overrides: Partial<EInvoiceRecord> = {}): EInvoiceRec
     buyerType: "b2b",
     buyerName: "馬鈴薯沙發",
     buyerTaxId: "85164778",
+    buyerAddress: "台北市大安區測試路 1 號",
     email: "test@example.com",
     carrierType: "none",
     carrierValue: "",
@@ -78,6 +79,16 @@ describe("einvoice-utils", () => {
     expect(eInvoiceRowToRecord(eInvoiceRecordToRow(original))).toEqual(original);
   });
 
+  it("invoice row backward compatibility without buyerAddress column", () => {
+    const original = makeInvoiceRecord();
+    const legacyRow = eInvoiceRecordToRow(original).slice(0, -1);
+
+    expect(eInvoiceRowToRecord(legacyRow)).toEqual({
+      ...original,
+      buyerAddress: "",
+    });
+  });
+
   it("event row roundtrip", () => {
     const original = makeEventRecord();
     expect(eInvoiceEventRowToRecord(eInvoiceEventRecordToRow(original))).toEqual(original);
@@ -85,7 +96,7 @@ describe("einvoice-utils", () => {
 
   it("generateEInvoiceId 依當日序號遞增", () => {
     const rows = [["INV-20260422-001"], ["INV-20260422-003"]];
-    expect(generateEInvoiceId(rows, new Date("2026-04-22T10:00:00Z"))).toBe("INV-20260422-004");
+    expect(generateEInvoiceId(rows, new Date("2026-04-22T10:00:00Z"))).toMatch(/^INV-20260422-004-\d{3}$/);
   });
 
   it("generateEInvoiceEventId 產生可追蹤事件 ID", () => {

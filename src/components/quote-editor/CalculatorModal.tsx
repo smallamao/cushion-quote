@@ -42,7 +42,7 @@ import type {
   CaiRoundingMode,
   SplitDirection,
 } from "@/lib/types";
-import { calculateQuotedUnitPrice, caiToYard, formatCurrency, roundPriceToTens } from "@/lib/utils";
+import { calculateQuotedUnitPrice, caiToYard, yardToCai, formatCurrency, roundPriceToTens } from "@/lib/utils";
 
 // Mapping functions for PurchaseProduct to Material compatibility
 const mapPurchaseCategoryToMaterialCategory = (category: PurchaseProductCategory): Category => {
@@ -80,7 +80,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
+
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -178,9 +178,19 @@ export function CalculatorModal({
          const productName = product.productName ?? "";
          const specification = product.specification ?? "";
          const supplier = product.supplierName ?? "";
-         const label = [brand, series, colorCode ? `${colorCode}${colorName ? ` ${colorName}` : ""}` : colorName]
-           .filter(Boolean)
-           .join(" / ") || productName || product.productCode;
+         const colorPart = [colorCode, colorName].filter(Boolean).join(" ");
+         // specification 存在時去掉 series 尾巴的 (xxx)，避免與 spec 重複
+         const seriesForLabel = specification ? series.replace(/\([^)]+\)\s*$/, "").trim() : series;
+         const namePart = [brand, seriesForLabel].filter(Boolean).join(" ");
+         const descriptivePart = colorPart
+           ? `${colorPart}${namePart ? ` · ${namePart}` : ""}`
+           : namePart || productName || "";
+         const specSuffix = specification
+           && !descriptivePart.includes(specification)
+           && product.productCode !== specification
+           ? ` (${specification})` : "";
+         // 商品編號放最前面確保唯一性，有 specification 時補在後面
+         const label = [product.productCode, descriptivePart + specSuffix].filter(Boolean).join(" ");
 
          return {
            id: product.id,
@@ -193,8 +203,14 @@ export function CalculatorModal({
            colorCode,
            colorName,
            category: mapPurchaseCategoryToMaterialCategory(product.category),
-           costPerCai: product.costPerCai ?? product.unitPrice,
-           listPricePerCai: product.listPricePerCai,
+           costPerCai: product.costPerCai != null
+             ? product.costPerCai
+             : product.unit === "才"
+               ? product.unitPrice
+               : product.unit === "碼" && product.unitPrice
+                 ? yardToCai(product.unitPrice, product.widthCm ?? 137)
+                 : undefined,
+           listPricePerCai: product.listPricePerCai ?? undefined,
            supplier,
            widthCm: product.widthCm ?? 137,
            minOrder: product.minOrder ?? "",
@@ -583,7 +599,7 @@ export function CalculatorModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col overflow-hidden">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -611,7 +627,8 @@ export function CalculatorModal({
           </div>
         </DialogHeader>
 
-        <div className="space-y-5 px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label>作法</Label>
@@ -945,27 +962,27 @@ export function CalculatorModal({
             </div>
           )}
           {usesConstructionConditions && (
-            <div className="border-t pt-4 mt-4">
-              <h4 className="text-sm font-medium mb-3">施工條件（選填）</h4>
+            <div className="border-t border-[var(--border)] pt-4 mt-4">
+              <h4 className="text-sm font-medium mb-3 text-[var(--text-primary)]">施工條件（選填）</h4>
 
               {/* 安裝高度選擇器 */}
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="text-xs text-gray-600 mb-1 block">
+                  <label className="text-xs text-[var(--text-secondary)] mb-1 block">
                     安裝高度
                     {usesConstructionConditions && panelInputMode === "divide_surface" && (
-                      <span className="ml-1 text-blue-600">（自動偵測）</span>
+                      <span className="ml-1 text-[var(--accent)]">（自動偵測）</span>
                     )}
                   </label>
                   {usesConstructionConditions && panelInputMode === "divide_surface" ? (
-                    <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                    <div className="px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] text-sm text-[var(--text-primary)]">
                       {INSTALL_HEIGHT_TIERS[installHeightTier].label} ({INSTALL_HEIGHT_TIERS[installHeightTier].description})
                     </div>
                   ) : (
                     <select
                       value={installHeightTier}
                       onChange={(e) => setInstallHeightTier(e.target.value as InstallHeightTier)}
-                      className="w-full px-3 py-2 border rounded"
+                      className="w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] text-sm text-[var(--text-primary)]"
                     >
                       {INSTALL_HEIGHT_OPTIONS.map((tier) => (
                         <option key={tier} value={tier}>
@@ -978,8 +995,8 @@ export function CalculatorModal({
 
                 {/* 板片尺寸（自動偵測，唯讀） */}
                 <div>
-                  <label className="text-xs text-gray-600 mb-1 block">板片尺寸</label>
-                  <div className="px-3 py-2 bg-gray-50 border rounded text-sm">
+                  <label className="text-xs text-[var(--text-secondary)] mb-1 block">板片尺寸</label>
+                  <div className="px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] text-sm text-[var(--text-primary)]">
                     {PANEL_SIZE_TIERS[panelSizeTier].label} &middot; 自動偵測
                   </div>
                 </div>
@@ -987,7 +1004,7 @@ export function CalculatorModal({
 
               {/* 加給說明 */}
               {surchargePercent > 0 && (
-                <div className="bg-orange-50 border border-orange-200 rounded p-3 text-sm">
+                <div className="rounded-[var(--radius-md)] border border-orange-200 bg-orange-50 p-3 text-sm">
                   <div className="font-medium text-orange-900 mb-1">
                     工資加給 +{surchargePercent}%
                   </div>
@@ -1047,8 +1064,9 @@ export function CalculatorModal({
               <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
                 <div className="flex items-center justify-between">
                   <div className="font-medium">
-                    {selectedMaterial.brand} {selectedMaterial.series} /{" "}
-                    {selectedMaterial.colorCode || selectedMaterial.series}
+                    {[selectedMaterial.brand, selectedMaterial.series, selectedMaterial.colorCode]
+                      .filter(Boolean)
+                      .join(" / ") || selectedMaterial.label}
                   </div>
                   <button
                     type="button"
@@ -1064,11 +1082,20 @@ export function CalculatorModal({
                 <div className="mt-1 flex flex-wrap gap-3 text-[var(--text-secondary)]">
                   <span>{CATEGORY_LABELS[selectedMaterial.category]}</span>
                   <span>{STOCK_STATUS_LABELS[selectedMaterial.stockStatus]}</span>
-                  <span>牌價 {formatCurrency(caiToYard(selectedMaterial.listPricePerCai ?? 0, selectedMaterial.widthCm ?? 0))}/碼</span>
-                  <span>報價 {formatCurrency(pricePerYard)}/碼（{settings.fabricDiscount * 10}折）</span>
+                  {selectedMaterial.listPricePerCai ? (
+                    <span>牌價 {formatCurrency(caiToYard(selectedMaterial.listPricePerCai, selectedMaterial.widthCm ?? 0))}/碼</span>
+                  ) : (
+                    <span className="text-amber-500">牌價未設定</span>
+                  )}
+                  {pricePerYard > 0 && (
+                    <span>報價 {formatCurrency(pricePerYard)}/碼（{settings.fabricDiscount * 10}折）</span>
+                  )}
                 </div>
                 <div className="mt-1.5 text-[11px] text-[var(--text-tertiary)]">
-                  進價 {formatCurrency(costPricePerYard)}/碼 · 毛利 {costPricePerYard > 0 ? Math.round(((pricePerYard - costPricePerYard) / pricePerYard) * 100) : 0}%
+                  進價 {formatCurrency(costPricePerYard)}/碼
+                  {pricePerYard > 0 && costPricePerYard > 0 && (
+                    <> · 毛利 {Math.round(((pricePerYard - costPricePerYard) / pricePerYard) * 100)}%</>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1094,7 +1121,7 @@ export function CalculatorModal({
 
           <div>
             <Label>其他加工</Label>
-            <div className="mt-1 space-y-1.5">
+            <div className="mt-1 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] divide-y divide-[var(--border)]">
               {(
                 Object.entries(EXTRA_DEFS) as Array<
                   [ExtraItem, (typeof EXTRA_DEFS)[ExtraItem]]
@@ -1102,7 +1129,7 @@ export function CalculatorModal({
               ).map(([key, def]) => (
                 <label
                   key={key}
-                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs"
+                  className="flex items-center justify-between bg-[var(--bg-elevated)] px-3 py-2 text-xs"
                 >
                   <span>{def.label}</span>
                   <div className="flex items-center gap-3">
@@ -1118,21 +1145,21 @@ export function CalculatorModal({
                   </div>
                 </label>
               ))}
-              {extras.includes("power_hole") && (
-                <div className="pl-3">
-                  <Label>電源孔數量</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={powerHoleCount}
-                    onChange={(e) =>
-                      setPowerHoleCount(Math.max(1, Number(e.target.value)))
-                    }
-                    className="max-w-[100px]"
-                  />
-                </div>
-              )}
             </div>
+            {extras.includes("power_hole") && (
+              <div className="mt-2 pl-1">
+                <Label>電源孔數量</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={powerHoleCount}
+                  onChange={(e) =>
+                    setPowerHoleCount(Math.max(1, Number(e.target.value)))
+                  }
+                  className="mt-1 max-w-[100px]"
+                />
+              </div>
+            )}
           </div>
 
           {fabricResult && fabricResult.cutPieces.length > 0 && (
@@ -1187,6 +1214,10 @@ export function CalculatorModal({
             </div>
           )}
 
+        </div>
+        </div>
+
+        <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-6 py-3">
           <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
               {isFoamCore ? (
                 <>
@@ -1266,16 +1297,15 @@ export function CalculatorModal({
               </>
             )}
           </div>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              取消
+            </Button>
+            <Button size="sm" onClick={handleInsert} disabled={panelInputMode === "divide_surface" && hasCustomSplitSizes && !isCustomSplitValid}>
+              插入品項
+            </Button>
+          </div>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-            取消
-          </Button>
-          <Button size="sm" onClick={handleInsert} disabled={panelInputMode === "divide_surface" && hasCustomSplitSizes && !isCustomSplitValid}>
-            插入品項
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

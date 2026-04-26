@@ -34,11 +34,11 @@ export async function POST(request: Request) {
 
     for (let i = failedIndices.length - 1; i >= 0; i--) {
       const rowIndex = failedIndices[i];
-      await client.sheets.spreadsheets.values.clear({
-        spreadsheetId: client.spreadsheetId,
-        range: `${sheetName}!A${rowIndex}:AL${rowIndex}`,
-      });
-    }
+        await client.sheets.spreadsheets.values.clear({
+          spreadsheetId: client.spreadsheetId,
+          range: `${sheetName}!A${rowIndex}:AM${rowIndex}`,
+        });
+      }
 
     return NextResponse.json({
       ok: true,

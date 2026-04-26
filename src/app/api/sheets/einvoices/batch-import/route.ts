@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 
+import { generateEInvoiceId } from "@/lib/einvoice-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { EInvoiceRecord, EInvoiceBuyerType, EInvoiceCarrierType } from "@/lib/types";
 
 import { getSession } from "../_auth";
-import { appendEInvoiceRecord } from "../_shared";
+import { appendEInvoiceRecord, getEInvoiceRecords, getEInvoiceRows } from "../_shared";
 
 interface EinvoceImportItem {
   sourceType: string;
@@ -145,16 +146,38 @@ export async function POST(request: Request) {
       );
     }
 
+    // 重複開票守衛
+    const existingRecords = await getEInvoiceRecords(client);
+    const existingKeys = new Set(
+      existingRecords
+        .filter((r) => ["draft", "issuing", "issued", "needs_review"].includes(r.status))
+        .map((r) => `${r.sourceType}:${r.sourceId}`)
+    );
+    const dupes = body.invoices.filter((inv) => existingKeys.has(`${inv.sourceType}:${inv.sourceId}`));
+    if (dupes.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `${dupes.length} 筆來源已有現存發票，請先確認`,
+          duplicates: dupes.map((d) => `${d.sourceType}:${d.sourceId}`),
+        },
+        { status: 409 }
+      );
+    }
+
     // 實際寫入發票紀錄
     const createdRecords = [];
     const failedRecords = [];
 
+    // Read rows once; update in-memory after each write to keep IDs sequential
+    const existingRows = await getEInvoiceRows(client);
+
     for (const invoice of body.invoices) {
       try {
-        // 產生發票編號
-        const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-        const randomSuffix = String(Math.floor(Math.random() * 9000) + 1000).padStart(4, "0");
-        const invoiceId = `INV-${today}-${randomSuffix}`;
+        // Generate collision-free sequential ID (same logic as single-create path)
+        const invoiceId = generateEInvoiceId(existingRows);
+        // Push a stub row so the next iteration sees this ID when generating the next one
+        existingRows.push([invoiceId]);
 
         // 準備發票紀錄
         const record: EInvoiceRecord = {
@@ -170,6 +193,7 @@ export async function POST(request: Request) {
           buyerType: (invoice.buyerUbn ? "b2b" : "b2c") as EInvoiceBuyerType,
           buyerName: invoice.buyerName,
           buyerTaxId: invoice.buyerUbn,
+          buyerAddress: "",
           email: invoice.email,
           carrierType: "none" as EInvoiceCarrierType,
           carrierValue: "",

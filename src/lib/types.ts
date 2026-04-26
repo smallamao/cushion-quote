@@ -521,7 +521,8 @@ export type EInvoiceStatus =
   | "issuing"
   | "issued"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "needs_review";
 
 export type EInvoiceEventType =
   | "draft_created"
@@ -531,7 +532,9 @@ export type EInvoiceEventType =
   | "sync_succeeded"
   | "sync_failed"
   | "cancel_succeeded"
-  | "cancel_failed";
+  | "cancel_failed"
+  | "review_confirmed"
+  | "orphan_recovered";
 
 export interface EInvoiceItemSnapshot {
   name: string;
@@ -555,6 +558,7 @@ export interface EInvoiceRecord {
   buyerType: EInvoiceBuyerType;
   buyerName: string;
   buyerTaxId: string;
+  buyerAddress: string;
   email: string;
   carrierType: EInvoiceCarrierType;
   carrierValue: string;
@@ -610,6 +614,7 @@ export interface EInvoiceCandidate {
   clientPhone: string;
   clientEmail: string;
   clientTaxId: string;
+  clientAddress: string;
   projectName: string;
   amount: number;
   untaxedAmount: number;

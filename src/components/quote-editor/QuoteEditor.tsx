@@ -341,6 +341,7 @@ function SortableQuoteItemRow({
               type="button"
               className="cursor-grab rounded-[var(--radius-sm)] p-1 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-secondary)] active:cursor-grabbing"
               aria-label={`拖曳排序第 ${index + 1} 項`}
+              suppressHydrationWarning
               {...attributes}
               {...listeners}
             >

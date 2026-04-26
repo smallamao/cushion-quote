@@ -137,6 +137,7 @@ export function MaterialCombobox({
       <button
         type="button"
         key={item.id}
+        title={item.label}
         onMouseEnter={() => {
           if (idx != null) setHighlight(idx);
         }}
