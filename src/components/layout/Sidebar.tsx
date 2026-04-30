@@ -16,7 +16,8 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  const visibleLinks = user
+  // SSR 沒有 user → 0 links;CSR 拿到後才 render,避免 hydration mismatch。
+  const visibleLinks = mounted && user
     ? navLinks.filter((l) => l.roles.includes(user.role))
     : [];
 

@@ -255,7 +255,7 @@ export function QuickCreateProductDialog({
               />
             </div>
             <div>
-              <Label>牌價 <span className="font-normal text-[var(--text-tertiary)]">（每才售價，報價計算用）</span></Label>
+              <Label>牌價 <span className="font-normal text-[var(--text-tertiary)]">（報價計算用）</span></Label>
               <Input
                 type="number"
                 value={listPricePerCai ?? ""}

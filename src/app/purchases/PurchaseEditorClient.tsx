@@ -1088,13 +1088,11 @@ export function PurchaseEditorClient({ orderId }: Props) {
                       const isResolved =
                         !!it.productId &&
                         supplierProducts.some((p) => p.id === it.productId);
-                      // Only treat as a "saved orphan" needing the warning view
-                      // when there's evidence this row came from saved data
-                      // (has itemId) OR was filled from paste/snapshot (has
-                      // productName). A row where the user is just typing into
-                      // an empty productCode field should stay in the Input view.
-                      const hasSnapshot =
-                        (!!it.itemId || !!it.productName) && !!it.productCode;
+                      // 任何「已知 productCode 但無對應 productId」的列都視為
+                      // snapshot 視圖,顯示「⚠ 原商品 XXX」加重新對應按鈕。
+                      // 涵蓋: (1) 舊資料 product 已被刪除、(2) paste 貼上後查無
+                      // 此商品。如此貼上未對應時仍能看見原始編號,而不是空欄。
+                      const hasSnapshot = !!it.productCode;
                       // While supplier's product list is still loading, don't
                       // prematurely declare a saved item as "not found".
                       const stillLoading = loadingProducts && !!it.productId;
@@ -1137,18 +1135,17 @@ export function PurchaseEditorClient({ orderId }: Props) {
                         );
                       }
 
-                      // Unresolved with snapshot — old item whose product was
-                      // deleted/never created. Surface the snapshot so the user
-                      // can re-link or add it to the catalog without losing context.
+                      // 未解析成功的列 — 舊資料商品已刪除 / paste 後查無此商品。
+                      // 顯示原始編號讓使用者知道貼了什麼,並提供重新對應或新增按鈕。
                       if (hasSnapshot) {
                         return (
                           <div className="space-y-1">
                             <div className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
                               ⚠ 原商品「
-                              <span className="font-mono">{it.productCode || "（無編號）"}</span>
+                              <span className="font-mono">{it.productCode || "(無編號)"}</span>
                               {it.productName ? ` · ${it.productName}` : ""}
                               {it.specification ? ` · ${it.specification}` : ""}
-                              」在商品庫找不到,請重新對應或新增
+                              」{it.warning ? `:${it.warning},` : "在商品庫找不到,"}請重新對應或新增
                             </div>
                             <ProductCombobox
                               value=""

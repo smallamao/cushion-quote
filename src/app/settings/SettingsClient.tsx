@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TemplateManager } from "@/components/settings/TemplateManager";
 import { BackupPanel } from "@/components/admin/BackupPanel";
 import { CaseClientIdMigrationPanel } from "@/components/clients/CaseClientIdMigrationPanel";
+import { CaseReferrerBackfillPanel } from "@/components/clients/CaseReferrerBackfillPanel";
 import { CompanyListPanel } from "@/components/clients/CompanyListPanel";
 import { EquipmentCatalogPanel } from "@/components/equipment/EquipmentCatalogPanel";
 import { SuppliersManagementPanel } from "@/components/suppliers/SuppliersManagementPanel";
@@ -429,8 +430,9 @@ export function SettingsClient() {
               <div className="border-b border-[var(--border)] px-6 py-3">
                 <span className="text-sm font-medium">資料維護工具</span>
               </div>
-              <div className="px-6 py-4">
+              <div className="space-y-6 px-6 py-4">
                 <CaseClientIdMigrationPanel />
+                <CaseReferrerBackfillPanel />
               </div>
             </div>
           </div>

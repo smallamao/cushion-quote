@@ -8,9 +8,9 @@ import type {
 export const EINVOICE_SHEET = "電子發票紀錄";
 export const EINVOICE_EVENT_SHEET = "電子發票事件";
 
-export const EINVOICE_RANGE_FULL = `${EINVOICE_SHEET}!A:AM`;
-export const EINVOICE_RANGE_DATA = `${EINVOICE_SHEET}!A2:AM10000`;
-export const EINVOICE_ROW_RANGE = (sheetRow: number) => `${EINVOICE_SHEET}!A${sheetRow}:AM${sheetRow}`;
+export const EINVOICE_RANGE_FULL = `${EINVOICE_SHEET}!A:AO`;
+export const EINVOICE_RANGE_DATA = `${EINVOICE_SHEET}!A2:AO10000`;
+export const EINVOICE_ROW_RANGE = (sheetRow: number) => `${EINVOICE_SHEET}!A${sheetRow}:AO${sheetRow}`;
 
 export const EINVOICE_EVENT_RANGE_FULL = `${EINVOICE_EVENT_SHEET}!A:J`;
 export const EINVOICE_EVENT_RANGE_DATA = `${EINVOICE_EVENT_SHEET}!A2:J10000`;
@@ -78,6 +78,8 @@ export function eInvoiceRecordToRow(record: EInvoiceRecord): string[] {
     record.createdAt,
     record.updatedAt,
     record.buyerAddress,
+    record.internalNote,
+    record.overallRemark,
   ];
 }
 
@@ -122,6 +124,8 @@ export function eInvoiceRowToRecord(row: string[]): EInvoiceRecord {
     createdBy: row[35] ?? "",
     createdAt: row[36] ?? "",
     updatedAt: row[37] ?? "",
+    internalNote: row[39] ?? "",
+    overallRemark: row[40] ?? "",
   };
 }
 

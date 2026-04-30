@@ -6,7 +6,7 @@ import { queryInvoice } from "@/lib/giveme-client";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { lookupCompanyByTaxId } from "@/lib/tax-id";
 
-import { getSession } from "../../_auth";
+import { getSession } from "../_auth";
 import { getEInvoiceRecords, updateEInvoiceRecord } from "../_shared";
 
 interface BackfillResult {

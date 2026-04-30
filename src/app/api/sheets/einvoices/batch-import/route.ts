@@ -220,6 +220,8 @@ export async function POST(request: Request) {
           createdBy: "batch-import",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          internalNote: "",
+          overallRemark: "",
         };
 
         // 寫入電子發票紀錄表

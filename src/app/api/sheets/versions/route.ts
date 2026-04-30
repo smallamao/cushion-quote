@@ -440,7 +440,7 @@ async function syncVersionToParents(client: NonNullable<Awaited<ReturnType<typeo
     const sheetRow = caseRowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `案件!A${sheetRow}:AA${sheetRow}`,
+      range: `案件!A${sheetRow}:AC${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(nextCase)] },
     });
@@ -457,6 +457,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const quoteId = searchParams.get("quoteId")?.trim() ?? "";
   const clientId = searchParams.get("clientId")?.trim() ?? "";
+  const referredByCompanyId = searchParams.get("referredByCompanyId")?.trim() ?? "";
   const includeLines = searchParams.get("includeLines") !== "false";
 
   const client = await getSheetsClient();
@@ -466,10 +467,25 @@ export async function GET(request: Request) {
 
   try {
     let allowedCaseIds: Set<string> | null = null;
-    if (clientId) {
+    if (clientId || referredByCompanyId) {
       const caseRows = await getCaseRows(client);
+      const cases = caseRows.map(caseRowToRecord);
       allowedCaseIds = new Set(
-        caseRows.map(caseRowToRecord).filter((c) => c.clientId === clientId).map((c) => c.caseId),
+        cases
+          .filter((c) => {
+            if (clientId && c.clientId === clientId) return true;
+            // 介紹案件:排除「客戶本身就是介紹公司」的自介紹情況,避免在貢獻度
+            // tab 同時出現在直接成交與介紹成交,造成重複計算。
+            if (
+              referredByCompanyId &&
+              c.referredByCompanyId === referredByCompanyId &&
+              c.clientId !== referredByCompanyId
+            ) {
+              return true;
+            }
+            return false;
+          })
+          .map((c) => c.caseId),
       );
     }
 
@@ -605,8 +621,8 @@ export async function POST(request: Request) {
       });
       await sortSheetRows(client, {
         sheetName: "案件",
-        dataRange: "案件!A2:X",
-        totalColumnCount: 24,
+        dataRange: "案件!A2:AC",
+        totalColumnCount: 29,
         primarySortColumnIndex: 18,
         secondarySortColumnIndex: 0,
       });
@@ -750,8 +766,8 @@ export async function POST(request: Request) {
       });
       await sortSheetRows(client, {
         sheetName: "案件",
-        dataRange: "案件!A2:X",
-        totalColumnCount: 24,
+        dataRange: "案件!A2:AC",
+        totalColumnCount: 29,
         primarySortColumnIndex: 18,
         secondarySortColumnIndex: 0,
       });
@@ -822,6 +838,8 @@ export async function POST(request: Request) {
       shippingStatus: caseDraft.shippingStatus ?? "not_started",
       trackingNo: caseDraft.trackingNo ?? "",
       shippedAt: caseDraft.shippedAt ?? "",
+      referredByCompanyId: caseDraft.referredByCompanyId ?? sourceCase?.referredByCompanyId ?? "",
+      referredByCompanyName: caseDraft.referredByCompanyName ?? sourceCase?.referredByCompanyName ?? "",
     };
 
     const quoteDraft = payload.quoteDraft ?? {};
@@ -880,7 +898,7 @@ export async function POST(request: Request) {
 
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-      range: "案件!A:AA",
+      range: "案件!A:AC",
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(caseRecord)] },
     });
@@ -908,8 +926,8 @@ export async function POST(request: Request) {
     await syncAutoCommissionSettlements(client, draftVersion);
     await sortSheetRows(client, {
       sheetName: "案件",
-      dataRange: "案件!A2:X",
-      totalColumnCount: 24,
+      dataRange: "案件!A2:AC",
+      totalColumnCount: 29,
       primarySortColumnIndex: 18,
       secondarySortColumnIndex: 0,
     });

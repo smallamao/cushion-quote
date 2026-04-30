@@ -309,6 +309,8 @@ export interface CaseRecord {
   leadSourceDetail: string;
   leadSourceContact: string;
   leadSourceNotes: string;
+  referredByCompanyId: string;
+  referredByCompanyName: string;
   caseStatus: CaseStatus;
   inquiryDate: string;
   latestQuoteId: string;
@@ -585,6 +587,8 @@ export interface EInvoiceRecord {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  internalNote: string;
+  overallRemark: string;
 }
 
 export interface EInvoiceEventRecord {
@@ -757,6 +761,8 @@ export interface QuoteDraftComparable {
   leadSourceDetail: string;
   leadSourceContact: string;
   leadSourceNotes: string;
+  referredByCompanyId: string;
+  referredByCompanyName: string;
   items: FlexQuoteItem[];
   description: string;
   descriptionImageUrl: string;

@@ -180,7 +180,7 @@ export async function POST(
           amount: String(draftRecord.taxAmount),
           sales: String(draftRecord.untaxedAmount),
           taxType: draftRecord.taxType === 4 ? 0 : draftRecord.taxType,
-          content: draftRecord.content,
+          content: draftRecord.overallRemark?.trim() || draftRecord.content,
           items,
         })
       : await issueB2CInvoice({
@@ -190,7 +190,7 @@ export async function POST(
           donationCode: draftRecord.donationCode,
           taxType: draftRecord.taxType,
           totalFee: String(draftRecord.totalAmount),
-          content: draftRecord.content,
+          content: draftRecord.overallRemark?.trim() || draftRecord.content,
           items,
           ...buildCarrierFields(draftRecord),
         });

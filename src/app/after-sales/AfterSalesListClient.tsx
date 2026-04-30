@@ -229,12 +229,12 @@ export function AfterSalesListClient() {
               <tr>
                 <th className="px-3 py-2 text-left">單號</th>
                 <th className="px-3 py-2 text-left">受理日期</th>
+                <th className="px-3 py-2 text-left">訂單</th>
                 <th className="px-3 py-2 text-left">客戶</th>
                 <th className="px-3 py-2 text-left">款式</th>
                 <th className="px-3 py-2 text-left">問題</th>
                 <th className="px-3 py-2 text-left">狀態</th>
                 <th className="px-3 py-2 text-left">負責人</th>
-                <th className="px-3 py-2 text-left">訂單</th>
               </tr>
             </thead>
             <tbody>
@@ -269,6 +269,9 @@ export function AfterSalesListClient() {
                       </Link>
                     </td>
                     <td className="px-3 py-2 text-xs">{s.receivedDate}</td>
+                    <td className="px-3 py-2 text-xs text-[var(--text-secondary)]">
+                      {s.relatedOrderNo || "—"}
+                    </td>
                     <td className="px-3 py-2">
                       <div className="text-sm">{s.clientName}</div>
                       <div className="text-[10px] text-[var(--text-tertiary)]">
@@ -298,9 +301,6 @@ export function AfterSalesListClient() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-xs">{s.assignedTo || "—"}</td>
-                    <td className="px-3 py-2 text-xs text-[var(--text-secondary)]">
-                      {s.relatedOrderNo || "—"}
-                    </td>
                   </tr>
                 );
               })}

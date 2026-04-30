@@ -211,6 +211,8 @@ function migrateLegacyAutoDraft(value: unknown): QuoteDraftSession | null {
     leadSourceDetail: normalizedLeadSourceDetail,
     leadSourceContact: candidate.leadSourceContact ?? "",
     leadSourceNotes: candidate.leadSourceNotes ?? "",
+    referredByCompanyId: "",
+    referredByCompanyName: "",
     items: candidate.items,
     description: candidate.description ?? "",
     descriptionImageUrl: candidate.descriptionImageUrl ?? "",

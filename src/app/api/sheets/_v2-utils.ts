@@ -109,6 +109,8 @@ export function caseRowToRecord(row: string[]): CaseRecord {
     shippingStatus: (row[24] as CaseRecord["shippingStatus"]) || "not_started",
     trackingNo: row[25] ?? "",
     shippedAt: row[26] ?? "",
+    referredByCompanyId: row[27] ?? "",
+    referredByCompanyName: row[28] ?? "",
   };
 }
 
@@ -141,6 +143,8 @@ export function caseRecordToRow(record: CaseRecord): string[] {
     record.shippingStatus || "not_started",
     record.trackingNo || "",
     record.shippedAt || "",
+    record.referredByCompanyId || "",
+    record.referredByCompanyName || "",
   ];
 }
 
@@ -412,7 +416,7 @@ export function lineRecordToRow(record: VersionLineRecord): string[] {
 export async function getCaseRows(client: SheetsClient): Promise<string[][]> {
   const response = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: `${CASE_SHEET}!A2:AA`,
+    range: `${CASE_SHEET}!A2:AC`,
   });
   return response.data.values ?? [];
 }
@@ -605,7 +609,7 @@ export async function updateCaseById(client: SheetsClient, caseId: string, updat
   const sheetRow = rowIndex + 2;
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${CASE_SHEET}!A${sheetRow}:AA${sheetRow}`,
+    range: `${CASE_SHEET}!A${sheetRow}:AC${sheetRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [caseRecordToRow(next)] },
   });

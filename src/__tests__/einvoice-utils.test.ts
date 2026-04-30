@@ -53,6 +53,8 @@ function makeInvoiceRecord(overrides: Partial<EInvoiceRecord> = {}): EInvoiceRec
     createdBy: "tester",
     createdAt: "2026-04-22T10:00:00.000Z",
     updatedAt: "2026-04-22T10:00:00.000Z",
+    internalNote: "",
+    overallRemark: "",
     ...overrides,
   };
 }

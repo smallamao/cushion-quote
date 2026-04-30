@@ -193,6 +193,8 @@ export async function POST(request: Request) {
           createdBy: successEv.actor,
           createdAt: occurredAt ?? now,
           updatedAt: now,
+          internalNote: "",
+          overallRemark: "",
         };
         newRecords.push(stub);
       } else if (existing.status === "draft" || existing.status === "issuing") {

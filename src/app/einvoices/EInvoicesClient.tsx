@@ -178,6 +178,9 @@ export function EInvoicesClient() {
     buyerTaxId: "",
     totalAmount: "",
     content: "",
+    remark: "",
+    overallRemark: "",
+    internalNote: "",
     invoiceDate: new Date().toISOString().slice(0, 10),
   });
   const [quickCreating, setQuickCreating] = useState(false);
@@ -541,7 +544,9 @@ export function EInvoicesClient() {
           taxAmount: tax,
           totalAmount: total,
           content,
-          items: [{ name: content, quantity: 1, unitPrice: untaxed, amount: untaxed, remark: "", taxType: 0 }],
+          items: [{ name: content, quantity: 1, unitPrice: untaxed, amount: untaxed, remark: quickCreateForm.remark.trim(), taxType: 0 }],
+          overallRemark: quickCreateForm.overallRemark.trim(),
+          internalNote: quickCreateForm.internalNote.trim(),
         }),
       });
       const createPayload = (await createRes.json().catch(() => ({}))) as { ok?: boolean; invoice?: EInvoiceRecord; error?: string };
@@ -563,7 +568,7 @@ export function EInvoicesClient() {
       setSnackbar({ message: "電子發票已開立", invoiceId });
       setTimeout(() => setSnackbar(null), 3000);
       setQuickCreateOpen(false);
-      setQuickCreateForm({ buyerName: "", buyerTaxId: "", totalAmount: "", content: "", invoiceDate: new Date().toISOString().slice(0, 10) });
+      setQuickCreateForm({ buyerName: "", buyerTaxId: "", totalAmount: "", content: "", remark: "", overallRemark: "", internalNote: "", invoiceDate: new Date().toISOString().slice(0, 10) });
       await load({ preserveFeedback: true });
     } catch (err) {
       setNotice({ tone: "error", title: "快速開立失敗", detail: err instanceof Error ? err.message : "未知錯誤" });
@@ -1738,11 +1743,35 @@ export function EInvoicesClient() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">品項說明（留空同買方名稱）</Label>
+              <Label className="text-xs">品項名稱（留空同買方名稱）</Label>
               <Input
                 placeholder="繃布安裝工程"
                 value={quickCreateForm.content}
                 onChange={(e) => setQuickCreateForm((f) => ({ ...f, content: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">商品備註（選填）</Label>
+              <Input
+                placeholder="此品項的補充說明"
+                value={quickCreateForm.remark}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, remark: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">總備註（選填）</Label>
+              <Input
+                placeholder="整張發票的備註"
+                value={quickCreateForm.overallRemark}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, overallRemark: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">內部註記（不送 Giveme）</Label>
+              <Input
+                placeholder="僅自己看的內部註記"
+                value={quickCreateForm.internalNote}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, internalNote: e.target.value }))}
               />
             </div>
             <div className="space-y-1">

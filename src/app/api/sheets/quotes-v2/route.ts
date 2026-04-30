@@ -231,7 +231,7 @@ export async function POST(request: Request) {
     const caseSheetRow = caseRowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `案件!A${caseSheetRow}:AA${caseSheetRow}`,
+      range: `案件!A${caseSheetRow}:AC${caseSheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [caseRecordToRow(updatedCase)] },
     });
@@ -252,8 +252,8 @@ export async function POST(request: Request) {
     });
     await sortSheetRows(client, {
       sheetName: "案件",
-      dataRange: "案件!A2:X",
-      totalColumnCount: 24,
+      dataRange: "案件!A2:AC",
+      totalColumnCount: 29,
       primarySortColumnIndex: 18,
       secondarySortColumnIndex: 0,
     });

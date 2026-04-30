@@ -41,7 +41,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="zh-Hant" className={dmSans.variable}>
+    <html lang="zh-Hant" className={dmSans.variable} suppressHydrationWarning>
       <body>
         {/* Runs before React hydrates to avoid sidebar-width flash */}
         <script

@@ -32,6 +32,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useClients } from "@/hooks/useClients";
 import { useContacts } from "@/hooks/useContacts";
 import { ClientCombobox } from "./ClientCombobox";
+import { ReferrerCombobox } from "./ReferrerCombobox";
 import { useHistory } from "@/hooks/useHistory";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useSettings } from "@/hooks/useSettings";
@@ -631,6 +632,8 @@ export function QuoteEditor() {
   const [leadSourceDetail, setLeadSourceDetail] = useState("");
   const [leadSourceContact, setLeadSourceContact] = useState("");
   const [leadSourceNotes, setLeadSourceNotes] = useState("");
+  const [referredByCompanyId, setReferredByCompanyId] = useState("");
+  const [referredByCompanyName, setReferredByCompanyName] = useState("");
   const [commissionOverride, setCommissionOverride] = useState<CommissionOverride | null>(null);
   const [commissionPartners, setCommissionPartners] = useState<CommissionPartnerSplit[]>([]);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
@@ -713,6 +716,8 @@ export function QuoteEditor() {
       leadSourceDetail,
       leadSourceContact,
       leadSourceNotes,
+      referredByCompanyId,
+      referredByCompanyName,
       items,
       description,
       descriptionImageUrl,
@@ -736,6 +741,8 @@ export function QuoteEditor() {
       leadSourceDetail,
       leadSourceContact,
       leadSourceNotes,
+      referredByCompanyId,
+      referredByCompanyName,
       items,
       description,
       descriptionImageUrl,
@@ -958,6 +965,8 @@ export function QuoteEditor() {
         leadSourceDetail: "",
         leadSourceContact: "",
         leadSourceNotes: "",
+        referredByCompanyId: "",
+        referredByCompanyName: "",
       };
     }
     try {
@@ -970,6 +979,8 @@ export function QuoteEditor() {
           leadSourceDetail: "",
           leadSourceContact: "",
           leadSourceNotes: "",
+          referredByCompanyId: "",
+          referredByCompanyName: "",
         };
       }
       const payload = (await response.json()) as { case?: CaseRecord };
@@ -978,6 +989,8 @@ export function QuoteEditor() {
         leadSourceDetail: payload.case?.leadSourceDetail ?? "",
         leadSourceContact: payload.case?.leadSourceContact ?? "",
         leadSourceNotes: payload.case?.leadSourceNotes ?? "",
+        referredByCompanyId: payload.case?.referredByCompanyId ?? "",
+        referredByCompanyName: payload.case?.referredByCompanyName ?? "",
       };
     } catch {
       return {
@@ -985,6 +998,8 @@ export function QuoteEditor() {
         leadSourceDetail: "",
         leadSourceContact: "",
         leadSourceNotes: "",
+        referredByCompanyId: "",
+        referredByCompanyName: "",
       };
     }
   }, []);
@@ -1006,11 +1021,13 @@ export function QuoteEditor() {
           leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
           leadSourceContact: leadSourceContact.trim(),
           leadSourceNotes: leadSourceNotes.trim(),
+          referredByCompanyId: referredByCompanyId.trim(),
+          referredByCompanyName: referredByCompanyName.trim(),
         } satisfies Partial<CaseRecord> & { caseId: string }),
       });
       if (!response.ok) throw new Error("更新案件資料失敗");
     },
-    [address, companyName, contactName, leadSource, leadSourceContact, leadSourceDetail, leadSourceNotes, phone, selectedClientId, shouldShowLeadSourceDetail],
+    [address, companyName, contactName, leadSource, leadSourceContact, leadSourceDetail, leadSourceNotes, phone, referredByCompanyId, referredByCompanyName, selectedClientId, shouldShowLeadSourceDetail],
   );
 
   const loadVersionDocument = useCallback(
@@ -1064,6 +1081,8 @@ export function QuoteEditor() {
       setLeadSourceDetail(sourceDetails.leadSourceDetail);
       setLeadSourceContact(sourceDetails.leadSourceContact);
       setLeadSourceNotes(sourceDetails.leadSourceNotes);
+      setReferredByCompanyId(sourceDetails.referredByCompanyId);
+      setReferredByCompanyName(sourceDetails.referredByCompanyName);
       setDescription(version.publicDescription || "");
       setDescriptionImageUrl(version.descriptionImageUrl || "");
       setDescriptionImageError("");
@@ -1146,6 +1165,8 @@ export function QuoteEditor() {
         leadSourceDetail: draft.leadSourceDetail ?? "",
         leadSourceContact: draft.leadSourceContact ?? "",
         leadSourceNotes: draft.leadSourceNotes ?? "",
+        referredByCompanyId: draft.referredByCompanyId ?? "",
+        referredByCompanyName: draft.referredByCompanyName ?? "",
         items: draft.items.length > 0 ? draft.items : [createEmptyItem()],
         description: draft.description,
         descriptionImageUrl: draft.descriptionImageUrl,
@@ -1203,6 +1224,8 @@ export function QuoteEditor() {
         setLeadSourceDetail(draft.leadSourceDetail ?? "");
         setLeadSourceContact(draft.leadSourceContact ?? "");
         setLeadSourceNotes(draft.leadSourceNotes ?? "");
+        setReferredByCompanyId(draft.referredByCompanyId ?? "");
+        setReferredByCompanyName(draft.referredByCompanyName ?? "");
         setHistoryInitialItems(recalculateAutoPricedItems(draftComparable.items, draft.channel, draftAutoPricing));
         setDescription(draftComparable.description);
         setDescriptionImageUrl(draftComparable.descriptionImageUrl);
@@ -1311,6 +1334,8 @@ export function QuoteEditor() {
     projectName,
     quoteName,
     quoteId,
+    referredByCompanyId,
+    referredByCompanyName,
     selectedClientId,
     taxId,
     termsTemplate,
@@ -1678,6 +1703,8 @@ export function QuoteEditor() {
     setLeadSourceDetail("");
     setLeadSourceContact("");
     setLeadSourceNotes("");
+    setReferredByCompanyId("");
+    setReferredByCompanyName("");
     setHistoryInitialItems([createEmptyItem()]);
     setExpandedItems(new Set());
     setDescription("");
@@ -1793,6 +1820,8 @@ export function QuoteEditor() {
         leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
         leadSourceContact: leadSourceContact.trim(),
         leadSourceNotes: leadSourceNotes.trim(),
+        referredByCompanyId: referredByCompanyId.trim(),
+        referredByCompanyName: referredByCompanyName.trim(),
       } satisfies Partial<CaseRecord>),
     });
     if (!response.ok) throw new Error("建立案件失敗");
@@ -1894,6 +1923,8 @@ export function QuoteEditor() {
             leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
             leadSourceContact: leadSourceContact.trim(),
             leadSourceNotes: leadSourceNotes.trim(),
+            referredByCompanyId: referredByCompanyId.trim(),
+            referredByCompanyName: referredByCompanyName.trim(),
           }),
         });
         setActiveVersion(payload.version);
@@ -1968,6 +1999,8 @@ export function QuoteEditor() {
             leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
             leadSourceContact: leadSourceContact.trim(),
             leadSourceNotes: leadSourceNotes.trim(),
+            referredByCompanyId: referredByCompanyId.trim(),
+            referredByCompanyName: referredByCompanyName.trim(),
           }),
         });
 
@@ -2027,6 +2060,8 @@ export function QuoteEditor() {
                     leadSourceDetail: shouldShowLeadSourceDetail(leadSource) ? leadSourceDetail.trim() : "",
                     leadSourceContact: leadSourceContact.trim(),
                     leadSourceNotes: leadSourceNotes.trim(),
+                    referredByCompanyId: referredByCompanyId.trim(),
+                    referredByCompanyName: referredByCompanyName.trim(),
                   },
                 },
         ),
@@ -2573,8 +2608,24 @@ export function QuoteEditor() {
                 <Input
                   value={leadSourceContact}
                   onChange={(e) => setLeadSourceContact(e.target.value)}
-                  placeholder="例如：王設計師 / 李先生"
+                  placeholder="例如:王設計師 / 李先生"
                 />
+              </div>
+              <div>
+                <Label>介紹公司</Label>
+                <ReferrerCombobox
+                  value={referredByCompanyId}
+                  fallbackName={referredByCompanyName}
+                  clients={clients}
+                  onChange={(id, name) => {
+                    setReferredByCompanyId(id);
+                    setReferredByCompanyName(name);
+                  }}
+                  loading={clientsLoading}
+                />
+                <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                  選填:標記此案件是哪家公司介紹來的(供貢獻度統計)
+                </p>
               </div>
             </div>
             <div className="mt-4">

@@ -62,6 +62,8 @@ function buildComparable(): QuoteDraftComparable {
     leadSourceDetail: "",
     leadSourceContact: "",
     leadSourceNotes: "",
+    referredByCompanyId: "",
+    referredByCompanyName: "",
     items: [
       {
         id: "item-1",

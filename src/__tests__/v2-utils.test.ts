@@ -53,6 +53,8 @@ function makeCaseRecord(overrides: Partial<CaseRecord> = {}): CaseRecord {
     shippingStatus: "not_started",
     trackingNo: "",
     shippedAt: "",
+    referredByCompanyId: "",
+    referredByCompanyName: "",
     ...overrides,
   };
 }
@@ -183,9 +185,9 @@ describe("Case Row ↔ Record 雙向轉換", () => {
     expect(restored).toEqual(original);
   });
 
-  it("row 長度應為 24 欄", () => {
+  it("row 長度應為 29 欄", () => {
     const row = caseRecordToRow(makeCaseRecord());
-    expect(row).toHaveLength(24);
+    expect(row).toHaveLength(29);
   });
 
   it("空 row 應有安全預設值", () => {

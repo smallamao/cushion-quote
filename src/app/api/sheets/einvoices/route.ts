@@ -40,6 +40,8 @@ interface CreateEInvoicePayload {
   items: EInvoiceItemSnapshot[];
   content?: string;
   createdBy?: string;
+  internalNote?: string;
+  overallRemark?: string;
 }
 
 interface DraftCreatedEventPayload {
@@ -156,6 +158,8 @@ function parseCreatePayload(input: unknown): CreateEInvoicePayload | null {
     items: parseItems(body.items),
     content: parseString(body.content),
     createdBy: parseString(body.createdBy),
+    internalNote: parseString(body.internalNote),
+    overallRemark: parseString(body.overallRemark),
   };
 }
 
@@ -322,6 +326,8 @@ export async function POST(request: Request) {
       createdBy: session.displayName,
       createdAt: now,
       updatedAt: now,
+      internalNote: payload.internalNote?.trim() ?? "",
+      overallRemark: payload.overallRemark?.trim() ?? "",
     };
 
     await appendEInvoiceRecord(client, invoice);

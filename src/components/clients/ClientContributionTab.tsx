@@ -16,6 +16,8 @@ interface VersionLite {
   channel: string;
 }
 
+type Source = "direct" | "referred";
+
 interface ClientContributionTabProps {
   companyId: string;
 }
@@ -28,20 +30,26 @@ const CHANNEL_LABEL: Record<string, string> = {
 };
 
 export function ClientContributionTab({ companyId }: ClientContributionTabProps) {
-  const [versions, setVersions] = useState<VersionLite[]>([]);
+  const [directVersions, setDirectVersions] = useState<VersionLite[]>([]);
+  const [referredVersions, setReferredVersions] = useState<VersionLite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeSource, setActiveSource] = useState<Source>("direct");
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/sheets/versions?clientId=${encodeURIComponent(companyId)}&includeLines=false`)
-      .then((r) => r.json())
-      .then((data: { versions: VersionLite[] }) => {
+    Promise.all([
+      fetch(`/api/sheets/versions?clientId=${encodeURIComponent(companyId)}&includeLines=false`)
+        .then((r) => r.json() as Promise<{ versions: VersionLite[] }>)
+        .catch(() => ({ versions: [] as VersionLite[] })),
+      fetch(`/api/sheets/versions?referredByCompanyId=${encodeURIComponent(companyId)}&includeLines=false`)
+        .then((r) => r.json() as Promise<{ versions: VersionLite[] }>)
+        .catch(() => ({ versions: [] as VersionLite[] })),
+    ])
+      .then(([directRes, referredRes]) => {
         if (cancelled) return;
-        setVersions(data.versions ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setVersions([]);
+        setDirectVersions(directRes.versions ?? []);
+        setReferredVersions(referredRes.versions ?? []);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -50,6 +58,8 @@ export function ClientContributionTab({ companyId }: ClientContributionTabProps)
       cancelled = true;
     };
   }, [companyId]);
+
+  const versions = activeSource === "direct" ? directVersions : referredVersions;
 
   const stats = useMemo(() => {
     const active = versions.filter((v) => v.versionStatus !== "superseded");
@@ -125,7 +135,16 @@ export function ClientContributionTab({ companyId }: ClientContributionTabProps)
     );
   }
 
-  if (versions.length === 0) {
+  const directAcceptedCount = directVersions.filter((v) => v.versionStatus === "accepted").length;
+  const referredAcceptedCount = referredVersions.filter((v) => v.versionStatus === "accepted").length;
+  const directAcceptedTotal = directVersions
+    .filter((v) => v.versionStatus === "accepted")
+    .reduce((sum, v) => sum + (v.totalAmount ?? 0), 0);
+  const referredAcceptedTotal = referredVersions
+    .filter((v) => v.versionStatus === "accepted")
+    .reduce((sum, v) => sum + (v.totalAmount ?? 0), 0);
+
+  if (directVersions.length === 0 && referredVersions.length === 0) {
     return (
       <p className="py-6 text-center text-sm text-[var(--text-secondary)]">
         尚無報價資料,無法計算貢獻度
@@ -135,6 +154,37 @@ export function ClientContributionTab({ companyId }: ClientContributionTabProps)
 
   return (
     <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-2 rounded-md bg-[var(--bg-subtle)] p-1">
+        <button
+          type="button"
+          onClick={() => setActiveSource("direct")}
+          className={`rounded px-3 py-2 text-xs font-medium transition ${
+            activeSource === "direct"
+              ? "bg-white text-[var(--text-primary)] shadow-sm"
+              : "text-[var(--text-secondary)]"
+          }`}
+        >
+          直接成交 · {directAcceptedCount} 件 · {formatCurrency(directAcceptedTotal)}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSource("referred")}
+          className={`rounded px-3 py-2 text-xs font-medium transition ${
+            activeSource === "referred"
+              ? "bg-white text-[var(--text-primary)] shadow-sm"
+              : "text-[var(--text-secondary)]"
+          }`}
+        >
+          介紹成交 · {referredAcceptedCount} 件 · {formatCurrency(referredAcceptedTotal)}
+        </button>
+      </div>
+
+      {versions.length === 0 ? (
+        <p className="py-6 text-center text-sm text-[var(--text-secondary)]">
+          {activeSource === "direct" ? "此公司沒有直接成交紀錄" : "此公司沒有介紹案件紀錄"}
+        </p>
+      ) : (
+      <>
       <div className="grid grid-cols-2 gap-3">
         <StatCell label="總案件數" value={`${stats.caseCount} 件`} />
         <StatCell
@@ -238,6 +288,8 @@ export function ClientContributionTab({ companyId }: ClientContributionTabProps)
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
