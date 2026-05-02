@@ -33,6 +33,7 @@ export type NavLinkDef = {
 export const navLinks: NavLinkDef[] = [
   // ── 業務 ──
   { href: "/sofa-quote", label: "尺寸報價", icon: Ruler, roles: ["admin", "technician"], group: "business" },
+  { href: "/pos-quote", label: "POS 訂製報價", icon: Palette, roles: ["admin", "technician"], group: "business" },
   { href: "/", label: "報價工作台", icon: Calculator, roles: ["admin"], group: "business" },
   { href: "/quotes", label: "報價紀錄", icon: FileText, roles: ["admin"], group: "business" },
   { href: "/cases", label: "案件紀錄", icon: Briefcase, roles: ["admin"], group: "business" },
