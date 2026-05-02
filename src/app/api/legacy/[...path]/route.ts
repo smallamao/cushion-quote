@@ -18,7 +18,14 @@ async function proxy(req: NextRequest, path: string[]) {
     init.headers = { "Content-Type": "application/json" };
   }
 
-  const upstream = await fetch(url, init);
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, init);
+  } catch (e) {
+    console.error("[legacy proxy] network error:", e);
+    return NextResponse.json({ error: "upstream_unavailable" }, { status: 502 });
+  }
+
   const contentType = upstream.headers.get("content-type") ?? "";
 
   if (contentType.startsWith("image/")) {
@@ -29,8 +36,12 @@ async function proxy(req: NextRequest, path: string[]) {
     });
   }
 
-  const data: unknown = await upstream.json();
-  return NextResponse.json(data, { status: upstream.status });
+  try {
+    const data: unknown = await upstream.json();
+    return NextResponse.json(data, { status: upstream.status });
+  } catch {
+    return NextResponse.json({ error: "invalid_upstream_response" }, { status: 502 });
+  }
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {

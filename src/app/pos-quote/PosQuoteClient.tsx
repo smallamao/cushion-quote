@@ -197,8 +197,11 @@ export function PosQuoteClient() {
 
   useEffect(() => {
     fetch("/api/legacy/pos/config")
-      .then((r) => r.json())
-      .then((data: PosConfig) => {
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<PosConfig>;
+      })
+      .then((data) => {
         setConfig(data);
         if (data.styles.length > 0) {
           const first = data.styles[0];
