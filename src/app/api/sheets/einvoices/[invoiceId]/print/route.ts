@@ -204,6 +204,7 @@ function buildHtml(p: {
   taxAmount: number;
   totalAmount: number;
   items: EInvoiceItemSnapshot[];
+  autoprint?: boolean;
 }): string {
   const dataRows = p.items.map((it, index) => `
     <tr${index === p.items.length - 1 ? ' class="last-item-row"' : ""}>
@@ -633,6 +634,7 @@ table.invoice-table {
 
 </div>
 
+${p.autoprint ? `<script>window.addEventListener("load",function(){window.print()});</script>` : ""}
 </body>
 </html>`;
 }
@@ -642,6 +644,7 @@ export async function GET(
   { params }: { params: Promise<{ invoiceId: string }> },
 ) {
   const { invoiceId } = await params;
+  const autoprint = new URL(request.url).searchParams.get("autoprint") === "1";
   const session = getSession(request);
   if (!session) return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
   if (session.role !== "admin") return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -722,6 +725,7 @@ export async function GET(
     taxAmount: record.taxAmount,
     totalAmount: record.totalAmount,
     items: itemsWithRemark,
+    autoprint,
   });
 
   return new Response(html, {

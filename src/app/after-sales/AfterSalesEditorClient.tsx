@@ -37,10 +37,12 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useEquipment } from "@/hooks/useEquipment";
 import { useSettings } from "@/hooks/useSettings";
 import { useUsers } from "@/hooks/useUsers";
+import { invalidateCache } from "@/lib/fetch-cache";
 import { parseAfterSalesText } from "@/lib/after-sales-paste-parser";
 import type {
   AfterSalesReply,
   AfterSalesService,
+  AfterSalesServiceType,
   AfterSalesStatus,
 } from "@/lib/types";
 
@@ -75,6 +77,7 @@ function emptyDraft(): DraftService {
     completionPhotos: [],
     customerSignature: "",
     customerSignedAt: "",
+    serviceType: "client" as AfterSalesServiceType,
   };
 }
 
@@ -259,6 +262,11 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           completionPhotos: service.completionPhotos ?? [],
           customerSignature: service.customerSignature ?? "",
           customerSignedAt: service.customerSignedAt ?? "",
+          serviceType: service.serviceType ?? "client",
+          outsourcedVendor: service.outsourcedVendor ?? "",
+          outsourcedNote: service.outsourcedNote ?? "",
+          itemLocation: service.itemLocation ?? "",
+          itemDescription: service.itemDescription ?? "",
         });
         setMeta({
           serviceId: service.serviceId,
@@ -346,7 +354,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
   }
 
   async function handleSave() {
-    if (!draft.clientName.trim()) {
+    if (draft.serviceType !== "factory_display" && !draft.clientName.trim()) {
       alert("請填寫客戶姓名");
       return;
     }
@@ -367,6 +375,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           alert(json.error ?? "建立失敗");
           return;
         }
+        invalidateCache("cq-after-sales-cache");
         router.push(`/after-sales/${json.service.serviceId}` as never);
       } else {
         const res = await fetch(`/api/sheets/after-sales/${serviceId}`, {
@@ -379,6 +388,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           alert(json.error ?? "儲存失敗");
           return;
         }
+        invalidateCache("cq-after-sales-cache");
         alert("已儲存");
       }
     } catch (err) {
@@ -558,6 +568,36 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
         </div>
       )}
 
+      {/* 服務類型 */}
+      <div className="mb-4 flex items-center gap-3">
+        <Label className="shrink-0">服務類型</Label>
+        <div className="flex gap-2">
+          {(
+            [
+              ["client", "客戶報修"],
+              ["outsourced", "代辦處理"],
+              ["factory_display", "展示品修繕"],
+            ] as const
+          ).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              disabled={readOnly}
+              onClick={() => update("serviceType", val)}
+              className={[
+                "rounded-full px-3 py-1 text-xs transition-colors",
+                (draft.serviceType ?? "client") === val
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
+                readOnly ? "opacity-50 cursor-not-allowed" : "",
+              ].join(" ")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* 快速貼上解析區 - 只在新增時顯示 */}
       {mode === "create" && !readOnly && (
         <div className="rounded-lg border border-dashed border-[var(--accent)]/50 bg-[var(--bg-subtle)] p-5">
@@ -643,46 +683,99 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
               onChange={(e) => update("shipmentDate", e.target.value)}
             />
           </div>
-          <div>
-            <Label>主要聯絡人 *</Label>
-            <Input
-              value={draft.clientName}
-              onChange={(e) => update("clientName", e.target.value)}
-              placeholder="例 張三"
-            />
-          </div>
-          <div>
-            <Label>主要電話</Label>
-            <Input
-              value={draft.clientPhone}
-              onChange={(e) => update("clientPhone", e.target.value)}
-              placeholder="0912345678"
-            />
-          </div>
-          <div />
-          <div>
-            <Label>次要聯絡人</Label>
-            <Input
-              value={draft.clientContact2}
-              onChange={(e) => update("clientContact2", e.target.value)}
-            />
-          </div>
-          <div>
-            <Label>次要電話</Label>
-            <Input
-              value={draft.clientPhone2}
-              onChange={(e) => update("clientPhone2", e.target.value)}
-            />
-          </div>
-          <div />
-          <div className="md:col-span-3">
-            <Label>送貨地址</Label>
-            <Input
-              value={draft.deliveryAddress}
-              onChange={(e) => update("deliveryAddress", e.target.value)}
-            />
-          </div>
+          {(draft.serviceType ?? "client") !== "factory_display" && (
+            <>
+              <div>
+                <Label>主要聯絡人 *</Label>
+                <Input
+                  value={draft.clientName}
+                  onChange={(e) => update("clientName", e.target.value)}
+                  placeholder="例 張三"
+                />
+              </div>
+              <div>
+                <Label>主要電話</Label>
+                <Input
+                  value={draft.clientPhone}
+                  onChange={(e) => update("clientPhone", e.target.value)}
+                  placeholder="0912345678"
+                />
+              </div>
+              <div />
+              <div>
+                <Label>次要聯絡人</Label>
+                <Input
+                  value={draft.clientContact2}
+                  onChange={(e) => update("clientContact2", e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>次要電話</Label>
+                <Input
+                  value={draft.clientPhone2}
+                  onChange={(e) => update("clientPhone2", e.target.value)}
+                />
+              </div>
+              <div />
+              <div className="md:col-span-3">
+                <Label>送貨地址</Label>
+                <Input
+                  value={draft.deliveryAddress}
+                  onChange={(e) => update("deliveryAddress", e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </div>
+
+        {/* 代辦處理欄位 */}
+        {(draft.serviceType ?? "client") === "outsourced" && (
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <Label>代辦廠商 / 單位</Label>
+              <Input
+                value={draft.outsourcedVendor ?? ""}
+                onChange={(e) => update("outsourcedVendor", e.target.value)}
+                placeholder="例：○○家具有限公司"
+                disabled={readOnly}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>代辦說明</Label>
+              <Textarea
+                rows={2}
+                value={draft.outsourcedNote ?? ""}
+                onChange={(e) => update("outsourcedNote", e.target.value)}
+                placeholder="交辦內容、注意事項..."
+                disabled={readOnly}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 展示品修繕欄位 */}
+        {(draft.serviceType ?? "client") === "factory_display" && (
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <Label>展示品位置</Label>
+              <Input
+                value={draft.itemLocation ?? ""}
+                onChange={(e) => update("itemLocation", e.target.value)}
+                placeholder="例：工廠 A 區 3 號"
+                disabled={readOnly}
+              />
+            </div>
+            <div>
+              <Label>品項說明</Label>
+              <Input
+                value={draft.itemDescription ?? ""}
+                onChange={(e) => update("itemDescription", e.target.value)}
+                placeholder="例：雙人沙發 #S102 皮面破損"
+                disabled={readOnly}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>

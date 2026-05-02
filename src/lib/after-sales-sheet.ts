@@ -4,12 +4,13 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import type {
   AfterSalesReply,
   AfterSalesService,
+  AfterSalesServiceType,
   AfterSalesStatus,
 } from "@/lib/types";
 
 const MAIN_SHEET = "售後服務";
-const MAIN_RANGE_FULL = `${MAIN_SHEET}!A:Y`;
-const MAIN_RANGE_DATA = `${MAIN_SHEET}!A2:Y`;
+const MAIN_RANGE_FULL = `${MAIN_SHEET}!A:AD`;
+const MAIN_RANGE_DATA = `${MAIN_SHEET}!A2:AD`;
 const MAIN_RANGE_IDS = `${MAIN_SHEET}!A2:A`;
 
 const REPLY_SHEET = "售後服務回應";
@@ -51,6 +52,11 @@ function rowToService(row: string[]): AfterSalesService {
     completionPhotos: parseJsonArray(row[19]),
     customerSignature: row[23] || undefined,
     customerSignedAt: row[24] || undefined,
+    serviceType: (row[25] as AfterSalesServiceType) || undefined,
+    outsourcedVendor: row[26] || undefined,
+    outsourcedNote: row[27] || undefined,
+    itemLocation: row[28] || undefined,
+    itemDescription: row[29] || undefined,
     createdAt: row[20] ?? "",
     updatedAt: row[21] ?? "",
     createdBy: row[22] ?? "",
@@ -84,6 +90,11 @@ function serviceToRow(s: AfterSalesService): string[] {
     s.createdBy,
     s.customerSignature ?? "",
     s.customerSignedAt ?? "",
+    s.serviceType ?? "",
+    s.outsourcedVendor ?? "",
+    s.outsourcedNote ?? "",
+    s.itemLocation ?? "",
+    s.itemDescription ?? "",
   ];
 }
 
@@ -125,15 +136,11 @@ function generateServiceId(existing: AfterSalesService[], date: string): string 
 export async function listServices(): Promise<AfterSalesService[]> {
   const client = await getSheetsClient();
   if (!client) return [];
-  try {
-    const res = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: MAIN_RANGE_DATA,
-    });
-    return (res.data.values ?? []).map(rowToService).filter((s) => s.serviceId);
-  } catch {
-    return [];
-  }
+  const res = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: MAIN_RANGE_DATA,
+  });
+  return (res.data.values ?? []).map(rowToService).filter((s) => s.serviceId);
 }
 
 export async function findServiceById(
@@ -190,7 +197,7 @@ export async function updateService(
   };
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${MAIN_SHEET}!A${sheetRow}:Y${sheetRow}`,
+    range: `${MAIN_SHEET}!A${sheetRow}:AD${sheetRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(updated)] },
   });

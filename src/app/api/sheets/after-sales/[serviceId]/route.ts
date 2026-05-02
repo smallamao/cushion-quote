@@ -6,7 +6,7 @@ import {
   listReplies,
   updateService,
 } from "@/lib/after-sales-sheet";
-import type { AfterSalesStatus } from "@/lib/types";
+import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
 function getSession(request: Request) {
   const token = request.headers
@@ -69,6 +69,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     completionPhotos?: string[];
     customerSignature?: string;
     customerSignedAt?: string;
+    serviceType?: AfterSalesServiceType;
+    outsourcedVendor?: string;
+    outsourcedNote?: string;
+    itemLocation?: string;
+    itemDescription?: string;
   }
 
   let body: PatchBody;

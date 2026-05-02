@@ -1457,7 +1457,7 @@ export function EInvoicesClient() {
                             variant="ghost"
                             size="sm"
                             title="列印 A4 證明聯"
-                            onClick={() => window.open(`/api/sheets/einvoices/${encodeURIComponent(invoice.invoiceId)}/print`, "_blank")}
+                            onClick={() => window.open(`/api/sheets/einvoices/${encodeURIComponent(invoice.invoiceId)}/print?autoprint=1`, "_blank")}
                           >
                             <FileText className="h-4 w-4 text-blue-600" />
                           </Button>

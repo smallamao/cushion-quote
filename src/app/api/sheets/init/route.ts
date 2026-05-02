@@ -251,6 +251,10 @@ const SHEET_DEFINITIONS = [
     title: "電子發票不開清單",
     headers: ["版本ID", "設定時間"],
   },
+  {
+    title: "司機資料",
+    headers: ["key", "title", "confirmTitle", "phoneNumber", "labelId", "active"],
+  },
 ];
 
 const DEFAULT_SETTINGS_ROWS = [
@@ -275,6 +279,14 @@ const DEFAULT_SETTINGS_ROWS = [
   ["company_full_name", "馬鈴薯沙發"],
   ["factory_address", "236新北市土城區廣福街77巷6-6號"],
   ["purchase_order_prefix", "PS"],
+];
+
+const DEFAULT_DRIVER_ROWS = [
+  ["shin", "阿信 (兩人）[BXH-6828]", "阿信哥～",  "0958640520",               "5ccbe7e691d0c2ddc5263071", "TRUE"],
+  ["ya",   "葉先生 (回頭車)",          "葉先生",    "0933468058 / 0928338272",  "5d959bab4e385d7900fe6ac2", "TRUE"],
+  ["fu",   "阿富",                    "阿富～",    "0953123527",               "5f6aa9adc159722ed25e4708", "TRUE"],
+  ["hang", "志航",                    "",          "0922898816",               "5f7a80fb0496ea8a2d92b045", "TRUE"],
+  ["jian", "簡先生",                  "簡大哥～",  "0910347260",               "5fac0898ecc96e14517bbf8e", "TRUE"],
 ];
 
 const DEFAULT_LABOR_ROWS = [
@@ -323,6 +335,21 @@ export async function POST() {
           valueInputOption: "RAW",
           requestBody: { values: DEFAULT_SETTINGS_ROWS },
         });
+      }
+
+      if (def.title === "司機資料") {
+        const existingDrivers = await client.sheets.spreadsheets.values.get({
+          spreadsheetId: client.spreadsheetId,
+          range: "司機資料!A2:A",
+        });
+        if (!existingDrivers.data.values?.length) {
+          await client.sheets.spreadsheets.values.update({
+            spreadsheetId: client.spreadsheetId,
+            range: "司機資料!A2",
+            valueInputOption: "RAW",
+            requestBody: { values: DEFAULT_DRIVER_ROWS },
+          });
+        }
       }
 
       if (def.title === "工資表") {

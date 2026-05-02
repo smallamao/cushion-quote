@@ -13,6 +13,7 @@ const GROUP_LABELS: Record<NavGroup, string> = {
   daily: "日常操作",
   reference: "資料管理",
   system: "系統功能",
+  tools: "馬鈴薯工具",
 };
 
 export function MobileDrawer() {
@@ -25,7 +26,7 @@ export function MobileDrawer() {
     : [];
 
   const dailyLinks = visibleLinks.filter((l) => l.group === "daily");
-  const secondaryGroups: NavGroup[] = ["reference", "system"];
+  const secondaryGroups: NavGroup[] = ["reference", "system", "tools"];
 
   useEffect(() => {
     setOpen(false);

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
 import { createService, listServices } from "@/lib/after-sales-sheet";
-import type { AfterSalesStatus } from "@/lib/types";
+import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
 function getSession(request: Request) {
   const token = request.headers
@@ -51,6 +51,11 @@ export async function POST(request: Request) {
     completedDate?: string;
     completionNotes?: string;
     completionPhotos?: string[];
+    serviceType?: AfterSalesServiceType;
+    outsourcedVendor?: string;
+    outsourcedNote?: string;
+    itemLocation?: string;
+    itemDescription?: string;
   }
 
   let body: CreateBody;
@@ -82,6 +87,11 @@ export async function POST(request: Request) {
       completedDate: body.completedDate ?? "",
       completionNotes: body.completionNotes ?? "",
       completionPhotos: body.completionPhotos ?? [],
+      serviceType: body.serviceType,
+      outsourcedVendor: body.outsourcedVendor,
+      outsourcedNote: body.outsourcedNote,
+      itemLocation: body.itemLocation,
+      itemDescription: body.itemDescription,
       createdBy: session.displayName,
     },
   });

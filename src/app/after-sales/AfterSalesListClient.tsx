@@ -13,7 +13,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useUnreadReplies } from "@/hooks/useUnreadReplies";
-import type { AfterSalesStatus } from "@/lib/types";
+import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
 const STATUS_LABEL: Record<AfterSalesStatus, string> = {
   pending: "待確認",
@@ -50,18 +50,24 @@ export function AfterSalesListClient() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 200);
-  const [statusFilter, setStatusFilter] = useState<AfterSalesStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<AfterSalesStatus | "all" | "pending_scheduled">("pending_scheduled");
+  const [typeFilter, setTypeFilter] = useState<AfterSalesServiceType | "all">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, typeFilter]);
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
     return services
-      .filter((s) => statusFilter === "all" || s.status === statusFilter)
+      .filter((s) => {
+        if (statusFilter === "all") return true;
+        if (statusFilter === "pending_scheduled") return s.status === "pending" || s.status === "scheduled";
+        return s.status === statusFilter;
+      })
+      .filter((s) => typeFilter === "all" || (s.serviceType ?? "client") === typeFilter)
       .filter((s) => {
         if (!q) return true;
         return (
@@ -71,11 +77,13 @@ export function AfterSalesListClient() {
           s.relatedOrderNo.toLowerCase().includes(q) ||
           s.modelCode.toLowerCase().includes(q) ||
           s.modelNameSnapshot.toLowerCase().includes(q) ||
-          s.issueDescription.toLowerCase().includes(q)
+          s.issueDescription.toLowerCase().includes(q) ||
+          (s.outsourcedVendor ?? "").toLowerCase().includes(q) ||
+          (s.itemDescription ?? "").toLowerCase().includes(q)
         );
       })
       .sort((a, b) => b.serviceId.localeCompare(a.serviceId));
-  }, [services, debouncedSearch, statusFilter]);
+  }, [services, debouncedSearch, statusFilter, typeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -87,6 +95,7 @@ export function AfterSalesListClient() {
     for (const s of services) {
       counts[s.status] = (counts[s.status] ?? 0) + 1;
     }
+    counts.pending_scheduled = (counts.pending ?? 0) + (counts.scheduled ?? 0);
     return counts;
   }, [services]);
 
@@ -127,10 +136,10 @@ export function AfterSalesListClient() {
         >
           {(
             [
+              ["pending_scheduled", "待確認＆已排程"],
               ["all", "全部"],
               ["pending", "待確認"],
               ["scheduled", "已排程"],
-              ["in_progress", "維修中"],
               ["completed", "已完成"],
               ["cancelled", "取消"],
             ] as const
@@ -152,6 +161,31 @@ export function AfterSalesListClient() {
               {statusCounts[key] !== undefined && (
                 <span className="opacity-70">{statusCounts[key]}</span>
               )}
+            </button>
+          ))}
+        </div>
+        <div className="flex w-full flex-wrap gap-1.5">
+          {(
+            [
+              ["all", "全部類型"],
+              ["client", "客戶報修"],
+              ["outsourced", "代辦處理"],
+              ["factory_display", "展示品修繕"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTypeFilter(key)}
+              style={{ whiteSpace: "nowrap" }}
+              className={[
+                "inline-flex items-center justify-center gap-1 rounded-full px-3 py-1 text-xs transition-colors",
+                typeFilter === key
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
+              ].join(" ")}
+            >
+              {label}
             </button>
           ))}
         </div>
@@ -184,9 +218,17 @@ export function AfterSalesListClient() {
                 onClick={() => router.push(`/after-sales/${s.serviceId}`)}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs text-[var(--accent)]">
-                    {s.serviceId}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs text-[var(--accent)]">
+                      {s.serviceId}
+                    </span>
+                    {s.serviceType === "outsourced" && (
+                      <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700">代辦</span>
+                    )}
+                    {s.serviceType === "factory_display" && (
+                      <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700">展示品</span>
+                    )}
+                  </div>
                   <span
                     className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
                   >

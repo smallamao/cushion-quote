@@ -109,6 +109,8 @@ export type AfterSalesStatus =
   | "completed"
   | "cancelled";
 
+export type AfterSalesServiceType = "client" | "outsourced" | "factory_display";
+
 export interface Session {
   userId: string;
   email: string;
@@ -153,6 +155,11 @@ export interface AfterSalesService {
   completionPhotos: string[];
   customerSignature?: string;
   customerSignedAt?: string;
+  serviceType?: AfterSalesServiceType;
+  outsourcedVendor?: string;
+  outsourcedNote?: string;
+  itemLocation?: string;
+  itemDescription?: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;

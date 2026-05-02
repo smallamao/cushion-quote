@@ -27,8 +27,9 @@ import { CompanyListPanel } from "@/components/clients/CompanyListPanel";
 import { EquipmentCatalogPanel } from "@/components/equipment/EquipmentCatalogPanel";
 import { SuppliersManagementPanel } from "@/components/suppliers/SuppliersManagementPanel";
 import { UsersManagementPanel } from "@/components/users/UsersManagementPanel";
+import { DriversManagementPanel } from "@/components/settings/DriversManagementPanel";
 
-type SettingsTab = "general" | "clients" | "equipment" | "suppliers" | "users";
+type SettingsTab = "general" | "clients" | "equipment" | "suppliers" | "users" | "drivers";
 
 const VALID_TABS: readonly SettingsTab[] = [
   "general",
@@ -36,6 +37,7 @@ const VALID_TABS: readonly SettingsTab[] = [
   "equipment",
   "suppliers",
   "users",
+  "drivers",
 ];
 
 function NumberField({
@@ -176,6 +178,7 @@ export function SettingsClient() {
           <TabsTrigger value="equipment">設備型錄</TabsTrigger>
           <TabsTrigger value="suppliers">廠商管理</TabsTrigger>
           <TabsTrigger value="users">使用者與權限</TabsTrigger>
+          <TabsTrigger value="drivers">司機管理</TabsTrigger>
           <TabsTrigger value="maintenance">系統維護</TabsTrigger>
         </TabsList>
 
@@ -467,6 +470,18 @@ export function SettingsClient() {
             </div>
             <div className="px-6 py-4">
               <UsersManagementPanel />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="drivers">
+          <div className="card-surface rounded-[var(--radius-lg)]">
+            <div className="border-b border-[var(--border)] px-6 py-3">
+              <span className="text-sm font-medium">司機管理</span>
+              <span className="ml-2 text-xs text-[var(--text-secondary)]">出貨通知使用的司機資料</span>
+            </div>
+            <div className="px-6 py-4">
+              <DriversManagementPanel />
             </div>
           </div>
         </TabsContent>
