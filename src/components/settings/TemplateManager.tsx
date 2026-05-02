@@ -12,7 +12,7 @@ interface TemplateManagerProps {
   onClose?: () => void;
 }
 
-export function TemplateManager({ currentItems, onClose }: TemplateManagerProps) {
+export function TemplateManager({ currentItems }: TemplateManagerProps) {
   const { templates, loading, error, loadTemplates, saveTemplate, deleteTemplate } = useTemplates();
   const [editingTemplate, setEditingTemplate] = useState<QuoteTemplate | null>(null);
   const [showForm, setShowForm] = useState(false);

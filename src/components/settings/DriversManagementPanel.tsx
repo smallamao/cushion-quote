@@ -129,18 +129,16 @@ export function DriversManagementPanel() {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
   const [seeding, setSeeding] = useState(false);
-  const [seedError, setSeedError] = useState("");
 
   async function handleSeedDefaults() {
     setSeeding(true);
-    setSeedError("");
     try {
       const res = await fetch("/api/sheets/drivers/seed", { method: "POST" });
       const json = (await res.json()) as { ok: boolean; error?: string };
-      if (!json.ok) { setSeedError(json.error ?? "匯入失敗"); return; }
+      if (!json.ok) { alert(json.error ?? "匯入失敗"); return; }
       reload();
     } catch {
-      setSeedError("網路錯誤");
+      alert("網路錯誤");
     } finally {
       setSeeding(false);
     }

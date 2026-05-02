@@ -10,10 +10,11 @@ import { navLinks } from "@/components/layout/nav-links";
 import type { NavGroup } from "@/components/layout/nav-links";
 
 const GROUP_LABELS: Record<NavGroup, string> = {
-  daily: "日常操作",
-  reference: "資料管理",
-  system: "系統功能",
-  tools: "馬鈴薯工具",
+  business: "業務",
+  operations: "日常操作",
+  finance: "財務",
+  inventory: "庫存",
+  system: "系統",
 };
 
 export function MobileDrawer() {
@@ -25,8 +26,8 @@ export function MobileDrawer() {
     ? navLinks.filter((l) => l.roles.includes(user.role))
     : [];
 
-  const dailyLinks = visibleLinks.filter((l) => l.group === "daily");
-  const secondaryGroups: NavGroup[] = ["reference", "system", "tools"];
+  const dailyLinks = visibleLinks.filter((l) => l.group === "operations");
+  const secondaryGroups: NavGroup[] = ["business", "finance", "inventory", "system"];
 
   useEffect(() => {
     setOpen(false);
