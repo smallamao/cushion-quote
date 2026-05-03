@@ -57,7 +57,9 @@ const noAdj = {
   widthAdjCm: 0, depthAdjCm: 0, heightAdjCm: 0,
   platformWidthAdj: 0, platformDepthAdj: 0,
   groundOption: "none" as const, heightReduction: false,
-  removeArmrestCount: 0, usbCount: 0, wirelessChargeCount: 0, slideRailCount: 0,
+  removeArmrestCount: 0, usbCount: 0, removeStandardUsb: false,
+  wirelessChargeCount: 0, slideRailCount: 0, slideRailRatePerSeat: 1000,
+  platformNoStorage: false,
 };
 
 describe("calcPosCost", () => {

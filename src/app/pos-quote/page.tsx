@@ -1,5 +1,5 @@
-import { PosQuoteClient } from "@/app/pos-quote/PosQuoteClient";
+import { redirect } from "next/navigation";
 
 export default function PosQuotePage() {
-  return <PosQuoteClient />;
+  redirect("/sofa-quote?tab=pos");
 }

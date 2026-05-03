@@ -51,8 +51,11 @@ export interface PosAdjustments {
   heightReduction: boolean
   removeArmrestCount: number
   usbCount: number
+  removeStandardUsb: boolean   // -1000 fixed
   wirelessChargeCount: number
   slideRailCount: number
+  slideRailRatePerSeat: number // varies by style (e.g. BOOM=800, others=1000)
+  platformNoStorage: boolean   // -1000 fixed
 }
 
 export interface PosCostBreakdown {
@@ -65,8 +68,10 @@ export interface PosCostBreakdown {
   platformCost: number
   armrestDiscount: number
   usbCost: number
+  removeStandardUsbDiscount: number
   wirelessCost: number
   slideRailCost: number
+  platformNoStorageDiscount: number
   subtotal: number
   deposit: number
 }
@@ -100,19 +105,23 @@ export function calcPosCost(
 
   const armrestDiscount = adj.removeArmrestCount * -1500;
   const usbCost = adj.usbCount * 1500;
+  const removeStandardUsbDiscount = adj.removeStandardUsb ? -1000 : 0;
   const wirelessCost = adj.wirelessChargeCount * 1200;
-  const slideRailCost = adj.slideRailCount * 1000;
+  const slideRailCost = adj.slideRailCount * adj.slideRailRatePerSeat;
+  const platformNoStorageDiscount = adj.platformNoStorage ? -1000 : 0;
 
   const subtotal =
     basePrice + widthCost + depthCost + heightCost +
     groundCost + heightReductionDiscount + platformCost +
-    armrestDiscount + usbCost + wirelessCost + slideRailCost;
+    armrestDiscount + usbCost + removeStandardUsbDiscount +
+    wirelessCost + slideRailCost + platformNoStorageDiscount;
   const deposit = Math.round(subtotal * 0.3);
 
   return {
     basePrice, widthCost, depthCost, heightCost,
     groundCost, heightReductionDiscount, platformCost,
-    armrestDiscount, usbCost, wirelessCost, slideRailCost,
+    armrestDiscount, usbCost, removeStandardUsbDiscount,
+    wirelessCost, slideRailCost, platformNoStorageDiscount,
     subtotal, deposit,
   };
 }
