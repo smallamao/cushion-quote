@@ -255,6 +255,14 @@ const SHEET_DEFINITIONS = [
     title: "司機資料",
     headers: ["key", "title", "confirmTitle", "phoneNumber", "labelId", "active"],
   },
+  {
+    title: "POS_底價",
+    headers: ["款式", "座位", "TW_LV1", "TW_LV2", "TW_LV3", "TW_LV4", "TW_LV5", "IMPORT_LV1", "IMPORT_LV2", "IMPORT_LV3", "IMPORT_LV4", "IMPORT_LV5", "LEATHER_LV1", "LEATHER_LV2", "LEATHER_LV3"],
+  },
+  {
+    title: "POS_調整費率",
+    headers: ["費率群組", "適用材質IDs", "1人_深/6cm", "1人_背/6cm", "2人_深/6cm", "2人_背/6cm", "3人_深/6cm", "3人_背/6cm", "加寬/1cm"],
+  },
 ];
 
 const DEFAULT_SETTINGS_ROWS = [
