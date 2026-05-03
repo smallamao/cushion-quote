@@ -8,13 +8,13 @@ import {
   FileText,
   HandCoins,
   Package,
-  Palette,
   ReceiptText,
   Ruler,
   Settings,
   ShoppingCart,
   Stethoscope,
   Truck,
+  Users,
   Wallet,
 } from "lucide-react";
 
@@ -32,14 +32,14 @@ export type NavLinkDef = {
 
 export const navLinks: NavLinkDef[] = [
   // ── 業務 ──
-  { href: "/sofa-quote", label: "尺寸報價", icon: Ruler, roles: ["admin", "technician"], group: "business" },
-  { href: "/pos-quote", label: "POS 訂製報價", icon: Palette, roles: ["admin", "technician"], group: "business" },
+  { href: "/sofa-quote", label: "報價", icon: Ruler, roles: ["admin", "technician"], group: "business" },
   { href: "/", label: "報價工作台", icon: Calculator, roles: ["admin"], group: "business" },
   { href: "/quotes", label: "報價紀錄", icon: FileText, roles: ["admin"], group: "business" },
   { href: "/cases", label: "案件紀錄", icon: Briefcase, roles: ["admin"], group: "business" },
+  { href: "/referrals", label: "轉介紹", icon: Users, roles: ["admin"], group: "business" },
   // ── 作業 ──
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
-  { href: "/shipping-notice", label: "出貨通知", icon: Truck, roles: ["admin", "technician"], group: "operations" },
+  { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin", "technician"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"], group: "operations" },
   { href: "/calendar", label: "行事曆", icon: Calendar, roles: ["admin", "technician"], group: "operations" },
   // ── 財務 ──
