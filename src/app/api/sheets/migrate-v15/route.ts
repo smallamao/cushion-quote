@@ -71,7 +71,7 @@ export async function POST() {
   try {
     const client = await getSheetsClient();
     if (!client) {
-      return NextResponse.json({ success: false, error: "Google Sheets 未設定" }, { status: 503 });
+      return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
     }
 
     await client.sheets.spreadsheets.values.update({
@@ -88,8 +88,9 @@ export async function POST() {
       requestBody: { values: POS_ADJ_RATES },
     });
 
-    return NextResponse.json({ success: true, message: "POS pricing data migrated" });
+    return NextResponse.json({ ok: true, message: "POS pricing data migrated" });
   } catch (error) {
-    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+    const message = error instanceof Error ? error.message : "unknown";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
