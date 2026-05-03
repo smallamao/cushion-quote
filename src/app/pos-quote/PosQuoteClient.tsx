@@ -512,7 +512,7 @@ export function PosQuoteClient() {
   }
 
   useEffect(() => {
-    fetch("/api/legacy/pos/config")
+    fetch("/api/pos/config")
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<PosConfig>;
@@ -622,6 +622,10 @@ export function PosQuoteClient() {
       const adjRatesForMat = pricing.adjRates[form.matLevelId];
       if (!adjRatesForMat) { setCalcError("找不到此面料的費率，請確認 Sheets 資料"); return; }
 
+      const slideRailRatePerSeat = form.styleCode === "BOOM"
+        ? (adv.slide_rail_config?.pricing?.mule_discount_per_seat ?? 800)
+        : (adv.slide_rail_config?.pricing?.standard_discount_per_seat ?? 1000);
+
       const adj: PosAdjustments = {
         widthAdjCm: form.widthAdj,
         depthAdjCm: form.depthAdj,
@@ -632,8 +636,11 @@ export function PosQuoteClient() {
         heightReduction: form.heightReduction,
         removeArmrestCount: 0,
         usbCount: form.addUsb ? form.usbCount : 0,
+        removeStandardUsb: form.removeStandardUsb,
         wirelessChargeCount: form.addWirelessCharging ? form.wirelessChargingCount : 0,
         slideRailCount: form.noSlideRail && selectedStyle?.has_slide_rail ? -seatCount : 0,
+        slideRailRatePerSeat,
+        platformNoStorage: form.platformNoStorage,
       };
 
       const cost = calcPosCost(bp, adjRatesForMat, sk, adj);
@@ -658,7 +665,9 @@ export function PosQuoteClient() {
         ...(cost.heightReductionDiscount !== 0 && { height_reduction: cost.heightReductionDiscount }),
         ...(cost.slideRailCost !== 0 && { no_slide_rail: cost.slideRailCost }),
         ...(cost.usbCost !== 0 && { add_usb: cost.usbCost }),
+        ...(cost.removeStandardUsbDiscount !== 0 && { remove_standard_usb: cost.removeStandardUsbDiscount }),
         ...(cost.wirelessCost !== 0 && { wireless_charging: cost.wirelessCost }),
+        ...(cost.platformNoStorageDiscount !== 0 && { platform_no_storage: cost.platformNoStorageDiscount }),
         ...(armCost !== 0 && { armrest_change: armCost }),
         ...(backrestCost !== 0 && { backrest_change: backrestCost }),
         ...(changeStorageCost !== 0 && { change_storage_platform: changeStorageCost }),
@@ -979,11 +988,14 @@ export function PosQuoteClient() {
             <label className="flex items-center justify-between px-3 py-2.5">
               <div>
                 <p className="text-sm text-[var(--text-primary)]">免滑軌</p>
-                {adv.slide_rail_config?.pricing?.standard_discount_per_seat != null && (
-                  <p className="text-xs text-blue-500">
-                    -{adv.slide_rail_config.pricing.standard_discount_per_seat.toLocaleString()}/座
-                  </p>
-                )}
+                {(() => {
+                  const rate = form.styleCode === "BOOM"
+                    ? (adv.slide_rail_config?.pricing?.mule_discount_per_seat)
+                    : (adv.slide_rail_config?.pricing?.standard_discount_per_seat);
+                  return rate != null
+                    ? <p className="text-xs text-blue-500">-{rate.toLocaleString()}/座</p>
+                    : null;
+                })()}
               </div>
               <input type="checkbox" checked={form.noSlideRail} onChange={(e) => patch({ noSlideRail: e.target.checked })}
                 className="h-5 w-5 rounded border-[var(--border)] accent-[var(--accent)]" />
