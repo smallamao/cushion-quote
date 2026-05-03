@@ -261,8 +261,8 @@ export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0): numb
   const wirelessCost = addons.wirelessChargeCount * PRICE_WIRELESS;
   const slideRailCost = addons.slideRailCount * addons.slideRailRatePerSeat;
   const platformNoStorageDiscount = addons.platformNoStorage ? PRICE_PLATFORM_NO_STORAGE : 0;
-  const backrestCost = addons.backrestChange ? PRICE_BACKREST_CHANGE_PER_SEAT * seatCount : 0;
-  const changeStorageFee = addons.changeStoragePlatform ? PRICE_STORAGE_PLATFORM_CHANGE : 0;
+  const backrestCost = (addons.backrestChange && addons.backrestTargetStyle) ? PRICE_BACKREST_CHANGE_PER_SEAT * seatCount : 0;
+  const changeStorageFee = (addons.changeStoragePlatform && addons.storagePlatformStyle) ? PRICE_STORAGE_PLATFORM_CHANGE : 0;
   return groundCost + heightDiscount + armrestDiscount + usbCost
     + removeUsbDiscount + wirelessCost + slideRailCost + platformNoStorageDiscount
     + backrestCost + changeStorageFee + armCost;
