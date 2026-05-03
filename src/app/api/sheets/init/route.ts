@@ -263,6 +263,21 @@ const SHEET_DEFINITIONS = [
     title: "POS_調整費率",
     headers: ["費率群組", "適用材質IDs", "1人_深/6cm", "1人_背/6cm", "2人_深/6cm", "2人_背/6cm", "3人_深/6cm", "3人_背/6cm", "加寬/1cm"],
   },
+  {
+    title: "轉介紹人",
+    headers: [
+      "引荐人ID",
+      "引荐人名稱",
+      "介紹人數",
+      "訂單數",
+      "貢獻營收",
+      "獎勵層級",
+      "獎勵狀態",
+      "最近轉介日",
+      "被介紹人JSON",
+      "同步時間",
+    ],
+  },
 ];
 
 const DEFAULT_SETTINGS_ROWS = [

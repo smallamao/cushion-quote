@@ -6,7 +6,7 @@ import { google, sheets_v4 } from "googleapis";
 const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 
-type SheetsClient = { sheets: sheets_v4.Sheets; spreadsheetId: string };
+export type SheetsClient = { sheets: sheets_v4.Sheets; spreadsheetId: string };
 
 let _cachedClient: SheetsClient | null = null;
 let _cacheExpiresAt = 0;
