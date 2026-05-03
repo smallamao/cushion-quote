@@ -11,6 +11,15 @@ function buildTrelloUrl(path: string, searchParams: URLSearchParams) {
   return `${TRELLO_BASE}/${path}?${params.toString()}`;
 }
 
+async function safeJson(res: Response): Promise<unknown> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: `Trello 回應非 JSON (HTTP ${res.status})` };
+  }
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> }
@@ -19,7 +28,7 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const url = buildTrelloUrl(path.join("/"), searchParams);
   const res = await fetch(url, { cache: "no-store" });
-  const data = await res.json();
+  const data = await safeJson(res);
   return NextResponse.json(data, { status: res.status });
 }
 
@@ -36,7 +45,7 @@ export async function PUT(
     headers: { "Content-Type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json();
+  const data = await safeJson(res);
   return NextResponse.json(data, { status: res.status });
 }
 
@@ -53,7 +62,7 @@ export async function POST(
     headers: { "Content-Type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json();
+  const data = await safeJson(res);
   return NextResponse.json(data, { status: res.status });
 }
 
@@ -65,6 +74,6 @@ export async function DELETE(
   const { searchParams } = new URL(req.url);
   const url = buildTrelloUrl(path.join("/"), searchParams);
   const res = await fetch(url, { method: "DELETE" });
-  const data = await res.json().catch(() => ({}));
+  const data = await safeJson(res);
   return NextResponse.json(data, { status: res.status });
 }
