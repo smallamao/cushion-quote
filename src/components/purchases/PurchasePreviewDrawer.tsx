@@ -1,15 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ExternalLink, Loader2, X } from "lucide-react";
 
 import type { PurchaseOrder, PurchaseOrderItem } from "@/lib/types";
 import { fetchPurchaseOrder } from "@/hooks/usePurchases";
 
+const STATUS_ORDER = ["draft", "sent", "confirmed", "received", "cancelled"] as const;
+type PurchaseStatus = (typeof STATUS_ORDER)[number];
+
 interface Props {
   orderId: string | null;
   onClose: () => void;
+  onStatusChange?: () => void;
 }
 
 function fmtMoney(n: number | null | undefined): string {
@@ -33,11 +37,45 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "bg-red-100 text-red-700",
 };
 
-export function PurchasePreviewDrawer({ orderId, onClose }: Props) {
+export function PurchasePreviewDrawer({ orderId, onClose, onStatusChange }: Props) {
   const [order, setOrder] = useState<PurchaseOrder | null>(null);
   const [items, setItems] = useState<PurchaseOrderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const statusRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showStatusMenu) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (statusRef.current && !statusRef.current.contains(e.target as Node)) {
+        setShowStatusMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showStatusMenu]);
+
+  async function handleStatusChange(newStatus: PurchaseStatus) {
+    if (!orderId || !order || order.status === newStatus || updatingStatus) return;
+    setShowStatusMenu(false);
+    setUpdatingStatus(true);
+    try {
+      const res = await fetch(`/api/sheets/purchases/${encodeURIComponent(orderId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error("更新狀態失敗");
+      setOrder((prev) => prev ? { ...prev, status: newStatus } : prev);
+      onStatusChange?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "更新狀態失敗");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  }
 
   useEffect(() => {
     if (!orderId) {
@@ -73,29 +111,56 @@ export function PurchasePreviewDrawer({ orderId, onClose }: Props) {
       {/* Drawer */}
       <div
         className={[
-          "fixed right-0 top-0 z-50 flex h-full w-full max-w-[480px] flex-col bg-[var(--bg-elevated)] shadow-2xl transition-transform duration-200",
+          "fixed right-0 top-0 z-50 flex h-full w-full max-w-[560px] flex-col bg-[var(--bg-elevated)] shadow-2xl transition-transform duration-200",
           open ? "translate-x-0" : "translate-x-full",
         ].join(" ")}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">
+            <span className="font-mono text-base font-semibold text-[var(--text-primary)]">
               {orderId ?? ""}
             </span>
             {order && (
-              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[order.status] ?? ""}`}>
-                {STATUS_LABEL[order.status] ?? order.status}
-              </span>
+              <div ref={statusRef} className="relative">
+                <button
+                  onClick={() => setShowStatusMenu((v) => !v)}
+                  disabled={updatingStatus}
+                  className={[
+                    "flex items-center gap-1 rounded-full px-3 py-1 text-sm transition-all disabled:opacity-50",
+                    STATUS_COLOR[order.status] ?? "",
+                  ].join(" ")}
+                >
+                  {updatingStatus ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  {STATUS_LABEL[order.status] ?? order.status}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </button>
+                {showStatusMenu && (
+                  <div className="absolute left-0 top-full z-10 mt-1 min-w-[6rem] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] shadow-lg">
+                    {STATUS_ORDER.filter((s) => s !== order.status).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => void handleStatusChange(s)}
+                        className={[
+                          "flex w-full items-center px-3 py-2 text-sm hover:bg-[var(--bg-hover)]",
+                          STATUS_COLOR[s] ?? "",
+                        ].join(" ")}
+                      >
+                        {STATUS_LABEL[s]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2">
             {orderId && (
               <Link
                 href={`/purchases/${orderId}`}
-                className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
+                className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <ExternalLink className="h-4 w-4" />
                 完整編輯
               </Link>
             )}
@@ -104,7 +169,7 @@ export function PurchasePreviewDrawer({ orderId, onClose }: Props) {
               onClick={onClose}
               className="rounded-md p-1.5 text-[var(--text-tertiary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
             >
-              <X className="h-4 w-4" />
+              <X className="h-5 w-5" />
             </button>
           </div>
         </div>
@@ -124,7 +189,7 @@ export function PurchasePreviewDrawer({ orderId, onClose }: Props) {
           {!loading && order && (
             <>
               {/* Order meta */}
-              <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+              <div className="mb-5 grid grid-cols-2 gap-x-4 gap-y-2.5 text-base">
                 <div className="text-[var(--text-tertiary)]">廠商</div>
                 <div className="text-[var(--text-primary)]">
                   {order.supplierSnapshot?.shortName || order.supplierSnapshot?.name || order.supplierId}
@@ -147,45 +212,47 @@ export function PurchasePreviewDrawer({ orderId, onClose }: Props) {
 
               {/* Items table */}
               <div className="overflow-hidden rounded-lg border border-[var(--border)]">
-                <table className="w-full text-xs">
+                <table className="w-full text-sm">
                   <thead className="bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
                     <tr>
-                      <th className="px-3 py-2 text-left font-medium">品項</th>
-                      <th className="px-3 py-2 text-right font-medium">數量</th>
-                      <th className="px-3 py-2 text-right font-medium">進價</th>
-                      <th className="px-3 py-2 text-right font-medium">小計</th>
+                      <th className="px-4 py-2.5 text-left font-medium">品項</th>
+                      <th className="px-4 py-2.5 text-right font-medium">數量</th>
+                      <th className="px-4 py-2.5 text-right font-medium">進價</th>
+                      <th className="px-4 py-2.5 text-right font-medium">小計</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-3 py-6 text-center text-[var(--text-tertiary)]">
+                        <td colSpan={4} className="px-4 py-8 text-center text-[var(--text-tertiary)]">
                           無明細
                         </td>
                       </tr>
                     )}
                     {items.map((item) => (
                       <tr key={item.itemId} className="hover:bg-[var(--bg-hover)]">
-                        <td className="px-3 py-2">
-                          <div className="font-medium text-[var(--text-primary)]">
+                        <td className="px-4 py-3">
+                          <div className="flex items-baseline gap-2">
+                            {item.productSnapshot.specification && (
+                              <span className="text-base font-medium text-[var(--text-primary)]">
+                                {item.productSnapshot.specification}
+                              </span>
+                            )}
+                            {item.notes && (
+                              <span className="font-mono text-xs text-[var(--text-tertiary)]">#{item.notes}</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-[var(--text-secondary)]">
                             {item.productSnapshot.productName}
                           </div>
-                          {item.productSnapshot.specification && (
-                            <div className="text-[10px] text-[var(--text-tertiary)]">
-                              {item.productSnapshot.specification}
-                            </div>
-                          )}
-                          {item.notes && (
-                            <div className="text-[10px] text-[var(--text-tertiary)]">{item.notes}</div>
-                          )}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-[var(--text-secondary)]">
+                        <td className="px-4 py-3 text-right font-mono text-[var(--text-secondary)]">
                           {item.quantity} {item.productSnapshot.unit}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-[var(--text-secondary)]">
+                        <td className="px-4 py-3 text-right font-mono text-[var(--text-secondary)]">
                           ${fmtMoney(item.unitPrice)}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-[var(--text-primary)]">
+                        <td className="px-4 py-3 text-right font-mono text-[var(--text-primary)]">
                           ${fmtMoney(item.amount)}
                         </td>
                       </tr>
@@ -195,7 +262,7 @@ export function PurchasePreviewDrawer({ orderId, onClose }: Props) {
               </div>
 
               {/* Totals */}
-              <div className="mt-3 space-y-1 text-right text-xs">
+              <div className="mt-4 space-y-1.5 text-right text-base">
                 {order.shippingFee > 0 && (
                   <div className="text-[var(--text-secondary)]">
                     運費 <span className="font-mono">${fmtMoney(order.shippingFee)}</span>
@@ -206,7 +273,7 @@ export function PurchasePreviewDrawer({ orderId, onClose }: Props) {
                     稅額 <span className="font-mono">${fmtMoney(order.taxAmount)}</span>
                   </div>
                 )}
-                <div className="text-sm font-semibold text-[var(--text-primary)]">
+                <div className="text-lg font-semibold text-[var(--text-primary)]">
                   合計 <span className="font-mono">${fmtMoney(order.totalAmount)}</span>
                 </div>
               </div>

@@ -482,6 +482,7 @@ export function PurchasesClient() {
       <PurchasePreviewDrawer
         orderId={previewOrderId}
         onClose={() => setPreviewOrderId(null)}
+        onStatusChange={() => void reload()}
       />
     </div>
   );
