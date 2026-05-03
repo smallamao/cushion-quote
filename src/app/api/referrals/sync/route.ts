@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const maxDuration = 70;
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import {
   adaptFastApiResponse,
