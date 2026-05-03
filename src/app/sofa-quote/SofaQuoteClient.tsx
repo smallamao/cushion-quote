@@ -22,6 +22,7 @@ import {
   calcArmCost,
   getArmCompat,
   type ArmCompatEntry,
+  type ArmMode,
 } from "@/lib/sofa-addons-config";
 import { MessageResultModal } from "@/components/sofa/MessageResultModal";
 
@@ -181,6 +182,16 @@ function ArmPanel({
   );
 }
 
+// ─── Arm Modes ────────────────────────────────────────────────────────────────
+
+const ARM_MODES: Array<{ value: ArmMode; label: string }> = [
+  { value: "none",           label: "無" },
+  { value: "both_same",      label: "兩側相同" },
+  { value: "both_different", label: "左右分開" },
+  { value: "left_only",      label: "僅左側" },
+  { value: "right_only",     label: "僅右側" },
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function SofaQuoteClient() {
@@ -297,14 +308,6 @@ export function SofaQuoteClient() {
   const segBase = "flex-1 rounded-[var(--radius-sm)] py-1 text-xs font-medium transition-colors";
   const segActive = "bg-[var(--accent)] text-white";
   const segInactive = "text-[var(--text-secondary)]";
-
-  const ARM_MODES: Array<{ value: typeof addons.armMode; label: string }> = [
-    { value: "none",           label: "無" },
-    { value: "both_same",      label: "兩側相同" },
-    { value: "both_different", label: "左右分開" },
-    { value: "left_only",      label: "僅左側" },
-    { value: "right_only",     label: "僅右側" },
-  ];
 
   return (
     <div className="mx-auto max-w-lg p-4 space-y-3">
