@@ -23,6 +23,7 @@ export interface ReferrerStats {
   clientCount: number;
   revenue: number;
   rewardTier: RewardTier;
+  rewardStatus?: "pending" | "sent";
   lastReferralDate: string;
   cases: ReferredCaseDetail[];
 }
@@ -141,4 +142,127 @@ export function computeReferralStats(
   };
 
   return { referrers, summary };
+}
+
+// ── FastAPI types ──────────────────────────────────────────────────────────
+
+export interface FastApiPerson {
+  name: string;
+  phone: string;
+  orders: string[];
+  revenue: number;
+  referrer_name: string;
+  relationship_type: string;
+}
+
+export interface FastApiNetwork {
+  referrer: string;
+  direct_referrals: number;
+  total_network: number;
+  total_network_revenue: number;
+  layer_stats?: Record<string, { count: number; revenue: number; people: FastApiPerson[] }>;
+}
+
+export interface FastApiResponse {
+  networks: FastApiNetwork[];
+  total_referrers: number;
+  total_network_size: number;
+}
+
+// ── Adapter helpers ────────────────────────────────────────────────────────
+
+export function parseReferrerId(raw: string): { id: string; name: string } {
+  const spaceIdx = raw.indexOf(" ");
+  if (spaceIdx === -1) return { id: raw, name: raw };
+  return { id: raw.slice(0, spaceIdx), name: raw };
+}
+
+export function adaptFastApiResponse(data: FastApiResponse): ReferralStatsResult {
+  const referrers: ReferrerStats[] = data.networks
+    .map((network) => {
+      const { id, name } = parseReferrerId(network.referrer);
+      const layer1People = network.layer_stats?.["1"]?.people ?? [];
+
+      const cases: ReferredCaseDetail[] = layer1People.flatMap((person) =>
+        (person.orders ?? []).map((orderId) => ({
+          caseId: orderId,
+          clientName: person.name,
+          caseStatus: "won",
+          amount:
+            person.orders.length > 0
+              ? Math.round(person.revenue / person.orders.length)
+              : 0,
+          inquiryDate: "",
+        })),
+      );
+
+      const caseCount = cases.length;
+      const clientCount = network.direct_referrals;
+      const revenue = network.total_network_revenue;
+
+      return {
+        companyId: id,
+        companyName: name,
+        caseCount,
+        wonCaseCount: caseCount,
+        clientCount,
+        revenue,
+        rewardTier: computeRewardTier(clientCount),
+        rewardStatus: "pending" as const,
+        lastReferralDate: "",
+        cases,
+      };
+    })
+    .sort((a, b) => b.revenue - a.revenue || b.caseCount - a.caseCount);
+
+  const summary: ReferralSummary = {
+    totalReferrers: referrers.length,
+    totalReferredCases: referrers.reduce((s, r) => s + r.caseCount, 0),
+    totalWonCases: referrers.reduce((s, r) => s + r.wonCaseCount, 0),
+    totalRevenue: referrers.reduce((s, r) => s + r.revenue, 0),
+    pendingRewardCount: referrers.filter(
+      (r) => r.rewardTier >= 1 && r.rewardStatus !== "sent",
+    ).length,
+  };
+
+  return { referrers, summary };
+}
+
+// ── Google Sheets row serialisation ───────────────────────────────────────
+
+export function referrerStatsToRow(r: ReferrerStats, syncedAt: string): string[] {
+  return [
+    r.companyId,
+    r.companyName,
+    String(r.clientCount),
+    String(r.caseCount),
+    String(r.revenue),
+    String(r.rewardTier),
+    r.rewardStatus ?? "pending",
+    r.lastReferralDate,
+    JSON.stringify(r.cases),
+    syncedAt,
+  ];
+}
+
+export function referrerRowToStats(row: string[]): ReferrerStats {
+  let cases: ReferredCaseDetail[] = [];
+  try {
+    cases = JSON.parse(row[8] ?? "[]") as ReferredCaseDetail[];
+  } catch {
+    cases = [];
+  }
+  const caseCount = Number(row[3]) || 0;
+  return {
+    companyId: row[0] ?? "",
+    companyName: row[1] ?? "",
+    clientCount: Number(row[2]) || 0,
+    caseCount,
+    wonCaseCount: caseCount,
+    revenue: Number(row[4]) || 0,
+    rewardTier: (Number(row[5]) || 0) as RewardTier,
+    rewardStatus: (row[6] === "sent" ? "sent" : "pending") as "pending" | "sent",
+    lastReferralDate: row[7] ?? "",
+    cases,
+  };
 }

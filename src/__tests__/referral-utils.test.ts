@@ -4,7 +4,15 @@ import {
   computeReferralStats,
   REWARD_TIER_META,
 } from "@/lib/referral-utils";
+import {
+  parseReferrerId,
+  adaptFastApiResponse,
+  referrerStatsToRow,
+  referrerRowToStats,
+  type FastApiResponse,
+} from "@/lib/referral-utils";
 import type { CaseRecord, QuoteVersionRecord } from "@/lib/types";
+import type { ReferrerStats } from "@/lib/referral-utils";
 
 function makeCase(overrides: Partial<CaseRecord> = {}): CaseRecord {
   return {
@@ -173,5 +181,136 @@ describe("computeReferralStats", () => {
     ];
     const result = computeReferralStats(cases, versions);
     expect(result.referrers[0].companyId).toBe("C002");
+  });
+});
+
+// ── FastAPI adapter ────────────────────────────────────────────────────────
+
+const FASTAPI_FIXTURE: FastApiResponse = {
+  networks: [
+    {
+      referrer: "P3258 鄭香基",
+      direct_referrals: 2,
+      total_network: 2,
+      total_network_revenue: 121600,
+      layer_stats: {
+        "1": {
+          count: 2,
+          revenue: 121600,
+          people: [
+            {
+              name: "郑香城",
+              phone: "0920004260",
+              orders: ["P5871"],
+              revenue: 65800,
+              referrer_name: "P3258 鄭香基",
+              relationship_type: "",
+            },
+            {
+              name: "郑小明",
+              phone: "0920001234",
+              orders: ["P5309", "P5310"],
+              revenue: 55800,
+              referrer_name: "P3258 鄭香基",
+              relationship_type: "",
+            },
+          ],
+        },
+      },
+    },
+  ],
+  total_referrers: 1,
+  total_network_size: 2,
+};
+
+describe("parseReferrerId", () => {
+  it("parses standard ID + name format", () => {
+    expect(parseReferrerId("P3258 鄭香基")).toEqual({ id: "P3258", name: "P3258 鄭香基" });
+  });
+
+  it("parses another entry", () => {
+    expect(parseReferrerId("P4346 莊榮盛")).toEqual({ id: "P4346", name: "P4346 莊榮盛" });
+  });
+
+  it("returns raw string as both id and name when no space", () => {
+    expect(parseReferrerId("P3258")).toEqual({ id: "P3258", name: "P3258" });
+  });
+});
+
+describe("adaptFastApiResponse", () => {
+  it("produces correct referrer stats from fixture", () => {
+    const result = adaptFastApiResponse(FASTAPI_FIXTURE);
+    expect(result.referrers).toHaveLength(1);
+    const r = result.referrers[0];
+    expect(r.companyId).toBe("P3258");
+    expect(r.companyName).toBe("P3258 鄭香基");
+    expect(r.clientCount).toBe(2);
+    expect(r.caseCount).toBe(3);   // P5871 + P5309 + P5310
+    expect(r.wonCaseCount).toBe(3);
+    expect(r.revenue).toBe(121600);
+    expect(r.rewardTier).toBe(1);
+    expect(r.rewardStatus).toBe("pending");
+    expect(r.cases).toHaveLength(3);
+  });
+
+  it("produces correct summary from fixture", () => {
+    const result = adaptFastApiResponse(FASTAPI_FIXTURE);
+    expect(result.summary.totalReferrers).toBe(1);
+    expect(result.summary.totalReferredCases).toBe(3);
+    expect(result.summary.totalRevenue).toBe(121600);
+    expect(result.summary.pendingRewardCount).toBe(1);
+  });
+
+  it("handles empty networks gracefully", () => {
+    const empty: FastApiResponse = { networks: [], total_referrers: 0, total_network_size: 0 };
+    const result = adaptFastApiResponse(empty);
+    expect(result.referrers).toHaveLength(0);
+    expect(result.summary.totalReferrers).toBe(0);
+    expect(result.summary.pendingRewardCount).toBe(0);
+  });
+});
+
+describe("referrerStatsToRow / referrerRowToStats round-trip", () => {
+  it("round-trips all fields without loss", () => {
+    const stats: ReferrerStats = {
+      companyId: "P3258",
+      companyName: "P3258 鄭香基",
+      caseCount: 3,
+      wonCaseCount: 3,
+      clientCount: 2,
+      revenue: 121600,
+      rewardTier: 1,
+      rewardStatus: "pending",
+      lastReferralDate: "",
+      cases: [
+        { caseId: "P5871", clientName: "郑香城", caseStatus: "won", amount: 65800, inquiryDate: "" },
+      ],
+    };
+    const row = referrerStatsToRow(stats, "2026-05-03T12:00:00.000Z");
+    const restored = referrerRowToStats(row);
+    expect(restored.companyId).toBe("P3258");
+    expect(restored.revenue).toBe(121600);
+    expect(restored.rewardTier).toBe(1);
+    expect(restored.rewardStatus).toBe("pending");
+    expect(restored.cases).toHaveLength(1);
+    expect(restored.cases[0].caseId).toBe("P5871");
+  });
+
+  it("preserves rewardStatus=sent through round-trip", () => {
+    const stats: ReferrerStats = {
+      companyId: "P4346",
+      companyName: "P4346 莊榮盛",
+      caseCount: 1,
+      wonCaseCount: 1,
+      clientCount: 1,
+      revenue: 119900,
+      rewardTier: 1,
+      rewardStatus: "sent",
+      lastReferralDate: "",
+      cases: [],
+    };
+    const row = referrerStatsToRow(stats, "2026-05-03T12:00:00.000Z");
+    const restored = referrerRowToStats(row);
+    expect(restored.rewardStatus).toBe("sent");
   });
 });
