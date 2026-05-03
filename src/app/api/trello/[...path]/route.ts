@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-const TRELLO_KEY = process.env.TRELLO_KEY;
-const TRELLO_TOKEN = process.env.TRELLO_TOKEN;
+const TRELLO_KEY = process.env.TRELLO_KEY?.trim();
+const TRELLO_TOKEN = process.env.TRELLO_TOKEN?.trim();
 const TRELLO_BASE = "https://api.trello.com/1";
 
 function buildTrelloUrl(path: string, searchParams: URLSearchParams) {
