@@ -251,3 +251,47 @@ export function buildQuoteOutput(
 
   return { detailText: detailLines.join('\n'), copyText }
 }
+
+// ─── Add-on Options ────────────────────────────────────────────────────────────
+
+export interface SofaAddons {
+  groundOption: "none" | "half" | "full"
+  heightReduction: boolean
+  removeArmrestCount: number
+  usbCount: number
+  removeStandardUsb: boolean
+  wirelessChargeCount: number
+  slideRailCount: number
+  slideRailRatePerSeat: number  // 800 for BOOM/BOOMs, 1000 for others
+  platformNoStorage: boolean
+}
+
+export const DEFAULT_ADDONS: SofaAddons = {
+  groundOption: "none",
+  heightReduction: false,
+  removeArmrestCount: 0,
+  usbCount: 0,
+  removeStandardUsb: false,
+  wirelessChargeCount: 0,
+  slideRailCount: 0,
+  slideRailRatePerSeat: 1000,
+  platformNoStorage: false,
+}
+
+export function getSlideRailRate(productCode: string): number {
+  return ["BOOM", "BOOMs"].includes(productCode) ? 800 : 1000;
+}
+
+export function calcAddons(addons: SofaAddons): number {
+  const groundCost = addons.groundOption === "full" ? 2000
+    : addons.groundOption === "half" ? 1500 : 0;
+  const heightDiscount = addons.heightReduction ? -1000 : 0;
+  const armrestDiscount = addons.removeArmrestCount * -1500;
+  const usbCost = addons.usbCount * 1500;
+  const removeUsbDiscount = addons.removeStandardUsb ? -1000 : 0;
+  const wirelessCost = addons.wirelessChargeCount * 1200;
+  const slideRailCost = addons.slideRailCount * addons.slideRailRatePerSeat;
+  const platformNoStorageDiscount = addons.platformNoStorage ? -1000 : 0;
+  return groundCost + heightDiscount + armrestDiscount + usbCost
+    + removeUsbDiscount + wirelessCost + slideRailCost + platformNoStorageDiscount;
+}
