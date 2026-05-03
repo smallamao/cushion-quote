@@ -41,6 +41,7 @@ export function ReferralsClient() {
 
   const syncFromFastApi = useCallback(async () => {
     setSyncing(true);
+    setSyncResult(null);
     setSyncError(null);
     try {
       const res = await fetch("/api/referrals/sync", { method: "POST" });
@@ -127,7 +128,9 @@ export function ReferralsClient() {
               <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
                 {syncResult.message}
                 <span className="ml-2 text-xs text-green-600">
-                  ({new Date(syncResult.syncedAt).toLocaleString("zh-TW")})
+                  ({syncResult.syncedAt
+                    ? new Date(syncResult.syncedAt).toLocaleString("zh-TW")
+                    : "—"})
                 </span>
               </div>
             )}
