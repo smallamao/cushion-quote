@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Copy, FileImage, Loader2 } from "lucide-react";
 
+import { calcPosCost, type PosAdjustments, type SeatKey, type SeatRates } from "@/lib/pos-pricing-engine";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PosSpec = {
@@ -22,6 +24,12 @@ type PosStyle = {
   supports_wireless_charging?: boolean;
   supports_standard_usb_removal?: boolean;
   has_platform_storage?: boolean;
+  dimensions?: {
+    seat_width: number;
+    sofa_base_depth: number;
+    platform_base_width: number;
+    platform_base_depth: number;
+  };
 };
 
 type MatLevel = {
@@ -107,6 +115,7 @@ type FormState = {
   heightAdj: number;
   platWidthAdj: number;
   platDepthAdj: number;
+  platInputMode: "adj" | "target";
   reverse: boolean;
   // 改扶手
   armMode: ArmMode;
@@ -157,7 +166,7 @@ type CalcResult = {
 const DEFAULT_FORM: FormState = {
   styleCode: "", specValue: "", matLevelId: "",
   widthAdj: 0, depthAdj: 0, heightAdj: 0,
-  platWidthAdj: 0, platDepthAdj: 0, reverse: false,
+  platWidthAdj: 0, platDepthAdj: 0, platInputMode: "adj", reverse: false,
   armMode: "none",
   leftArmCode: "", rightArmCode: "",
   leftArmWidth: 0, rightArmWidth: 0,
@@ -291,6 +300,40 @@ function AdjInput({ label, value, onChange }: {
   );
 }
 
+function SliderAdj({
+  label, value, onChange, min, max, step, original,
+}: {
+  label: string; value: number; onChange: (v: number) => void;
+  min: number; max: number; step: number; original?: number;
+}) {
+  const display = value === 0 ? "0" : value > 0 ? `+${value}` : `${value}`;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-[var(--text-secondary)]">
+          {label}{original != null ? ` — 原始: ${original} cm` : ""}
+        </span>
+        <span className={`text-sm font-bold tabular-nums ${value !== 0 ? "text-[var(--accent)]" : "text-[var(--text-primary)]"}`}>
+          {display} cm
+          {original != null && value !== 0 && (
+            <span className="ml-1.5 text-xs font-normal text-[var(--text-tertiary)]">→ {original + value}</span>
+          )}
+        </span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full cursor-pointer accent-[var(--accent)]"
+      />
+      <div className="flex justify-between text-[9px] text-[var(--text-tertiary)]">
+        <span>{min}</span>
+        {min < 0 && max > 0 && <span>0</span>}
+        <span>+{max}</span>
+      </div>
+    </div>
+  );
+}
+
 function DiagramModal({ diagramUrl, onClose }: { diagramUrl: string; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={onClose}>
@@ -420,12 +463,34 @@ function ArmPanel({
   );
 }
 
+// ─── POS Pricing Hook ─────────────────────────────────────────────────────────
+
+type PosPricingData = {
+  basePrices: Record<string, Record<string, Record<string, number>>>;
+  adjRates: Record<string, SeatRates>;
+};
+
+function usePosPrice() {
+  const [pricing, setPricing] = useState<PosPricingData | null>(null);
+  useEffect(() => {
+    fetch("/api/sheets/pos-pricing")
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<PosPricingData>;
+      })
+      .then(setPricing)
+      .catch(() => {});
+  }, []);
+  return pricing;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function PosQuoteClient() {
   const [config, setConfig] = useState<PosConfig | null>(null);
   const [configError, setConfigError] = useState("");
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const pricing = usePosPrice();
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<CalcResult | null>(null);
   const [calcError, setCalcError] = useState("");
@@ -504,6 +569,7 @@ export function PosQuoteClient() {
 
   const selectedStyle = config?.styles.find((s) => s.code === form.styleCode) ?? null;
   const selectedSpec = config?.specifications.find((s) => s.value === form.specValue) ?? null;
+  const seatKey: SeatKey = (selectedSpec?.seat_count ?? 3) === 1 ? "1人" : (selectedSpec?.seat_count ?? 3) === 2 ? "2人" : "3人";
   const availableMatLevels = config
     ? config.material_groups.flatMap((g) =>
         g.levels
@@ -512,7 +578,9 @@ export function PosQuoteClient() {
       )
     : [];
   const selectedMatLevel = availableMatLevels.find((l) => l.category_id === form.matLevelId) ?? null;
-  const basePrice = selectedStyle && form.matLevelId ? (selectedStyle.base_prices[form.matLevelId] ?? null) : null;
+  const basePrice = pricing && form.styleCode && form.matLevelId && selectedSpec
+    ? (pricing.basePrices[form.styleCode]?.[seatKey]?.[form.matLevelId] ?? null)
+    : null;
 
   const adv = config?.advanced_customization ?? {};
   const armrestOptions = Array.isArray(config?.armrest_options) ? (config.armrest_options as ArmrestOption[]) : [];
@@ -538,57 +606,94 @@ export function PosQuoteClient() {
 
   async function handleCalculate() {
     if (!form.styleCode || !form.specValue || !form.matLevelId) return;
+    if (!pricing) { setCalcError("定價資料尚未載入，請稍後再試"); return; }
+
     setCalculating(true);
     setCalcError("");
     setResult(null);
     releaseDiagram();
+
     try {
-      const apiLeft = form.armMode === "right_only" ? "" : form.leftArmCode;
-      const apiRight = form.armMode === "left_only" ? "" : effectiveRightCode;
-      const res = await fetch("/api/legacy/pos/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          style_code: form.styleCode,
-          specification: form.specValue,
-          material_level: form.matLevelId,
-          width_adj: form.widthAdj,
-          depth_adj: form.depthAdj,
-          height_adj: form.heightAdj,
-          platform_width_adj: form.platWidthAdj,
-          platform_depth_adj: form.platDepthAdj,
-          reverse_configuration: form.reverse,
-          armrest_mode: form.armMode,
-          left_armrest_style: apiLeft,
-          right_armrest_style: apiRight,
-          left_armrest_width: form.leftArmWidth,
-          right_armrest_width: effectiveRightWidth,
-          left_boom_storage: form.leftBoomStorage,
-          right_boom_storage: effectiveRightBoom,
-          left_armrest_pillow_fill: form.leftPillowFill,
-          right_armrest_pillow_fill: effectiveRightPillow,
-          backrest_change: form.backrestChange,
-          backrest_target_style: form.backrestTargetStyle,
-          no_slide_rail: form.noSlideRail,
-          platform_no_storage: form.platformNoStorage,
-          change_storage_platform: form.changeStoragePlatform,
-          storage_platform_style: form.storagePlatformStyle,
-          storage_platform_width_adj: form.storagePlatformWidthAdj,
-          storage_platform_depth_adj: form.storagePlatformDepthAdj,
-          add_usb: form.addUsb,
-          usb_count: form.usbCount,
-          remove_standard_usb: form.removeStandardUsb,
-          add_wireless_charging: form.addWirelessCharging,
-          wireless_charging_count: form.wirelessChargingCount,
-          ground_option: form.groundOption,
-          height_reduction: form.heightReduction,
-        }),
+      const seatCount = selectedSpec?.seat_count ?? 1;
+      const sk: SeatKey = seatCount === 1 ? "1人" : seatCount === 2 ? "2人" : "3人";
+      const bp = pricing.basePrices[form.styleCode]?.[sk]?.[form.matLevelId];
+      if (!bp) { setCalcError("找不到此款式/面料的底價，請確認 Sheets 資料"); return; }
+
+      const adjRatesForMat = pricing.adjRates[form.matLevelId];
+      if (!adjRatesForMat) { setCalcError("找不到此面料的費率，請確認 Sheets 資料"); return; }
+
+      const adj: PosAdjustments = {
+        widthAdjCm: form.widthAdj,
+        depthAdjCm: form.depthAdj,
+        heightAdjCm: form.heightAdj,
+        platformWidthAdj: form.platWidthAdj,
+        platformDepthAdj: form.platDepthAdj,
+        groundOption: form.groundOption,
+        heightReduction: form.heightReduction,
+        removeArmrestCount: 0,
+        usbCount: form.addUsb ? form.usbCount : 0,
+        wirelessChargeCount: form.addWirelessCharging ? form.wirelessChargingCount : 0,
+        slideRailCount: form.noSlideRail && selectedStyle?.has_slide_rail ? -seatCount : 0,
+      };
+
+      const cost = calcPosCost(bp, adjRatesForMat, sk, adj);
+
+      const backrestCost = form.backrestChange
+        ? (adv.backrest_options?.pricing?.per_seat ?? 0) * seatCount
+        : 0;
+      const changeStorageCost = form.changeStoragePlatform
+        ? (adv.platform_storage_config?.processing_fee ?? 0)
+        : 0;
+
+      const total = cost.subtotal + armCost + backrestCost + changeStorageCost;
+      const deposit = Math.round(total * 0.3);
+
+      const breakdown: Record<string, number> = {
+        base_price: cost.basePrice,
+        ...(cost.widthCost !== 0 && { width_adjustment: cost.widthCost }),
+        ...(cost.depthCost !== 0 && { depth_adjustment: cost.depthCost }),
+        ...(cost.heightCost !== 0 && { height_adjustment: cost.heightCost }),
+        ...(cost.platformCost !== 0 && { platform_adjustment: cost.platformCost }),
+        ...(cost.groundCost !== 0 && { ground_option: cost.groundCost }),
+        ...(cost.heightReductionDiscount !== 0 && { height_reduction: cost.heightReductionDiscount }),
+        ...(cost.slideRailCost !== 0 && { no_slide_rail: cost.slideRailCost }),
+        ...(cost.usbCost !== 0 && { add_usb: cost.usbCost }),
+        ...(cost.wirelessCost !== 0 && { wireless_charging: cost.wirelessCost }),
+        ...(armCost !== 0 && { armrest_change: armCost }),
+        ...(backrestCost !== 0 && { backrest_change: backrestCost }),
+        ...(changeStorageCost !== 0 && { change_storage_platform: changeStorageCost }),
+      };
+
+      const dims = selectedStyle?.dimensions;
+      const finalDims = {
+        sofa_width: dims ? (dims.seat_width + form.widthAdj) * seatCount : 0,
+        sofa_depth: dims ? dims.sofa_base_depth + form.depthAdj : 0,
+        sofa_height: 0,
+        platform_width: selectedSpec?.supports_platform && dims ? dims.platform_base_width + form.platWidthAdj : 0,
+        platform_depth: selectedSpec?.supports_platform && dims ? dims.platform_base_depth + form.platDepthAdj : 0,
+      };
+
+      const quoteLines = [
+        `${selectedStyle?.code} ${selectedStyle?.name} ${selectedSpec?.label} ${selectedMatLevel?.category_name}`,
+        `訂製價：$${total.toLocaleString()}`,
+        `訂金：$${deposit.toLocaleString()}`,
+        ...(finalDims.sofa_width > 0 ? [`沙發尺寸：${finalDims.sofa_width} × ${finalDims.sofa_depth} cm`] : []),
+        ...(finalDims.platform_width > 0 ? [`平台尺寸：${finalDims.platform_width} × ${finalDims.platform_depth} cm`] : []),
+      ];
+
+      setResult({
+        total,
+        deposit,
+        breakdown,
+        final_dimensions: finalDims,
+        customer_quote: {
+          title: `${selectedStyle?.code} ${selectedSpec?.label}`,
+          text: quoteLines.join("\n"),
+        },
+        warnings: [],
       });
-      const data = (await res.json()) as CalcResult & { detail?: string };
-      if (!res.ok) setCalcError(data.detail ?? "計算失敗");
-      else setResult(data);
-    } catch {
-      setCalcError("網路錯誤，請稍後再試");
+    } catch (e) {
+      setCalcError(e instanceof Error ? e.message : "計算失敗");
     } finally {
       setCalculating(false);
     }
@@ -688,20 +793,80 @@ export function PosQuoteClient() {
       </div>
 
       {/* ── 尺寸微調 ─────────────────────────────────────────────────────── */}
-      <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-3 space-y-3">
-        <p className="text-xs font-medium text-[var(--text-secondary)]">尺寸微調（cm）</p>
-        <div className="grid grid-cols-3 gap-2">
-          <AdjInput label="寬" value={form.widthAdj} onChange={(v) => patch({ widthAdj: v })} />
-          <AdjInput label="深" value={form.depthAdj} onChange={(v) => patch({ depthAdj: v })} />
-          <AdjInput label="高" value={form.heightAdj} onChange={(v) => patch({ heightAdj: v })} />
-        </div>
+      <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-4 space-y-4">
+        <p className="text-xs font-medium text-[var(--text-secondary)]">尺寸微調</p>
+        <SliderAdj
+          label="每座寬度調整 (cm)"
+          value={form.widthAdj} onChange={(v) => patch({ widthAdj: v })}
+          min={-12} max={18} step={1}
+          original={selectedStyle?.dimensions?.seat_width}
+        />
+        <SliderAdj
+          label="深度調整 (cm)"
+          value={form.depthAdj} onChange={(v) => patch({ depthAdj: v })}
+          min={-12} max={18} step={3}
+          original={selectedStyle?.dimensions?.sofa_base_depth}
+        />
+        <SliderAdj
+          label="背高調整 (cm)"
+          value={form.heightAdj} onChange={(v) => patch({ heightAdj: v })}
+          min={0} max={12} step={3}
+        />
         {selectedSpec?.supports_platform && (
           <>
-            <p className="text-xs font-medium text-[var(--text-secondary)]">平台微調（cm）</p>
-            <div className="grid grid-cols-2 gap-2">
-              <AdjInput label="寬" value={form.platWidthAdj} onChange={(v) => patch({ platWidthAdj: v })} />
-              <AdjInput label="深" value={form.platDepthAdj} onChange={(v) => patch({ platDepthAdj: v })} />
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-xs font-medium text-[var(--text-secondary)]">平台微調</p>
+              <div className="flex overflow-hidden rounded-full border border-[var(--border)] text-[10px]">
+                <button
+                  onClick={() => patch({ platInputMode: "adj" })}
+                  className={`px-2.5 py-0.5 transition-colors ${form.platInputMode === "adj" ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)]"}`}>
+                  調整值
+                </button>
+                <button
+                  onClick={() => patch({ platInputMode: "target" })}
+                  className={`px-2.5 py-0.5 transition-colors ${form.platInputMode === "target" ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)]"}`}>
+                  目標尺寸
+                </button>
+              </div>
             </div>
+            {form.platInputMode === "adj" ? (
+              <div className="space-y-4">
+                <SliderAdj
+                  label="平台寬調整 (cm)"
+                  value={form.platWidthAdj} onChange={(v) => patch({ platWidthAdj: v })}
+                  min={-12} max={18} step={3}
+                  original={selectedStyle?.dimensions?.platform_base_width}
+                />
+                <SliderAdj
+                  label="平台深調整 (cm)"
+                  value={form.platDepthAdj} onChange={(v) => patch({ platDepthAdj: v })}
+                  min={-12} max={18} step={3}
+                  original={selectedStyle?.dimensions?.platform_base_depth}
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {(["platWidthAdj", "platDepthAdj"] as const).map((key) => {
+                  const isWidth = key === "platWidthAdj";
+                  const base = isWidth
+                    ? (selectedStyle?.dimensions?.platform_base_width ?? 0)
+                    : (selectedStyle?.dimensions?.platform_base_depth ?? 0);
+                  const adj = form[key];
+                  return (
+                    <div key={key} className="space-y-1">
+                      <p className="text-[10px] text-[var(--text-tertiary)]">
+                        目標{isWidth ? "寬" : "深"}度{base ? ` (原始: ${base} cm)` : ""}
+                      </p>
+                      <input
+                        type="number" value={base + adj}
+                        onChange={(e) => patch({ [key]: Number(e.target.value) - base })}
+                        className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
         {selectedSpec?.supports_reverse && (
@@ -960,7 +1125,7 @@ export function PosQuoteClient() {
 
       {/* ── 計算按鈕 ─────────────────────────────────────────────────────── */}
       <button onClick={() => void handleCalculate()}
-        disabled={calculating || !form.styleCode || !form.specValue || !form.matLevelId}
+        disabled={calculating || !pricing || !form.styleCode || !form.specValue || !form.matLevelId}
         className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-base font-semibold text-white hover:opacity-90 disabled:opacity-40">
         {calculating ? (
           <span className="flex items-center justify-center gap-2">
