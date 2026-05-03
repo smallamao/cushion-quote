@@ -143,10 +143,10 @@ export function SofaQuoteClient() {
 
   const { adjustCm, adjustPrice } = widthCalc;
   const seatWidthDiff = parseFloat((widthCalc.oneSeatWidth - product.seatWidth).toFixed(1));
-  // Spec: enlargement = blue, reduction = red
-  const adjColor = adjustCm > 0 ? "text-blue-500" : "text-red-500";
-  const seatDiffColor = seatWidthDiff > 0 ? "text-blue-500" : "text-red-500";
-  const priceColor = adjustPrice > 0 ? "text-blue-500" : "text-red-500";
+  // enlargement = red (extra charge), reduction = blue (saving)
+  const adjColor = adjustCm > 0 ? "text-red-500" : "text-blue-500";
+  const seatDiffColor = seatWidthDiff > 0 ? "text-red-500" : "text-blue-500";
+  const priceColor = adjustPrice > 0 ? "text-red-500" : "text-blue-500";
 
   const segBase = "flex-1 rounded-[var(--radius-sm)] py-1 text-xs font-medium transition-colors";
   const segActive = "bg-[var(--accent)] text-white";
@@ -271,10 +271,10 @@ export function SofaQuoteClient() {
                   className="w-16 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1 py-1 text-center text-lg font-bold text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
                 {diffPW !== 0 && (
                   <div className="text-right leading-tight">
-                    <div className={`text-[10px] font-semibold ${diffPW > 0 ? "text-blue-500" : "text-red-500"}`}>
+                    <div className={`text-[10px] font-semibold ${diffPW > 0 ? "text-red-500" : "text-blue-500"}`}>
                       {diffPW > 0 ? `+${diffPW}` : `${diffPW}`}
                     </div>
-                    <div className={`text-[10px] font-semibold ${diffPW > 0 ? "text-blue-500" : "text-red-500"}`}>
+                    <div className={`text-[10px] font-semibold ${diffPW > 0 ? "text-red-500" : "text-blue-500"}`}>
                       {diffPW < 0 ? "+500" : `+${fmtAmount(platformFeeW)}`}
                     </div>
                   </div>
@@ -288,10 +288,10 @@ export function SofaQuoteClient() {
                 className="w-16 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1 py-1 text-center text-lg font-bold text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
               {diffPH !== 0 && (
                 <div className="text-right leading-tight">
-                  <div className={`text-[10px] font-semibold ${diffPH > 0 ? "text-blue-500" : "text-red-500"}`}>
+                  <div className={`text-[10px] font-semibold ${diffPH > 0 ? "text-red-500" : "text-blue-500"}`}>
                     {diffPH > 0 ? `+${diffPH}` : `${diffPH}`}
                   </div>
-                  <div className={`text-[10px] font-semibold ${diffPH > 0 ? "text-blue-500" : "text-red-500"}`}>
+                  <div className={`text-[10px] font-semibold ${diffPH > 0 ? "text-red-500" : "text-blue-500"}`}>
                     {diffPH < 0 ? "+500" : `+${fmtAmount(platformFeeH)}`}
                   </div>
                 </div>
