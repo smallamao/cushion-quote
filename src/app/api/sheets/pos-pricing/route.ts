@@ -10,6 +10,9 @@ export async function GET() {
   }
 
   try {
+    const toStringMatrix = (values: unknown[][] | null | undefined): string[][] =>
+      (values ?? []).map((row) => (row ?? []).map((cell) => String(cell ?? "")));
+
     const [basePricesRes, adjRatesRes] = await Promise.all([
       client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
@@ -21,8 +24,8 @@ export async function GET() {
       }),
     ]);
 
-    const basePrices = parsePosBasePrices((basePricesRes.data.values ?? []) as string[][]);
-    const adjRates = parsePosAdjRates((adjRatesRes.data.values ?? []) as string[][]);
+    const basePrices = parsePosBasePrices(toStringMatrix(basePricesRes.data.values));
+    const adjRates = parsePosAdjRates(toStringMatrix(adjRatesRes.data.values));
 
     return NextResponse.json({ basePrices, adjRates });
   } catch (error: unknown) {

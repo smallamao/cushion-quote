@@ -6,6 +6,7 @@ export type SeatRates = Record<SeatKey, AdjRates>
 export function parsePosBasePrices(
   rows: string[][]
 ): Record<string, Record<string, Record<string, number>>> {
+  if (rows.length < 1) return {};
   const [header, ...dataRows] = rows;
   const matCols = header.slice(2); // after 款式, 座位
   const result: Record<string, Record<string, Record<string, number>>> = {};
@@ -25,6 +26,7 @@ export function parsePosBasePrices(
 
 // Parses POS_調整費率 sheet rows → adjRates[materialId] = { "1人": {...}, "2人": {...}, "3人": {...} }
 export function parsePosAdjRates(rows: string[][]): Record<string, SeatRates> {
+  if (rows.length < 2) return {};
   const [, ...dataRows] = rows;
   const result: Record<string, SeatRates> = {};
   for (const row of dataRows) {

@@ -27,6 +27,11 @@ describe("parsePosBasePrices", () => {
     const result = parsePosBasePrices(rows);
     expect(Object.keys(result)).toEqual(["ELEC"]);
   });
+
+  it("returns empty object for empty input", () => {
+    const result = parsePosBasePrices([]);
+    expect(result).toEqual({});
+  });
 });
 
 describe("parsePosAdjRates", () => {
