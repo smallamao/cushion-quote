@@ -181,6 +181,8 @@ const PRICE_USB = 1500
 const PRICE_REMOVE_STANDARD_USB = -1000
 const PRICE_WIRELESS = 1200
 const PRICE_PLATFORM_NO_STORAGE = -1000
+const PRICE_BACKREST_CHANGE_PER_SEAT = 500
+const PRICE_STORAGE_PLATFORM_CHANGE = 1500
 
 // ─── Add-on Options ────────────────────────────────────────────────────────────
 
@@ -257,8 +259,8 @@ export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0): numb
   const wirelessCost = addons.wirelessChargeCount * PRICE_WIRELESS;
   const slideRailCost = addons.slideRailCount * addons.slideRailRatePerSeat;
   const platformNoStorageDiscount = addons.platformNoStorage ? PRICE_PLATFORM_NO_STORAGE : 0;
-  const backrestCost = addons.backrestChange ? 500 * seatCount : 0;
-  const changeStorageFee = addons.changeStoragePlatform ? 1500 : 0;
+  const backrestCost = addons.backrestChange ? PRICE_BACKREST_CHANGE_PER_SEAT * seatCount : 0;
+  const changeStorageFee = addons.changeStoragePlatform ? PRICE_STORAGE_PLATFORM_CHANGE : 0;
   return groundCost + heightDiscount + armrestDiscount + usbCost
     + removeUsbDiscount + wirelessCost + slideRailCost + platformNoStorageDiscount
     + backrestCost + changeStorageFee + armCost;
@@ -367,11 +369,11 @@ export function buildQuoteOutput(
     }
     if (addons.platformNoStorage) copyLines.push(`平台無置物 ${fmtAmount(PRICE_PLATFORM_NO_STORAGE)}`)
     if (addons.backrestChange && addons.backrestTargetStyle) {
-      const cost = 500 * seatCount;
+      const cost = PRICE_BACKREST_CHANGE_PER_SEAT * seatCount;
       copyLines.push(`改背枕（${addons.backrestTargetStyle}）+${fmtAmount(cost)}`);
     }
     if (addons.changeStoragePlatform && addons.storagePlatformStyle) {
-      copyLines.push(`改置物平台（${addons.storagePlatformStyle}）+1,500`);
+      copyLines.push(`改置物平台（${addons.storagePlatformStyle}）+${fmtAmount(PRICE_STORAGE_PLATFORM_CHANGE)}`);
     }
     if (armCost > 0) {
       copyLines.push(`改扶手 +${fmtAmount(armCost)}`);

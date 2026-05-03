@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { calcAddons, getSlideRailRate, type SofaAddons, buildQuoteOutput, SOFA_PRODUCTS, MATERIAL_GRADES, getBasePrice, DEFAULT_ADDONS } from "@/lib/sofa-quote-data";
 
-const base: Readonly<SofaAddons> = {
+const base: SofaAddons = {
+  ...DEFAULT_ADDONS,
   groundOption: "none",
   heightReduction: false,
   removeArmrestCount: 0,
