@@ -19,6 +19,9 @@ import {
 import {
   ARMREST_OPTIONS,
   PILLOW_FILL_OPTIONS,
+  BACKREST_COMPATIBLE_STYLES,
+  BACKREST_STYLES,
+  PLATFORM_STORAGE_STYLES,
   calcArmCost,
   getArmCompat,
   type ArmCompatEntry,
@@ -213,6 +216,8 @@ export function SofaQuoteClient() {
   const [showArmPanel, setShowArmPanel] = useState(false);
   const [showLeftArmPicker, setShowLeftArmPicker] = useState(false);
   const [showRightArmPicker, setShowRightArmPicker] = useState(false);
+  const [showBackrestPicker, setShowBackrestPicker] = useState(false);
+  const [showPlatformStylePicker, setShowPlatformStylePicker] = useState(false);
 
   const product: SofaProduct = SOFA_PRODUCTS[productIdx];
   const grade: MaterialGrade = MATERIAL_GRADES[gradeIdx];
@@ -694,6 +699,81 @@ export function SofaQuoteClient() {
               </div>
             )}
 
+            {/* 改背枕 */}
+            {BACKREST_COMPATIBLE_STYLES.includes(product.displayName) && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-[var(--text-secondary)]">改背枕</p>
+                    <p className="text-[10px] text-red-500">+500/座（共 {seatCount} 座 = +{(500 * seatCount).toLocaleString()}）</p>
+                  </div>
+                  <input type="checkbox" checked={addons.backrestChange}
+                    onChange={(e) => setAddons((prev) => ({
+                      ...prev,
+                      backrestChange: e.target.checked,
+                      backrestTargetStyle: e.target.checked ? prev.backrestTargetStyle : "",
+                    }))}
+                    className="h-5 w-5 rounded border-[var(--border)] accent-[var(--accent)]" />
+                </div>
+                {addons.backrestChange && (
+                  <button onClick={() => setShowBackrestPicker(true)}
+                    className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]">
+                    {addons.backrestTargetStyle || "選擇背枕款式"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* 改置物平台 */}
+            {PLATFORM_STORAGE_STYLES.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-[var(--text-secondary)]">改置物平台款式</p>
+                    <p className="text-[10px] text-red-500">+手續費 1,500</p>
+                  </div>
+                  <input type="checkbox" checked={addons.changeStoragePlatform}
+                    onChange={(e) => setAddons((prev) => ({
+                      ...prev,
+                      changeStoragePlatform: e.target.checked,
+                      storagePlatformStyle: e.target.checked ? prev.storagePlatformStyle : "",
+                      storagePlatformWidthAdj: 0,
+                      storagePlatformDepthAdj: 0,
+                    }))}
+                    className="h-5 w-5 rounded border-[var(--border)] accent-[var(--accent)]" />
+                </div>
+                {addons.changeStoragePlatform && (
+                  <div className="space-y-2">
+                    <button onClick={() => setShowPlatformStylePicker(true)}
+                      className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]">
+                      {addons.storagePlatformStyle
+                        ? `${PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle)?.name ?? addons.storagePlatformStyle}`
+                        : "選擇平台款式"}
+                    </button>
+                    {addons.storagePlatformStyle && (() => {
+                      const base = PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle);
+                      return base ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-[var(--text-tertiary)]">平台寬調整（原 {base.standardWidth}cm）</p>
+                            <input type="number" value={base.standardWidth + addons.storagePlatformWidthAdj}
+                              onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformWidthAdj: Number(e.target.value) - base.standardWidth }))}
+                              className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-[var(--text-tertiary)]">平台深調整（原 {base.standardDepth}cm）</p>
+                            <input type="number" value={base.standardDepth + addons.storagePlatformDepthAdj}
+                              onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformDepthAdj: Number(e.target.value) - base.standardDepth }))}
+                              className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Reset button */}
             {addonTotal !== 0 && (
               <button
@@ -729,6 +809,22 @@ export function SofaQuoteClient() {
         getLabel={(o) => `${o.name}（${o.default_width}cm）$${o.total_fee.toLocaleString()}`}
         onSelect={(o, _) => { selectArmStyle("right", o.code); }}
         onClose={() => setShowRightArmPicker(false)}
+      />
+      <ActionSheetPicker
+        open={showBackrestPicker}
+        title="背枕款式"
+        options={[...BACKREST_STYLES]}
+        getLabel={(s) => s}
+        onSelect={(s, _) => setAddons((prev) => ({ ...prev, backrestTargetStyle: s }))}
+        onClose={() => setShowBackrestPicker(false)}
+      />
+      <ActionSheetPicker
+        open={showPlatformStylePicker}
+        title="置物平台款式"
+        options={PLATFORM_STORAGE_STYLES}
+        getLabel={(p) => `${p.name} ${p.standardWidth}×${p.standardDepth}cm`}
+        onSelect={(p, _) => setAddons((prev) => ({ ...prev, storagePlatformStyle: p.code, storagePlatformWidthAdj: 0, storagePlatformDepthAdj: 0 }))}
+        onClose={() => setShowPlatformStylePicker(false)}
       />
 
       {modal && (
