@@ -16,7 +16,7 @@ async function safeJson(res: Response): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
-    return { error: `Trello 回應非 JSON (HTTP ${res.status})` };
+    return { error: `Trello 回應非 JSON: ${text.slice(0, 150)}` };
   }
 }
 
