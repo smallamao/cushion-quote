@@ -138,7 +138,7 @@ export function computeReferralStats(
     totalReferredCases: referrers.reduce((s, r) => s + r.caseCount, 0),
     totalWonCases: referrers.reduce((s, r) => s + r.wonCaseCount, 0),
     totalRevenue: referrers.reduce((s, r) => s + r.revenue, 0),
-    pendingRewardCount: referrers.filter((r) => r.rewardTier >= 1).length,
+    pendingRewardCount: referrers.filter((r) => r.rewardTier >= 1 && r.rewardStatus !== "sent").length,
   };
 
   return { referrers, summary };
@@ -198,6 +198,7 @@ export function adaptFastApiResponse(data: FastApiResponse): ReferralStatsResult
 
       const caseCount = cases.length;
       const clientCount = network.direct_referrals;
+      // revenue is total across all network layers; cases only tracks direct (layer 1) referrals
       const revenue = network.total_network_revenue;
 
       return {
@@ -260,7 +261,7 @@ export function referrerRowToStats(row: string[]): ReferrerStats {
     caseCount,
     wonCaseCount: caseCount,
     revenue: Number(row[4]) || 0,
-    rewardTier: (Number(row[5]) || 0) as RewardTier,
+    rewardTier: computeRewardTier(Number(row[2]) || 0),
     rewardStatus: (row[6] === "sent" ? "sent" : "pending") as "pending" | "sent",
     lastReferralDate: row[7] ?? "",
     cases,

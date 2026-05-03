@@ -3,16 +3,14 @@ import {
   computeRewardTier,
   computeReferralStats,
   REWARD_TIER_META,
-} from "@/lib/referral-utils";
-import {
   parseReferrerId,
   adaptFastApiResponse,
   referrerStatsToRow,
   referrerRowToStats,
   type FastApiResponse,
+  type ReferrerStats,
 } from "@/lib/referral-utils";
 import type { CaseRecord, QuoteVersionRecord } from "@/lib/types";
-import type { ReferrerStats } from "@/lib/referral-utils";
 
 function makeCase(overrides: Partial<CaseRecord> = {}): CaseRecord {
   return {
@@ -312,5 +310,11 @@ describe("referrerStatsToRow / referrerRowToStats round-trip", () => {
     const row = referrerStatsToRow(stats, "2026-05-03T12:00:00.000Z");
     const restored = referrerRowToStats(row);
     expect(restored.rewardStatus).toBe("sent");
+  });
+
+  it("returns empty cases array when JSON cell is corrupted", () => {
+    const row = ["P1", "P1 測試", "1", "1", "1000", "1", "pending", "", "not-json", "2026-01-01"];
+    const result = referrerRowToStats(row);
+    expect(result.cases).toEqual([]);
   });
 });
