@@ -20,7 +20,9 @@ export function ReferralsClient() {
   const [data, setData] = useState<ReferralStatsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastSyncAt, setLastSyncAt] = useState<string>("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ message: string; syncedAt: string } | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -30,13 +32,33 @@ export function ReferralsClient() {
       const json = (await res.json()) as ApiResponse;
       if (!json.ok) throw new Error(json.error ?? "載入失敗");
       setData({ referrers: json.referrers, summary: json.summary });
-      setLastSyncAt(new Date().toLocaleString("zh-TW"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "未知錯誤");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const syncFromFastApi = useCallback(async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await fetch("/api/referrals/sync", { method: "POST" });
+      const json = (await res.json()) as {
+        ok: boolean;
+        message?: string;
+        syncedAt?: string;
+        error?: string;
+      };
+      if (!json.ok) throw new Error(json.error ?? "同步失敗");
+      setSyncResult({ message: json.message ?? "", syncedAt: json.syncedAt ?? "" });
+      await load();
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : "未知錯誤");
+    } finally {
+      setSyncing(false);
+    }
+  }, [load]);
 
   useEffect(() => {
     void load();
@@ -89,20 +111,44 @@ export function ReferralsClient() {
             <PendingRewards referrers={data.referrers} />
           </TabsContent>
 
-          <TabsContent value="sync" className="mt-4 space-y-3">
+          <TabsContent value="sync" className="mt-4 space-y-4">
             <p className="text-sm text-[var(--text-secondary)]">
-              資料直接從 Google Sheets 即時讀取，點擊「同步」按鈕重新載入。
+              從舊系統 FastAPI 同步最新的 B2C 轉介紹資料，寫入 Google Sheets。
+              首次同步後資料即可在其他頁籤查看。
             </p>
-            <div className="rounded-md border border-[var(--border)] px-4 py-3 text-sm">
-              最後同步時間：
-              <span className="ml-1 font-mono text-[var(--text-primary)]">
-                {lastSyncAt || "—"}
-              </span>
+
+            {syncError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {syncError}
+              </div>
+            )}
+
+            {syncResult && (
+              <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                {syncResult.message}
+                <span className="ml-2 text-xs text-green-600">
+                  ({new Date(syncResult.syncedAt).toLocaleString("zh-TW")})
+                </span>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button onClick={syncFromFastApi} disabled={syncing || loading}>
+                {syncing ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1.5 h-4 w-4" />
+                )}
+                從 FastAPI 同步
+              </Button>
+              <Button variant="outline" onClick={load} disabled={loading || syncing}>
+                重新讀取
+              </Button>
             </div>
-            <Button variant="outline" onClick={load} disabled={loading}>
-              <RefreshCw className={`mr-1.5 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              立即同步
-            </Button>
+
+            <p className="text-xs text-[var(--text-tertiary)]">
+              注意：FastAPI 服務使用 Render 免費方案，首次同步可能需等待 30–60 秒。
+            </p>
           </TabsContent>
         </Tabs>
       ) : null}
