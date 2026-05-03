@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcAddons, getSlideRailRate, type SofaAddons } from "@/lib/sofa-quote-data";
+import { calcAddons, getSlideRailRate, type SofaAddons, buildQuoteOutput, SOFA_PRODUCTS, MATERIAL_GRADES, getBasePrice, DEFAULT_ADDONS } from "@/lib/sofa-quote-data";
 
 const base: Readonly<SofaAddons> = {
   groundOption: "none",
@@ -80,5 +80,35 @@ describe("calcAddons", () => {
       usbCount: 2,
       removeArmrestCount: 1,
     })).toBe(1500 + 3000 - 1500);
+  });
+});
+
+describe("buildQuoteOutput with addons", () => {
+  const product = SOFA_PRODUCTS.find((p) => p.displayName === "ELEC")!;
+  const grade = MATERIAL_GRADES.find((g) => g.id === "TW_LV1")!;
+  const basePrice = getBasePrice("ELEC", "TW_LV1");
+
+  it("無附加時輸出不含進階選項段落", () => {
+    const { copyText } = buildQuoteOutput(product, grade, 262, 3, basePrice);
+    expect(copyText).not.toContain("進階選項");
+  });
+
+  it("有附加費時 copyText 含各項目", () => {
+    const { copyText } = buildQuoteOutput(product, grade, 262, 3, basePrice, {
+      ...DEFAULT_ADDONS,
+      groundOption: "half",
+      usbCount: 1,
+    });
+    expect(copyText).toContain("桶身落地（半落地）+1,500");
+    expect(copyText).toContain("加裝 USB 充電 ×1 +1,500");
+  });
+
+  it("有附加費時總價正確", () => {
+    const { copyText } = buildQuoteOutput(product, grade, 262, 3, basePrice, {
+      ...DEFAULT_ADDONS,
+      groundOption: "full",
+    });
+    // basePrice 42600 + groundOption full 2000 = 44600
+    expect(copyText).toContain("44,600");
   });
 });

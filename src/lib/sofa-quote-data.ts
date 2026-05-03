@@ -178,9 +178,11 @@ export function buildQuoteOutput(
   inputWidth: number,
   seatCount: number,
   basePrice: number,
+  addons?: SofaAddons,
 ): QuoteOutput {
   const lc = calcLShape(product, basePrice)
   const wc = calcWidthAdjustment(inputWidth, product, seatCount, grade)
+  const addonTotal = addons ? calcAddons(addons) : 0
 
   const isEdsonBj = ['EDSON', 'BJ'].includes(product.displayName)
   const reductionText = getReductionDiscount(product, inputWidth)
@@ -207,11 +209,11 @@ export function buildQuoteOutput(
 
   // L型 分三位
   detailLines.push('【L型 分三位】')
-  const totalPrice = basePrice + wc.adjustPrice
+  const sofaTotal = basePrice + wc.adjustPrice
   if (wc.adjustPrice < 0) {
-    detailLines.push(`$${fmtAmount(basePrice)} - ${fmtAmount(Math.abs(wc.adjustPrice))} = $${fmtAmount(totalPrice)}`)
+    detailLines.push(`$${fmtAmount(basePrice)} - ${fmtAmount(Math.abs(wc.adjustPrice))} = $${fmtAmount(sofaTotal)}`)
   } else if (wc.adjustPrice > 0) {
-    detailLines.push(`$${fmtAmount(basePrice)} + ${fmtAmount(wc.adjustPrice)} = $${fmtAmount(totalPrice)}`)
+    detailLines.push(`$${fmtAmount(basePrice)} + ${fmtAmount(wc.adjustPrice)} = $${fmtAmount(sofaTotal)}`)
   } else {
     detailLines.push(`$${fmtAmount(basePrice)}`)
   }
@@ -228,7 +230,8 @@ export function buildQuoteOutput(
   // Copy text (client-facing)
   const copyLines: string[] = []
   copyLines.push(`${product.displayName} ${product.moduleName} ${inputWidth}cm 三件式L型`)
-  copyLines.push(`${grade.materialDescription} $${fmtAmount(totalPrice)}`)
+  const grandTotal = sofaTotal + addonTotal
+  copyLines.push(`${grade.materialDescription} $${fmtAmount(grandTotal)}`)
   if (reductionText) copyLines.push(reductionText)
   copyLines.push(`平台尺寸w${product.footSeatSize}cm`)
   copyLines.push(`椅腳樣式：${product.defaultFoot}`)
@@ -244,6 +247,32 @@ export function buildQuoteOutput(
     copyLines.push('扣除滑軌 - $2,400')
   } else if (['ICE', 'LEO', 'OBA', 'AMI', 'LEMON', 'MULE'].includes(product.displayName)) {
     copyLines.push('扣除煞車滑軌 - $3,000')
+  }
+
+  if (addons && addonTotal !== 0) {
+    copyLines.push('')
+    copyLines.push('【進階選項】')
+    if (addons.groundOption === "half") copyLines.push('桶身落地（半落地）+1,500')
+    if (addons.groundOption === "full") copyLines.push('桶身落地（全落地）+2,000')
+    if (addons.heightReduction) copyLines.push('高度削減 4~6cm -1,000')
+    if (addons.removeArmrestCount > 0) {
+      const total = addons.removeArmrestCount * 1500;
+      copyLines.push(`移除扶手 ×${addons.removeArmrestCount} -${fmtAmount(total)}`)
+    }
+    if (addons.usbCount > 0) {
+      const total = addons.usbCount * 1500;
+      copyLines.push(`加裝 USB 充電 ×${addons.usbCount} +${fmtAmount(total)}`)
+    }
+    if (addons.removeStandardUsb) copyLines.push('扣除標配 USB -1,000')
+    if (addons.wirelessChargeCount > 0) {
+      const total = addons.wirelessChargeCount * 1200;
+      copyLines.push(`加裝無線充電 ×${addons.wirelessChargeCount} +${fmtAmount(total)}`)
+    }
+    if (addons.slideRailCount > 0) {
+      const total = addons.slideRailCount * addons.slideRailRatePerSeat;
+      copyLines.push(`加裝滑軌 ×${addons.slideRailCount}座 +${fmtAmount(total)}`)
+    }
+    if (addons.platformNoStorage) copyLines.push('平台無置物 -1,000')
   }
 
   const copyText = copyLines.join('\n')
