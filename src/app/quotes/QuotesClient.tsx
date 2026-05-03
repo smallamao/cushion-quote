@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { SignedContractArchive } from "@/components/quote-editor/SignedContractArchive";
 import { CreateARDialog } from "@/components/ar/CreateARDialog";
+import { QuotePreviewDrawer } from "@/components/quotes/QuotePreviewDrawer";
 import { useReceivables } from "@/hooks/useReceivables";
 
 type VersionRow = QuoteVersionRecord & { lines?: unknown[] };
@@ -107,6 +108,7 @@ export function QuotesClient() {
     return m;
   }, [ars]);
   const [expandedQuoteIds, setExpandedQuoteIds] = useState<Set<string>>(new Set());
+  const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
@@ -595,16 +597,17 @@ export function QuotesClient() {
               return (
                 <div
                   key={group.quoteId}
-                  className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3"
+                  className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3 cursor-pointer"
+                  onClick={() => setPreviewVersionId(latest.versionId)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => toggleExpand(group.quoteId)} className="text-[var(--text-tertiary)]">
+                      <button onClick={(e) => { e.stopPropagation(); toggleExpand(group.quoteId); }} className="text-[var(--text-tertiary)]">
                         {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </button>
                       <span className="font-mono text-xs text-[var(--accent)]">{latest.quoteId}</span>
                       <span className="text-[11px] text-[var(--text-tertiary)]">V{latest.versionNo}</span>
-                      <button onClick={() => toggleExpand(group.quoteId)} className="ml-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]" title="展開預覽">
+                      <button onClick={(e) => { e.stopPropagation(); toggleExpand(group.quoteId); }} className="ml-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]" title="展開版本">
                         <Eye className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -632,7 +635,7 @@ export function QuotesClient() {
                     <span className="text-sm font-semibold text-[var(--text-primary)]">
                       {formatCurrency(latest.totalAmount)}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         onClick={() => openVersion(latest.versionId, latest.caseId, latest.quoteId)}
@@ -752,10 +755,13 @@ export function QuotesClient() {
                   return (
                     <Fragment key={group.quoteId}>
                       <tr
-                        className={hasOlder ? "cursor-pointer" : undefined}
-                        onClick={hasOlder ? () => toggleExpand(group.quoteId) : undefined}
+                        className="cursor-pointer hover:bg-[var(--bg-hover)]"
+                        onClick={() => setPreviewVersionId(latest.versionId)}
                       >
-                        <td className="px-2 py-2.5 text-center text-[var(--text-tertiary)]">
+                        <td
+                          className="px-2 py-2.5 text-center text-[var(--text-tertiary)]"
+                          onClick={(e) => { e.stopPropagation(); if (hasOlder) toggleExpand(group.quoteId); }}
+                        >
                           {hasOlder ? (
                             isExpanded ? <ChevronDown className="mx-auto h-4 w-4" /> : <ChevronRight className="mx-auto h-4 w-4" />
                           ) : null}
@@ -925,6 +931,11 @@ export function QuotesClient() {
             router.push(`/receivables/${result.ar.arId}`);
           }
         }}
+      />
+
+      <QuotePreviewDrawer
+        versionId={previewVersionId}
+        onClose={() => setPreviewVersionId(null)}
       />
     </div>
   );
