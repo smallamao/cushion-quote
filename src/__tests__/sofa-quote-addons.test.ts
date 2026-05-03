@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { calcAddons, type SofaAddons } from "@/lib/sofa-quote-data";
+import { calcAddons, getSlideRailRate, type SofaAddons } from "@/lib/sofa-quote-data";
 
-const base: SofaAddons = {
+const base: Readonly<SofaAddons> = {
   groundOption: "none",
   heightReduction: false,
   removeArmrestCount: 0,
@@ -12,6 +12,21 @@ const base: SofaAddons = {
   slideRailRatePerSeat: 1000,
   platformNoStorage: false,
 };
+
+describe("getSlideRailRate", () => {
+  it("BOOM returns 800", () => {
+    expect(getSlideRailRate("BOOM")).toBe(800);
+  });
+  it("BOOMs returns 800", () => {
+    expect(getSlideRailRate("BOOMs")).toBe(800);
+  });
+  it("ELEC returns 1000", () => {
+    expect(getSlideRailRate("ELEC")).toBe(1000);
+  });
+  it("unknown code returns 1000", () => {
+    expect(getSlideRailRate("ANYTHING")).toBe(1000);
+  });
+});
 
 describe("calcAddons", () => {
   it("全部預設值時回傳 0", () => {

@@ -262,7 +262,8 @@ export interface SofaAddons {
   removeStandardUsb: boolean
   wirelessChargeCount: number
   slideRailCount: number
-  slideRailRatePerSeat: number  // 800 for BOOM/BOOMs, 1000 for others
+  /** Must be set via `getSlideRailRate(productCode)`. 800 for BOOM/BOOMs, 1000 for others. */
+  slideRailRatePerSeat: number
   platformNoStorage: boolean
 }
 
