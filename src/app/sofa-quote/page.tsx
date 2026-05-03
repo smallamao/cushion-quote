@@ -1,5 +1,10 @@
-import { SofaQuoteClient } from "@/app/sofa-quote/SofaQuoteClient";
+import { Suspense } from "react";
+import { QuotePageClient } from "@/app/sofa-quote/QuotePageClient";
 
 export default function SofaQuotePage() {
-  return <SofaQuoteClient />;
+  return (
+    <Suspense>
+      <QuotePageClient />
+    </Suspense>
+  );
 }
