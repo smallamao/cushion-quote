@@ -9,8 +9,12 @@ import {
   calcWidthAdjustment,
   buildQuoteOutput,
   fmtAmount,
+  DEFAULT_ADDONS,
+  calcAddons,
+  getSlideRailRate,
   type SofaProduct,
   type MaterialGrade,
+  type SofaAddons,
 } from "@/lib/sofa-quote-data";
 import { MessageResultModal } from "@/components/sofa/MessageResultModal";
 
@@ -107,6 +111,8 @@ export function SofaQuoteClient() {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showGradePicker, setShowGradePicker] = useState(false);
   const [modal, setModal] = useState<{ detail: string; copy: string } | null>(null);
+  const [addons, setAddons] = useState<SofaAddons>(DEFAULT_ADDONS);
+  const [showAddons, setShowAddons] = useState(false);
 
   const product: SofaProduct = SOFA_PRODUCTS[productIdx];
   const grade: MaterialGrade = MATERIAL_GRADES[gradeIdx];
@@ -133,11 +139,12 @@ export function SofaQuoteClient() {
     setSeatCount(p.defaultSeat);
     setPlatformW(null);
     setPlatformH(null);
+    setAddons((prev) => ({ ...prev, slideRailRatePerSeat: getSlideRailRate(p.displayName) }));
   }
 
   function handleQuote() {
     if (!basePrice) return;
-    const result = buildQuoteOutput(product, grade, inputWidth, seatCount, basePrice);
+    const result = buildQuoteOutput(product, grade, inputWidth, seatCount, basePrice, addons);
     setModal({ detail: result.detailText, copy: result.copyText });
   }
 
@@ -309,6 +316,157 @@ export function SofaQuoteClient() {
           扶手 {product.armrestWidth}cm　椅腳 {product.defaultFoot}　（無固定平台尺寸）
         </div>
       )}
+
+      {/* Advanced options */}
+      <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+        <button
+          onClick={() => setShowAddons((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-[var(--text-primary)]"
+        >
+          <span>進階選項</span>
+          <span className="flex items-center gap-2">
+            {calcAddons(addons) !== 0 && (
+              <span className={`text-sm font-semibold ${calcAddons(addons) > 0 ? "text-red-500" : "text-blue-500"}`}>
+                {calcAddons(addons) > 0 ? "+" : ""}${fmtAmount(calcAddons(addons))}
+              </span>
+            )}
+            <span className="text-[var(--text-tertiary)]">{showAddons ? "▲" : "▼"}</span>
+          </span>
+        </button>
+
+        {showAddons && (
+          <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
+
+            {/* 桶身落地 */}
+            <div className="space-y-1">
+              <p className="text-xs text-[var(--text-secondary)]">桶身落地</p>
+              <div className="flex gap-1 rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] p-0.5">
+                {(["none", "half", "full"] as const).map((opt) => (
+                  <button key={opt}
+                    onClick={() => setAddons((a) => ({ ...a, groundOption: opt }))}
+                    className={[segBase, addons.groundOption === opt ? segActive : segInactive].join(" ")}
+                  >
+                    {opt === "none" ? "不落地" : opt === "half" ? "半落地 +1,500" : "全落地 +2,000"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 高度削減 */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-[var(--text-secondary)]">高度削減 4~6cm <span className="text-blue-500">-1,000</span></p>
+              <button
+                onClick={() => setAddons((a) => ({ ...a, heightReduction: !a.heightReduction }))}
+                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${addons.heightReduction ? "bg-[var(--accent)] text-white" : "border border-[var(--border)] text-[var(--text-secondary)]"}`}
+              >
+                {addons.heightReduction ? "✓ 已選" : "選取"}
+              </button>
+            </div>
+
+            {/* 移除扶手 */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-[var(--text-secondary)]">移除扶手（-1,500/個）</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAddons((a) => ({ ...a, removeArmrestCount: Math.max(0, a.removeArmrestCount - 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Minus className="h-3 w-3" />
+                </button>
+                <span className="w-4 text-center text-sm font-bold">{addons.removeArmrestCount}</span>
+                <button onClick={() => setAddons((a) => ({ ...a, removeArmrestCount: Math.min(2, a.removeArmrestCount + 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* USB */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-[var(--text-secondary)]">加裝 USB 充電（+1,500/組）</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAddons((a) => ({ ...a, usbCount: Math.max(0, a.usbCount - 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Minus className="h-3 w-3" />
+                </button>
+                <span className="w-4 text-center text-sm font-bold">{addons.usbCount}</span>
+                <button onClick={() => setAddons((a) => ({ ...a, usbCount: a.usbCount + 1 }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* 扣除標配 USB (LEO/OBA only) */}
+            {["LEO", "OBA"].includes(product.displayName) && (
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-[var(--text-secondary)]">扣除標配 USB <span className="text-blue-500">-1,000</span></p>
+                <button
+                  onClick={() => setAddons((a) => ({ ...a, removeStandardUsb: !a.removeStandardUsb }))}
+                  className={`rounded px-3 py-1 text-xs font-medium transition-colors ${addons.removeStandardUsb ? "bg-[var(--accent)] text-white" : "border border-[var(--border)] text-[var(--text-secondary)]"}`}
+                >
+                  {addons.removeStandardUsb ? "✓ 已選" : "選取"}
+                </button>
+              </div>
+            )}
+
+            {/* 無線充電 */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-[var(--text-secondary)]">加裝無線充電（+1,200/組）</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAddons((a) => ({ ...a, wirelessChargeCount: Math.max(0, a.wirelessChargeCount - 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Minus className="h-3 w-3" />
+                </button>
+                <span className="w-4 text-center text-sm font-bold">{addons.wirelessChargeCount}</span>
+                <button onClick={() => setAddons((a) => ({ ...a, wirelessChargeCount: a.wirelessChargeCount + 1 }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* 滑軌 */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-[var(--text-secondary)]">
+                加裝滑軌（+{addons.slideRailRatePerSeat.toLocaleString()}/座）
+              </p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAddons((a) => ({ ...a, slideRailCount: Math.max(0, a.slideRailCount - 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Minus className="h-3 w-3" />
+                </button>
+                <span className="w-4 text-center text-sm font-bold">{addons.slideRailCount}</span>
+                <button onClick={() => setAddons((a) => ({ ...a, slideRailCount: a.slideRailCount + 1 }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* 平台無置物 (BOOM/BOOMs/LEMON/MULE only) */}
+            {["BOOM", "BOOMs", "LEMON", "MULE"].includes(product.displayName) && (
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-[var(--text-secondary)]">平台無置物 <span className="text-blue-500">-1,000</span></p>
+                <button
+                  onClick={() => setAddons((a) => ({ ...a, platformNoStorage: !a.platformNoStorage }))}
+                  className={`rounded px-3 py-1 text-xs font-medium transition-colors ${addons.platformNoStorage ? "bg-[var(--accent)] text-white" : "border border-[var(--border)] text-[var(--text-secondary)]"}`}
+                >
+                  {addons.platformNoStorage ? "✓ 已選" : "選取"}
+                </button>
+              </div>
+            )}
+
+            {/* Reset button */}
+            {calcAddons(addons) !== 0 && (
+              <button
+                onClick={() => setAddons({ ...DEFAULT_ADDONS, slideRailRatePerSeat: getSlideRailRate(product.displayName) })}
+                className="w-full rounded border border-[var(--border)] py-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+              >
+                重置進階選項
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Pickers */}
       <ActionSheetPicker open={showProductPicker} title="款式" options={SOFA_PRODUCTS}
