@@ -43,7 +43,6 @@ async function trelloGet<T>(path: string, params: Record<string, string> = {}): 
 async function searchCards(query: string): Promise<TrelloCard[]> {
   const result = await trelloGet<{ cards: TrelloCard[] }>("search", {
     query,
-    idBoards: TRELLO.BOARD_ID,
     modelTypes: "cards",
     card_fields: "name,desc,due,dueComplete,idList,idBoard,labels,badges",
     cards_limit: "20",
@@ -108,6 +107,44 @@ async function moveCardToList(cardId: string, listId: string, dueComplete?: bool
   const params: Record<string, string> = { idList: listId };
   if (dueComplete !== undefined) params.dueComplete = String(dueComplete);
   await trelloPutQ(`cards/${cardId}`, params);
+}
+
+interface CheckItem {
+  id: string;
+  name: string;
+  state: "complete" | "incomplete";
+  idChecklist: string;
+}
+
+interface Checklist {
+  id: string;
+  name: string;
+  checkItems: CheckItem[];
+}
+
+async function fetchChecklists(cardId: string): Promise<Checklist[]> {
+  return trelloGet<Checklist[]>(`cards/${cardId}/checklists`, {
+    fields: "id,name",
+    checkItem_fields: "id,name,state",
+  });
+}
+
+async function toggleCheckItem(cardId: string, checkItemId: string, complete: boolean): Promise<void> {
+  await trelloPutQ(`cards/${cardId}/checkItem/${checkItemId}`, {
+    state: complete ? "complete" : "incomplete",
+  });
+}
+
+async function addCheckItem(checklistId: string, name: string): Promise<CheckItem> {
+  const qs = new URLSearchParams({ pos: "bottom" }).toString();
+  const url = `/api/trello/checklists/${checklistId}/checkItems?${qs}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`新增失敗 ${res.status}`);
+  return res.json() as Promise<CheckItem>;
 }
 
 // ─── localStorage keys ────────────────────────────────────────
@@ -858,6 +895,149 @@ interface CustomerViewProps {
   onBack: () => void;
 }
 
+function ChecklistView({ card, onBack }: { card: TrelloCard; onBack: () => void }) {
+  const [checklists, setChecklists] = useState<Checklist[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [addingTo, setAddingTo] = useState<string | null>(null);
+  const [newItemText, setNewItemText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchChecklists(card.id)
+      .then(setChecklists)
+      .catch(() => setChecklists([]))
+      .finally(() => setLoading(false));
+  }, [card.id]);
+
+  async function handleToggle(checklistId: string, item: CheckItem) {
+    setToggling(item.id);
+    const complete = item.state !== "complete";
+    try {
+      await toggleCheckItem(card.id, item.id, complete);
+      setChecklists((prev) =>
+        prev.map((cl) =>
+          cl.id !== checklistId ? cl : {
+            ...cl,
+            checkItems: cl.checkItems.map((ci) =>
+              ci.id === item.id ? { ...ci, state: complete ? "complete" : "incomplete" } : ci
+            ),
+          }
+        )
+      );
+    } catch {
+      alert("更新失敗，請重試");
+    } finally {
+      setToggling(null);
+    }
+  }
+
+  async function handleAdd(checklistId: string) {
+    const name = newItemText.trim();
+    if (!name) return;
+    setSaving(true);
+    try {
+      const newItem = await addCheckItem(checklistId, name);
+      setChecklists((prev) =>
+        prev.map((cl) =>
+          cl.id !== checklistId ? cl : { ...cl, checkItems: [...cl.checkItems, newItem] }
+        )
+      );
+      setNewItemText("");
+      setAddingTo(null);
+    } catch {
+      alert("新增失敗，請重試");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+        返回
+      </button>
+
+      <p className="text-sm font-semibold">清單</p>
+
+      {loading && (
+        <p className="py-4 text-center text-xs text-[var(--text-tertiary)]">載入中…</p>
+      )}
+
+      {!loading && checklists.length === 0 && (
+        <p className="py-4 text-center text-xs text-[var(--text-tertiary)]">沒有清單</p>
+      )}
+
+      {checklists.map((cl) => {
+        const done = cl.checkItems.filter((i) => i.state === "complete").length;
+        return (
+          <div key={cl.id} className="space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-[var(--text-secondary)]">{cl.name}</p>
+              <span className={`text-xs ${done === cl.checkItems.length && cl.checkItems.length > 0 ? "text-green-600" : "text-[var(--text-tertiary)]"}`}>
+                {done}/{cl.checkItems.length}
+              </span>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+              {cl.checkItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => void handleToggle(cl.id, item)}
+                  disabled={toggling === item.id}
+                  className="flex w-full items-center gap-2.5 border-b border-[var(--border)] px-3 py-2.5 text-left last:border-b-0 hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                >
+                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${item.state === "complete" ? "border-green-500 bg-green-500 text-white" : "border-[var(--border)]"}`}>
+                    {item.state === "complete" && "✓"}
+                  </span>
+                  <span className={`text-sm ${item.state === "complete" ? "line-through text-[var(--text-tertiary)]" : "text-[var(--text-primary)]"}`}>
+                    {item.name}
+                  </span>
+                </button>
+              ))}
+
+              {addingTo === cl.id ? (
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <input
+                    autoFocus
+                    value={newItemText}
+                    onChange={(e) => setNewItemText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") void handleAdd(cl.id); if (e.key === "Escape") { setAddingTo(null); setNewItemText(""); } }}
+                    placeholder="新項目名稱…"
+                    className="flex-1 bg-transparent text-sm outline-none"
+                  />
+                  <button
+                    onClick={() => void handleAdd(cl.id)}
+                    disabled={saving || !newItemText.trim()}
+                    className="text-xs text-[var(--accent)] disabled:opacity-40"
+                  >
+                    {saving ? "…" : "新增"}
+                  </button>
+                  <button onClick={() => { setAddingTo(null); setNewItemText(""); }} className="text-xs text-[var(--text-tertiary)]">
+                    取消
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAddingTo(cl.id)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
+                >
+                  + 新增項目
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CustomerView({ card, customFields, attachments, onBack }: CustomerViewProps) {
   const [snapshotOpen, setSnapshotOpen] = useState(false);
   const [result, setResult] = useState<{ title: string; content: string } | null>(null);
@@ -1016,7 +1196,7 @@ interface CardDetailProps {
 function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"actions" | "shipping" | "production" | "customer">("actions");
+  const [view, setView] = useState<"actions" | "shipping" | "production" | "customer" | "checklist">("actions");
   const [result, setResult] = useState<{ title: string; content: string } | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const [showMovePicker, setShowMovePicker] = useState(false);
@@ -1172,6 +1352,11 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
             attachments={attachments}
             onBack={() => setView("actions")}
           />
+        ) : view === "checklist" ? (
+          <ChecklistView
+            card={card}
+            onBack={() => setView("actions")}
+          />
         ) : (
           <div className="space-y-2">
             {isWaitShipping && (
@@ -1205,6 +1390,18 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
               <span className="text-base">👤</span>
               <span>客戶資訊</span>
             </button>
+            {checkTotal > 0 && (
+              <button
+                onClick={() => setView("checklist")}
+                className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
+              >
+                <span className="text-base">☑️</span>
+                <span>清單</span>
+                <span className={`ml-auto text-xs ${checkDone === checkTotal ? "text-green-600" : "text-[var(--text-tertiary)]"}`}>
+                  {checkDone}/{checkTotal}
+                </span>
+              </button>
+            )}
             <button
               onClick={() => handleAction("schedule")}
               className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
