@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer } from "lucide-react";
+import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -303,7 +303,8 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
   }, [card, drivers]);
 
   function setQuickTime(hhmm: string) {
-    const base = shippingDatetime ? shippingDatetime.slice(0, 11) : new Date().toISOString().slice(0, 11);
+    const localDate = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD in local tz
+    const base = shippingDatetime ? shippingDatetime.slice(0, 11) : `${localDate}T`;
     setShippingDatetime(base + hhmm);
   }
 
@@ -372,7 +373,7 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
     let title: string;
     switch (type) {
       case "shipping":
-        title = `出貨通知簡訊 (${timeRangeHours}hr)`;
+        title = `排程出貨簡訊 (${timeRangeHours}hr)`;
         content = buildShippingMsg(card, customFields, opts);
         setResult({ title, content, onCopied: onShippingCopied });
         return;
@@ -524,10 +525,10 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
         </Button>
         <div className="grid grid-cols-2 gap-2">
           <Button size="sm" onClick={() => handleOutput("shipping", 1)}>
-            出貨通知 一小時
+            排程出貨 一小時
           </Button>
           <Button size="sm" onClick={() => handleOutput("shipping", 2)}>
-            出貨通知 二小時
+            排程出貨 二小時
           </Button>
         </div>
         <Button size="sm" variant="outline" className="w-full" onClick={() => handleOutput("back")}>
@@ -559,13 +560,15 @@ interface ProductionViewProps {
 }
 
 function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
-  const initialBraider: "yang" | "shen" = card.labels.some(
+  const initialBraider: "yang" | "shen" | "" = card.labels.some(
     (l) => l.id === TRELLO.LABELS.BRAIDER_SHEN,
   )
     ? "shen"
-    : "yang";
+    : card.labels.some((l) => l.id === TRELLO.LABELS.BRAIDER_YANG)
+    ? "yang"
+    : "";
 
-  const [braiderKey, setBraiderKey] = useState<"yang" | "shen">(initialBraider);
+  const [braiderKey, setBraiderKey] = useState<"yang" | "shen" | "">(initialBraider);
   const [scheduleDate, setScheduleDate] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem(LS_PRODUCTION_DATE) ?? "";
@@ -581,24 +584,26 @@ function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
     setIsSaving(true);
     setSaveMsg("");
     try {
-      // Remove both braider labels first
-      for (const labelId of [TRELLO.LABELS.BRAIDER_YANG, TRELLO.LABELS.BRAIDER_SHEN]) {
-        if (card.labels.some((l) => l.id === labelId)) {
-          await removeCardLabel(card.id, labelId);
+      if (braiderKey) {
+        // Remove both braider labels first
+        for (const labelId of [TRELLO.LABELS.BRAIDER_YANG, TRELLO.LABELS.BRAIDER_SHEN]) {
+          if (card.labels.some((l) => l.id === labelId)) {
+            await removeCardLabel(card.id, labelId);
+          }
         }
+        // Add selected braider label
+        const newLabelId =
+          braiderKey === "yang" ? TRELLO.LABELS.BRAIDER_YANG : TRELLO.LABELS.BRAIDER_SHEN;
+        await addCardLabel(card.id, newLabelId);
+        // Move card to production list only when a braider is selected
+        await moveCardToList(card.id, TRELLO.LISTS.PRODUCTION);
       }
-      // Add selected braider label
-      const newLabelId =
-        braiderKey === "yang" ? TRELLO.LABELS.BRAIDER_YANG : TRELLO.LABELS.BRAIDER_SHEN;
-      await addCardLabel(card.id, newLabelId);
-      // Update schedule day custom field
+      // Always update schedule day if provided
       if (scheduleDate) {
         const iso = new Date(scheduleDate).toISOString();
         await updateCardScheduleDay(card.id, iso);
         localStorage.setItem(LS_PRODUCTION_DATE, scheduleDate);
       }
-      // Move card to production list
-      await moveCardToList(card.id, TRELLO.LISTS.PRODUCTION);
       setSaveMsg("✓ 已更新");
       setTimeout(() => setSaveMsg(""), 3000);
     } catch (e: unknown) {
@@ -710,12 +715,12 @@ function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
       </button>
 
       {/* 套印按鈕 */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex flex-col gap-2">
         <Button
           size="sm"
           variant="outline"
           onClick={() => handlePrintSticker(false)}
-          className="flex items-center gap-1"
+          className="flex w-full items-center gap-1"
         >
           <Printer className="h-3.5 w-3.5" />
           套印貼紙
@@ -724,7 +729,7 @@ function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
           size="sm"
           variant="outline"
           onClick={() => handlePrintSticker(true)}
-          className="flex items-center gap-1"
+          className="flex w-full items-center gap-1"
         >
           <Printer className="h-3.5 w-3.5" />
           套印椅腳
@@ -923,7 +928,20 @@ function CustomerView({ card, customFields, attachments, onBack }: CustomerViewP
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <p className="text-xs font-medium text-[var(--text-secondary)]">地址</p>
-          <CopyButton text={finalAddress} />
+          <div className="flex items-center gap-2">
+            <CopyButton text={finalAddress} />
+            {finalAddress && (
+              <a
+                href={`https://maps.google.com/?q=${encodeURIComponent(finalAddress)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
+              >
+                <Navigation className="h-3.5 w-3.5" />
+                導航
+              </a>
+            )}
+          </div>
         </div>
         <p className="rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm leading-relaxed text-[var(--text-primary)]">
           {finalAddress}
@@ -996,6 +1014,7 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
   const [view, setView] = useState<"actions" | "shipping" | "production" | "customer">("actions");
   const [result, setResult] = useState<{ title: string; content: string } | null>(null);
   const [isMoving, setIsMoving] = useState(false);
+  const [showMovePicker, setShowMovePicker] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -1024,13 +1043,25 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
   }
 
   const listName = LIST_NAMES[card.idList] ?? "未知";
+  const DAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"] as const;
   const dueDate = card.due
-    ? new Date(card.due).toLocaleDateString("zh-TW", {
-        month: "numeric",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
+    ? (() => {
+        const d = new Date(card.due);
+        const month = d.getMonth() + 1;
+        const day = d.getDate();
+        const hour = String(d.getHours()).padStart(2, "0");
+        const min = String(d.getMinutes()).padStart(2, "0");
+        return `${month}/${day} (${DAY_NAMES[d.getDay()] ?? ""}) ${hour}:${min}`;
+      })()
+    : null;
+  const scheduleDay = getCustomFieldDate(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY);
+  const scheduleDisplay = scheduleDay
+    ? (() => {
+        const rocYear = scheduleDay.getFullYear() - 1911;
+        const mm = String(scheduleDay.getMonth() + 1).padStart(2, "0");
+        const dd = String(scheduleDay.getDate()).padStart(2, "0");
+        return `${rocYear}.${mm}.${dd} (${DAY_NAMES[scheduleDay.getDay()] ?? ""})`;
+      })()
     : null;
   const driverLabel = drivers.find((d) => card.labels.some((l) => l.id === d.labelId));
   const driverTrelloLabel = card.labels.find((l) => l.id === driverLabel?.labelId);
@@ -1051,6 +1082,19 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
     }
   }
 
+  async function handleMoveCard(listId: string) {
+    setIsMoving(true);
+    try {
+      const dueComplete = listId === TRELLO.LISTS.SHIPPED ? true : undefined;
+      await moveCardToList(card.id, listId, dueComplete);
+      setShowMovePicker(false);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "移動失敗");
+    } finally {
+      setIsMoving(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -1059,15 +1103,26 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
           <p className="truncate font-mono text-sm font-semibold text-[var(--text-primary)]">
             {card.name}
           </p>
-          <p className="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--text-tertiary)]">
             <span>{listName}</span>
-            {dueDate && <span>{dueDate}</span>}
             {checkTotal > 0 && (
               <span className={checkDone === checkTotal ? "text-green-600" : ""}>
                 ☑ {checkDone}/{checkTotal}
               </span>
             )}
           </p>
+          {scheduleDisplay && (
+            <p className="mt-0.5 text-xs">
+              <span className="text-[var(--text-tertiary)]">排程日：</span>
+              <span className="font-medium text-[var(--accent)]">{scheduleDisplay}</span>
+            </p>
+          )}
+          {dueDate && (
+            <p className="text-xs">
+              <span className="text-[var(--text-tertiary)]">出貨日：</span>
+              <span className="font-medium text-[var(--text-secondary)]">{dueDate}</span>
+            </p>
+          )}
           <div className="mt-1 flex flex-wrap gap-1">
             {styleLabel && (
               <LabelBadge label={styleLabel} text={styleLabel.name.replace("成交/", "")} />
@@ -1129,7 +1184,7 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
               className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
             >
               <span className="text-base">🚚</span>
-              <span>出貨通知</span>
+              <span>排程出貨</span>
             </button>
             <button
               onClick={() => setView("production")}
@@ -1159,6 +1214,39 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
               <span className="text-base">✂️</span>
               <span>裁剪工作單</span>
             </button>
+            {showMovePicker ? (
+              <div className="rounded-lg border border-[var(--border)] p-2.5">
+                <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">移動到清單...</p>
+                <div className="space-y-0.5">
+                  {Object.entries(LIST_NAMES)
+                    .filter(([id]) => id !== card.idList)
+                    .map(([id, name]) => (
+                      <button
+                        key={id}
+                        onClick={() => void handleMoveCard(id)}
+                        disabled={isMoving}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                      >
+                        {name}
+                      </button>
+                    ))}
+                </div>
+                <button
+                  onClick={() => setShowMovePicker(false)}
+                  className="mt-2 w-full rounded px-2 py-1 text-xs text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+                >
+                  取消
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowMovePicker(true)}
+                className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
+              >
+                <span className="text-base">↗️</span>
+                <span>移動卡片</span>
+              </button>
+            )}
             {card.desc && (
               <div className="mt-3 rounded-lg bg-[var(--surface-2)] p-2.5 text-[11px] leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap">
                 {card.desc}
@@ -1239,8 +1327,8 @@ export function ShippingNoticeClient() {
     setSearchError("");
     searchCards(q)
       .then((nextCards) => {
-        setSelectedCard(null);
         setCards(nextCards);
+        setSelectedCard(nextCards.length === 1 ? nextCards[0] : null);
         setCardCustomFieldsMap({});
         Promise.all(
           nextCards.map((c) =>
@@ -1268,7 +1356,7 @@ export function ShippingNoticeClient() {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Truck className="h-5 w-5 shrink-0 text-[var(--accent)]" />
-        <h1 className="text-xl font-bold">出貨通知</h1>
+        <h1 className="text-xl font-bold">排程出貨</h1>
       </div>
 
       <div className="flex max-w-sm gap-2">
@@ -1302,19 +1390,25 @@ export function ShippingNoticeClient() {
             const cardCF = cardCustomFieldsMap[card.id] ?? [];
             const scheduleDate = getCustomFieldDate(cardCF, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY);
             const scheduleText = getCustomFieldText(cardCF, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT);
+            const cardDayNames = ["日", "一", "二", "三", "四", "五", "六"] as const;
             const scheduleDisplay = (() => {
               if (!scheduleDate) return null;
               const d = scheduleDate;
               const rocYear = d.getFullYear() - 1911;
               const mm = String(d.getMonth() + 1).padStart(2, "0");
               const dd = String(d.getDate()).padStart(2, "0");
-              const dayNames = ["日", "一", "二", "三", "四", "五", "六"];
-              const dayStr = dayNames[d.getDay()] ?? "";
-              return `${rocYear}.${mm}.${dd} 星期${dayStr}`;
+              return `${rocYear}.${mm}.${dd} (${cardDayNames[d.getDay()] ?? ""})`;
             })();
-            const dueDisplay = card.due
-              ? new Date(card.due).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })
-              : null;
+            const dueDisplay = (() => {
+              if (!card.due) return null;
+              const d = new Date(card.due);
+              const month = d.getMonth() + 1;
+              const day = d.getDate();
+              const hour = String(d.getHours()).padStart(2, "0");
+              const min = String(d.getMinutes()).padStart(2, "0");
+              return `${month}/${day} (${cardDayNames[d.getDay()] ?? ""}) ${hour}:${min}`;
+            })();
+            const addressDisplay = card.desc.split("\n")[0]?.trim() || null;
             const isDone = card.dueComplete;
             const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
             const styleText = styleLabel?.name.replace("成交/", "") ?? null;
@@ -1347,21 +1441,28 @@ export function ShippingNoticeClient() {
                   )}
                 </div>
 
-                {/* 第二行：排程日期 */}
-                {scheduleDisplay && (
-                  <p className="mt-0.5 text-sm font-medium text-[var(--accent)]">{scheduleDisplay}</p>
-                )}
-                {/* 出貨日（排程存在時為小字補充，否則獨立顯示） */}
-                {dueDisplay && (
-                  <p className={scheduleDisplay
-                    ? "text-xs text-[var(--text-tertiary)]"
-                    : "mt-0.5 text-sm font-medium text-[var(--text-secondary)]"
-                  }>
-                    出貨 {dueDisplay}
-                  </p>
-                )}
+                {/* 排程日 / 出貨日 / 地址 */}
+                <div className="mt-0.5 space-y-0.5">
+                  {scheduleDisplay && (
+                    <p className="text-sm">
+                      <span className="text-[var(--text-tertiary)]">排程日：</span>
+                      <span className="font-medium text-[var(--accent)]">{scheduleDisplay}</span>
+                    </p>
+                  )}
+                  {dueDisplay && (
+                    <p className="text-sm">
+                      <span className="text-[var(--text-tertiary)]">出貨日：</span>
+                      <span className="font-medium text-[var(--text-secondary)]">{dueDisplay}</span>
+                    </p>
+                  )}
+                  {addressDisplay && (
+                    <p className="truncate text-xs text-[var(--text-tertiary)]">
+                      📍 {addressDisplay}
+                    </p>
+                  )}
+                </div>
 
-                {/* 第三行：標籤 */}
+                {/* 標籤 */}
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {listName !== card.idList && (
                     <span className="rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">

@@ -478,7 +478,7 @@ export function SettingsClient() {
           <div className="card-surface rounded-[var(--radius-lg)]">
             <div className="border-b border-[var(--border)] px-6 py-3">
               <span className="text-sm font-medium">司機管理</span>
-              <span className="ml-2 text-xs text-[var(--text-secondary)]">出貨通知使用的司機資料</span>
+              <span className="ml-2 text-xs text-[var(--text-secondary)]">排程出貨使用的司機資料</span>
             </div>
             <div className="px-6 py-4">
               <DriversManagementPanel />

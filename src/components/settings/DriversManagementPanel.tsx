@@ -66,7 +66,7 @@ function DriverRow({
     return (
       <div className="rounded-lg border border-[var(--accent)] bg-[var(--bg-elevated)] p-3">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {field("title", "稱呼（出貨通知顯示）", "例：羅先生 [0725-ED]")}
+          {field("title", "稱呼（排程出貨顯示）", "例：羅先生 [0725-ED]")}
           {field("confirmTitle", "確認單稱謂", "例：阿伯～")}
           {field("phoneNumber", "電話", "例：0933208509")}
           {field("labelId", "Trello Label ID", "5d00c0ff...")}
