@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
-import { getCaseRows, caseRowToRecord, getVersionRows, versionRowToRecord } from "@/app/api/sheets/_v2-utils";
-import { computeReferralStats } from "@/lib/referral-utils";
+import { referrerRowToStats } from "@/lib/referral-utils";
+import type { ReferralSummary } from "@/lib/referral-utils";
+import { getReferrerRows } from "../_sheets-utils";
 
 export async function GET() {
   const client = await getSheetsClient();
@@ -11,16 +12,22 @@ export async function GET() {
   }
 
   try {
-    const [caseRows, versionRows] = await Promise.all([
-      getCaseRows(client),
-      getVersionRows(client),
-    ]);
+    const rows = await getReferrerRows(client);
+    const referrers = rows
+      .filter((row) => row.length >= 9 && row[0])
+      .map(referrerRowToStats);
 
-    const cases = caseRows.map(caseRowToRecord);
-    const versions = versionRows.map(versionRowToRecord);
-    const stats = computeReferralStats(cases, versions);
+    const summary: ReferralSummary = {
+      totalReferrers: referrers.length,
+      totalReferredCases: referrers.reduce((s, r) => s + r.caseCount, 0),
+      totalWonCases: referrers.reduce((s, r) => s + r.wonCaseCount, 0),
+      totalRevenue: referrers.reduce((s, r) => s + r.revenue, 0),
+      pendingRewardCount: referrers.filter(
+        (r) => r.rewardTier >= 1 && r.rewardStatus !== "sent",
+      ).length,
+    };
 
-    return NextResponse.json({ ok: true, ...stats });
+    return NextResponse.json({ ok: true, referrers, summary });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
