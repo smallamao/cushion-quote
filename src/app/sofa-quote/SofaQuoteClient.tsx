@@ -133,13 +133,20 @@ export function SofaQuoteClient() {
     [inputWidth, product, seatCount, grade]
   );
 
+  const addonTotal = useMemo(() => calcAddons(addons), [addons]);
+
   function handleProductSelect(p: SofaProduct, idx: number) {
     setProductIdx(idx);
     setInputWidth(p.width);
     setSeatCount(p.defaultSeat);
     setPlatformW(null);
     setPlatformH(null);
-    setAddons((prev) => ({ ...prev, slideRailRatePerSeat: getSlideRailRate(p.displayName) }));
+    setAddons((prev) => ({
+      ...prev,
+      slideRailRatePerSeat: getSlideRailRate(p.displayName),
+      removeStandardUsb: false,
+      platformNoStorage: false,
+    }));
   }
 
   function handleQuote() {
@@ -325,9 +332,9 @@ export function SofaQuoteClient() {
         >
           <span>進階選項</span>
           <span className="flex items-center gap-2">
-            {calcAddons(addons) !== 0 && (
-              <span className={`text-sm font-semibold ${calcAddons(addons) > 0 ? "text-red-500" : "text-blue-500"}`}>
-                {calcAddons(addons) > 0 ? "+" : ""}${fmtAmount(calcAddons(addons))}
+            {addonTotal !== 0 && (
+              <span className={`text-sm font-semibold ${addonTotal > 0 ? "text-red-500" : "text-blue-500"}`}>
+                {addonTotal > 0 ? "+" : ""}${fmtAmount(addonTotal)}
               </span>
             )}
             <span className="text-[var(--text-tertiary)]">{showAddons ? "▲" : "▼"}</span>
@@ -456,7 +463,7 @@ export function SofaQuoteClient() {
             )}
 
             {/* Reset button */}
-            {calcAddons(addons) !== 0 && (
+            {addonTotal !== 0 && (
               <button
                 onClick={() => setAddons({ ...DEFAULT_ADDONS, slideRailRatePerSeat: getSlideRailRate(product.displayName) })}
                 className="w-full rounded border border-[var(--border)] py-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
