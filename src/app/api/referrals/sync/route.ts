@@ -20,8 +20,8 @@ export async function POST() {
   }
 
   try {
-    // Ping health to wake Render's free-tier service (cold start ~30-60s).
-    void fetch(`${legacyUrl}/api/health`, {
+    // Await health ping to allow Render to start waking before the main request.
+    await fetch(`${legacyUrl}/api/health`, {
       signal: AbortSignal.timeout(15000),
     }).catch(() => null);
 
@@ -31,17 +31,24 @@ export async function POST() {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
       return NextResponse.json(
-        {
-          ok: false,
-          error: `FastAPI 回傳 ${res.status}${text ? `: ${text.slice(0, 100)}` : ""}`,
-        },
+        { ok: false, error: `FastAPI 服務回傳錯誤 (HTTP ${res.status})` },
         { status: 502 },
       );
     }
 
-    const data = (await res.json()) as FastApiResponse;
+    const rawData = (await res.json()) as unknown;
+    if (
+      !rawData ||
+      typeof rawData !== "object" ||
+      !Array.isArray((rawData as Record<string, unknown>).networks)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "FastAPI 回傳資料格式錯誤" },
+        { status: 502 },
+      );
+    }
+    const data = rawData as FastApiResponse;
 
     // Read existing rows to preserve manually-set rewardStatus.
     const existingRows = await getReferrerRows(client);
@@ -57,16 +64,13 @@ export async function POST() {
     // Adapt FastAPI data → ReferrerStats[].
     const stats = adaptFastApiResponse(data);
 
-    // Preserve existing rewardStatus for known referrers.
-    for (const referrer of stats.referrers) {
-      const preserved = existingStatusMap.get(referrer.companyId);
-      if (preserved) {
-        referrer.rewardStatus = preserved;
-      }
-    }
-
     const syncedAt = new Date().toISOString();
-    const rows = stats.referrers.map((r) => referrerStatsToRow(r, syncedAt));
+    const rows = stats.referrers.map((r) =>
+      referrerStatsToRow(
+        { ...r, rewardStatus: existingStatusMap.get(r.companyId) ?? r.rewardStatus },
+        syncedAt,
+      ),
+    );
 
     await writeReferrerRows(client, rows);
 

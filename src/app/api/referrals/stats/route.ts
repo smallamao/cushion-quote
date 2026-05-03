@@ -14,7 +14,7 @@ export async function GET() {
   try {
     const rows = await getReferrerRows(client);
     const referrers = rows
-      .filter((row) => row.length >= 9 && row[0])
+      .filter((row) => row[0])
       .map(referrerRowToStats);
 
     const summary: ReferralSummary = {

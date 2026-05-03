@@ -12,15 +12,31 @@ export async function getReferrerRows(client: SheetsClient): Promise<string[][]>
 }
 
 export async function writeReferrerRows(client: SheetsClient, rows: string[][]): Promise<void> {
+  const snapshot = await getReferrerRows(client);
+
   await client.sheets.spreadsheets.values.clear({
     spreadsheetId: client.spreadsheetId,
     range: DATA_RANGE,
   });
+
   if (rows.length === 0) return;
-  await client.sheets.spreadsheets.values.update({
-    spreadsheetId: client.spreadsheetId,
-    range: `${REFERRER_SHEET}!A2`,
-    valueInputOption: "RAW",
-    requestBody: { values: rows },
-  });
+
+  try {
+    await client.sheets.spreadsheets.values.update({
+      spreadsheetId: client.spreadsheetId,
+      range: `${REFERRER_SHEET}!A2`,
+      valueInputOption: "RAW",
+      requestBody: { values: rows },
+    });
+  } catch (err) {
+    if (snapshot.length > 0) {
+      await client.sheets.spreadsheets.values.update({
+        spreadsheetId: client.spreadsheetId,
+        range: `${REFERRER_SHEET}!A2`,
+        valueInputOption: "RAW",
+        requestBody: { values: snapshot },
+      }).catch(() => null);
+    }
+    throw err;
+  }
 }

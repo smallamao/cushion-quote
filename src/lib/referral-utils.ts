@@ -259,10 +259,11 @@ export function referrerRowToStats(row: string[]): ReferrerStats {
     companyName: row[1] ?? "",
     clientCount: Number(row[2]) || 0,
     caseCount,
+    // FastAPI tracks all orders as won; no separate wonCaseCount column in Sheets schema
     wonCaseCount: caseCount,
     revenue: Number(row[4]) || 0,
     rewardTier: computeRewardTier(Number(row[2]) || 0),
-    rewardStatus: (row[6] === "sent" ? "sent" : "pending") as "pending" | "sent",
+    rewardStatus: row[6] === "sent" ? "sent" : "pending",
     lastReferralDate: row[7] ?? "",
     cases,
   };
