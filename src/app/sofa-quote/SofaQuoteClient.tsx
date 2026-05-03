@@ -254,6 +254,10 @@ export function SofaQuoteClient() {
 
   const addonTotal = useMemo(() => calcAddons(addons, seatCount, armCost), [addons, seatCount, armCost]);
 
+  const selectedPlatformBase = PLATFORM_STORAGE_STYLES.find(
+    (p) => p.code === addons.storagePlatformStyle,
+  ) ?? null;
+
   function handleProductSelect(p: SofaProduct, idx: number) {
     setProductIdx(idx);
     setInputWidth(p.width);
@@ -747,28 +751,27 @@ export function SofaQuoteClient() {
                     <button onClick={() => setShowPlatformStylePicker(true)}
                       className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]">
                       {addons.storagePlatformStyle
-                        ? `${PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle)?.name ?? addons.storagePlatformStyle}`
+                        ? PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle)?.name ?? addons.storagePlatformStyle
                         : "選擇平台款式"}
                     </button>
-                    {addons.storagePlatformStyle && (() => {
-                      const base = PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle);
-                      return base ? (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-[var(--text-tertiary)]">平台寬調整（原 {base.standardWidth}cm）</p>
-                            <input type="number" value={base.standardWidth + addons.storagePlatformWidthAdj}
-                              onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformWidthAdj: Number(e.target.value) - base.standardWidth }))}
-                              className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-[var(--text-tertiary)]">平台深調整（原 {base.standardDepth}cm）</p>
-                            <input type="number" value={base.standardDepth + addons.storagePlatformDepthAdj}
-                              onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformDepthAdj: Number(e.target.value) - base.standardDepth }))}
-                              className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
-                          </div>
+                    {addons.storagePlatformStyle && selectedPlatformBase && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-[var(--text-tertiary)]">平台寬調整（原 {selectedPlatformBase.standardWidth}cm）</p>
+                          <input type="number" value={selectedPlatformBase.standardWidth + addons.storagePlatformWidthAdj}
+                            onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformWidthAdj: Number(e.target.value) - selectedPlatformBase.standardWidth }))}
+                            min={1}
+                            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
                         </div>
-                      ) : null;
-                    })()}
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-[var(--text-tertiary)]">平台深調整（原 {selectedPlatformBase.standardDepth}cm）</p>
+                          <input type="number" value={selectedPlatformBase.standardDepth + addons.storagePlatformDepthAdj}
+                            onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformDepthAdj: Number(e.target.value) - selectedPlatformBase.standardDepth }))}
+                            min={1}
+                            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

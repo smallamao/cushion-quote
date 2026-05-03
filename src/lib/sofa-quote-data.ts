@@ -1,3 +1,5 @@
+import { type BackrestStyle } from "@/lib/sofa-addons-config"
+
 // ─── Products ────────────────────────────────────────────────────────────────
 
 export interface SofaProduct {
@@ -210,7 +212,7 @@ export interface SofaAddons {
   rightPillowFill: string
   // 改背枕
   backrestChange: boolean
-  backrestTargetStyle: string
+  backrestTargetStyle: BackrestStyle | ""
   // 改置物平台
   changeStoragePlatform: boolean
   storagePlatformStyle: string
