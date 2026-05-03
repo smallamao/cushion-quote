@@ -16,6 +16,13 @@ import {
   type MaterialGrade,
   type SofaAddons,
 } from "@/lib/sofa-quote-data";
+import {
+  ARMREST_OPTIONS,
+  PILLOW_FILL_OPTIONS,
+  calcArmCost,
+  getArmCompat,
+  type ArmCompatEntry,
+} from "@/lib/sofa-addons-config";
 import { MessageResultModal } from "@/components/sofa/MessageResultModal";
 
 // ─── Action Sheet Picker ──────────────────────────────────────────────────────
@@ -95,6 +102,85 @@ function calcPlatformFee(diffCm: number, rate: number): number {
   return Math.round((rate / 2) * diffCm); // enlargement: (rate/2) × cm
 }
 
+// ─── Arm Panel ────────────────────────────────────────────────────────────────
+
+function compatBadge(compatible: boolean | null) {
+  if (compatible === true) return { text: "可搭配", cls: "text-green-600 bg-green-50" };
+  if (compatible === false) return { text: "不可改", cls: "text-red-600 bg-red-50" };
+  return { text: "待確認", cls: "text-amber-600 bg-amber-50" };
+}
+
+function ArmPanel({
+  label, armCode, armWidth, boomStorage, pillowFill,
+  compatEntry, onOpenPicker, onWidthChange, onBoomStorageChange, onPillowChange,
+}: {
+  label: string;
+  armCode: string; armWidth: number; boomStorage: boolean; pillowFill: string;
+  compatEntry: ArmCompatEntry | null;
+  onOpenPicker: () => void;
+  onWidthChange: (v: number) => void;
+  onBoomStorageChange: (v: boolean) => void;
+  onPillowChange: (v: string) => void;
+}) {
+  const opt = ARMREST_OPTIONS.find((o) => o.code === armCode);
+  const badge = compatEntry ? compatBadge(compatEntry.compatible) : null;
+
+  return (
+    <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+      <p className="text-xs font-medium text-[var(--text-secondary)]">{label}</p>
+      <div className="flex items-center gap-2">
+        <button onClick={onOpenPicker}
+          className="flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]">
+          {opt ? `${opt.name}（${opt.default_width}cm）` : "選擇扶手款式"}
+        </button>
+        {badge && (
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
+            {badge.text}
+          </span>
+        )}
+      </div>
+      {opt && (
+        <div className="space-y-2">
+          {opt.customizable_width && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-secondary)]">寬度 (cm)</span>
+              <input type="number" value={armWidth} onChange={(e) => onWidthChange(Number(e.target.value))}
+                min={opt.min_width} max={opt.max_width}
+                className="w-20 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
+            </div>
+          )}
+          {opt.has_storage_option && (
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              <input type="checkbox" checked={boomStorage} onChange={(e) => onBoomStorageChange(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--border)] accent-[var(--accent)]" />
+              BOOM 置物
+            </label>
+          )}
+          {opt.has_pillow && PILLOW_FILL_OPTIONS.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] text-[var(--text-tertiary)]">枕心填充</p>
+              <div className="flex flex-wrap gap-1.5">
+                {PILLOW_FILL_OPTIONS.map((p) => (
+                  <button key={p} onClick={() => onPillowChange(p)}
+                    className={[
+                      "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                      pillowFill === p ? "bg-[var(--accent)] text-white" : "bg-[var(--bg-subtle)] text-[var(--text-secondary)]",
+                    ].join(" ")}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {compatEntry?.note && (
+            <p className="text-[10px] text-[var(--text-tertiary)]">{compatEntry.note}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function SofaQuoteClient() {
@@ -113,6 +199,9 @@ export function SofaQuoteClient() {
   const [modal, setModal] = useState<{ detail: string; copy: string } | null>(null);
   const [addons, setAddons] = useState<SofaAddons>(DEFAULT_ADDONS);
   const [showAddons, setShowAddons] = useState(false);
+  const [showArmPanel, setShowArmPanel] = useState(false);
+  const [showLeftArmPicker, setShowLeftArmPicker] = useState(false);
+  const [showRightArmPicker, setShowRightArmPicker] = useState(false);
 
   const product: SofaProduct = SOFA_PRODUCTS[productIdx];
   const grade: MaterialGrade = MATERIAL_GRADES[gradeIdx];
@@ -133,7 +222,21 @@ export function SofaQuoteClient() {
     [inputWidth, product, seatCount, grade]
   );
 
-  const addonTotal = useMemo(() => calcAddons(addons), [addons]);
+  const effectiveRightCode = addons.armMode === "both_same" ? addons.leftArmCode : addons.rightArmCode;
+  const effectiveRightWidth = addons.armMode === "both_same" ? addons.leftArmWidth : addons.rightArmWidth;
+  const effectiveRightBoom = addons.armMode === "both_same" ? addons.leftBoomStorage : addons.rightBoomStorage;
+  const effectiveRightPillow = addons.armMode === "both_same" ? addons.leftPillowFill : addons.rightPillowFill;
+  const showLeft = addons.armMode !== "none" && addons.armMode !== "right_only";
+  const showRight = addons.armMode === "right_only" || addons.armMode === "both_different";
+
+  const leftCompat = getArmCompat(product.displayName, addons.leftArmCode);
+  const rightCompat = getArmCompat(product.displayName, effectiveRightCode);
+  const armCost = useMemo(
+    () => calcArmCost(addons.armMode, addons.leftArmCode, effectiveRightCode),
+    [addons.armMode, addons.leftArmCode, effectiveRightCode],
+  );
+
+  const addonTotal = useMemo(() => calcAddons(addons, seatCount, armCost), [addons, seatCount, armCost]);
 
   function handleProductSelect(p: SofaProduct, idx: number) {
     setProductIdx(idx);
@@ -146,12 +249,41 @@ export function SofaQuoteClient() {
       slideRailRatePerSeat: getSlideRailRate(p.displayName),
       removeStandardUsb: false,
       platformNoStorage: false,
+      backrestChange: false,
+      backrestTargetStyle: "",
+      changeStoragePlatform: false,
+      storagePlatformStyle: "",
+      storagePlatformWidthAdj: 0,
+      storagePlatformDepthAdj: 0,
     }));
+  }
+
+  function selectArmStyle(side: "left" | "right", code: string) {
+    const opt = ARMREST_OPTIONS.find((o) => o.code === code);
+    if (!opt) return;
+    const firstPillow = PILLOW_FILL_OPTIONS[0];
+    const isMirror = addons.armMode === "both_same";
+    const setLeft = side === "left" || isMirror;
+    const setRight = side === "right" || isMirror;
+    const updates: Partial<typeof addons> = {};
+    if (setLeft) {
+      updates.leftArmCode = code;
+      updates.leftArmWidth = opt.default_width;
+      updates.leftBoomStorage = opt.storage_default;
+      updates.leftPillowFill = opt.has_pillow ? (opt.pillow_default ?? firstPillow) : "";
+    }
+    if (setRight) {
+      updates.rightArmCode = code;
+      updates.rightArmWidth = opt.default_width;
+      updates.rightBoomStorage = opt.storage_default;
+      updates.rightPillowFill = opt.has_pillow ? (opt.pillow_default ?? firstPillow) : "";
+    }
+    setAddons((prev) => ({ ...prev, ...updates }));
   }
 
   function handleQuote() {
     if (!basePrice) return;
-    const result = buildQuoteOutput(product, grade, inputWidth, seatCount, basePrice, addons);
+    const result = buildQuoteOutput(product, grade, inputWidth, seatCount, basePrice, addons, armCost);
     setModal({ detail: result.detailText, copy: result.copyText });
   }
 
@@ -165,6 +297,14 @@ export function SofaQuoteClient() {
   const segBase = "flex-1 rounded-[var(--radius-sm)] py-1 text-xs font-medium transition-colors";
   const segActive = "bg-[var(--accent)] text-white";
   const segInactive = "text-[var(--text-secondary)]";
+
+  const ARM_MODES: Array<{ value: typeof addons.armMode; label: string }> = [
+    { value: "none",           label: "無" },
+    { value: "both_same",      label: "兩側相同" },
+    { value: "both_different", label: "左右分開" },
+    { value: "left_only",      label: "僅左側" },
+    { value: "right_only",     label: "僅右側" },
+  ];
 
   return (
     <div className="mx-auto max-w-lg p-4 space-y-3">
@@ -324,6 +464,95 @@ export function SofaQuoteClient() {
         </div>
       )}
 
+      {/* 改扶手 */}
+      <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+        <button
+          onClick={() => setShowArmPanel((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-[var(--text-primary)]"
+        >
+          <span>改扶手</span>
+          <span className="flex items-center gap-2">
+            {armCost > 0 && (
+              <span className="text-sm font-semibold text-red-500">
+                +${fmtAmount(armCost)}
+              </span>
+            )}
+            <span className="text-[var(--text-tertiary)]">{showArmPanel ? "▲" : "▼"}</span>
+          </span>
+        </button>
+
+        {showArmPanel && (
+          <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
+            {/* 扶手模式 */}
+            <div className="space-y-1">
+              <p className="text-xs text-[var(--text-secondary)]">扶手模式</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ARM_MODES.map((m) => (
+                  <button key={m.value}
+                    onClick={() => setAddons((prev) => ({ ...prev, armMode: m.value }))}
+                    className={[
+                      "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                      addons.armMode === m.value
+                        ? "bg-[var(--accent)] text-white"
+                        : "bg-[var(--bg-subtle)] text-[var(--text-secondary)]",
+                    ].join(" ")}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {showLeft && (
+              <ArmPanel
+                label={addons.armMode === "both_same" ? "扶手（兩側相同）" : addons.armMode === "both_different" ? "左側扶手" : "扶手"}
+                armCode={addons.leftArmCode}
+                armWidth={addons.leftArmWidth}
+                boomStorage={addons.leftBoomStorage}
+                pillowFill={addons.leftPillowFill}
+                compatEntry={leftCompat}
+                onOpenPicker={() => setShowLeftArmPicker(true)}
+                onWidthChange={(v) => {
+                  const u: Partial<typeof addons> = { leftArmWidth: v };
+                  if (addons.armMode === "both_same") u.rightArmWidth = v;
+                  setAddons((prev) => ({ ...prev, ...u }));
+                }}
+                onBoomStorageChange={(v) => {
+                  const u: Partial<typeof addons> = { leftBoomStorage: v };
+                  if (addons.armMode === "both_same") u.rightBoomStorage = v;
+                  setAddons((prev) => ({ ...prev, ...u }));
+                }}
+                onPillowChange={(v) => {
+                  const u: Partial<typeof addons> = { leftPillowFill: v };
+                  if (addons.armMode === "both_same") u.rightPillowFill = v;
+                  setAddons((prev) => ({ ...prev, ...u }));
+                }}
+              />
+            )}
+
+            {showRight && (
+              <ArmPanel
+                label="右側扶手"
+                armCode={addons.rightArmCode}
+                armWidth={effectiveRightWidth}
+                boomStorage={effectiveRightBoom}
+                pillowFill={effectiveRightPillow}
+                compatEntry={rightCompat}
+                onOpenPicker={() => setShowRightArmPicker(true)}
+                onWidthChange={(v) => setAddons((prev) => ({ ...prev, rightArmWidth: v }))}
+                onBoomStorageChange={(v) => setAddons((prev) => ({ ...prev, rightBoomStorage: v }))}
+                onPillowChange={(v) => setAddons((prev) => ({ ...prev, rightPillowFill: v }))}
+              />
+            )}
+
+            {addons.armMode !== "none" && armCost > 0 && (
+              <div className="rounded-[var(--radius-md)] bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+                改扶手費用：${fmtAmount(armCost)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Advanced options */}
       <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
         <button
@@ -482,6 +711,22 @@ export function SofaQuoteClient() {
       <ActionSheetPicker open={showGradePicker} title="面料" options={MATERIAL_GRADES}
         getLabel={(g) => g.displayName}
         onSelect={(_, idx) => setGradeIdx(idx)} onClose={() => setShowGradePicker(false)} />
+      <ActionSheetPicker
+        open={showLeftArmPicker}
+        title="左側扶手款式"
+        options={ARMREST_OPTIONS}
+        getLabel={(o) => `${o.name}（${o.default_width}cm）$${o.total_fee.toLocaleString()}`}
+        onSelect={(o, _) => { selectArmStyle("left", o.code); }}
+        onClose={() => setShowLeftArmPicker(false)}
+      />
+      <ActionSheetPicker
+        open={showRightArmPicker}
+        title="右側扶手款式"
+        options={ARMREST_OPTIONS}
+        getLabel={(o) => `${o.name}（${o.default_width}cm）$${o.total_fee.toLocaleString()}`}
+        onSelect={(o, _) => { selectArmStyle("right", o.code); }}
+        onClose={() => setShowRightArmPicker(false)}
+      />
 
       {modal && (
         <MessageResultModal open={true} title="L型報價結果" message={modal.detail}
