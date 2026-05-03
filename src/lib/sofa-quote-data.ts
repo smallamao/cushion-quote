@@ -185,6 +185,7 @@ const PRICE_PLATFORM_NO_STORAGE = -1000
 // ─── Add-on Options ────────────────────────────────────────────────────────────
 
 export interface SofaAddons {
+  // 既有選項
   groundOption: "none" | "half" | "full"
   heightReduction: boolean
   removeArmrestCount: number
@@ -195,6 +196,24 @@ export interface SofaAddons {
   /** Must be set via `getSlideRailRate(productCode)`. 800 for BOOM/BOOMs, 1000 for others. */
   slideRailRatePerSeat: number
   platformNoStorage: boolean
+  // 改扶手
+  armMode: "none" | "both_same" | "both_different" | "left_only" | "right_only"
+  leftArmCode: string
+  rightArmCode: string
+  leftArmWidth: number
+  rightArmWidth: number
+  leftBoomStorage: boolean
+  rightBoomStorage: boolean
+  leftPillowFill: string
+  rightPillowFill: string
+  // 改背枕
+  backrestChange: boolean
+  backrestTargetStyle: string
+  // 改置物平台
+  changeStoragePlatform: boolean
+  storagePlatformStyle: string
+  storagePlatformWidthAdj: number
+  storagePlatformDepthAdj: number
 }
 
 export const DEFAULT_ADDONS: SofaAddons = {
@@ -207,13 +226,28 @@ export const DEFAULT_ADDONS: SofaAddons = {
   slideRailCount: 0,
   slideRailRatePerSeat: 1000,
   platformNoStorage: false,
+  armMode: "none",
+  leftArmCode: "",
+  rightArmCode: "",
+  leftArmWidth: 0,
+  rightArmWidth: 0,
+  leftBoomStorage: false,
+  rightBoomStorage: false,
+  leftPillowFill: "",
+  rightPillowFill: "",
+  backrestChange: false,
+  backrestTargetStyle: "",
+  changeStoragePlatform: false,
+  storagePlatformStyle: "",
+  storagePlatformWidthAdj: 0,
+  storagePlatformDepthAdj: 0,
 }
 
 export function getSlideRailRate(productCode: string): number {
   return ["BOOM", "BOOMs"].includes(productCode) ? 800 : 1000;
 }
 
-export function calcAddons(addons: SofaAddons): number {
+export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0): number {
   const groundCost = addons.groundOption === "full" ? PRICE_GROUND_FULL
     : addons.groundOption === "half" ? PRICE_GROUND_HALF : 0;
   const heightDiscount = addons.heightReduction ? PRICE_HEIGHT_REDUCTION : 0;
@@ -223,8 +257,11 @@ export function calcAddons(addons: SofaAddons): number {
   const wirelessCost = addons.wirelessChargeCount * PRICE_WIRELESS;
   const slideRailCost = addons.slideRailCount * addons.slideRailRatePerSeat;
   const platformNoStorageDiscount = addons.platformNoStorage ? PRICE_PLATFORM_NO_STORAGE : 0;
+  const backrestCost = addons.backrestChange ? 500 * seatCount : 0;
+  const changeStorageFee = addons.changeStoragePlatform ? 1500 : 0;
   return groundCost + heightDiscount + armrestDiscount + usbCost
-    + removeUsbDiscount + wirelessCost + slideRailCost + platformNoStorageDiscount;
+    + removeUsbDiscount + wirelessCost + slideRailCost + platformNoStorageDiscount
+    + backrestCost + changeStorageFee + armCost;
 }
 
 export function buildQuoteOutput(
@@ -234,10 +271,11 @@ export function buildQuoteOutput(
   seatCount: number,
   basePrice: number,
   addons?: SofaAddons,
+  armCost = 0,
 ): QuoteOutput {
   const lc = calcLShape(product, basePrice)
   const wc = calcWidthAdjustment(inputWidth, product, seatCount, grade)
-  const addonTotal = addons ? calcAddons(addons) : 0
+  const addonTotal = addons ? calcAddons(addons, seatCount, armCost) : 0
 
   const isEdsonBj = ['EDSON', 'BJ'].includes(product.displayName)
   const reductionText = getReductionDiscount(product, inputWidth)
@@ -328,6 +366,16 @@ export function buildQuoteOutput(
       copyLines.push(`加裝滑軌 ×${addons.slideRailCount}座 +${fmtAmount(total)}`)
     }
     if (addons.platformNoStorage) copyLines.push(`平台無置物 ${fmtAmount(PRICE_PLATFORM_NO_STORAGE)}`)
+    if (addons.backrestChange && addons.backrestTargetStyle) {
+      const cost = 500 * seatCount;
+      copyLines.push(`改背枕（${addons.backrestTargetStyle}）+${fmtAmount(cost)}`);
+    }
+    if (addons.changeStoragePlatform && addons.storagePlatformStyle) {
+      copyLines.push(`改置物平台（${addons.storagePlatformStyle}）+1,500`);
+    }
+    if (armCost > 0) {
+      copyLines.push(`改扶手 +${fmtAmount(armCost)}`);
+    }
   }
 
   const copyText = copyLines.join('\n')

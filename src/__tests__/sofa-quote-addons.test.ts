@@ -112,3 +112,21 @@ describe("buildQuoteOutput with addons", () => {
     expect(copyText).toContain("44,600");
   });
 });
+
+describe("calcAddons — new params", () => {
+  it("改背枕 with seatCount=3 → +1500", () => {
+    expect(calcAddons({ ...DEFAULT_ADDONS, backrestChange: true, backrestTargetStyle: "GALI" }, 3, 0)).toBe(1500);
+  });
+  it("改背枕 with seatCount=2 → +1000", () => {
+    expect(calcAddons({ ...DEFAULT_ADDONS, backrestChange: true, backrestTargetStyle: "GALI" }, 2, 0)).toBe(1000);
+  });
+  it("改置物平台 → +1500", () => {
+    expect(calcAddons({ ...DEFAULT_ADDONS, changeStoragePlatform: true, storagePlatformStyle: "BOOM", storagePlatformWidthAdj: 0, storagePlatformDepthAdj: 0 }, 3, 0)).toBe(1500);
+  });
+  it("armCost 直接加入總計", () => {
+    expect(calcAddons(DEFAULT_ADDONS, 3, 1400)).toBe(1400);
+  });
+  it("複合：半落地 + 改背枕 + armCost 700", () => {
+    expect(calcAddons({ ...DEFAULT_ADDONS, groundOption: "half", backrestChange: true, backrestTargetStyle: "ICE" }, 3, 700)).toBe(1500 + 1500 + 700);
+  });
+});
