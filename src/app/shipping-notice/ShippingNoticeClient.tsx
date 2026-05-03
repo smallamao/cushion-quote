@@ -32,13 +32,18 @@ async function trelloGet<T>(path: string, params: Record<string, string> = {}): 
   const qs = new URLSearchParams(params).toString();
   const url = `/api/trello/${path}${qs ? "?" + qs : ""}`;
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Trello API 錯誤 ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as Record<string, unknown> | null;
+    const detail = (body?.message ?? body?.error ?? "") as string;
+    throw new Error(`Trello API 錯誤 ${res.status}${detail ? `：${detail}` : ""}`);
+  }
   return res.json() as Promise<T>;
 }
 
 async function searchCards(query: string): Promise<TrelloCard[]> {
   const result = await trelloGet<{ cards: TrelloCard[] }>("search", {
     query,
+    idBoards: TRELLO.BOARD_ID,
     modelTypes: "cards",
     card_fields: "name,desc,due,dueComplete,idList,idBoard,labels,badges",
     cards_limit: "20",
@@ -1112,15 +1117,15 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
             )}
           </p>
           {scheduleDisplay && (
-            <p className="mt-0.5 text-xs">
-              <span className="text-[var(--text-tertiary)]">排程日：</span>
-              <span className="font-medium text-[var(--accent)]">{scheduleDisplay}</span>
+            <p className="mt-0.5 text-xs font-medium text-[var(--text-primary)]">
+              <span className="font-normal text-[var(--text-tertiary)]">排程日：</span>
+              {scheduleDisplay}
             </p>
           )}
           {dueDate && (
-            <p className="text-xs">
-              <span className="text-[var(--text-tertiary)]">出貨日：</span>
-              <span className="font-medium text-[var(--text-secondary)]">{dueDate}</span>
+            <p className="text-xs font-medium text-[var(--text-primary)]">
+              <span className="font-normal text-[var(--text-tertiary)]">出貨日：</span>
+              {dueDate}
             </p>
           )}
           <div className="mt-1 flex flex-wrap gap-1">
@@ -1442,21 +1447,21 @@ export function ShippingNoticeClient() {
                 </div>
 
                 {/* 排程日 / 出貨日 / 地址 */}
-                <div className="mt-0.5 space-y-0.5">
+                <div className="mt-1 space-y-0.5">
                   {scheduleDisplay && (
-                    <p className="text-sm">
-                      <span className="text-[var(--text-tertiary)]">排程日：</span>
-                      <span className="font-medium text-[var(--accent)]">{scheduleDisplay}</span>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">
+                      <span className="font-normal text-[var(--text-secondary)]">排程日：</span>
+                      {scheduleDisplay}
                     </p>
                   )}
                   {dueDisplay && (
-                    <p className="text-sm">
-                      <span className="text-[var(--text-tertiary)]">出貨日：</span>
-                      <span className="font-medium text-[var(--text-secondary)]">{dueDisplay}</span>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">
+                      <span className="font-normal text-[var(--text-secondary)]">出貨日：</span>
+                      {dueDisplay}
                     </p>
                   )}
                   {addressDisplay && (
-                    <p className="truncate text-xs text-[var(--text-tertiary)]">
+                    <p className="truncate text-sm text-[var(--text-secondary)]">
                       📍 {addressDisplay}
                     </p>
                   )}
