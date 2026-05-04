@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
 import { MobileDrawer } from "@/components/layout/MobileDrawer";
+import { PWAUpdateBanner } from "@/components/layout/PWAUpdateBanner";
 import { Sidebar } from "@/components/layout/Sidebar";
 import "@/app/globals.css";
 
@@ -68,6 +69,7 @@ export default function RootLayout({
             <main className="page-container">{children}</main>
           </div>
         </div>
+        <PWAUpdateBanner />
       </body>
     </html>
   );
