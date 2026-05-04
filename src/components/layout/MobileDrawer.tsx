@@ -101,32 +101,30 @@ export function MobileDrawer() {
           style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
         >
           {/* Daily — full-width rows */}
-          {dailyLinks.length > 0 && (
-            <nav className="space-y-0.5">
-              {dailyLinks.map((link) => {
-                const Icon = link.icon;
-                const active = isActive(link.href);
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href as never}
-                    className={[
-                      "flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium transition-colors",
-                      active
-                        ? "bg-[var(--accent)] text-white"
-                        : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
-                    ].join(" ")}
-                  >
-                    <Icon
-                      className={["h-5 w-5 shrink-0", active ? "text-white" : "text-[var(--text-secondary)]"].join(" ")}
-                      strokeWidth={1.5}
-                    />
-                    <span>{link.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
-          )}
+          <nav className="space-y-0.5">
+            {dailyLinks.map((link) => {
+              const Icon = link.icon;
+              const active = isActive(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href as never}
+                  className={[
+                    "flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium transition-colors",
+                    active
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
+                  ].join(" ")}
+                >
+                  <Icon
+                    className={["h-5 w-5 shrink-0", active ? "text-white" : "text-[var(--text-secondary)]"].join(" ")}
+                    strokeWidth={1.5}
+                  />
+                  <span>{link.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
 
           {/* Secondary — grouped 2-col */}
           <div className="mt-3 border-t border-[var(--border)] pt-3">

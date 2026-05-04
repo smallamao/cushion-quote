@@ -135,6 +135,14 @@ async function toggleCheckItem(cardId: string, checkItemId: string, complete: bo
   });
 }
 
+async function updateCustomField(
+  cardId: string,
+  fieldId: string,
+  value: { text?: string; number?: string; date?: string },
+): Promise<void> {
+  await trelloPutQ(`cards/${cardId}/customField/${fieldId}/item`, {}, { value });
+}
+
 async function addCheckItem(checklistId: string, name: string): Promise<CheckItem> {
   const qs = new URLSearchParams({ pos: "bottom" }).toString();
   const url = `/api/trello/checklists/${checklistId}/checkItems?${qs}`;
@@ -146,6 +154,30 @@ async function addCheckItem(checklistId: string, name: string): Promise<CheckIte
   if (!res.ok) throw new Error(`新增失敗 ${res.status}`);
   return res.json() as Promise<CheckItem>;
 }
+
+// ─── Custom field definitions ─────────────────────────────────
+
+interface FieldDef {
+  id: string;
+  label: string;
+  type: "text" | "date" | "number";
+}
+
+const CUSTOM_FIELD_DEFS: FieldDef[] = [
+  { id: TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY,           label: "排程日",        type: "date"   },
+  { id: TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT,          label: "排程備註",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.COLOR,                  label: "色號",          type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.COMMUNITY_NAME,         label: "社區名稱",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.ACCESSORIES,            label: "配件",          type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.CHAIR_LEG,              label: "椅腳",          type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.SEAT_MATERIALS,         label: "坐墊材料",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.FURNITURE_AMOUNT,       label: "家具金額",      type: "number" },
+  { id: TRELLO.CUSTOM_FIELDS.BEDDING_AMOUNT,         label: "寢具金額",      type: "number" },
+  { id: TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME,   label: "主要聯絡人",    type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE,  label: "主要電話",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME, label: "次要聯絡人",    type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE,label: "次要電話",      type: "text"   },
+];
 
 // ─── localStorage keys ────────────────────────────────────────
 
@@ -895,7 +927,141 @@ interface CustomerViewProps {
   onBack: () => void;
 }
 
-function ChecklistView({ card, onBack }: { card: TrelloCard; onBack: () => void }) {
+function CustomFieldsView({
+  card,
+  customFields,
+  onBack,
+  onUpdate,
+}: {
+  card: TrelloCard;
+  customFields: CustomFieldItem[];
+  onBack: () => void;
+  onUpdate: (fieldId: string, value: CustomFieldItem["value"]) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function getCurrentValue(field: FieldDef): string {
+    const item = customFields.find((cf) => cf.idCustomField === field.id);
+    if (!item?.value) return "";
+    if (field.type === "date" && item.value.date) {
+      const d = new Date(item.value.date);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+    return item.value.text ?? item.value.number ?? "";
+  }
+
+  function getDisplayValue(field: FieldDef): string {
+    const raw = getCurrentValue(field);
+    if (!raw) return "";
+    if (field.type === "date") {
+      const [y, m, d] = raw.split("-").map(Number);
+      const rocYear = (y ?? 0) - 1911;
+      const dayNames = ["日", "一", "二", "三", "四", "五", "六"];
+      const dateObj = new Date(y ?? 0, (m ?? 1) - 1, d ?? 1);
+      return `${rocYear}.${String(m).padStart(2, "0")}.${String(d).padStart(2, "0")} (${dayNames[dateObj.getDay()] ?? ""})`;
+    }
+    return raw;
+  }
+
+  function startEdit(field: FieldDef) {
+    setDraft(getCurrentValue(field));
+    setEditingId(field.id);
+  }
+
+  async function handleSave(field: FieldDef) {
+    setSaving(true);
+    try {
+      let value: CustomFieldItem["value"];
+      if (field.type === "date") {
+        value = draft ? { date: new Date(draft).toISOString() } : {};
+      } else if (field.type === "number") {
+        value = draft ? { number: draft } : {};
+      } else {
+        value = draft ? { text: draft } : {};
+      }
+      await updateCustomField(card.id, field.id, value);
+      onUpdate(field.id, value);
+      setEditingId(null);
+    } catch {
+      alert("儲存失敗，請重試");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+        返回
+      </button>
+
+      <p className="text-sm font-semibold">自訂欄位</p>
+
+      <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+        {CUSTOM_FIELD_DEFS.map((field, i) => {
+          const isEditing = editingId === field.id;
+          const display = getDisplayValue(field);
+          return (
+            <div
+              key={field.id}
+              className={`${i > 0 ? "border-t border-[var(--border)]" : ""}`}
+            >
+              {isEditing ? (
+                <div className="px-3 py-2.5">
+                  <p className="mb-1 text-xs text-[var(--text-tertiary)]">{field.label}</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void handleSave(field);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1 text-sm outline-none focus:border-[var(--accent)]"
+                    />
+                    <button
+                      onClick={() => void handleSave(field)}
+                      disabled={saving}
+                      className="text-sm text-[var(--accent)] disabled:opacity-40"
+                    >
+                      {saving ? "…" : "儲存"}
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="text-sm text-[var(--text-tertiary)]"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => startEdit(field)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-[var(--bg-hover)]"
+                >
+                  <span className="shrink-0 text-sm text-[var(--text-secondary)]">{field.label}</span>
+                  <span className={`truncate text-sm ${display ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)]"}`}>
+                    {display || "—"}
+                  </span>
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ChecklistView({ card, onBack, onCountChange }: { card: TrelloCard; onBack: () => void; onCountChange?: (done: number) => void }) {
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -916,16 +1082,19 @@ function ChecklistView({ card, onBack }: { card: TrelloCard; onBack: () => void 
     const complete = item.state !== "complete";
     try {
       await toggleCheckItem(card.id, item.id, complete);
-      setChecklists((prev) =>
-        prev.map((cl) =>
+      setChecklists((prev) => {
+        const next = prev.map((cl) =>
           cl.id !== checklistId ? cl : {
             ...cl,
             checkItems: cl.checkItems.map((ci) =>
-              ci.id === item.id ? { ...ci, state: complete ? "complete" : "incomplete" } : ci
+              ci.id === item.id ? { ...ci, state: (complete ? "complete" : "incomplete") as CheckItem["state"] } : ci
             ),
           }
-        )
-      );
+        );
+        const done = next.flatMap((cl) => cl.checkItems).filter((ci) => ci.state === "complete").length;
+        onCountChange?.(done);
+        return next;
+      });
     } catch {
       alert("更新失敗，請重試");
     } finally {
@@ -1196,10 +1365,11 @@ interface CardDetailProps {
 function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"actions" | "shipping" | "production" | "customer" | "checklist">("actions");
+  const [view, setView] = useState<"actions" | "shipping" | "production" | "customer" | "checklist" | "customfields">("actions");
   const [result, setResult] = useState<{ title: string; content: string } | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const [showMovePicker, setShowMovePicker] = useState(false);
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle");
 
   useEffect(() => {
     setLoading(true);
@@ -1208,6 +1378,32 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
       .then(setCustomFields)
       .catch(() => setCustomFields([]))
       .finally(() => setLoading(false));
+  }, [card.id]);
+
+  useEffect(() => {
+    async function handlePaste(e: ClipboardEvent) {
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageItem = items.find((item) => item.type.startsWith("image/"));
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+
+      setUploadState("uploading");
+      try {
+        const form = new FormData();
+        form.append("cardId", card.id);
+        form.append("file", file, `paste-${Date.now()}.png`);
+        const res = await fetch("/api/trello/upload-attachment", { method: "POST", body: form });
+        if (!res.ok) throw new Error(`上傳失敗 ${res.status}`);
+        setUploadState("done");
+        setTimeout(() => setUploadState("idle"), 2000);
+      } catch {
+        setUploadState("error");
+        setTimeout(() => setUploadState("idle"), 3000);
+      }
+    }
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
   }, [card.id]);
 
   function handleAction(type: "schedule" | "cutting") {
@@ -1253,7 +1449,7 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
   const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
   const isWaitShipping = card.idList === TRELLO.LISTS.WAIT_SHIPPING;
   const checkTotal = card.badges?.checkItems ?? 0;
-  const checkDone = card.badges?.checkItemsChecked ?? 0;
+  const [checkDone, setCheckDone] = useState(card.badges?.checkItemsChecked ?? 0);
 
   async function handleMarkShipped() {
     if (!window.confirm("確認將此卡片標記為「已出貨」？")) return;
@@ -1285,10 +1481,10 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
       {/* Header */}
       <div className="flex items-start justify-between gap-2 border-b border-[var(--border)] pb-3">
         <div className="min-w-0">
-          <p className="truncate font-mono text-sm font-semibold text-[var(--text-primary)]">
+          <p className="truncate font-mono text-base font-semibold text-[var(--text-primary)]">
             {card.name}
           </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--text-tertiary)]">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[var(--text-tertiary)]">
             <span>{listName}</span>
             {checkTotal > 0 && (
               <span className={checkDone === checkTotal ? "text-green-600" : ""}>
@@ -1297,13 +1493,13 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
             )}
           </p>
           {scheduleDisplay && (
-            <p className="mt-0.5 text-xs font-medium text-[var(--text-primary)]">
+            <p className="mt-0.5 text-sm font-medium text-[var(--text-primary)]">
               <span className="font-normal text-[var(--text-tertiary)]">排程日：</span>
               {scheduleDisplay}
             </p>
           )}
           {dueDate && (
-            <p className="text-xs font-medium text-[var(--text-primary)]">
+            <p className="text-sm font-medium text-[var(--text-primary)]">
               <span className="font-normal text-[var(--text-tertiary)]">出貨日：</span>
               {dueDate}
             </p>
@@ -1323,9 +1519,19 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
               ))}
           </div>
         </div>
-        <button onClick={onClose} className="mt-0.5 shrink-0 text-[var(--text-tertiary)]">
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <button onClick={onClose} className="text-[var(--text-tertiary)]">
+            <X className="h-4 w-4" />
+          </button>
+          {uploadState !== "idle" && (
+            <span className={`text-[10px] ${
+              uploadState === "uploading" ? "text-[var(--text-tertiary)]" :
+              uploadState === "done" ? "text-green-600" : "text-red-500"
+            }`}>
+              {uploadState === "uploading" ? "上傳中…" : uploadState === "done" ? "✓ 已上傳" : "上傳失敗"}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Body */}
@@ -1352,10 +1558,24 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
             attachments={attachments}
             onBack={() => setView("actions")}
           />
+        ) : view === "customfields" ? (
+          <CustomFieldsView
+            card={card}
+            customFields={customFields}
+            onBack={() => setView("actions")}
+            onUpdate={(fieldId, value) =>
+              setCustomFields((prev) => {
+                const exists = prev.some((cf) => cf.idCustomField === fieldId);
+                if (exists) return prev.map((cf) => cf.idCustomField === fieldId ? { ...cf, value } : cf);
+                return [...prev, { id: fieldId, idCustomField: fieldId, value }];
+              })
+            }
+          />
         ) : view === "checklist" ? (
           <ChecklistView
             card={card}
             onBack={() => setView("actions")}
+            onCountChange={setCheckDone}
           />
         ) : (
           <div className="space-y-2">
@@ -1389,6 +1609,13 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
             >
               <span className="text-base">👤</span>
               <span>客戶資訊</span>
+            </button>
+            <button
+              onClick={() => setView("customfields")}
+              className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
+            >
+              <span className="text-base">🗂️</span>
+              <span>自訂欄位</span>
             </button>
             {checkTotal > 0 && (
               <button
