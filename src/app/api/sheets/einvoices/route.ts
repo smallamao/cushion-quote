@@ -246,7 +246,7 @@ export async function POST(request: Request) {
   if (session.role !== "admin") {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
-  if (!checkRateLimit(`einvoice:${session.email}`, 10, 60_000)) {
+  if (!checkRateLimit(`einvoice:${session.email}`, 60, 60_000)) {
     return NextResponse.json({ ok: false, error: "請求過於頻繁，請稍後再試" }, { status: 429 });
   }
 
