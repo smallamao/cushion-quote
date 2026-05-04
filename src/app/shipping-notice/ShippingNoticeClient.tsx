@@ -1463,10 +1463,9 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
   const scheduleDay = getCustomFieldDate(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY);
   const scheduleDisplay = scheduleDay
     ? (() => {
-        const rocYear = scheduleDay.getFullYear() - 1911;
-        const mm = String(scheduleDay.getMonth() + 1).padStart(2, "0");
-        const dd = String(scheduleDay.getDate()).padStart(2, "0");
-        return `${rocYear}.${mm}.${dd} (${DAY_NAMES[scheduleDay.getDay()] ?? ""})`;
+        const month = scheduleDay.getMonth() + 1;
+        const day = scheduleDay.getDate();
+        return `${month}/${day} (${DAY_NAMES[scheduleDay.getDay()] ?? ""})`;
       })()
     : null;
   const driverLabel = drivers.find((d) => card.labels.some((l) => l.id === d.labelId));
@@ -1829,6 +1828,7 @@ export function ShippingNoticeClient() {
   const [listNames, setListNames] = useState<Record<string, string>>(LIST_NAMES);
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
+  const [searchKey, setSearchKey] = useState(0);
   const [cards, setCards] = useState<TrelloCard[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -1931,13 +1931,14 @@ export function ShippingNoticeClient() {
       })
       .catch((e: unknown) => setSearchError(e instanceof Error ? e.message : "搜尋失敗"))
       .finally(() => setSearching(false));
-  }, [submittedQuery]);
+  }, [submittedQuery, searchKey]);
 
   function handleSearch() {
     const q = query.trim();
     if (!q) return;
     sessionStorage.setItem("shipping_notice_query", q);
     setSubmittedQuery(q);
+    setSearchKey((k) => k + 1);
   }
 
   return (
@@ -1982,10 +1983,7 @@ export function ShippingNoticeClient() {
             const scheduleDisplay = (() => {
               if (!scheduleDate) return null;
               const d = scheduleDate;
-              const rocYear = d.getFullYear() - 1911;
-              const mm = String(d.getMonth() + 1).padStart(2, "0");
-              const dd = String(d.getDate()).padStart(2, "0");
-              return `${rocYear}.${mm}.${dd} (${cardDayNames[d.getDay()] ?? ""})`;
+              return `${d.getMonth() + 1}/${d.getDate()} (${cardDayNames[d.getDay()] ?? ""})`;
             })();
             const dueDisplay = (() => {
               if (!card.due) return null;
