@@ -143,6 +143,7 @@ export function EInvoicesClient() {
   const [drafts, setDrafts] = useState<Record<string, DraftOverride>>({});
   const [loading, setLoading] = useState(true);
   const [issuing, setIssuing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; name: string } | null>(null);
   const [syncingInvoiceId, setSyncingInvoiceId] = useState("");
   const [reissueDate, setReissueDate] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<NoticeState | null>(null);
@@ -599,8 +600,12 @@ export function EInvoicesClient() {
       const results: BatchIssueItemResult[] = [];
       for (let i = 0; i < snapshots.length; i++) {
         if (i > 0) await new Promise((r) => setTimeout(r, 1200));
-        results.push(await createAndIssue(snapshots[i]!));
+        const snap = snapshots[i]!;
+        const displayName = snap.candidate.projectName || snap.candidate.clientName || snap.candidate.candidateId;
+        setBatchProgress({ current: i + 1, total: snapshots.length, name: displayName });
+        results.push(await createAndIssue(snap));
       }
+      setBatchProgress(null);
       const successCount = results.filter((item) => item.success).length;
       const failedCount = results.length - successCount;
       setBatchReport({
@@ -1665,6 +1670,27 @@ export function EInvoicesClient() {
                 確認刪除
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 批次開立進度視窗 */}
+      {batchProgress && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--bg-elevated)] p-6 shadow-2xl">
+            <p className="mb-1 text-sm font-semibold text-[var(--text-primary)]">批次開立中</p>
+            <p className="mb-4 text-xs text-[var(--text-secondary)]">
+              {batchProgress.current} / {batchProgress.total} 筆 — {batchProgress.name}
+            </p>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-subtle)]">
+              <div
+                className="h-full rounded-full bg-[var(--accent)] transition-all duration-500"
+                style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+              />
+            </div>
+            <p className="mt-3 text-right text-xs text-[var(--text-tertiary)]">
+              {Math.round((batchProgress.current / batchProgress.total) * 100)}%
+            </p>
           </div>
         </div>
       )}
