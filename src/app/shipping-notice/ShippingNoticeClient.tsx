@@ -1455,14 +1455,14 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
         const d = new Date(card.due);
         const hour = String(d.getHours()).padStart(2, "0");
         const min = String(d.getMinutes()).padStart(2, "0");
-        return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${DAY_NAMES[d.getDay()] ?? ""}) ${hour}:${min}`;
+        return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} (${DAY_NAMES[d.getDay()] ?? ""}) ${hour}:${min}`;
       })()
     : null;
   const scheduleDay = getCustomFieldDate(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY);
   const scheduleDisplay = scheduleDay
     ? (() => {
         const d = scheduleDay;
-        return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${DAY_NAMES[d.getDay()] ?? ""})`;
+        return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} (${DAY_NAMES[d.getDay()] ?? ""})`;
       })()
     : null;
   const driverLabel = drivers.find((d) => card.labels.some((l) => l.id === d.labelId));
@@ -1980,14 +1980,14 @@ export function ShippingNoticeClient() {
             const scheduleDisplay = (() => {
               if (!scheduleDate) return null;
               const d = scheduleDate;
-              return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${cardDayNames[d.getDay()] ?? ""})`;
+              return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} (${cardDayNames[d.getDay()] ?? ""})`;
             })();
             const dueDisplay = (() => {
               if (!card.due) return null;
               const d = new Date(card.due);
               const hour = String(d.getHours()).padStart(2, "0");
               const min = String(d.getMinutes()).padStart(2, "0");
-              return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${cardDayNames[d.getDay()] ?? ""}) ${hour}:${min}`;
+              return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} (${cardDayNames[d.getDay()] ?? ""}) ${hour}:${min}`;
             })();
             const addressDisplay = card.desc.split("\n")[0]?.trim() || null;
             const isDone = card.dueComplete;
