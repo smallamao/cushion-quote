@@ -895,10 +895,23 @@ export function EInvoicesClient() {
               <h2 className="text-sm font-medium">批次開立結果</h2>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">完成時間：{batchReport.finishedAt}</p>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">總計 {batchReport.total} 筆</span>
               <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-700">成功 {batchReport.successCount} 筆</span>
               <span className="rounded-full bg-red-100 px-3 py-1 text-red-700">失敗 {batchReport.failedCount} 筆</span>
+              {batchReport.failedCount > 0 && (
+                <button
+                  onClick={() => {
+                    const failedIds = batchReport.items
+                      .filter((item) => !item.success && item.stage === "create_draft")
+                      .map((item) => item.candidateId);
+                    setSelectedIds(failedIds);
+                  }}
+                  className="rounded-full bg-red-600 px-3 py-1 text-white hover:bg-red-700"
+                >
+                  重試失敗項目
+                </button>
+              )}
             </div>
           </div>
 
