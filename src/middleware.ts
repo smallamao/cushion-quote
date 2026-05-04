@@ -63,6 +63,9 @@ function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
     pathname === "/logo.png" ||
+    pathname === "/sw.js" ||
+    pathname === "/sw.js.map" ||
+    pathname.startsWith("/workbox-") ||
     pathname.endsWith(".png") ||
     pathname.endsWith(".jpg") ||
     pathname.endsWith(".svg") ||
@@ -148,6 +151,6 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon, logo, manifest etc.
      */
-    "/((?!_next/static|_next/image|favicon.ico|logo.png|manifest.json).*)",
+    "/((?!_next/static|_next/image|favicon.ico|logo.png|manifest.json|sw.js|workbox-).*)",
   ],
 };

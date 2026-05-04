@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -171,8 +172,9 @@ const CUSTOM_FIELD_DEFS: FieldDef[] = [
   { id: TRELLO.CUSTOM_FIELDS.ACCESSORIES,            label: "配件",          type: "text"   },
   { id: TRELLO.CUSTOM_FIELDS.CHAIR_LEG,              label: "椅腳",          type: "text"   },
   { id: TRELLO.CUSTOM_FIELDS.SEAT_MATERIALS,         label: "坐墊材料",      type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.FURNITURE_AMOUNT,       label: "家具金額",      type: "number" },
-  { id: TRELLO.CUSTOM_FIELDS.BEDDING_AMOUNT,         label: "寢具金額",      type: "number" },
+  { id: TRELLO.CUSTOM_FIELDS.SOFA_AMOUNT,             label: "沙發",          type: "number" },
+  { id: TRELLO.CUSTOM_FIELDS.FURNITURE_AMOUNT,       label: "傢俱",          type: "number" },
+  { id: TRELLO.CUSTOM_FIELDS.BEDDING_AMOUNT,         label: "床組",          type: "number" },
   { id: TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME,   label: "主要聯絡人",    type: "text"   },
   { id: TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE,  label: "主要電話",      type: "text"   },
   { id: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME, label: "次要聯絡人",    type: "text"   },
@@ -287,7 +289,14 @@ function ResultModal({
           <Button variant="outline" size="sm" onClick={onClose}>
             關閉
           </Button>
-          <CopyButton text={content} label="複製全文" onCopied={onCopied} />
+          <CopyButton
+            text={content}
+            label="複製全文"
+            onCopied={async () => {
+              if (onCopied) await onCopied();
+              onClose();
+            }}
+          />
         </div>
       </div>
     </div>
@@ -1360,9 +1369,11 @@ interface CardDetailProps {
   drivers: DriverRecord[];
   attachments: TrelloAttachment[];
   onClose: () => void;
+  onCardUpdate?: (patch: Partial<TrelloCard>) => void;
 }
 
-function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
+function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardDetailProps) {
+  const router = useRouter();
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"actions" | "shipping" | "production" | "customer" | "checklist" | "customfields">("actions");
@@ -1370,15 +1381,29 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
   const [isMoving, setIsMoving] = useState(false);
   const [showMovePicker, setShowMovePicker] = useState(false);
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [showDuePicker, setShowDuePicker] = useState(false);
+  const [dueDatetimeLocal, setDueDatetimeLocal] = useState("");
+  const [isSavingDue, setIsSavingDue] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     setView("actions");
+    setShowDuePicker(false);
+    // Convert card.due (UTC ISO) to datetime-local format in local timezone
+    if (card.due) {
+      const d = new Date(card.due);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setDueDatetimeLocal(
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+      );
+    } else {
+      setDueDatetimeLocal("");
+    }
     fetchCustomFields(card.id)
       .then(setCustomFields)
       .catch(() => setCustomFields([]))
       .finally(() => setLoading(false));
-  }, [card.id]);
+  }, [card.id, card.due]);
 
   useEffect(() => {
     async function handlePaste(e: ClipboardEvent) {
@@ -1448,6 +1473,7 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
   const driverTrelloLabel = card.labels.find((l) => l.id === driverLabel?.labelId);
   const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
   const isWaitShipping = card.idList === TRELLO.LISTS.WAIT_SHIPPING;
+  const isShipped = card.idList === TRELLO.LISTS.SHIPPED;
   const checkTotal = card.badges?.checkItems ?? 0;
   const [checkDone, setCheckDone] = useState(card.badges?.checkItemsChecked ?? 0);
 
@@ -1456,6 +1482,7 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
     setIsMoving(true);
     try {
       await moveCardToList(card.id, TRELLO.LISTS.SHIPPED, true);
+      onCardUpdate?.({ idList: TRELLO.LISTS.SHIPPED, dueComplete: true });
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "操作失敗");
     } finally {
@@ -1476,6 +1503,59 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
     }
   }
 
+  async function handleMarkCompleted() {
+    if (!window.confirm("確認將此卡片標記為「完成」？")) return;
+    setIsMoving(true);
+    try {
+      await moveCardToList(card.id, TRELLO.LISTS.COMPLETED, true);
+      onCardUpdate?.({ idList: TRELLO.LISTS.COMPLETED, dueComplete: true });
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "操作失敗");
+    } finally {
+      setIsMoving(false);
+    }
+  }
+
+  async function handleUpdateDue() {
+    if (!dueDatetimeLocal) return;
+    setIsSavingDue(true);
+    try {
+      const iso = new Date(dueDatetimeLocal).toISOString();
+      await updateCardDue(card.id, iso, card.dueComplete ?? false);
+      onCardUpdate?.({ due: iso });
+      setShowDuePicker(false);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "更新失敗");
+    } finally {
+      setIsSavingDue(false);
+    }
+  }
+
+  async function handleCheckPayment() {
+    try {
+      const checklists = await fetchChecklists(card.id);
+      const allItems = checklists.flatMap((cl) => cl.checkItems);
+      const lastDollarItem = [...allItems].reverse().find((item) => item.name.includes("$"));
+      const dollarIndex = lastDollarItem?.name.indexOf("$") ?? -1;
+      const rawAmount = dollarIndex >= 0 ? lastDollarItem!.name.slice(dollarIndex) : "";
+      const cleanAmount = rawAmount.replace("$", "").replace(/,/g, "");
+      const orderNum = card.name.split(" ")[0] ?? "";
+      const driverLabel = drivers.find((d) => card.labels.some((l) => l.id === d.labelId));
+      const cardInfo = {
+        due: card.due ?? "",
+        dueComplete: card.dueComplete ?? false,
+        driverName: driverLabel?.title ?? "",
+      };
+      localStorage.setItem("CHECK_PAYMENT", "1");
+      localStorage.setItem("FINAL_PAYMENT", cleanAmount);
+      localStorage.setItem("ORDER_NUM_PAYMENT", orderNum);
+      localStorage.setItem("CURRENT_CARD_INFO", JSON.stringify(cardInfo));
+      router.push("/remittance");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "查收款項失敗");
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -1490,6 +1570,24 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
               <span className={checkDone === checkTotal ? "text-green-600" : ""}>
                 ☑ {checkDone}/{checkTotal}
               </span>
+            )}
+            {isWaitShipping && (
+              <button
+                onClick={() => void handleMarkShipped()}
+                disabled={isMoving}
+                className="rounded px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
+              >
+                {isMoving ? "…" : "✅ 標記已出貨"}
+              </button>
+            )}
+            {isShipped && (
+              <button
+                onClick={() => void handleMarkCompleted()}
+                disabled={isMoving}
+                className="rounded px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
+              >
+                {isMoving ? "…" : "🏁 標記完成"}
+              </button>
             )}
           </p>
           {scheduleDisplay && (
@@ -1579,16 +1677,13 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
           />
         ) : (
           <div className="space-y-2">
-            {isWaitShipping && (
-              <button
-                onClick={() => void handleMarkShipped()}
-                disabled={isMoving}
-                className="flex w-full items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2.5 text-left text-sm text-green-700 hover:bg-green-100 disabled:opacity-50"
-              >
-                <span className="text-base">✅</span>
-                <span>{isMoving ? "更新中…" : "標記已出貨"}</span>
-              </button>
-            )}
+            <button
+              onClick={() => void handleCheckPayment()}
+              className="flex w-full items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-left text-sm text-green-700 hover:bg-green-100"
+            >
+              <span className="text-base">💰</span>
+              <span>查收款項</span>
+            </button>
             <button
               onClick={() => setView("shipping")}
               className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
@@ -1643,6 +1738,41 @@ function CardDetail({ card, drivers, attachments, onClose }: CardDetailProps) {
               <span className="text-base">✂️</span>
               <span>裁剪工作單</span>
             </button>
+            {showDuePicker ? (
+              <div className="rounded-lg border border-[var(--border)] p-2.5">
+                <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">更改出貨日期</p>
+                <input
+                  type="datetime-local"
+                  value={dueDatetimeLocal}
+                  onChange={(e) => setDueDatetimeLocal(e.target.value)}
+                  className="w-full rounded border border-[var(--border)] bg-[var(--bg-input)] px-2 py-1.5 text-sm"
+                />
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => void handleUpdateDue()}
+                    disabled={isSavingDue || !dueDatetimeLocal}
+                    className="flex-1 rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {isSavingDue ? "儲存中…" : "儲存"}
+                  </button>
+                  <button
+                    onClick={() => setShowDuePicker(false)}
+                    className="rounded px-3 py-1.5 text-sm text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowDuePicker(true)}
+                className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
+              >
+                <span className="text-base">🗓️</span>
+                <span>更改出貨日</span>
+                {dueDate && <span className="ml-auto text-xs text-[var(--text-tertiary)]">{dueDate}</span>}
+              </button>
+            )}
             {showMovePicker ? (
               <div className="rounded-lg border border-[var(--border)] p-2.5">
                 <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">移動到清單...</p>
@@ -1708,6 +1838,7 @@ export function ShippingNoticeClient() {
   const [cardCustomFieldsMap, setCardCustomFieldsMap] = useState<Record<string, CustomFieldItem[]>>({});
   const [previewImages, setPreviewImages] = useState<string[][] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const skipSearchRef = useRef(false);
   const selectedCardId = selectedCard?.id ?? null;
   const previewCardId = selectedCardId ?? cards[0]?.id ?? null;
   // thumbnail URLs for the last image (display in search card)
@@ -1726,10 +1857,33 @@ export function ShippingNoticeClient() {
       .then((lists) => {
         const map: Record<string, string> = {};
         for (const l of lists) map[l.id] = l.name;
-        setListNames(map);
+        // LIST_NAMES 的中文翻譯優先，其餘清單保留 Trello 原名
+        setListNames({ ...map, ...LIST_NAMES });
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const savedQuery = sessionStorage.getItem("shipping_notice_query");
+    const savedCards = sessionStorage.getItem("shipping_notice_cards");
+    if (!savedQuery) return;
+    setQuery(savedQuery);
+    if (savedCards) {
+      try {
+        const parsed = JSON.parse(savedCards) as TrelloCard[];
+        setCards(parsed);
+        if (parsed.length === 1) setSelectedCard(parsed[0]);
+        skipSearchRef.current = true;
+        setSubmittedQuery(savedQuery);
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (submittedQuery && cards.length > 0) {
+      sessionStorage.setItem("shipping_notice_cards", JSON.stringify(cards));
+    }
+  }, [cards, submittedQuery]);
 
   useEffect(() => {
     setCardAttachmentsCardId(previewCardId);
@@ -1750,6 +1904,10 @@ export function ShippingNoticeClient() {
       setSelectedCard(null);
       setCards([]);
       setSearchError("");
+      return;
+    }
+    if (skipSearchRef.current) {
+      skipSearchRef.current = false;
       return;
     }
     setSearching(true);
@@ -1778,6 +1936,7 @@ export function ShippingNoticeClient() {
   function handleSearch() {
     const q = query.trim();
     if (!q) return;
+    sessionStorage.setItem("shipping_notice_query", q);
     setSubmittedQuery(q);
   }
 
@@ -1940,6 +2099,10 @@ export function ShippingNoticeClient() {
               drivers={drivers}
               attachments={cardAttachments}
               onClose={() => setSelectedCard(null)}
+              onCardUpdate={(patch) => {
+                setSelectedCard((prev) => prev ? { ...prev, ...patch } : prev);
+                setCards((prev) => prev.map((c) => c.id === selectedCard.id ? { ...c, ...patch } : c));
+              }}
             />
           </div>
         )}
