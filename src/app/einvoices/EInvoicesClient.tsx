@@ -597,8 +597,9 @@ export function EInvoicesClient() {
     }));
     try {
       const results: BatchIssueItemResult[] = [];
-      for (const snapshot of snapshots) {
-        results.push(await createAndIssue(snapshot));
+      for (let i = 0; i < snapshots.length; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 1200));
+        results.push(await createAndIssue(snapshots[i]!));
       }
       const successCount = results.filter((item) => item.success).length;
       const failedCount = results.length - successCount;
