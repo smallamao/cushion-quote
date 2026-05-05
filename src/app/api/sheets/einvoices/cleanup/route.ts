@@ -10,6 +10,9 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
+  if (session.role !== "admin") {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
 
   const client = await getSheetsClient();
   if (!client) {

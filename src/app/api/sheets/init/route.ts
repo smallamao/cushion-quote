@@ -320,7 +320,12 @@ const DEFAULT_LABOR_ROWS = [
   ["double_daybed", "雙面臥榻", "雙面包覆，基本 4 才。", "4", "2", "210", "20", "2,2.5,3"],
 ];
 
-export async function POST() {
+export async function POST(request: Request) {
+  const secret = process.env.INIT_SECRET?.trim();
+  if (!secret || request.headers.get("x-init-secret") !== secret) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json({ ok: false, error: "Google Sheets 環境變數未設定" }, { status: 503 });

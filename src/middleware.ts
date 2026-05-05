@@ -58,8 +58,7 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/login" ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/linebot") ||
-    pathname === "/api/sheets/init" ||
-    pathname.startsWith("/api/sheets/migrate") ||
+    // init & migrate 改由 x-init-secret header 保護，不列為公開路徑
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
     pathname === "/logo.png" ||
