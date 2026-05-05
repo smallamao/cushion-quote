@@ -183,6 +183,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const includeItems = searchParams.get("includeItems") === "true";
   const includeItemCounts = searchParams.get("includeItemCounts") === "true";
+  const filterCaseId = searchParams.get("caseId")?.trim() ?? "";
 
   const client = await getSheetsClient();
   if (!client) {
@@ -207,7 +208,8 @@ export async function GET(request: Request) {
 
     const orders = (orderRes.data.values ?? [])
       .map(rowToOrder)
-      .filter((o) => o.orderId);
+      .filter((o) => o.orderId)
+      .filter((o) => !filterCaseId || o.caseId === filterCaseId);
 
     if (!needItems || !itemRes) {
       return NextResponse.json({ orders, source: "sheets" as const });
