@@ -1384,6 +1384,9 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
   const [showDuePicker, setShowDuePicker] = useState(false);
   const [dueDatetimeLocal, setDueDatetimeLocal] = useState("");
   const [isSavingDue, setIsSavingDue] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descValue, setDescValue] = useState("");
+  const [isSavingDesc, setIsSavingDesc] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -1524,6 +1527,19 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
       alert(e instanceof Error ? e.message : "更新失敗");
     } finally {
       setIsSavingDue(false);
+    }
+  }
+
+  async function handleUpdateDesc() {
+    setIsSavingDesc(true);
+    try {
+      await trelloPutQ(`cards/${card.id}`, { desc: descValue });
+      onCardUpdate?.({ desc: descValue });
+      setEditingDesc(false);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "更新失敗");
+    } finally {
+      setIsSavingDesc(false);
     }
   }
 
@@ -1802,9 +1818,38 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
                 <span>移動卡片</span>
               </button>
             )}
-            {card.desc && (
-              <div className="mt-3 rounded-lg bg-[var(--surface-2)] p-2.5 text-[11px] leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap">
-                {card.desc}
+            {editingDesc ? (
+              <div className="mt-3 space-y-2">
+                <textarea
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] p-2.5 text-[11px] leading-relaxed text-[var(--text-primary)] resize-none"
+                  rows={6}
+                  value={descValue}
+                  onChange={(e) => setDescValue(e.target.value)}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => void handleUpdateDesc()}
+                    disabled={isSavingDesc}
+                    className="flex-1 rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                  >
+                    {isSavingDesc ? "儲存中…" : "儲存"}
+                  </button>
+                  <button
+                    onClick={() => setEditingDesc(false)}
+                    className="rounded px-3 py-1.5 text-xs text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="mt-3 cursor-pointer rounded-lg bg-[var(--surface-2)] p-2.5 text-[11px] leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap hover:bg-[var(--bg-hover)]"
+                title="點擊編輯說明"
+                onClick={() => { setDescValue(card.desc); setEditingDesc(true); }}
+              >
+                {card.desc || <span className="text-[var(--text-tertiary)] italic">點擊新增說明…</span>}
               </div>
             )}
           </div>
