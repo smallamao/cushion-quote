@@ -1,4 +1,4 @@
-import { PRODUCTS, TRELLO } from "@/lib/trello-constants";
+import { PRODUCTS, S_ORDER_CUSTOM_FIELDS, TRELLO } from "@/lib/trello-constants";
 
 export interface TrelloLabel {
   id: string;
@@ -57,11 +57,30 @@ export function getCustomFieldText(items: CustomFieldItem[], fieldId: string): s
   return items.find((i) => i.idCustomField === fieldId)?.value?.text ?? "";
 }
 
+// Try multiple field IDs in order; returns the first non-empty text value.
+// Useful for cards from different boards that share the same logical field
+// but have different field IDs (e.g. production board vs. S Order board).
+export function getCustomFieldTextAny(items: CustomFieldItem[], ...fieldIds: string[]): string {
+  for (const id of fieldIds) {
+    const val = items.find((i) => i.idCustomField === id)?.value?.text;
+    if (val) return val;
+  }
+  return "";
+}
+
 export function getCustomFieldDate(items: CustomFieldItem[], fieldId: string): Date | null {
   const raw = items.find((i) => i.idCustomField === fieldId)?.value?.date;
   if (!raw) return null;
   const d = new Date(raw);
   return isNaN(d.getTime()) ? null : d;
+}
+
+export function getCustomFieldDateAny(items: CustomFieldItem[], ...fieldIds: string[]): Date | null {
+  for (const id of fieldIds) {
+    const result = getCustomFieldDate(items, id);
+    if (result) return result;
+  }
+  return null;
 }
 
 export function getCustomFieldNumber(items: CustomFieldItem[], fieldId: string): number {
@@ -241,10 +260,10 @@ export function buildCustomerInfoText(card: TrelloCard, customFields: CustomFiel
 export function buildScheduleSMS(card: TrelloCard, customFields: CustomFieldItem[]): string {
   if (!card.due) return "未設置出貨日期";
 
-  const colorStr = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.COLOR).replace(/,/g, "&");
-  let scheduleTextStr = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT);
+  const colorStr = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.COLOR, S_ORDER_CUSTOM_FIELDS.COLOR).replace(/,/g, "&");
+  let scheduleTextStr = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT, S_ORDER_CUSTOM_FIELDS.SCHEDULE_TEXT);
   let accessoriesText = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.ACCESSORIES);
-  let chairLegStyle = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG);
+  let chairLegStyle = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
 
   if (!chairLegStyle) {
     const productLabel = card.labels.find((l) => l.name?.startsWith("成交/"));
@@ -339,8 +358,8 @@ export function buildScheduleSMS(card: TrelloCard, customFields: CustomFieldItem
 // ─────────────── 裁剪工作單 ───────────────
 
 export function buildCuttingWorkOrder(card: TrelloCard, customFields: CustomFieldItem[]): string {
-  let colorStr = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.COLOR).replace(/,/g, "&");
-  const scheduleTextStr = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT);
+  let colorStr = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.COLOR, S_ORDER_CUSTOM_FIELDS.COLOR).replace(/,/g, "&");
+  const scheduleTextStr = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT, S_ORDER_CUSTOM_FIELDS.SCHEDULE_TEXT);
 
   const name = card.name.includes("S") ? card.name : card.name.slice(0, 5);
   let contentMsg = `${name}\n`;

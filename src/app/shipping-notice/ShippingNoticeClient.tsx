@@ -7,7 +7,7 @@ import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navi
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useActiveDrivers } from "@/hooks/useDrivers";
-import { LIST_NAMES, TRELLO } from "@/lib/trello-constants";
+import { LIST_NAMES, S_ORDER_CUSTOM_FIELDS, TRELLO } from "@/lib/trello-constants";
 import type { DriverRecord } from "@/lib/drivers-sheet";
 import {
   buildRepairOrderText,
@@ -16,6 +16,8 @@ import {
   buildShippingMsg,
   buildCustomerInfoText,
   getCustomFieldText,
+  getCustomFieldTextAny,
+  getCustomFieldDateAny,
   getTrelloAttachmentImageUrls,
   getAllTrelloImageUrlGroups,
   getCustomFieldDate,
@@ -96,9 +98,9 @@ async function updateCardDue(cardId: string, iso: string, dueComplete: boolean):
   await trelloPutQ(`cards/${cardId}`, { due: iso, dueComplete: String(dueComplete) });
 }
 
-async function updateCardScheduleDay(cardId: string, iso: string): Promise<void> {
+async function updateCardScheduleDay(cardId: string, iso: string, fieldId: string = TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY): Promise<void> {
   await trelloPutQ(
-    `cards/${cardId}/customField/${TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY}/item`,
+    `cards/${cardId}/customField/${fieldId}/item`,
     {},
     { value: { date: iso } },
   );
@@ -160,25 +162,27 @@ async function addCheckItem(checklistId: string, name: string): Promise<CheckIte
 
 interface FieldDef {
   id: string;
+  // S Order 訂單看板的對應欄位 ID（不同於生產看板）
+  sOrderId?: string;
   label: string;
   type: "text" | "date" | "number";
 }
 
 const CUSTOM_FIELD_DEFS: FieldDef[] = [
-  { id: TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY,           label: "排程日",        type: "date"   },
-  { id: TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT,          label: "排程備註",      type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.COLOR,                  label: "色號",          type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.COMMUNITY_NAME,         label: "社區名稱",      type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.ACCESSORIES,            label: "配件",          type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.CHAIR_LEG,              label: "椅腳",          type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.SEAT_MATERIALS,         label: "坐墊材料",      type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.SOFA_AMOUNT,             label: "沙發",          type: "number" },
-  { id: TRELLO.CUSTOM_FIELDS.FURNITURE_AMOUNT,       label: "傢俱",          type: "number" },
-  { id: TRELLO.CUSTOM_FIELDS.BEDDING_AMOUNT,         label: "床組",          type: "number" },
-  { id: TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME,   label: "主要聯絡人",    type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE,  label: "主要電話",      type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME, label: "次要聯絡人",    type: "text"   },
-  { id: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE,label: "次要電話",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY,           sOrderId: S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY,   label: "排程日",        type: "date"   },
+  { id: TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT,          sOrderId: S_ORDER_CUSTOM_FIELDS.SCHEDULE_TEXT,  label: "排程備註",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.COLOR,                  sOrderId: S_ORDER_CUSTOM_FIELDS.COLOR,          label: "色號",          type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.COMMUNITY_NAME,                                                         label: "社區名稱",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.ACCESSORIES,                                                            label: "配件",          type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.CHAIR_LEG,              sOrderId: S_ORDER_CUSTOM_FIELDS.CHAIR_LEG,      label: "椅腳",          type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.SEAT_MATERIALS,         sOrderId: S_ORDER_CUSTOM_FIELDS.SEAT_MATERIALS, label: "坐墊材料",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.SOFA_AMOUNT,                                                            label: "沙發",          type: "number" },
+  { id: TRELLO.CUSTOM_FIELDS.FURNITURE_AMOUNT,                                                       label: "傢俱",          type: "number" },
+  { id: TRELLO.CUSTOM_FIELDS.BEDDING_AMOUNT,                                                         label: "床組",          type: "number" },
+  { id: TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME,                                                   label: "主要聯絡人",    type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE,                                                  label: "主要電話",      type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME,                                                 label: "次要聯絡人",    type: "text"   },
+  { id: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE,                                                label: "次要電話",      type: "text"   },
 ];
 
 // ─── localStorage keys ────────────────────────────────────────
@@ -684,7 +688,10 @@ function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
       // Always update schedule day if provided
       if (scheduleDate) {
         const iso = new Date(scheduleDate).toISOString();
-        await updateCardScheduleDay(card.id, iso);
+        const scheduleDayFieldId = customFields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY)
+          ? S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY
+          : TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY;
+        await updateCardScheduleDay(card.id, iso, scheduleDayFieldId);
         localStorage.setItem(LS_PRODUCTION_DATE, scheduleDate);
       }
       setSaveMsg("✓ 已更新");
@@ -700,7 +707,7 @@ function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
     const nameParts = card.name.split(/\s+/);
     const ordNum = nameParts[0] ?? card.name;
     const ordName = chairLegMode
-      ? getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG)
+      ? getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG)
       : (nameParts[1] ?? "");
     setPrintLabel({ ordNum, ordName });
   }
@@ -720,10 +727,10 @@ function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
       {/* 生產資訊摘要 */}
       {(() => {
         const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
-        const color = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.COLOR);
-        const scheduleText = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT);
-        const seatMaterials = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SEAT_MATERIALS);
-        const chairLeg = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG);
+        const color = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.COLOR, S_ORDER_CUSTOM_FIELDS.COLOR);
+        const scheduleText = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT, S_ORDER_CUSTOM_FIELDS.SCHEDULE_TEXT);
+        const seatMaterials = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.SEAT_MATERIALS, S_ORDER_CUSTOM_FIELDS.SEAT_MATERIALS);
+        const chairLeg = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
         const rows: [string, string][] = [
           ...(styleLabel ? [["款式", styleLabel.name.replace("成交/", "")] as [string, string]] : []),
           ...(color ? [["布色", color.replace(/,/g, " & ")] as [string, string]] : []),
@@ -951,8 +958,17 @@ function CustomFieldsView({
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
+  function resolveFieldId(field: FieldDef): string {
+    // If the card has data under the S Order field ID, use that for reads/writes.
+    if (field.sOrderId && customFields.some((cf) => cf.idCustomField === field.sOrderId)) {
+      return field.sOrderId;
+    }
+    return field.id;
+  }
+
   function getCurrentValue(field: FieldDef): string {
-    const item = customFields.find((cf) => cf.idCustomField === field.id);
+    const activeId = resolveFieldId(field);
+    const item = customFields.find((cf) => cf.idCustomField === activeId);
     if (!item?.value) return "";
     if (field.type === "date" && item.value.date) {
       const d = new Date(item.value.date);
@@ -976,11 +992,12 @@ function CustomFieldsView({
 
   function startEdit(field: FieldDef) {
     setDraft(getCurrentValue(field));
-    setEditingId(field.id);
+    setEditingId(resolveFieldId(field));
   }
 
   async function handleSave(field: FieldDef) {
     setSaving(true);
+    const activeId = resolveFieldId(field);
     try {
       let value: CustomFieldItem["value"];
       if (field.type === "date") {
@@ -990,8 +1007,8 @@ function CustomFieldsView({
       } else {
         value = draft ? { text: draft } : {};
       }
-      await updateCustomField(card.id, field.id, value);
-      onUpdate(field.id, value);
+      await updateCustomField(card.id, activeId, value);
+      onUpdate(activeId, value);
       setEditingId(null);
     } catch {
       alert("儲存失敗，請重試");
@@ -1014,7 +1031,7 @@ function CustomFieldsView({
 
       <div className="overflow-hidden rounded-lg border border-[var(--border)]">
         {CUSTOM_FIELD_DEFS.map((field, i) => {
-          const isEditing = editingId === field.id;
+          const isEditing = editingId === resolveFieldId(field);
           const display = getDisplayValue(field);
           return (
             <div
@@ -1461,7 +1478,7 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
         return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} (${DAY_NAMES[d.getDay()] ?? ""}) ${hour}:${min}`;
       })()
     : null;
-  const scheduleDay = getCustomFieldDate(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY);
+  const scheduleDay = getCustomFieldDateAny(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY, S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY);
   const scheduleDisplay = scheduleDay
     ? (() => {
         const d = scheduleDay;
@@ -2019,8 +2036,8 @@ export function ShippingNoticeClient() {
           {cards.map((card) => {
             const listName = listNames[card.idList] ?? card.idList;
             const cardCF = cardCustomFieldsMap[card.id] ?? [];
-            const scheduleDate = getCustomFieldDate(cardCF, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY);
-            const scheduleText = getCustomFieldText(cardCF, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT);
+            const scheduleDate = getCustomFieldDateAny(cardCF, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY, S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY);
+            const scheduleText = getCustomFieldTextAny(cardCF, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT, S_ORDER_CUSTOM_FIELDS.SCHEDULE_TEXT);
             const cardDayNames = ["日", "一", "二", "三", "四", "五", "六"] as const;
             const scheduleDisplay = (() => {
               if (!scheduleDate) return null;

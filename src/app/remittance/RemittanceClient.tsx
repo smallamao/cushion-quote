@@ -91,6 +91,12 @@ const BANK_ACCOUNTS: BankAccount[] = [
 
 const QUICK_AMOUNTS = [3000, 5000, 10000, 15000, 20000];
 
+interface CardInfo {
+  due: string;
+  dueComplete: boolean;
+  driverName: string;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getPayDeadline(isBalance: boolean): string {
@@ -103,6 +109,19 @@ function getPayDeadline(isBalance: boolean): string {
 function toRocDate(date: Date): string {
   const y = date.getFullYear() - 1911;
   return `${y}/${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+const DAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"] as const;
+
+function formatShippingDate(isoString: string): string {
+  const d = new Date(isoString);
+  const rocYear = d.getFullYear() - 1911;
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const day = DAY_NAMES[d.getDay()];
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `民國${rocYear}年${mm}月${dd}日 星期${day} ${hh}:${min}`;
 }
 
 function buildRemittanceMessage(
@@ -145,7 +164,8 @@ function buildReceiptMessage(
   msgType: MessageType,
   isBalance: boolean,
   linepayCode: string,
-  isPotatoAccount: boolean = true  // 完整記錄匯款時：false=陳金水（不加〔馬鈴薯沙發〕）
+  isPotatoAccount: boolean = true,
+  cardInfo?: CardInfo,
 ): string {
   const today = new Date();
   const rocDate = toRocDate(today);
@@ -173,7 +193,19 @@ function buildReceiptMessage(
   if (paymentType === "匯款" && lastFive) {
     lines.push(`帳號末五碼：${lastFive}`);
   }
-  if (isBalance) lines.push(`\n【尾款】`);
+  if (isBalance) {
+    lines.push(`\n【尾款】`);
+    if (cardInfo) {
+      if (cardInfo.driverName) lines.push(`物流司機：${cardInfo.driverName}`);
+      if (cardInfo.due) lines.push(`出貨日：${formatShippingDate(cardInfo.due)}`);
+      if (!cardInfo.dueComplete) {
+        lines.push(`******`);
+        lines.push(`訂單尚未出貨`);
+        lines.push(`請於「收款聯」紅單註記簽收`);
+        lines.push(`******`);
+      }
+    }
+  }
   lines.push(``);
   lines.push(`【客戶回覆聯】`);
   lines.push(clientReply);
@@ -193,8 +225,27 @@ export function RemittanceClient() {
   const [linepayCode, setLinepayCode] = useState("");
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [cardInfo, setCardInfo] = useState<CardInfo | null>(null);
 
   useEffect(() => {
+    if (localStorage.getItem("CHECK_PAYMENT") === "1") {
+      const finalPayment = localStorage.getItem("FINAL_PAYMENT") ?? "";
+      const orderNum = localStorage.getItem("ORDER_NUM_PAYMENT") ?? "";
+      const rawCardInfo = localStorage.getItem("CURRENT_CARD_INFO");
+      setAmount(finalPayment);
+      setOrderNumber(orderNum);
+      if (orderNum) localStorage.setItem("remittance_order_number", orderNum);
+      setPaymentType("匯款");
+      setIsBalance(true);
+      if (rawCardInfo) {
+        try { setCardInfo(JSON.parse(rawCardInfo) as CardInfo); } catch { /* ignore */ }
+      }
+      localStorage.removeItem("CHECK_PAYMENT");
+      localStorage.removeItem("FINAL_PAYMENT");
+      localStorage.removeItem("ORDER_NUM_PAYMENT");
+      localStorage.removeItem("CURRENT_CARD_INFO");
+      return;
+    }
     const saved = localStorage.getItem("remittance_order_number");
     if (saved) setOrderNumber(saved);
   }, []);
@@ -217,13 +268,13 @@ export function RemittanceClient() {
       setShowAccountPicker(true);
       return;
     }
-    const msg = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, msgType, isBalance, linepayCode);
+    const msg = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, msgType, isBalance, linepayCode, true, cardInfo ?? undefined);
     setModal({ title: "收款確認", message: msg });
   }
 
   function handleAccountPick(isPotatoAccount: boolean) {
     setShowAccountPicker(false);
-    const msg = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, msgType, isBalance, linepayCode, isPotatoAccount);
+    const msg = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, msgType, isBalance, linepayCode, isPotatoAccount, cardInfo ?? undefined);
     setModal({ title: "收款確認", message: msg });
   }
 
