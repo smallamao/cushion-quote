@@ -1050,11 +1050,13 @@ export function QuoteEditor() {
       });
       let loadedQuoteName = "";
       let currentCaseName = "";
+      let loadedClientId = "";
       if (quoteResponse.ok) {
         const caseData = (await quoteResponse.json()) as { case: CaseRecord; quotes: Array<{ quote: QuotePlanRecord; versions: QuoteVersionRecord[] }> };
         const quotePlan = caseData.quotes.find((q) => q.quote.quoteId === resolvedQuoteId);
         loadedQuoteName = quotePlan?.quote.quoteName || "";
         currentCaseName = caseData.case.caseName || "";
+        loadedClientId = caseData.case.clientId || "";
       }
 
       const sourceDetails = await loadCaseSourceDetails(resolvedCaseId);
@@ -1070,7 +1072,7 @@ export function QuoteEditor() {
         version.validUntil ||
           addDaysIso(version.quoteDate || todayIso(), settings.quoteValidityDays),
       );
-      setSelectedClientId("");
+      setSelectedClientId(loadedClientId);
       setCompanyName(version.clientNameSnapshot || "");
       setContactName(version.contactNameSnapshot || "");
       setPhone(version.clientPhoneSnapshot || "");
