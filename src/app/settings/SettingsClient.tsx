@@ -28,8 +28,9 @@ import { EquipmentCatalogPanel } from "@/components/equipment/EquipmentCatalogPa
 import { SuppliersManagementPanel } from "@/components/suppliers/SuppliersManagementPanel";
 import { UsersManagementPanel } from "@/components/users/UsersManagementPanel";
 import { DriversManagementPanel } from "@/components/settings/DriversManagementPanel";
+import { MonthlyReportExportPanel } from "@/components/settings/MonthlyReportExportPanel";
 
-type SettingsTab = "general" | "clients" | "equipment" | "suppliers" | "users" | "drivers";
+type SettingsTab = "general" | "clients" | "equipment" | "suppliers" | "users" | "drivers" | "reports";
 
 const VALID_TABS: readonly SettingsTab[] = [
   "general",
@@ -38,6 +39,7 @@ const VALID_TABS: readonly SettingsTab[] = [
   "suppliers",
   "users",
   "drivers",
+  "reports",
 ];
 
 function NumberField({
@@ -179,6 +181,7 @@ export function SettingsClient() {
           <TabsTrigger value="suppliers">廠商管理</TabsTrigger>
           <TabsTrigger value="users">使用者與權限</TabsTrigger>
           <TabsTrigger value="drivers">司機管理</TabsTrigger>
+          <TabsTrigger value="reports">報表匯出</TabsTrigger>
           <TabsTrigger value="maintenance">系統維護</TabsTrigger>
         </TabsList>
 
@@ -482,6 +485,18 @@ export function SettingsClient() {
             </div>
             <div className="px-6 py-4">
               <DriversManagementPanel />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="reports">
+          <div className="card-surface rounded-[var(--radius-lg)]">
+            <div className="border-b border-[var(--border)] px-6 py-3">
+              <span className="text-sm font-medium">Trello 月報匯出</span>
+              <span className="ml-2 text-xs text-[var(--text-secondary)]">依出貨日期區間產生 3 份 CSV 報表</span>
+            </div>
+            <div className="px-6 py-4">
+              <MonthlyReportExportPanel />
             </div>
           </div>
         </TabsContent>
