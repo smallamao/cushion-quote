@@ -24,13 +24,16 @@ export function MessageResultModal({
   async function handleCopy() {
     await navigator.clipboard.writeText(message);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => {
+      setCopied(false);
+      onClose();
+    }, 1000);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded-t-2xl bg-[var(--bg-elevated)] sm:rounded-2xl">
+      <div className="relative z-10 w-full max-w-2xl rounded-t-2xl bg-[var(--bg-elevated)] sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <span className="text-sm font-semibold text-[var(--text-primary)]">
             {title}
@@ -47,8 +50,8 @@ export function MessageResultModal({
           <textarea
             readOnly
             value={message}
-            rows={10}
-            className="w-full resize-none rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-3 font-mono text-xs text-[var(--text-primary)] focus:outline-none"
+            rows={14}
+            className="w-full resize-none rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] p-3 font-mono text-xs text-[var(--text-primary)] focus:outline-none leading-relaxed"
           />
         </div>
 

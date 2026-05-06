@@ -1,4 +1,8 @@
-import { type BackrestStyle } from "@/lib/sofa-addons-config"
+import { ARMREST_OPTIONS, PLATFORM_STORAGE_STYLES, type BackrestStyle } from "@/lib/sofa-addons-config"
+
+export const SMALL_CHAIR_STYLES = ["小置物椅", "豆腐椅", "斜娃椅", "小圓凳", "圓凳", "小饅頭椅"] as const
+export type SmallChairStyle = typeof SMALL_CHAIR_STYLES[number]
+export type PlatformMode = "none" | "changeStorage" | "swapSmallChairs"
 
 // ─── Products ────────────────────────────────────────────────────────────────
 
@@ -185,13 +189,28 @@ const PRICE_WIRELESS = 1200
 const PRICE_PLATFORM_NO_STORAGE = -1000
 const PRICE_BACKREST_CHANGE_PER_SEAT = 500
 const PRICE_STORAGE_PLATFORM_CHANGE = 1500
+const PRICE_SEAT_DEPTH_PER_UNIT = 1500
+const PRICE_BACK_HEIGHT_PER_UNIT = 1200
+const DIM_PRICING_UNIT_CM = 6
+
+export function calcSeatDepthFee(adjCm: number): number {
+  if (adjCm <= 0) return 0;
+  return Math.ceil(adjCm / DIM_PRICING_UNIT_CM) * PRICE_SEAT_DEPTH_PER_UNIT;
+}
+
+export function calcBackHeightFee(adjCm: number): number {
+  if (adjCm <= 0) return 0;
+  return Math.ceil(adjCm / DIM_PRICING_UNIT_CM) * PRICE_BACK_HEIGHT_PER_UNIT;
+}
 
 // ─── Add-on Options ────────────────────────────────────────────────────────────
 
 export interface SofaAddons {
   // 既有選項
   groundOption: "none" | "half" | "full"
-  heightReduction: boolean
+  heightReductionCm: number
+  seatDepthAdj: number
+  backHeightAdj: number
   removeArmrestCount: number
   usbCount: number
   removeStandardUsb: boolean
@@ -210,19 +229,29 @@ export interface SofaAddons {
   rightBoomStorage: boolean
   leftPillowFill: string
   rightPillowFill: string
+  obaCustomFrame: boolean
   // 改背枕
   backrestChange: boolean
   backrestTargetStyle: BackrestStyle | ""
-  // 改置物平台
-  changeStoragePlatform: boolean
+  backrestPillowFill: string
+  // 改平台
+  platformMode: PlatformMode
   storagePlatformStyle: string
   storagePlatformWidthAdj: number
   storagePlatformDepthAdj: number
+  smallChair1Style: string
+  smallChair1Color: string
+  smallChair1Leg: string
+  smallChair2Style: string
+  smallChair2Color: string
+  smallChair2Leg: string
 }
 
 export const DEFAULT_ADDONS: SofaAddons = {
   groundOption: "none",
-  heightReduction: false,
+  heightReductionCm: 0,
+  seatDepthAdj: 0,
+  backHeightAdj: 0,
   removeArmrestCount: 0,
   usbCount: 0,
   removeStandardUsb: false,
@@ -239,22 +268,32 @@ export const DEFAULT_ADDONS: SofaAddons = {
   rightBoomStorage: false,
   leftPillowFill: "",
   rightPillowFill: "",
+  obaCustomFrame: false,
   backrestChange: false,
   backrestTargetStyle: "",
-  changeStoragePlatform: false,
+  backrestPillowFill: "",
+  platformMode: "none",
   storagePlatformStyle: "",
   storagePlatformWidthAdj: 0,
   storagePlatformDepthAdj: 0,
+  smallChair1Style: "",
+  smallChair1Color: "",
+  smallChair1Leg: "",
+  smallChair2Style: "",
+  smallChair2Color: "",
+  smallChair2Leg: "",
 }
+
+export const NO_SLIDE_RAIL_STYLES = ["ELEC", "POINT", "BSK", "BJ", "EDSON", "FLA", "HANA", "HAILY"]
 
 export function getSlideRailRate(productCode: string): number {
   return ["BOOM", "BOOMs"].includes(productCode) ? 800 : 1000;
 }
 
-export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0): number {
+export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0, platformAdjFee = 0): number {
   const groundCost = addons.groundOption === "full" ? PRICE_GROUND_FULL
     : addons.groundOption === "half" ? PRICE_GROUND_HALF : 0;
-  const heightDiscount = addons.heightReduction ? PRICE_HEIGHT_REDUCTION : 0;
+  const heightDiscount = addons.heightReductionCm > 0 ? PRICE_HEIGHT_REDUCTION : 0;
   const armrestDiscount = addons.removeArmrestCount * PRICE_ARMREST_REMOVAL;
   const usbCost = addons.usbCount * PRICE_USB;
   const removeUsbDiscount = addons.removeStandardUsb ? PRICE_REMOVE_STANDARD_USB : 0;
@@ -262,10 +301,22 @@ export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0): numb
   const slideRailCost = addons.slideRailCount * addons.slideRailRatePerSeat;
   const platformNoStorageDiscount = addons.platformNoStorage ? PRICE_PLATFORM_NO_STORAGE : 0;
   const backrestCost = (addons.backrestChange && addons.backrestTargetStyle) ? PRICE_BACKREST_CHANGE_PER_SEAT * seatCount : 0;
-  const changeStorageFee = (addons.changeStoragePlatform && addons.storagePlatformStyle) ? PRICE_STORAGE_PLATFORM_CHANGE : 0;
+  const changeStorageFee = (addons.platformMode === "changeStorage" && addons.storagePlatformStyle) ? PRICE_STORAGE_PLATFORM_CHANGE : 0;
+  const obaFrameCost = (() => {
+    if (!addons.obaCustomFrame || addons.armMode === "none") return 0;
+    const effectiveRight = addons.armMode === "both_same" ? addons.leftArmCode : addons.rightArmCode;
+    const sides = addons.armMode === "both_same" ? [addons.leftArmCode, addons.leftArmCode]
+      : addons.armMode === "both_different" ? [addons.leftArmCode, effectiveRight]
+      : addons.armMode === "left_only" ? [addons.leftArmCode]
+      : [effectiveRight];
+    return sides.filter((c) => c === "OBA").length * 1000;
+  })();
+  const seatDepthCost = calcSeatDepthFee(addons.seatDepthAdj);
+  const backHeightCost = calcBackHeightFee(addons.backHeightAdj);
   return groundCost + heightDiscount + armrestDiscount + usbCost
     + removeUsbDiscount + wirelessCost + slideRailCost + platformNoStorageDiscount
-    + backrestCost + changeStorageFee + armCost;
+    + backrestCost + changeStorageFee + armCost + platformAdjFee + obaFrameCost
+    + seatDepthCost + backHeightCost;
 }
 
 export function buildQuoteOutput(
@@ -276,10 +327,12 @@ export function buildQuoteOutput(
   basePrice: number,
   addons?: SofaAddons,
   armCost = 0,
+  platformAdjFee = 0,
+  legStyle?: string,
 ): QuoteOutput {
   const lc = calcLShape(product, basePrice)
   const wc = calcWidthAdjustment(inputWidth, product, seatCount, grade)
-  const addonTotal = addons ? calcAddons(addons, seatCount, armCost) : 0
+  const addonTotal = addons ? calcAddons(addons, seatCount, armCost, platformAdjFee) : 0
 
   const isEdsonBj = ['EDSON', 'BJ'].includes(product.displayName)
   const reductionText = getReductionDiscount(product, inputWidth)
@@ -330,10 +383,11 @@ export function buildQuoteOutput(
   const grandTotal = sofaTotal + addonTotal
   copyLines.push(`${grade.materialDescription} $${fmtAmount(grandTotal)}`)
   if (reductionText) copyLines.push(reductionText)
-  copyLines.push(`平台尺寸w${product.footSeatSize}cm`)
-  copyLines.push(`椅腳樣式：${product.defaultFoot}`)
+  if (addons?.platformMode !== "changeStorage" || !addons.storagePlatformStyle) {
+    copyLines.push(`平台尺寸w${product.footSeatSize}cm`)
+  }
+  copyLines.push(`椅腳樣式：${legStyle ?? product.defaultFoot}`)
   copyLines.push('')
-  copyLines.push(`扣除平台 - $${fmtAmount(lc.platform)}`)
   if (['BOOM', 'LEMON', 'MULE'].includes(product.displayName)) {
     copyLines.push('訂平台無置物 - $1,000')
   }
@@ -346,12 +400,21 @@ export function buildQuoteOutput(
     copyLines.push('扣除煞車滑軌 - $3,000')
   }
 
-  if (addons && addonTotal !== 0) {
+  if (addons && (addonTotal !== 0 || addons.platformMode === "swapSmallChairs" || addons.seatDepthAdj !== 0 || addons.backHeightAdj > 0)) {
     copyLines.push('')
     copyLines.push('【進階選項】')
     if (addons.groundOption === "half") copyLines.push(`桶身落地（半落地）+${fmtAmount(PRICE_GROUND_HALF)}`)
     if (addons.groundOption === "full") copyLines.push(`桶身落地（全落地）+${fmtAmount(PRICE_GROUND_FULL)}`)
-    if (addons.heightReduction) copyLines.push(`高度削減 4~6cm ${fmtAmount(PRICE_HEIGHT_REDUCTION)}`)
+    if (addons.heightReductionCm > 0) copyLines.push(`高度削減 ${addons.heightReductionCm}cm ${fmtAmount(PRICE_HEIGHT_REDUCTION)}`)
+    if (addons.seatDepthAdj !== 0) {
+      const fee = calcSeatDepthFee(addons.seatDepthAdj);
+      const label = addons.seatDepthAdj > 0 ? `坐深加深 +${addons.seatDepthAdj}cm +$${fmtAmount(fee)}` : `坐深縮減 ${addons.seatDepthAdj}cm（免費）`;
+      copyLines.push(label);
+    }
+    if (addons.backHeightAdj > 0) {
+      const fee = calcBackHeightFee(addons.backHeightAdj);
+      copyLines.push(`椅背加高 +${addons.backHeightAdj}cm +$${fmtAmount(fee)}`);
+    }
     if (addons.removeArmrestCount > 0) {
       const total = addons.removeArmrestCount * Math.abs(PRICE_ARMREST_REMOVAL);
       copyLines.push(`移除扶手 ×${addons.removeArmrestCount} -${fmtAmount(total)}`)
@@ -370,15 +433,61 @@ export function buildQuoteOutput(
       copyLines.push(`加裝滑軌 ×${addons.slideRailCount}座 +${fmtAmount(total)}`)
     }
     if (addons.platformNoStorage) copyLines.push(`平台無置物 ${fmtAmount(PRICE_PLATFORM_NO_STORAGE)}`)
+    if (addons.platformMode === "changeStorage" && addons.storagePlatformStyle) {
+      const ps = PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle);
+      const pw = ps ? ps.standardWidth + addons.storagePlatformWidthAdj : 0;
+      const pd = ps ? ps.standardDepth + addons.storagePlatformDepthAdj : 0;
+      const dimPart = ps ? ` w${pw}×${pd}cm` : "";
+      const totalFee = PRICE_STORAGE_PLATFORM_CHANGE + platformAdjFee;
+      copyLines.push(`改 ${addons.storagePlatformStyle} 置物平台${dimPart} +$${fmtAmount(totalFee)}`);
+    }
+    if (addons.platformMode === "swapSmallChairs") {
+      const chairLine = (style: string, color: string, leg: string) => {
+        const colorPart = color ? `  色號${color}` : "";
+        const legPart = leg ? `  椅腳${leg}` : "";
+        return `${style || "未選"}${colorPart}${legPart}`;
+      };
+      copyLines.push(`換兩張小椅子`);
+      copyLines.push(`①${chairLine(addons.smallChair1Style, addons.smallChair1Color, addons.smallChair1Leg)}`);
+      copyLines.push(`②${chairLine(addons.smallChair2Style, addons.smallChair2Color, addons.smallChair2Leg)}`);
+    }
     if (addons.backrestChange && addons.backrestTargetStyle) {
       const cost = PRICE_BACKREST_CHANGE_PER_SEAT * seatCount;
-      copyLines.push(`改背枕（${addons.backrestTargetStyle}）+${fmtAmount(cost)}`);
+      const pillowPart = addons.backrestPillowFill ? `（${addons.backrestPillowFill}）` : "";
+      copyLines.push(`改${addons.backrestTargetStyle}背枕${pillowPart} +$${fmtAmount(cost)}`);
     }
-    if (addons.changeStoragePlatform && addons.storagePlatformStyle) {
-      copyLines.push(`改置物平台（${addons.storagePlatformStyle}）+${fmtAmount(PRICE_STORAGE_PLATFORM_CHANGE)}`);
-    }
-    if (armCost > 0) {
-      copyLines.push(`改扶手 +${fmtAmount(armCost)}`);
+    if (armCost > 0 && addons.armMode !== "none") {
+      const findArm = (code: string) => ARMREST_OPTIONS.find((o) => o.code === code);
+      const effectiveRight = addons.armMode === "both_same" ? addons.leftArmCode : addons.rightArmCode;
+      const leftOpt = findArm(addons.leftArmCode);
+      const rightOpt = findArm(effectiveRight);
+
+      const armLine = (opt: typeof leftOpt, width: number, pillow: string, fee: number, prefix: string) => {
+        if (!opt) return "";
+        const widthPart = opt.customizable_width ? ` w${width}cm` : "";
+        const pillowPart = opt.has_pillow && pillow ? `（${pillow}）` : "";
+        return `${prefix}改${opt.name}扶手${widthPart}${pillowPart} +$${fmtAmount(fee)}`;
+      };
+
+      if (addons.armMode === "both_same" && leftOpt) {
+        copyLines.push(armLine(leftOpt, addons.leftArmWidth, addons.leftPillowFill, armCost, ""));
+      } else if (addons.armMode === "left_only" && leftOpt) {
+        copyLines.push(armLine(leftOpt, addons.leftArmWidth, addons.leftPillowFill, leftOpt.total_fee, "左側"));
+      } else if (addons.armMode === "right_only" && rightOpt) {
+        copyLines.push(armLine(rightOpt, addons.rightArmWidth, addons.rightPillowFill, rightOpt.total_fee, "右側"));
+      } else if (addons.armMode === "both_different") {
+        if (leftOpt) copyLines.push(armLine(leftOpt, addons.leftArmWidth, addons.leftPillowFill, leftOpt.total_fee, "左側"));
+        if (rightOpt) copyLines.push(armLine(rightOpt, addons.rightArmWidth, addons.rightPillowFill, rightOpt.total_fee, "右側"));
+      }
+      if (addons.obaCustomFrame) {
+        const effectiveRight2 = addons.armMode === "both_same" ? addons.leftArmCode : addons.rightArmCode;
+        const sides = addons.armMode === "both_same" ? [addons.leftArmCode, addons.leftArmCode]
+          : addons.armMode === "both_different" ? [addons.leftArmCode, effectiveRight2]
+          : addons.armMode === "left_only" ? [addons.leftArmCode]
+          : [effectiveRight2];
+        const obaCount = sides.filter((c) => c === "OBA").length;
+        if (obaCount > 0) copyLines.push(`訂製歐巴扶手框 ×${obaCount} +$${fmtAmount(obaCount * 1000)}`);
+      }
     }
   }
 

@@ -11,7 +11,11 @@ import {
   fmtAmount,
   DEFAULT_ADDONS,
   calcAddons,
+  calcSeatDepthFee,
+  calcBackHeightFee,
   getSlideRailRate,
+  NO_SLIDE_RAIL_STYLES,
+  SMALL_CHAIR_STYLES,
   type SofaProduct,
   type MaterialGrade,
   type SofaAddons,
@@ -212,12 +216,17 @@ export function SofaQuoteClient() {
   const [showGradePicker, setShowGradePicker] = useState(false);
   const [modal, setModal] = useState<{ detail: string; copy: string } | null>(null);
   const [addons, setAddons] = useState<SofaAddons>(DEFAULT_ADDONS);
+  const [legStyle, setLegStyle] = useState(SOFA_PRODUCTS[0].defaultFoot);
   const [showAddons, setShowAddons] = useState(false);
   const [showArmPanel, setShowArmPanel] = useState(false);
   const [showLeftArmPicker, setShowLeftArmPicker] = useState(false);
   const [showRightArmPicker, setShowRightArmPicker] = useState(false);
+  const [showBackrestPanel, setShowBackrestPanel] = useState(false);
   const [showBackrestPicker, setShowBackrestPicker] = useState(false);
+  const [showPlatformPanel, setShowPlatformPanel] = useState(false);
   const [showPlatformStylePicker, setShowPlatformStylePicker] = useState(false);
+  const [showSmallChair1Picker, setShowSmallChair1Picker] = useState(false);
+  const [showSmallChair2Picker, setShowSmallChair2Picker] = useState(false);
 
   const product: SofaProduct = SOFA_PRODUCTS[productIdx];
   const grade: MaterialGrade = MATERIAL_GRADES[gradeIdx];
@@ -247,16 +256,45 @@ export function SofaQuoteClient() {
 
   const leftCompat = getArmCompat(product.displayName, addons.leftArmCode);
   const rightCompat = getArmCompat(product.displayName, effectiveRightCode);
+  const hasObaArm = addons.armMode !== "none" && (
+    (addons.armMode !== "right_only" && addons.leftArmCode === "OBA") ||
+    (addons.armMode === "right_only" && effectiveRightCode === "OBA") ||
+    (addons.armMode === "both_different" && effectiveRightCode === "OBA")
+  );
   const armCost = useMemo(
     () => calcArmCost(addons.armMode, addons.leftArmCode, effectiveRightCode),
     [addons.armMode, addons.leftArmCode, effectiveRightCode],
   );
 
-  const addonTotal = useMemo(() => calcAddons(addons, seatCount, armCost), [addons, seatCount, armCost]);
-
   const selectedPlatformBase = PLATFORM_STORAGE_STYLES.find(
     (p) => p.code === addons.storagePlatformStyle,
   ) ?? null;
+
+  const platformDimFees = useMemo(() => {
+    if (addons.platformMode !== "changeStorage" || !addons.storagePlatformStyle || !selectedPlatformBase) {
+      return { width: 0, depth: 0 };
+    }
+    const { storagePlatformWidthAdj: wAdj, storagePlatformDepthAdj: dAdj } = addons;
+    const hasEnlargement = wAdj > 0 || dAdj > 0;
+    const widthFee = wAdj > 0 ? calcPlatformFee(wAdj, grade.ratePerSeatPerCm)
+      : wAdj < 0 && !hasEnlargement ? 500 : 0;
+    const depthFee = dAdj > 0 ? calcPlatformFee(dAdj, grade.ratePerSeatPerCm)
+      : dAdj < 0 && !hasEnlargement ? 500 : 0;
+    return { width: widthFee, depth: depthFee };
+  }, [addons.platformMode, addons.storagePlatformStyle, addons.storagePlatformWidthAdj, addons.storagePlatformDepthAdj, selectedPlatformBase, grade.ratePerSeatPerCm]);
+
+  const storagePlatformAdjFee = useMemo(
+    () => platformDimFees.width + platformDimFees.depth,
+    [platformDimFees],
+  );
+
+  const addonTotal = useMemo(() => calcAddons(addons, seatCount, armCost, storagePlatformAdjFee), [addons, seatCount, armCost, storagePlatformAdjFee]);
+
+  // 只計算「進階選項」card 自己的子項，不含改扶手／改背枕／改平台
+  const advancedOnlyTotal = useMemo(() => calcAddons(
+    { ...addons, armMode: "none", backrestChange: false, platformMode: "none" },
+    seatCount, 0, 0,
+  ), [addons, seatCount]);
 
   function handleProductSelect(p: SofaProduct, idx: number) {
     setProductIdx(idx);
@@ -264,6 +302,7 @@ export function SofaQuoteClient() {
     setSeatCount(p.defaultSeat);
     setPlatformW(null);
     setPlatformH(null);
+    setLegStyle(p.defaultFoot);
     setAddons((prev) => ({
       ...prev,
       slideRailRatePerSeat: getSlideRailRate(p.displayName),
@@ -271,10 +310,17 @@ export function SofaQuoteClient() {
       platformNoStorage: false,
       backrestChange: false,
       backrestTargetStyle: "",
-      changeStoragePlatform: false,
+      backrestPillowFill: "",
+      platformMode: "none",
       storagePlatformStyle: "",
       storagePlatformWidthAdj: 0,
       storagePlatformDepthAdj: 0,
+      smallChair1Style: "",
+      smallChair1Color: "",
+      smallChair1Leg: "",
+      smallChair2Style: "",
+      smallChair2Color: "",
+      smallChair2Leg: "",
     }));
   }
 
@@ -298,12 +344,15 @@ export function SofaQuoteClient() {
       updates.rightBoomStorage = opt.storage_default;
       updates.rightPillowFill = opt.has_pillow ? (opt.pillow_default ?? firstPillow) : "";
     }
+    const newLeft = updates.leftArmCode ?? addons.leftArmCode;
+    const newRight = addons.armMode === "both_same" ? newLeft : (updates.rightArmCode ?? addons.rightArmCode);
+    if (newLeft !== "OBA" && newRight !== "OBA") updates.obaCustomFrame = false;
     setAddons((prev) => ({ ...prev, ...updates }));
   }
 
   function handleQuote() {
     if (!basePrice) return;
-    const result = buildQuoteOutput(product, grade, inputWidth, seatCount, basePrice, addons, armCost);
+    const result = buildQuoteOutput(product, grade, inputWidth, seatCount, basePrice, addons, armCost, storagePlatformAdjFee, legStyle);
     setModal({ detail: result.detailText, copy: result.copyText });
   }
 
@@ -465,16 +514,40 @@ export function SofaQuoteClient() {
               <span className="text-[10px] text-[var(--text-tertiary)]">高</span>
             </div>
           </div>
-          <p className="text-[10px] text-[var(--text-tertiary)]">
-            扶手 {product.armrestWidth}cm　椅腳 {product.defaultFoot}
-          </p>
+          <p className="text-[10px] text-[var(--text-tertiary)]">扶手 {product.armrestWidth}cm</p>
         </div>
       )}
       {!product.footSeatSize && (
         <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-xs text-[var(--text-secondary)]">
-          扶手 {product.armrestWidth}cm　椅腳 {product.defaultFoot}　（無固定平台尺寸）
+          扶手 {product.armrestWidth}cm（無固定平台尺寸）
         </div>
       )}
+
+      {/* 椅腳樣式 */}
+      <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 space-y-2">
+        <p className="text-xs text-[var(--text-secondary)]">椅腳樣式</p>
+        <div className="flex flex-wrap gap-1.5">
+          {["黑鐵腳", "方木腳H12", "L鐵腳", "圓木腳H12", "U鋁腳", "方木腳H8"].map((opt) => (
+            <button key={opt}
+              onClick={() => setLegStyle(opt)}
+              className={[
+                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                legStyle === opt
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--bg-subtle)] text-[var(--text-secondary)]",
+              ].join(" ")}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+        <input
+          value={legStyle}
+          onChange={(e) => setLegStyle(e.target.value)}
+          placeholder="自訂椅腳"
+          className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-1.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+        />
+      </div>
 
       {/* 改扶手 */}
       <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
@@ -501,7 +574,7 @@ export function SofaQuoteClient() {
               <div className="flex flex-wrap gap-1.5">
                 {ARM_MODES.map((m) => (
                   <button key={m.value}
-                    onClick={() => setAddons((prev) => ({ ...prev, armMode: m.value }))}
+                    onClick={() => setAddons((prev) => ({ ...prev, armMode: m.value, obaCustomFrame: m.value === "none" ? false : prev.obaCustomFrame }))}
                     className={[
                       "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                       addons.armMode === m.value
@@ -556,6 +629,19 @@ export function SofaQuoteClient() {
               />
             )}
 
+            {hasObaArm && (
+              <label className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={!!addons.obaCustomFrame}
+                  onChange={(e) => setAddons((prev) => ({ ...prev, obaCustomFrame: e.target.checked }))}
+                  className="h-4 w-4 accent-[var(--accent)]"
+                />
+                <span className="text-sm text-[var(--text-primary)]">訂製扶手框</span>
+                <span className="ml-auto text-xs text-red-500">+$1,000/只</span>
+              </label>
+            )}
+
             {addons.armMode !== "none" && armCost > 0 && (
               <div className="rounded-[var(--radius-md)] bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
                 改扶手費用：${fmtAmount(armCost)}
@@ -565,6 +651,229 @@ export function SofaQuoteClient() {
         )}
       </div>
 
+      {/* 改背枕 */}
+      {BACKREST_COMPATIBLE_STYLES.includes(product.displayName) && (
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+          <button
+            onClick={() => setShowBackrestPanel((v) => !v)}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-[var(--text-primary)]"
+          >
+            <span>改背枕</span>
+            <span className="flex items-center gap-2">
+              {addons.backrestChange && addons.backrestTargetStyle && (
+                <span className="text-sm font-semibold text-red-500">
+                  +${fmtAmount(500 * seatCount)}
+                </span>
+              )}
+              <span className="text-[var(--text-tertiary)]">{showBackrestPanel ? "▲" : "▼"}</span>
+            </span>
+          </button>
+
+          {showBackrestPanel && (
+            <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
+              <p className="text-[10px] text-red-500">+500/座（共 {seatCount} 座 = +${(500 * seatCount).toLocaleString()}）</p>
+
+              {/* 款式 */}
+              <div className="space-y-1">
+                <p className="text-xs text-[var(--text-secondary)]">背枕款式</p>
+                <button
+                  onClick={() => setShowBackrestPicker(true)}
+                  className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]"
+                >
+                  {addons.backrestTargetStyle || "選擇背枕款式（未選則不計費）"}
+                </button>
+              </div>
+
+              {/* 枕心 */}
+              {addons.backrestTargetStyle && (
+                <div className="space-y-1">
+                  <p className="text-xs text-[var(--text-secondary)]">枕心填充</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PILLOW_FILL_OPTIONS.map((p) => (
+                      <button key={p}
+                        onClick={() => setAddons((prev) => ({ ...prev, backrestPillowFill: p }))}
+                        className={[
+                          "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                          addons.backrestPillowFill === p
+                            ? "bg-[var(--accent)] text-white"
+                            : "bg-[var(--bg-subtle)] text-[var(--text-secondary)]",
+                        ].join(" ")}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 清除 */}
+              {addons.backrestTargetStyle && (
+                <button
+                  onClick={() => setAddons((prev) => ({ ...prev, backrestChange: false, backrestTargetStyle: "", backrestPillowFill: "" }))}
+                  className="text-xs text-[var(--text-tertiary)] underline"
+                >
+                  清除
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 改平台 */}
+      {product.footSeatSize !== "" && (
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+          <button
+            onClick={() => setShowPlatformPanel((v) => !v)}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-[var(--text-primary)]"
+          >
+            <span>改平台</span>
+            <span className="flex items-center gap-2">
+              {addons.platformMode === "changeStorage" && addons.storagePlatformStyle && (
+                <span className="text-sm font-semibold text-red-500">+${fmtAmount(1500 + storagePlatformAdjFee)}</span>
+              )}
+              {addons.platformMode !== "none" && (
+                <span className="text-xs text-[var(--accent)]">
+                  {addons.platformMode === "changeStorage" ? "改置物平台" : "換小椅"}
+                </span>
+              )}
+              <span className="text-[var(--text-tertiary)]">{showPlatformPanel ? "▲" : "▼"}</span>
+            </span>
+          </button>
+
+          {showPlatformPanel && (
+            <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
+              {/* 模式選擇 */}
+              <div className="space-y-1">
+                <p className="text-xs text-[var(--text-secondary)]">平台選項</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(["none", "changeStorage", "swapSmallChairs"] as const).map((mode) => (
+                    <button key={mode}
+                      onClick={() => setAddons((prev) => ({
+                        ...prev,
+                        platformMode: mode,
+                        storagePlatformStyle: mode !== "changeStorage" ? "" : prev.storagePlatformStyle,
+                        storagePlatformWidthAdj: mode !== "changeStorage" ? 0 : prev.storagePlatformWidthAdj,
+                        storagePlatformDepthAdj: mode !== "changeStorage" ? 0 : prev.storagePlatformDepthAdj,
+                        smallChair1Style: mode !== "swapSmallChairs" ? "" : prev.smallChair1Style,
+                        smallChair1Color: mode !== "swapSmallChairs" ? "" : prev.smallChair1Color,
+                        smallChair1Leg: mode !== "swapSmallChairs" ? "" : prev.smallChair1Leg,
+                        smallChair2Style: mode !== "swapSmallChairs" ? "" : prev.smallChair2Style,
+                        smallChair2Color: mode !== "swapSmallChairs" ? "" : prev.smallChair2Color,
+                        smallChair2Leg: mode !== "swapSmallChairs" ? "" : prev.smallChair2Leg,
+                      }))}
+                      className={[
+                        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                        addons.platformMode === mode
+                          ? "bg-[var(--accent)] text-white"
+                          : "bg-[var(--bg-subtle)] text-[var(--text-secondary)]",
+                      ].join(" ")}
+                    >
+                      {mode === "none" ? "不更改" : mode === "changeStorage" ? "改置物平台 +1,500" : "換兩張小椅子"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 改置物平台 */}
+              {addons.platformMode === "changeStorage" && (
+                <div className="space-y-2">
+                  <button onClick={() => setShowPlatformStylePicker(true)}
+                    className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]">
+                    {addons.storagePlatformStyle
+                      ? PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle)?.name ?? addons.storagePlatformStyle
+                      : "選擇平台款式"}
+                  </button>
+                  {addons.storagePlatformStyle && selectedPlatformBase && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-[var(--text-tertiary)]">
+                            平台寬（原 {selectedPlatformBase.standardWidth}cm）
+                            {platformDimFees.width !== 0 && (
+                              <span className={`ml-1 ${addons.storagePlatformWidthAdj < 0 ? "text-blue-500" : "text-red-500"}`}>
+                                +{fmtAmount(platformDimFees.width)}
+                              </span>
+                            )}
+                          </p>
+                          <input type="number" value={selectedPlatformBase.standardWidth + addons.storagePlatformWidthAdj}
+                            onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformWidthAdj: Number(e.target.value) - selectedPlatformBase.standardWidth }))}
+                            min={1}
+                            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-[var(--text-tertiary)]">
+                            平台深（原 {selectedPlatformBase.standardDepth}cm）
+                            {platformDimFees.depth !== 0 && (
+                              <span className={`ml-1 ${addons.storagePlatformDepthAdj < 0 ? "text-blue-500" : "text-red-500"}`}>
+                                +{fmtAmount(platformDimFees.depth)}
+                              </span>
+                            )}
+                          </p>
+                          <input type="number" value={selectedPlatformBase.standardDepth + addons.storagePlatformDepthAdj}
+                            onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformDepthAdj: Number(e.target.value) - selectedPlatformBase.standardDepth }))}
+                            min={1}
+                            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
+                        </div>
+                      </div>
+                      <div className="rounded-[var(--radius-md)] bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+                        {storagePlatformAdjFee !== 0
+                          ? `改置物平台費用：手續費 $1,500 + 訂製費 $${fmtAmount(storagePlatformAdjFee)} = 合計 $${fmtAmount(1500 + storagePlatformAdjFee)}`
+                          : `改置物平台費用：$1,500`}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 換兩張小椅子 */}
+              {addons.platformMode === "swapSmallChairs" && (
+                <div className="space-y-3">
+                  {(["1", "2"] as const).map((n) => {
+                    const styleKey = `smallChair${n}Style` as "smallChair1Style" | "smallChair2Style";
+                    const colorKey = `smallChair${n}Color` as "smallChair1Color" | "smallChair2Color";
+                    const legKey = `smallChair${n}Leg` as "smallChair1Leg" | "smallChair2Leg";
+                    return (
+                      <div key={n} className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] p-3 space-y-2">
+                        <p className="text-xs font-semibold text-[var(--text-primary)]">小椅 {n === "1" ? "①" : "②"}</p>
+                        <button
+                          onClick={() => n === "1" ? setShowSmallChair1Picker(true) : setShowSmallChair2Picker(true)}
+                          className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]"
+                        >
+                          {addons[styleKey] || "選擇款式"}
+                        </button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-[var(--text-tertiary)]">色號</p>
+                            <input
+                              type="text"
+                              value={addons[colorKey]}
+                              onChange={(e) => setAddons((prev) => ({ ...prev, [colorKey]: e.target.value }))}
+                              placeholder="輸入色號"
+                              className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-[var(--text-tertiary)]">椅腳樣式</p>
+                            <input
+                              type="text"
+                              value={addons[legKey]}
+                              onChange={(e) => setAddons((prev) => ({ ...prev, [legKey]: e.target.value }))}
+                              placeholder="輸入椅腳"
+                              className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Advanced options */}
       <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
         <button
@@ -573,9 +882,9 @@ export function SofaQuoteClient() {
         >
           <span>進階選項</span>
           <span className="flex items-center gap-2">
-            {addonTotal !== 0 && (
-              <span className={`text-sm font-semibold ${addonTotal > 0 ? "text-red-500" : "text-blue-500"}`}>
-                {addonTotal > 0 ? "+" : ""}${fmtAmount(addonTotal)}
+            {advancedOnlyTotal !== 0 && (
+              <span className={`text-sm font-semibold ${advancedOnlyTotal > 0 ? "text-red-500" : "text-blue-500"}`}>
+                {advancedOnlyTotal > 0 ? "+" : ""}${fmtAmount(advancedOnlyTotal)}
               </span>
             )}
             <span className="text-[var(--text-tertiary)]">{showAddons ? "▲" : "▼"}</span>
@@ -602,13 +911,78 @@ export function SofaQuoteClient() {
 
             {/* 高度削減 */}
             <div className="flex items-center justify-between">
-              <p className="text-xs text-[var(--text-secondary)]">高度削減 4~6cm <span className="text-blue-500">-1,000</span></p>
-              <button
-                onClick={() => setAddons((a) => ({ ...a, heightReduction: !a.heightReduction }))}
-                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${addons.heightReduction ? "bg-[var(--accent)] text-white" : "border border-[var(--border)] text-[var(--text-secondary)]"}`}
-              >
-                {addons.heightReduction ? "✓ 已選" : "選取"}
-              </button>
+              <p className="text-xs text-[var(--text-secondary)]">
+                高度削減（最多 6cm）
+                {addons.heightReductionCm > 0 && (
+                  <span className="ml-1 text-blue-500">-1,000</span>
+                )}
+              </p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAddons((a) => ({ ...a, heightReductionCm: Math.max(0, a.heightReductionCm - 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Minus className="h-3 w-3" />
+                </button>
+                <span className={`w-10 text-center text-sm font-bold ${addons.heightReductionCm > 0 ? "text-blue-500" : ""}`}>
+                  {addons.heightReductionCm > 0 ? `-${addons.heightReductionCm}cm` : "0"}
+                </span>
+                <button onClick={() => setAddons((a) => ({ ...a, heightReductionCm: Math.min(6, a.heightReductionCm + 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* 坐深調整 */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-[var(--text-secondary)]">
+                  坐深調整（-12 ~ +18cm）
+                  {addons.seatDepthAdj > 0 && (
+                    <span className="ml-1 text-red-500">+${fmtAmount(calcSeatDepthFee(addons.seatDepthAdj))}</span>
+                  )}
+                  {addons.seatDepthAdj < 0 && (
+                    <span className="ml-1 text-blue-500">縮減免費</span>
+                  )}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setAddons((a) => ({ ...a, seatDepthAdj: Math.max(-12, a.seatDepthAdj - 3) }))}
+                    className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                    <Minus className="h-3 w-3" />
+                  </button>
+                  <span className={`w-10 text-center text-sm font-bold ${addons.seatDepthAdj !== 0 ? "text-[var(--accent)]" : ""}`}>
+                    {addons.seatDepthAdj > 0 ? `+${addons.seatDepthAdj}` : addons.seatDepthAdj}cm
+                  </span>
+                  <button onClick={() => setAddons((a) => ({ ...a, seatDepthAdj: Math.min(18, a.seatDepthAdj + 3) }))}
+                    className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 椅背加高 */}
+            <div className="space-y-1">
+              <p className="text-xs text-[var(--text-secondary)]">
+                椅背加高（+$1,200/6cm）
+                {addons.backHeightAdj > 0 && (
+                  <span className="ml-1 text-red-500">+${fmtAmount(calcBackHeightFee(addons.backHeightAdj))}</span>
+                )}
+              </p>
+              <div className="flex gap-1.5">
+                {([0, 3, 6, 9, 12] as const).map((cm) => (
+                  <button key={cm}
+                    onClick={() => setAddons((a) => ({ ...a, backHeightAdj: cm }))}
+                    className={[
+                      "flex-1 rounded-full py-1 text-xs font-medium transition-colors",
+                      addons.backHeightAdj === cm
+                        ? "bg-[var(--accent)] text-white"
+                        : "bg-[var(--bg-subtle)] text-[var(--text-secondary)]",
+                    ].join(" ")}
+                  >
+                    {cm === 0 ? "不加高" : `+${cm}cm`}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* 移除扶手 */}
@@ -656,23 +1030,8 @@ export function SofaQuoteClient() {
               </div>
             )}
 
-            {/* 無線充電 */}
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-[var(--text-secondary)]">加裝無線充電（+1,200/組）</p>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setAddons((a) => ({ ...a, wirelessChargeCount: Math.max(0, a.wirelessChargeCount - 1) }))}
-                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
-                  <Minus className="h-3 w-3" />
-                </button>
-                <span className="w-4 text-center text-sm font-bold">{addons.wirelessChargeCount}</span>
-                <button onClick={() => setAddons((a) => ({ ...a, wirelessChargeCount: a.wirelessChargeCount + 1 }))}
-                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
-                  <Plus className="h-3 w-3" />
-                </button>
-              </div>
-            </div>
-
             {/* 滑軌 */}
+            {!NO_SLIDE_RAIL_STYLES.includes(product.displayName) && (
             <div className="flex items-center justify-between">
               <p className="text-xs text-[var(--text-secondary)]">
                 加裝滑軌（+{addons.slideRailRatePerSeat.toLocaleString()}/座）
@@ -689,6 +1048,7 @@ export function SofaQuoteClient() {
                 </button>
               </div>
             </div>
+            )}
 
             {/* 平台無置物 (BOOM/BOOMs/LEMON/MULE only) */}
             {["BOOM", "BOOMs", "LEMON", "MULE"].includes(product.displayName) && (
@@ -703,82 +1063,8 @@ export function SofaQuoteClient() {
               </div>
             )}
 
-            {/* 改背枕 */}
-            {BACKREST_COMPATIBLE_STYLES.includes(product.displayName) && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-[var(--text-secondary)]">改背枕</p>
-                    <p className="text-[10px] text-red-500">+500/座（共 {seatCount} 座 = +{(500 * seatCount).toLocaleString()}）</p>
-                  </div>
-                  <input type="checkbox" checked={addons.backrestChange}
-                    onChange={(e) => setAddons((prev) => ({
-                      ...prev,
-                      backrestChange: e.target.checked,
-                      backrestTargetStyle: e.target.checked ? prev.backrestTargetStyle : "",
-                    }))}
-                    className="h-5 w-5 rounded border-[var(--border)] accent-[var(--accent)]" />
-                </div>
-                {addons.backrestChange && (
-                  <button onClick={() => setShowBackrestPicker(true)}
-                    className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]">
-                    {addons.backrestTargetStyle || "選擇背枕款式"}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* 改置物平台 */}
-            {PLATFORM_STORAGE_STYLES.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-[var(--text-secondary)]">改置物平台款式</p>
-                    <p className="text-[10px] text-red-500">+手續費 1,500</p>
-                  </div>
-                  <input type="checkbox" checked={addons.changeStoragePlatform}
-                    onChange={(e) => setAddons((prev) => ({
-                      ...prev,
-                      changeStoragePlatform: e.target.checked,
-                      storagePlatformStyle: e.target.checked ? prev.storagePlatformStyle : "",
-                      storagePlatformWidthAdj: 0,
-                      storagePlatformDepthAdj: 0,
-                    }))}
-                    className="h-5 w-5 rounded border-[var(--border)] accent-[var(--accent)]" />
-                </div>
-                {addons.changeStoragePlatform && (
-                  <div className="space-y-2">
-                    <button onClick={() => setShowPlatformStylePicker(true)}
-                      className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-left text-sm font-medium text-[var(--text-primary)]">
-                      {addons.storagePlatformStyle
-                        ? PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle)?.name ?? addons.storagePlatformStyle
-                        : "選擇平台款式"}
-                    </button>
-                    {addons.storagePlatformStyle && selectedPlatformBase && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-[var(--text-tertiary)]">平台寬調整（原 {selectedPlatformBase.standardWidth}cm）</p>
-                          <input type="number" value={selectedPlatformBase.standardWidth + addons.storagePlatformWidthAdj}
-                            onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformWidthAdj: Number(e.target.value) - selectedPlatformBase.standardWidth }))}
-                            min={1}
-                            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-[var(--text-tertiary)]">平台深調整（原 {selectedPlatformBase.standardDepth}cm）</p>
-                          <input type="number" value={selectedPlatformBase.standardDepth + addons.storagePlatformDepthAdj}
-                            onChange={(e) => setAddons((prev) => ({ ...prev, storagePlatformDepthAdj: Number(e.target.value) - selectedPlatformBase.standardDepth }))}
-                            min={1}
-                            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-center text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Reset button */}
-            {addonTotal !== 0 && (
+            {advancedOnlyTotal !== 0 && (
               <button
                 onClick={() => setAddons({ ...DEFAULT_ADDONS, slideRailRatePerSeat: getSlideRailRate(product.displayName) })}
                 className="w-full rounded border border-[var(--border)] py-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
@@ -816,9 +1102,9 @@ export function SofaQuoteClient() {
       <ActionSheetPicker
         open={showBackrestPicker}
         title="背枕款式"
-        options={[...BACKREST_STYLES]}
+        options={[...BACKREST_STYLES].filter((s) => s !== product.displayName)}
         getLabel={(s) => s}
-        onSelect={(s, _) => setAddons((prev) => ({ ...prev, backrestTargetStyle: s }))}
+        onSelect={(s, _) => setAddons((prev) => ({ ...prev, backrestChange: true, backrestTargetStyle: s }))}
         onClose={() => setShowBackrestPicker(false)}
       />
       <ActionSheetPicker
@@ -828,6 +1114,22 @@ export function SofaQuoteClient() {
         getLabel={(p) => `${p.name} ${p.standardWidth}×${p.standardDepth}cm`}
         onSelect={(p, _) => setAddons((prev) => ({ ...prev, storagePlatformStyle: p.code, storagePlatformWidthAdj: 0, storagePlatformDepthAdj: 0 }))}
         onClose={() => setShowPlatformStylePicker(false)}
+      />
+      <ActionSheetPicker
+        open={showSmallChair1Picker}
+        title="小椅①款式"
+        options={[...SMALL_CHAIR_STYLES]}
+        getLabel={(s) => s}
+        onSelect={(s, _) => setAddons((prev) => ({ ...prev, smallChair1Style: s }))}
+        onClose={() => setShowSmallChair1Picker(false)}
+      />
+      <ActionSheetPicker
+        open={showSmallChair2Picker}
+        title="小椅②款式"
+        options={[...SMALL_CHAIR_STYLES]}
+        getLabel={(s) => s}
+        onSelect={(s, _) => setAddons((prev) => ({ ...prev, smallChair2Style: s }))}
+        onClose={() => setShowSmallChair2Picker(false)}
       />
 
       {modal && (

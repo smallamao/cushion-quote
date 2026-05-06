@@ -4,7 +4,7 @@ import { calcAddons, getSlideRailRate, type SofaAddons, buildQuoteOutput, SOFA_P
 const base: SofaAddons = {
   ...DEFAULT_ADDONS,
   groundOption: "none",
-  heightReduction: false,
+  heightReductionCm: 0,
   removeArmrestCount: 0,
   usbCount: 0,
   removeStandardUsb: false,
@@ -43,7 +43,7 @@ describe("calcAddons", () => {
   });
 
   it("高度削減 -1000", () => {
-    expect(calcAddons({ ...base, heightReduction: true })).toBe(-1000);
+    expect(calcAddons({ ...base, heightReductionCm: 5 })).toBe(-1000);
   });
 
   it("移除 2 個扶手 -3000", () => {
@@ -122,7 +122,7 @@ describe("calcAddons — new params", () => {
     expect(calcAddons({ ...DEFAULT_ADDONS, backrestChange: true, backrestTargetStyle: "GALI" }, 2, 0)).toBe(1000);
   });
   it("改置物平台 → +1500", () => {
-    expect(calcAddons({ ...DEFAULT_ADDONS, changeStoragePlatform: true, storagePlatformStyle: "BOOM", storagePlatformWidthAdj: 0, storagePlatformDepthAdj: 0 }, 3, 0)).toBe(1500);
+    expect(calcAddons({ ...DEFAULT_ADDONS, platformMode: "changeStorage", storagePlatformStyle: "BOOM" }, 3, 0)).toBe(1500);
   });
   it("armCost 直接加入總計", () => {
     expect(calcAddons(DEFAULT_ADDONS, 3, 1400)).toBe(1400);
