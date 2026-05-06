@@ -159,16 +159,17 @@ async function toPng(svg: string): Promise<Buffer | null> {
   }
 }
 
-async function embedChart(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, svg: string, startRow: number, endRow: number, endCol: number) {
+async function embedChart(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, svg: string, startRow: number, w: number, h: number) {
   const png = await toPng(svg);
   if (!png) return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const imageId = wb.addImage({ buffer: png as any, extension: "png" });
+  // Use ext (pixels) instead of br so the image isn't stretched to fit cell boundaries
   ws.addImage(imageId, {
     tl: { col: 0, row: startRow } as unknown as ExcelJS.Anchor,
-    br: { col: endCol, row: endRow } as unknown as ExcelJS.Anchor,
-    editAs: "oneCell",
-  });
+    ext: { width: w, height: h },
+    editAs: "absolute",
+  } as unknown as ExcelJS.ImageRange);
 }
 
 // ── Sheet 1: 出貨明細 ──────────────────────────────────────
@@ -338,12 +339,10 @@ async function buildPivot(wb: ExcelJS.Workbook, pivotData: PivotChartPoint[], la
     });
   }
 
-  // Chart image (6 = rows used: title+header+4data, 0-indexed so row index 6 = 7th row)
-  const chartStartRow = 6;  // 0-indexed
-  const chartEndRow   = chartStartRow + 13;
-  const chartEndCol   = Math.min(totalCols, 13);
-  ws.getRow(chartStartRow + 1).height = 15; // spacer
-  await embedChart(wb, ws, svgBar(pivotData), chartStartRow + 1, chartEndRow, chartEndCol);
+  // Chart image — fixed pixel dimensions match the SVG so aspect ratio is preserved
+  const BAR_W = 600, BAR_H = 260;
+  const chartStartRow = 7;  // 0-indexed row after the 4 data rows + title + header
+  await embedChart(wb, ws, svgBar(pivotData, BAR_W, BAR_H), chartStartRow, BAR_W, BAR_H);
 }
 
 // ── Sheet 3: 來客分析 ─────────────────────────────────────
@@ -391,11 +390,11 @@ async function buildSource(wb: ExcelJS.Workbook, sourceData: SourceChartPoint[],
     ws.getCell(`A${noteRow.number}`).alignment = { horizontal: "center" };
   }
 
-  // Chart image
-  const chartStartRow = 4;   // 0-indexed: after title(0)+header(1)+data(2)+spacer(3)
-  const chartEndRow   = chartStartRow + 15;
-  const chartEndCol   = Math.min(totalCols + 2, 14);
-  await embedChart(wb, ws, svgDonut(sourceData), chartStartRow, chartEndRow, chartEndCol);
+  // Chart image — fixed pixel dimensions match the SVG so aspect ratio is preserved
+  const DONUT_SIZE = 320;
+  const legendW = sourceData.length > 0 ? 160 : 0;  // matches svgDonut's totalW formula
+  const chartStartRow = 4;  // 0-indexed: after title(0)+header(1)+data(2)+spacer(3)
+  await embedChart(wb, ws, svgDonut(sourceData, DONUT_SIZE), chartStartRow, DONUT_SIZE + legendW, DONUT_SIZE);
 }
 
 // ── Main export ───────────────────────────────────────────
