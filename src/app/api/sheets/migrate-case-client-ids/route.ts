@@ -358,7 +358,7 @@ export async function POST(request: Request) {
 
       const sheetRow = i + 2; // header is row 1
       updates.push({
-        range: `案件!A${sheetRow}:X${sheetRow}`,
+        range: `案件!A${sheetRow}:AC${sheetRow}`,
         values: [newRow],
       });
       applied++;
