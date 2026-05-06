@@ -219,25 +219,23 @@ export function MonthlyReportExportPanel() {
 
   return (
     <div className="space-y-6">
-      {/* 控制列 */}
-      <div className="flex flex-wrap items-end gap-4">
-        <div>
-          <Label className="mb-1.5 block">匯出月份</Label>
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => {
-              setMonth(e.target.value);
-              setResult(null);
-              setError(null);
-            }}
-            className="h-9 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
-          />
-          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-            結算區間：{sinceLabel} ~ {untilLabel}
-          </p>
-        </div>
-        <Button onClick={handleExport} disabled={loading} size="sm">
+      {/* 控制列：一排 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Label className="shrink-0 text-sm">匯出月份</Label>
+        <input
+          type="month"
+          value={month}
+          onChange={(e) => {
+            setMonth(e.target.value);
+            setResult(null);
+            setError(null);
+          }}
+          className="h-9 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+        />
+        <span className="text-xs text-[var(--text-tertiary)]">
+          結算區間：{sinceLabel} ~ {untilLabel}
+        </span>
+        <Button onClick={handleExport} disabled={loading} size="sm" className="ml-auto">
           {loading
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
             : <FileDown className="h-3.5 w-3.5" />

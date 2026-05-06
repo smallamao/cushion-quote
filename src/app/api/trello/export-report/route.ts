@@ -34,14 +34,15 @@ export async function POST(request: Request) {
   try {
     const result = await exporterMouthReport(body.since, body.until, body.labelNames);
 
-    const sinceDate = new Date(body.since.replace(/\//g, "-") + "T00:00:00+08:00");
+    // 帳務月份以 until（25日）決定，not since（上月26日）
+    const billingDate = new Date(body.until.replace(/\//g, "-") + "T00:00:00+08:00");
 
-    const rocYear = sinceDate.getFullYear() - 1911;
-    const month = String(sinceDate.getMonth() + 1).padStart(2, "0");
+    const rocYear = billingDate.getFullYear() - 1911;
+    const month = String(billingDate.getMonth() + 1).padStart(2, "0");
 
     const [csvFiles, excelBuffer] = await Promise.all([
-      Promise.resolve(generateCsvFiles(result, sinceDate)),
-      generateExcelBuffer(result, sinceDate),
+      Promise.resolve(generateCsvFiles(result, billingDate)),
+      generateExcelBuffer(result, billingDate),
     ]);
 
     return NextResponse.json({

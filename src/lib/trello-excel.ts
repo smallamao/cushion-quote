@@ -234,7 +234,7 @@ function buildShipping(wb: ExcelJS.Workbook, cards: ExportedCard[], label: strin
     for (const ci of [4, 5, 6]) {
       const cell = row.getCell(ci);
       if (cell.value !== null && cell.value !== undefined) {
-        cell.numFmt = "$#,##0"; cell.alignment = { horizontal: "right" };
+        cell.numFmt = "#,##0"; cell.alignment = { horizontal: "right" };
       }
     }
     row.getCell(8).alignment = { horizontal: "center" };
@@ -248,7 +248,7 @@ function buildShipping(wb: ExcelJS.Workbook, cards: ExportedCard[], label: strin
     applySubtotal(cell);
     if (ci === 2) cell.alignment = { horizontal: "right" };
     if (ci >= 4 && ci <= 6 && cell.value !== null && cell.value !== undefined) {
-      cell.numFmt = "$#,##0"; cell.alignment = { horizontal: "right" };
+      cell.numFmt = "#,##0"; cell.alignment = { horizontal: "right" };
     }
   });
 
@@ -298,7 +298,7 @@ async function buildPivot(wb: ExcelJS.Workbook, pivotData: PivotChartPoint[], la
   // Title
   ws.mergeCells(`A1:${lastCol}1`);
   const title = ws.getCell("A1");
-  title.value = `${label} 出貨明細分析表格`;
+  title.value = `${label} 樞紐分析表格`;
   title.fill = solidFill(HDR_BG);
   title.font = { bold: true, size: 12, color: { argb: HDR_TXT } };
   title.alignment = { horizontal: "center", vertical: "middle" };
@@ -330,10 +330,10 @@ async function buildPivot(wb: ExcelJS.Workbook, pivotData: PivotChartPoint[], la
       if (ci === 1) { applySubtotal(cell); cell.alignment = { horizontal: "center" }; }
       else if (ci === totalCols) {
         cell.font = { bold: true }; cell.fill = solidFill(SUB_BG);
-        if (dr.money && cell.value !== null && cell.value !== undefined) { cell.numFmt = "$#,##0"; cell.alignment = { horizontal: "right" }; }
+        if (dr.money && cell.value !== null && cell.value !== undefined) { cell.numFmt = "#,##0"; cell.alignment = { horizontal: "right" }; }
         else cell.alignment = { horizontal: "center" };
       } else if (dr.money && cell.value !== null && cell.value !== undefined) {
-        cell.numFmt = "$#,##0"; cell.alignment = { horizontal: "right" };
+        cell.numFmt = "#,##0"; cell.alignment = { horizontal: "right" };
       } else if (!dr.money) { cell.alignment = { horizontal: "center" }; }
     });
   }
