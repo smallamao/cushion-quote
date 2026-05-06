@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileDown, Loader2 } from "lucide-react";
+import { Download, FileDown, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useState } from "react";
 import {
   Bar,
@@ -21,7 +21,12 @@ import type { PivotChartPoint, SourceChartPoint } from "@/lib/trello-exporter";
 
 // ── Types ─────────────────────────────────────────────────
 
-interface ExcelInfo {
+interface CsvFile {
+  filename: string;
+  base64: string;
+}
+
+interface ExcelFile {
   base64: string;
   filename: string;
 }
@@ -32,7 +37,8 @@ interface ExportResponse {
   cardCount?: number;
   pivotData?: PivotChartPoint[];
   sourceData?: SourceChartPoint[];
-  excel?: ExcelInfo;
+  csvFiles?: CsvFile[];
+  excel?: ExcelFile;
 }
 
 // ── Constants ─────────────────────────────────────────────
@@ -45,19 +51,45 @@ const COLORS = [
 
 // ── Helpers ───────────────────────────────────────────────
 
-function downloadExcel(excel: ExcelInfo) {
-  const bytes = atob(excel.base64);
+function downloadBlob(base64: string, filename: string, mime: string) {
+  const bytes = atob(base64);
   const arr = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  const blob = new Blob([arr], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  const blob = new Blob([arr], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = excel.filename;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadExcel(excel: ExcelFile) {
+  downloadBlob(
+    excel.base64,
+    excel.filename,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+}
+
+function downloadCsvFile(csv: CsvFile) {
+  downloadBlob(csv.base64, csv.filename, "text/csv;charset=utf-8;");
+}
+
+function downloadAllCsvs(csvFiles: CsvFile[]) {
+  csvFiles.forEach((csv, i) => {
+    setTimeout(() => downloadCsvFile(csv), i * 150);
+  });
+}
+
+// 跨月結算週期：選「N月」= 上月26日 ~ N月25日（含頭尾）
+function monthToRange(month: string): { since: string; until: string } {
+  const [y, m] = month.split("-").map(Number);
+  const sinceYear = m === 1 ? y! - 1 : y!;
+  const sinceMonth = m === 1 ? 12 : m! - 1;
+  const since = `${sinceYear}-${String(sinceMonth).padStart(2, "0")}-26`;
+  const until = `${y}-${String(m).padStart(2, "0")}-25`;
+  return { since, until };
 }
 
 function prevMonth(): string {
@@ -65,13 +97,6 @@ function prevMonth(): string {
   const y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
   const m = now.getMonth() === 0 ? 12 : now.getMonth();
   return `${y}-${String(m).padStart(2, "0")}`;
-}
-
-function monthToRange(month: string): { since: string; until: string } {
-  const [y, m] = month.split("-").map(Number);
-  const last = new Date(y!, m!, 0).getDate();
-  const mm = String(m).padStart(2, "0");
-  return { since: `${y}-${mm}-01`, until: `${y}-${mm}-${String(last).padStart(2, "0")}` };
 }
 
 // ── Sub-components ────────────────────────────────────────
@@ -186,10 +211,11 @@ export function MonthlyReportExportPanel() {
     }
   }
 
-  const displayMonth = (() => {
-    const [y, m] = month.split("-");
-    return `${y}年${Number(m)}月`;
-  })();
+  const [y, m] = month.split("-");
+  const displayMonth = `${y}年${Number(m)}月`;
+  const { since, until } = monthToRange(month);
+  const sinceLabel = since.replace(/-(\d)-/, "-0$1-").replace(/(\d{4})-(\d{2})-(\d{2})/, "$2/$3");
+  const untilLabel = until.replace(/-(\d)-/, "-0$1-").replace(/(\d{4})-(\d{2})-(\d{2})/, "$2/$3");
 
   return (
     <div className="space-y-6">
@@ -207,6 +233,9 @@ export function MonthlyReportExportPanel() {
             }}
             className="h-9 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
           />
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+            結算區間：{sinceLabel} ~ {untilLabel}
+          </p>
         </div>
         <Button onClick={handleExport} disabled={loading} size="sm">
           {loading
@@ -221,18 +250,52 @@ export function MonthlyReportExportPanel() {
 
       {result && (
         <div className="space-y-5">
-          {/* 摘要 + 下載 */}
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[var(--text-secondary)]">
-              共{" "}
-              <span className="font-medium text-[var(--text-primary)]">{result.cardCount}</span>{" "}
-              張卡片 · 3 頁 Excel
-            </p>
+          {/* 摘要 */}
+          <p className="text-sm text-[var(--text-secondary)]">
+            共{" "}
+            <span className="font-medium text-[var(--text-primary)]">{result.cardCount}</span>{" "}
+            張卡片
+          </p>
+
+          {/* 下載區 */}
+          <div className="flex flex-wrap gap-3">
+            {/* CSV 下載 */}
+            {result.csvFiles && result.csvFiles.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-medium text-[var(--text-secondary)]">CSV（可個別下載）</p>
+                <div className="flex flex-wrap gap-2">
+                  {result.csvFiles.map((csv) => (
+                    <Button
+                      key={csv.filename}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => downloadCsvFile(csv)}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {csv.filename}
+                    </Button>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => downloadAllCsvs(result.csvFiles!)}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    下載全部 CSV
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Excel 下載 */}
             {result.excel && (
-              <Button size="sm" onClick={() => downloadExcel(result.excel!)}>
-                <Download className="h-3.5 w-3.5" />
-                下載 {result.excel.filename}
-              </Button>
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-medium text-[var(--text-secondary)]">Excel（含圖表）</p>
+                <Button size="sm" onClick={() => downloadExcel(result.excel!)}>
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  {result.excel.filename}
+                </Button>
+              </div>
             )}
           </div>
 

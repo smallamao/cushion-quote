@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSession } from "@/app/api/sheets/einvoices/_auth";
+import { generateCsvFiles } from "@/lib/trello-csv";
 import { generateExcelBuffer } from "@/lib/trello-excel";
 import { exporterMouthReport } from "@/lib/trello-exporter";
 
@@ -34,20 +35,24 @@ export async function POST(request: Request) {
     const result = await exporterMouthReport(body.since, body.until, body.labelNames);
 
     const sinceDate = new Date(body.since.replace(/\//g, "-") + "T00:00:00+08:00");
-    const excelBuffer = await generateExcelBuffer(result, sinceDate);
 
     const rocYear = sinceDate.getFullYear() - 1911;
     const month = String(sinceDate.getMonth() + 1).padStart(2, "0");
-    const filename = `出貨報表_${rocYear}${month}.xlsx`;
+
+    const [csvFiles, excelBuffer] = await Promise.all([
+      Promise.resolve(generateCsvFiles(result, sinceDate)),
+      generateExcelBuffer(result, sinceDate),
+    ]);
 
     return NextResponse.json({
       ok: true,
       cardCount: result.cardCount,
       pivotData: result.pivotData,
       sourceData: result.sourceData,
+      csvFiles,
       excel: {
         base64: excelBuffer.toString("base64"),
-        filename,
+        filename: `出貨報表_${rocYear}${month}.xlsx`,
       },
     });
   } catch (err) {
