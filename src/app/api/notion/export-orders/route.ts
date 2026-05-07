@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     const [y, m] = body.until.split("-");
     const filename = `Notion訂單_${Number(y) - 1911}${m}.csv`;
 
-    return NextResponse.json({ ok: true, rowCount: rows.length, base64, filename });
+    return NextResponse.json({ ok: true, rowCount: rows.length, base64, filename, rows });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "匯出失敗";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

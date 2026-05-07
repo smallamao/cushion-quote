@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import type { NotionOrderRow } from "@/lib/notion-client";
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ interface ExportResponse {
   rowCount?: number;
   base64?: string;
   filename?: string;
+  rows?: NotionOrderRow[];
 }
 
 // ── Helpers ───────────────────────────────────────────────
@@ -25,7 +27,6 @@ function prevMonth(): string {
   return `${y}-${String(m).padStart(2, "0")}`;
 }
 
-// 跨月結算週期：選「N月」= 上月26日 ~ N月25日（含頭尾）
 function monthToRange(month: string): { since: string; until: string } {
   const [y, m] = month.split("-").map(Number);
   const sinceYear = m === 1 ? y! - 1 : y!;
@@ -33,6 +34,17 @@ function monthToRange(month: string): { since: string; until: string } {
   const since = `${sinceYear}-${String(sinceMonth).padStart(2, "0")}-26`;
   const until = `${y}-${String(m).padStart(2, "0")}-25`;
   return { since, until };
+}
+
+function fmtDate(iso: string): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${Number(y) - 1911}/${m}/${d}`;
+}
+
+function fmtAmount(n: number | null): string {
+  if (n == null) return "—";
+  return n.toLocaleString();
 }
 
 function downloadCsv(base64: string, filename: string) {
@@ -90,6 +102,7 @@ export function NotionOrdersExportPanel() {
 
   return (
     <div className="space-y-4">
+      {/* 控制列 */}
       <div className="flex flex-wrap items-center gap-3">
         <Label className="shrink-0 text-sm">匯出月份</Label>
         <input
@@ -116,19 +129,70 @@ export function NotionOrdersExportPanel() {
 
       {error && <p className="text-sm text-[var(--error)]">{error}</p>}
 
-      {result?.rowCount != null && !error && (
-        <p className="text-sm text-[var(--text-secondary)]">
-          共 <span className="font-medium text-[var(--text-primary)]">{result.rowCount}</span> 筆
-          {result.base64 && result.filename && (
-            <button
-              className="ml-2 inline-flex items-center gap-1 text-[var(--primary)] underline-offset-2 hover:underline"
-              onClick={() => downloadCsv(result.base64!, result.filename!)}
-            >
-              <Download className="h-3 w-3" />
-              {result.filename}
-            </button>
-          )}
-        </p>
+      {result?.rows && result.rows.length > 0 && (
+        <div className="space-y-2">
+          {/* 摘要 + 重新下載 */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-[var(--text-secondary)]">
+              共 <span className="font-medium text-[var(--text-primary)]">{result.rowCount}</span> 筆
+            </span>
+            {result.base64 && result.filename && (
+              <button
+                className="inline-flex items-center gap-1 text-xs text-[var(--primary)] underline-offset-2 hover:underline"
+                onClick={() => downloadCsv(result.base64!, result.filename!)}
+              >
+                <Download className="h-3 w-3" />
+                {result.filename}
+              </button>
+            )}
+          </div>
+
+          {/* 預覽表格 */}
+          <div className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-raised)]">
+                  {["#", "Name", "下單日", "成本", "出貨日", "報價"].map((h) => (
+                    <th key={h} className="px-3 py-2 text-left font-medium text-[var(--text-secondary)]">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.rows.map((row, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-raised)]"
+                  >
+                    <td className="px-3 py-2 text-[var(--text-tertiary)]">{i + 1}</td>
+                    <td className="px-3 py-2 font-medium text-[var(--text-primary)]">{row.name || "—"}</td>
+                    <td className="px-3 py-2 text-[var(--text-secondary)]">{fmtDate(row.orderDate)}</td>
+                    <td className="px-3 py-2 text-right text-[var(--text-secondary)]">{fmtAmount(row.cost)}</td>
+                    <td className="px-3 py-2 text-[var(--text-secondary)]">{fmtDate(row.shippingDate)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-[var(--text-primary)]">{fmtAmount(row.quote)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-[var(--surface-raised)] font-medium">
+                  <td colSpan={3} className="px-3 py-2 text-right text-[var(--text-secondary)]">合計</td>
+                  <td className="px-3 py-2 text-right text-[var(--text-primary)]">
+                    {result.rows.reduce((s, r) => s + (r.cost ?? 0), 0).toLocaleString()}
+                  </td>
+                  <td />
+                  <td className="px-3 py-2 text-right text-[var(--text-primary)]">
+                    {result.rows.reduce((s, r) => s + (r.quote ?? 0), 0).toLocaleString()}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {result?.rowCount === 0 && (
+        <p className="text-sm text-[var(--text-tertiary)]">此區間無資料</p>
       )}
     </div>
   );
