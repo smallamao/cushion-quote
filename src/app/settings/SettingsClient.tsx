@@ -29,6 +29,7 @@ import { SuppliersManagementPanel } from "@/components/suppliers/SuppliersManage
 import { UsersManagementPanel } from "@/components/users/UsersManagementPanel";
 import { DriversManagementPanel } from "@/components/settings/DriversManagementPanel";
 import { MonthlyReportExportPanel } from "@/components/settings/MonthlyReportExportPanel";
+import { NotionOrdersExportPanel } from "@/components/settings/NotionOrdersExportPanel";
 
 type SettingsTab = "general" | "clients" | "equipment" | "suppliers" | "users" | "drivers" | "reports";
 
@@ -490,13 +491,24 @@ export function SettingsClient() {
         </TabsContent>
 
         <TabsContent value="reports">
-          <div className="card-surface rounded-[var(--radius-lg)]">
-            <div className="border-b border-[var(--border)] px-6 py-3">
-              <span className="text-sm font-medium">Trello 月報匯出</span>
-              <span className="ml-2 text-xs text-[var(--text-secondary)]">依出貨日期區間產生 3 份 CSV 報表</span>
+          <div className="space-y-4">
+            <div className="card-surface rounded-[var(--radius-lg)]">
+              <div className="border-b border-[var(--border)] px-6 py-3">
+                <span className="text-sm font-medium">Trello 月報匯出</span>
+                <span className="ml-2 text-xs text-[var(--text-secondary)]">依出貨日期區間產生 3 份 CSV 報表</span>
+              </div>
+              <div className="px-6 py-4">
+                <MonthlyReportExportPanel />
+              </div>
             </div>
-            <div className="px-6 py-4">
-              <MonthlyReportExportPanel />
+            <div className="card-surface rounded-[var(--radius-lg)]">
+              <div className="border-b border-[var(--border)] px-6 py-3">
+                <span className="text-sm font-medium">Notion 訂單匯出</span>
+                <span className="ml-2 text-xs text-[var(--text-secondary)]">依出貨日期區間匯出 CSV（Name / 下單日 / 成本 / 出貨日 / 報價）</span>
+              </div>
+              <div className="px-6 py-4">
+                <NotionOrdersExportPanel />
+              </div>
             </div>
           </div>
         </TabsContent>
