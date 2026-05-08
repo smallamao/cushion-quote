@@ -7,7 +7,7 @@ import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navi
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useActiveDrivers } from "@/hooks/useDrivers";
-import { LIST_NAMES, S_ORDER_CUSTOM_FIELDS, TRELLO } from "@/lib/trello-constants";
+import { LIST_NAMES, PRODUCTS, S_ORDER_CUSTOM_FIELDS, TRELLO } from "@/lib/trello-constants";
 import type { DriverRecord } from "@/lib/drivers-sheet";
 import {
   buildRepairOrderText,
@@ -644,9 +644,10 @@ interface ProductionViewProps {
   card: TrelloCard;
   customFields: CustomFieldItem[];
   onBack: () => void;
+  onCustomFieldUpdate?: (fieldId: string, value: CustomFieldItem["value"]) => void;
 }
 
-function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
+function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: ProductionViewProps) {
   const initialBraider: "yang" | "shen" | "" = card.labels.some(
     (l) => l.id === TRELLO.LABELS.BRAIDER_SHEN,
   )
@@ -703,13 +704,35 @@ function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
     }
   }
 
+  function resolveChairLeg(): string {
+    const fromTrello = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
+    if (fromTrello) return fromTrello;
+    const productCode = card.labels.find((l) => l.name.startsWith("成交/"))?.name.replace("成交/", "");
+    return PRODUCTS.find((p) => p.displayName === productCode)?.defaultFoot ?? "";
+  }
+
+  async function writeBackChairLegIfEmpty(): Promise<void> {
+    const existing = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
+    if (existing) return;
+    const defaultValue = resolveChairLeg();
+    if (!defaultValue) return;
+    const fieldId = customFields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.CHAIR_LEG)
+      ? S_ORDER_CUSTOM_FIELDS.CHAIR_LEG
+      : TRELLO.CUSTOM_FIELDS.CHAIR_LEG;
+    try {
+      await updateCustomField(card.id, fieldId, { text: defaultValue });
+      onCustomFieldUpdate?.(fieldId, { text: defaultValue });
+    } catch {
+      // best-effort, don't block the user
+    }
+  }
+
   function handlePrintSticker(chairLegMode: boolean) {
     const nameParts = card.name.split(/\s+/);
     const ordNum = nameParts[0] ?? card.name;
-    const ordName = chairLegMode
-      ? getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG)
-      : (nameParts[1] ?? "");
+    const ordName = chairLegMode ? resolveChairLeg() : (nameParts[1] ?? "");
     setPrintLabel({ ordNum, ordName });
+    if (chairLegMode) void writeBackChairLegIfEmpty();
   }
 
   return (
@@ -795,9 +818,10 @@ function ProductionView({ card, customFields, onBack }: ProductionViewProps) {
 
       {/* 排程簡訊 */}
       <button
-        onClick={() =>
-          setResult({ title: "排程簡訊", content: buildScheduleSMS(card, customFields) })
-        }
+        onClick={() => {
+          setResult({ title: "排程簡訊", content: buildScheduleSMS(card, customFields) });
+          void writeBackChairLegIfEmpty();
+        }}
         className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
       >
         <span className="text-base">📅</span>
@@ -1677,6 +1701,13 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
             card={card}
             customFields={customFields}
             onBack={() => setView("actions")}
+            onCustomFieldUpdate={(fieldId, value) =>
+              setCustomFields((prev) => {
+                const exists = prev.some((cf) => cf.idCustomField === fieldId);
+                if (exists) return prev.map((cf) => cf.idCustomField === fieldId ? { ...cf, value } : cf);
+                return [...prev, { id: fieldId, idCustomField: fieldId, value }];
+              })
+            }
           />
         ) : view === "customer" ? (
           <CustomerView
