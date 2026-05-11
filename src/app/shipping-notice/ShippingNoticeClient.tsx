@@ -1944,8 +1944,19 @@ export function ShippingNoticeClient() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [selectedCard, setSelectedCard] = useState<TrelloCard | null>(null);
-  const [cardAttachments, setCardAttachments] = useState<TrelloAttachment[]>([]);
-  const [cardAttachmentsCardId, setCardAttachmentsCardId] = useState<string | null>(null);
+  const [cardAttachments, setCardAttachments] = useState<TrelloAttachment[]>(() => {
+    if (typeof window === "undefined") return [];
+    const id = sessionStorage.getItem("sn_att_id");
+    const raw = sessionStorage.getItem("sn_att");
+    if (!id || !raw) return [];
+    try { return JSON.parse(raw) as TrelloAttachment[]; } catch { return []; }
+  });
+  const [cardAttachmentsCardId, setCardAttachmentsCardId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : sessionStorage.getItem("sn_att_id"),
+  );
+  const attachedCardIdRef = useRef<string | null>(
+    typeof window !== "undefined" ? sessionStorage.getItem("sn_att_id") : null,
+  );
   const [cardCustomFieldsMap, setCardCustomFieldsMap] = useState<Record<string, CustomFieldItem[]>>({});
   const [previewImages, setPreviewImages] = useState<string[][] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -2000,13 +2011,25 @@ export function ShippingNoticeClient() {
     setCardAttachmentsCardId(previewCardId);
     if (!previewCardId) {
       setCardAttachments([]);
+      attachedCardIdRef.current = null;
       return;
     }
 
+    // Skip fetch if we already have this card's attachments (e.g., restored from sessionStorage)
+    if (attachedCardIdRef.current === previewCardId) return;
+    attachedCardIdRef.current = previewCardId;
+
     setCardAttachments([]);
     fetchAttachments(previewCardId)
-      .then(setCardAttachments)
-      .catch(() => setCardAttachments([]));
+      .then((atts) => {
+        setCardAttachments(atts);
+        sessionStorage.setItem("sn_att_id", previewCardId);
+        try { sessionStorage.setItem("sn_att", JSON.stringify(atts)); } catch { /* quota */ }
+      })
+      .catch(() => {
+        attachedCardIdRef.current = null;
+        setCardAttachments([]);
+      });
   }, [previewCardId]);
 
   useEffect(() => {
