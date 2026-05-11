@@ -727,6 +727,26 @@ function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: Pro
     }
   }
 
+  async function writeBackAccessoriesIfNeeded(): Promise<void> {
+    const raw = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.ACCESSORIES);
+    if (!raw) return;
+    let formatted: string;
+    if (raw.includes("/")) {
+      const [color, num] = raw.split("/");
+      formatted = `抱枕(${color ?? ""})${num ?? ""}只`;
+    } else if (!raw.includes("只")) {
+      formatted = `抱枕(${raw})2只`;
+    } else {
+      return;
+    }
+    try {
+      await updateCustomField(card.id, TRELLO.CUSTOM_FIELDS.ACCESSORIES, { text: formatted });
+      onCustomFieldUpdate?.(TRELLO.CUSTOM_FIELDS.ACCESSORIES, { text: formatted });
+    } catch {
+      // best-effort, don't block the user
+    }
+  }
+
   function handlePrintSticker(chairLegMode: boolean) {
     const nameParts = card.name.split(/\s+/);
     const ordNum = nameParts[0] ?? card.name;
@@ -821,6 +841,7 @@ function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: Pro
         onClick={() => {
           setResult({ title: "排程簡訊", content: buildScheduleSMS(card, customFields) });
           void writeBackChairLegIfEmpty();
+          void writeBackAccessoriesIfNeeded();
         }}
         className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
       >
