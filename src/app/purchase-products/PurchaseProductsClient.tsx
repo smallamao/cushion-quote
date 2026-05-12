@@ -239,7 +239,7 @@ export function PurchaseProductsClient() {
       productName: p.productName ?? "",
       specification: p.specification ?? "",
       supplierProductCode: p.supplierProductCode ?? "",
-      costPerCai: getEffectiveCost(p),
+      costPerCai: p.unitPrice,  // always show per-unit (per-yard) price in the form
       imageUrl: p.imageUrl ?? "",
       notes: p.notes ?? "",
     };
@@ -877,7 +877,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
 </Select>
                </div>
                <div>
-                 <Label>進價</Label>
+                 <Label>進價 <span className="font-normal text-[var(--text-tertiary)]">（per {draft.unit ?? "碼"}）</span></Label>
                  <Input
                    type="number"
                    value={draft.costPerCai ?? ""}
