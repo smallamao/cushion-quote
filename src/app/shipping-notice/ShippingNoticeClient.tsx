@@ -747,6 +747,49 @@ function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: Pro
     }
   }
 
+  async function writeBackContactsIfNeeded(): Promise<void> {
+    // Only backfill on main production board; skip S Order board cards
+    if (card.idBoard !== TRELLO.BOARD_ID) return;
+
+    const existingPrimaryName = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME);
+    const existingPrimaryPhone = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE);
+    const existingSecondaryName = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME);
+    const existingSecondaryPhone = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE);
+
+    // Parse primary name: last segment of card name split by whitespace
+    const parsedPrimaryName = card.name.trim().split(/\s+/).at(-1) ?? "";
+
+    // Parse primary phone: skip first desc line (address), find first line without "/" that looks like a phone
+    const descLines = card.desc.split("\n").map((l) => l.trim()).filter(Boolean);
+    const parsedPrimaryPhone = descLines.slice(1).find(
+      (l) => !l.includes("/") && /\d{4,}/.test(l)
+    ) ?? "";
+
+    // Parse secondary contact: last desc line containing "/", format "phone/name"
+    const secondaryLine = [...descLines].reverse().find((l) => l.includes("/"));
+    const [parsedSecondaryPhone, parsedSecondaryName] = secondaryLine
+      ? secondaryLine.split("/").map((s) => s.trim())
+      : ["", ""];
+
+    const writes: Array<Promise<void>> = [];
+
+    function backfill(fieldId: string, existing: string, parsed: string) {
+      if (existing || !parsed) return;
+      writes.push(
+        updateCustomField(card.id, fieldId, { text: parsed })
+          .then(() => onCustomFieldUpdate?.(fieldId, { text: parsed }))
+          .catch(() => {}),
+      );
+    }
+
+    backfill(TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME, existingPrimaryName, parsedPrimaryName);
+    backfill(TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE, existingPrimaryPhone, parsedPrimaryPhone);
+    backfill(TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME, existingSecondaryName, parsedSecondaryName ?? "");
+    backfill(TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE, existingSecondaryPhone, parsedSecondaryPhone ?? "");
+
+    await Promise.all(writes);
+  }
+
   function handlePrintSticker(chairLegMode: boolean) {
     const nameParts = card.name.split(/\s+/);
     const ordNum = nameParts[0] ?? card.name;
@@ -842,6 +885,7 @@ function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: Pro
           setResult({ title: "排程簡訊", content: buildScheduleSMS(card, customFields) });
           void writeBackChairLegIfEmpty();
           void writeBackAccessoriesIfNeeded();
+          void writeBackContactsIfNeeded();
         }}
         className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
       >
