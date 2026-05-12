@@ -60,7 +60,7 @@ export function Sidebar() {
             className="mt-0.5 text-[11px] text-white transition-opacity duration-200"
             style={{ opacity: collapsed ? 0 : 0.6, height: collapsed ? 0 : "auto" }}
           >
-            營運系統 v0.8.2
+            營運系統 v0.8.3
             {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA && (
               <span className="ml-1 opacity-60">
                 #{process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA.slice(0, 7)}
