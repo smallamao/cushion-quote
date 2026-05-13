@@ -138,6 +138,10 @@ async function toggleCheckItem(cardId: string, checkItemId: string, complete: bo
   });
 }
 
+async function renameCheckItem(cardId: string, checkItemId: string, name: string): Promise<void> {
+  await trelloPutQ(`cards/${cardId}/checkItem/${checkItemId}`, { name });
+}
+
 async function updateCustomField(
   cardId: string,
   fieldId: string,
@@ -1183,6 +1187,8 @@ function ChecklistView({ card, onBack, onCountChange }: { card: TrelloCard; onBa
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [newItemText, setNewItemText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingItem, setEditingItem] = useState<{ id: string; checklistId: string } | null>(null);
+  const [editingText, setEditingText] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -1237,6 +1243,37 @@ function ChecklistView({ card, onBack, onCountChange }: { card: TrelloCard; onBa
     }
   }
 
+  function startEdit(item: CheckItem, checklistId: string) {
+    setEditingItem({ id: item.id, checklistId });
+    setEditingText(item.name);
+  }
+
+  async function commitEdit() {
+    if (!editingItem) return;
+    const name = editingText.trim();
+    setEditingItem(null);
+    if (!name) return;
+    const original = checklists
+      .flatMap((cl) => cl.checkItems)
+      .find((ci) => ci.id === editingItem.id);
+    if (!original || name === original.name) return;
+    try {
+      await renameCheckItem(card.id, editingItem.id, name);
+      setChecklists((prev) =>
+        prev.map((cl) =>
+          cl.id !== editingItem.checklistId ? cl : {
+            ...cl,
+            checkItems: cl.checkItems.map((ci) =>
+              ci.id === editingItem.id ? { ...ci, name } : ci
+            ),
+          }
+        )
+      );
+    } catch {
+      alert("重新命名失敗，請重試");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <button
@@ -1270,19 +1307,38 @@ function ChecklistView({ card, onBack, onCountChange }: { card: TrelloCard; onBa
 
             <div className="overflow-hidden rounded-lg border border-[var(--border)]">
               {cl.checkItems.map((item) => (
-                <button
+                <div
                   key={item.id}
-                  onClick={() => void handleToggle(cl.id, item)}
-                  disabled={toggling === item.id}
-                  className="flex w-full items-center gap-2.5 border-b border-[var(--border)] px-3 py-2.5 text-left last:border-b-0 hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                  className="flex w-full items-center gap-2.5 border-b border-[var(--border)] px-3 py-2.5 last:border-b-0"
                 >
-                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${item.state === "complete" ? "border-green-500 bg-green-500 text-white" : "border-[var(--border)]"}`}>
+                  <button
+                    onClick={() => void handleToggle(cl.id, item)}
+                    disabled={toggling === item.id}
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] disabled:opacity-50 ${item.state === "complete" ? "border-green-500 bg-green-500 text-white" : "border-[var(--border)] hover:border-[var(--accent)]"}`}
+                  >
                     {item.state === "complete" && "✓"}
-                  </span>
-                  <span className={`text-sm ${item.state === "complete" ? "line-through text-[var(--text-tertiary)]" : "text-[var(--text-primary)]"}`}>
-                    {item.name}
-                  </span>
-                </button>
+                  </button>
+                  {editingItem?.id === item.id ? (
+                    <input
+                      autoFocus
+                      value={editingText}
+                      onChange={(e) => setEditingText(e.target.value)}
+                      onBlur={() => void commitEdit()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.currentTarget.blur(); }
+                        if (e.key === "Escape") { setEditingItem(null); }
+                      }}
+                      className="flex-1 bg-transparent text-sm outline-none"
+                    />
+                  ) : (
+                    <span
+                      onClick={() => startEdit(item, cl.id)}
+                      className={`flex-1 cursor-text text-sm ${item.state === "complete" ? "line-through text-[var(--text-tertiary)]" : "text-[var(--text-primary)]"}`}
+                    >
+                      {item.name}
+                    </span>
+                  )}
+                </div>
               ))}
 
               {addingTo === cl.id ? (
