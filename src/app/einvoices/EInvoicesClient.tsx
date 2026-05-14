@@ -178,6 +178,7 @@ export function EInvoicesClient() {
     buyerName: "",
     buyerTaxId: "",
     totalAmount: "",
+    amountType: "含稅" as "含稅" | "未稅",
     content: "",
     remark: "",
     overallRemark: "",
@@ -520,13 +521,16 @@ export function EInvoicesClient() {
   }
 
   async function handleQuickCreate() {
-    const total = Number(quickCreateForm.totalAmount.replace(/[,$]/g, ""));
+    const inputAmount = Number(quickCreateForm.totalAmount.replace(/[,$]/g, ""));
     if (!quickCreateForm.buyerName.trim()) return;
-    if (!total || total <= 0) return;
+    if (!inputAmount || inputAmount <= 0) return;
     setQuickCreating(true);
     try {
-      const untaxed = Math.round(total / 1.05);
-      const tax = total - untaxed;
+      const untaxed = quickCreateForm.amountType === "未稅"
+        ? inputAmount
+        : Math.round(inputAmount / 1.05);
+      const tax = Math.round(untaxed * 0.05);
+      const total = untaxed + tax;
       const content = quickCreateForm.content.trim() || quickCreateForm.buyerName.trim();
       const now = Date.now();
       const createRes = await fetch("/api/sheets/einvoices", {
@@ -569,7 +573,7 @@ export function EInvoicesClient() {
       setSnackbar({ message: "電子發票已開立", invoiceId });
       setTimeout(() => setSnackbar(null), 3000);
       setQuickCreateOpen(false);
-      setQuickCreateForm({ buyerName: "", buyerTaxId: "", totalAmount: "", content: "", remark: "", overallRemark: "", internalNote: "", invoiceDate: new Date().toISOString().slice(0, 10) });
+      setQuickCreateForm({ buyerName: "", buyerTaxId: "", totalAmount: "", amountType: "含稅", content: "", remark: "", overallRemark: "", internalNote: "", invoiceDate: new Date().toISOString().slice(0, 10) });
       await load({ preserveFeedback: true });
     } catch (err) {
       setNotice({ tone: "error", title: "快速開立失敗", detail: err instanceof Error ? err.message : "未知錯誤" });
@@ -1775,9 +1779,23 @@ export function EInvoicesClient() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">含稅金額 *</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">{quickCreateForm.amountType}金額 *</Label>
+                <div className="flex rounded-md border border-[var(--border)] text-[11px] overflow-hidden">
+                  {(["含稅", "未稅"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setQuickCreateForm((f) => ({ ...f, amountType: t }))}
+                      className={`px-2 py-0.5 transition-colors ${quickCreateForm.amountType === t ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <Input
-                placeholder="1050"
+                placeholder={quickCreateForm.amountType === "含稅" ? "1050" : "1000"}
                 value={quickCreateForm.totalAmount}
                 onChange={(e) => setQuickCreateForm((f) => ({ ...f, totalAmount: e.target.value }))}
               />
@@ -1822,11 +1840,17 @@ export function EInvoicesClient() {
                 onChange={(e) => setQuickCreateForm((f) => ({ ...f, invoiceDate: e.target.value }))}
               />
             </div>
-            {quickCreateForm.totalAmount && Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) > 0 && (
-              <p className="text-xs text-[var(--text-secondary)]">
-                含稅 {Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")).toLocaleString()} = 未稅 {Math.round(Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) / 1.05).toLocaleString()} + 稅 {(Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) - Math.round(Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) / 1.05)).toLocaleString()}
-              </p>
-            )}
+            {quickCreateForm.totalAmount && Number(quickCreateForm.totalAmount.replace(/[,$]/g, "")) > 0 && (() => {
+              const input = Number(quickCreateForm.totalAmount.replace(/[,$]/g, ""));
+              const untaxed = quickCreateForm.amountType === "未稅" ? input : Math.round(input / 1.05);
+              const tax = Math.round(untaxed * 0.05);
+              const total = untaxed + tax;
+              return (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  含稅 {total.toLocaleString()} = 未稅 {untaxed.toLocaleString()} + 稅 {tax.toLocaleString()}
+                </p>
+              );
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setQuickCreateOpen(false)} disabled={quickCreating}>取消</Button>
