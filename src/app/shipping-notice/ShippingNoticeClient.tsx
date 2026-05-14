@@ -2057,6 +2057,9 @@ export function ShippingNoticeClient() {
   const attachedCardIdRef = useRef<string | null>(
     typeof window !== "undefined" ? sessionStorage.getItem("sn_att_id") : null,
   );
+  // True once we've seen a non-null previewCardId; prevents clearing sessionStorage-
+  // restored attachments when cards haven't loaded yet on initial mount.
+  const hasLoadedPreviewCard = useRef(false);
   const [cardCustomFieldsMap, setCardCustomFieldsMap] = useState<Record<string, CustomFieldItem[]>>({});
   const [previewImages, setPreviewImages] = useState<string[][] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -2110,10 +2113,17 @@ export function ShippingNoticeClient() {
   useEffect(() => {
     setCardAttachmentsCardId(previewCardId);
     if (!previewCardId) {
-      setCardAttachments([]);
-      attachedCardIdRef.current = null;
+      // On initial mount cards haven't loaded yet from sessionStorage restore —
+      // don't clear the just-restored attachments. Only clear once we've already
+      // seen a real card (i.e., the user is deliberately switching away).
+      if (hasLoadedPreviewCard.current) {
+        setCardAttachments([]);
+        attachedCardIdRef.current = null;
+      }
       return;
     }
+
+    hasLoadedPreviewCard.current = true;
 
     // Skip fetch if we already have this card's attachments (e.g., restored from sessionStorage)
     if (attachedCardIdRef.current === previewCardId) return;
