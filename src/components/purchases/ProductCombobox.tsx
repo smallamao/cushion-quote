@@ -56,7 +56,7 @@ export function ProductCombobox({
     const q = query.trim().toLowerCase();
     if (!q) return sorted.slice(0, maxResults);
     const matches = sorted.filter((p) =>
-      [p.productCode, p.supplierProductCode, p.productName, p.specification]
+      [p.productCode, p.supplierProductCode, p.colorCode, p.colorName, p.productName, p.specification]
         .filter(Boolean)
         .some((f) => (f as string).toLowerCase().includes(q)),
     );
@@ -120,7 +120,16 @@ export function ProductCombobox({
         <span className="min-w-0 flex-1 truncate">
           {selected ? (
             <>
-              <span className="font-mono">{selected.productCode}</span>
+              {selected.colorCode ? (
+                <>
+                  <span className="font-mono">{selected.colorCode}</span>
+                  <span className="ml-1.5 font-mono text-[10px] text-[var(--text-tertiary)]">
+                    [{selected.productCode}]
+                  </span>
+                </>
+              ) : (
+                <span className="font-mono">{selected.productCode}</span>
+              )}
               {selected.productName && (
                 <>
                   <span className="mx-1.5 text-[var(--text-tertiary)]">·</span>
@@ -184,10 +193,19 @@ export function ProductCombobox({
                       }`}
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="font-mono">{p.productCode}</span>
+                      {p.colorCode ? (
+                        <>
+                          <span className="font-mono">{p.colorCode}</span>
+                          <span className="ml-1.5 font-mono text-[10px] text-[var(--text-tertiary)]">
+                            [{p.productCode}]
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-mono">{p.productCode}</span>
+                      )}
                       {p.supplierProductCode && (
                         <span className="ml-1.5 font-mono text-[10px] text-[var(--text-tertiary)]">
-                          [{p.supplierProductCode}]
+                          ({p.supplierProductCode})
                         </span>
                       )}
                       <span className="mx-1.5 text-[var(--text-tertiary)]">
