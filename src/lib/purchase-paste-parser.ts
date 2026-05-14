@@ -38,7 +38,7 @@ export interface ParsedPasteLine {
 
 const UNIT_PATTERNS: Array<{ regex: RegExp; unit: PurchaseUnit }> = [
   { regex: /^([0-9]*\.?[0-9]+)\s*(?:y|Y|碼)$/u, unit: "碼" },
-  { regex: /^([0-9]*\.?[0-9]+)\s*(?:件|片|pc|pcs|PC|PCS)$/u, unit: "件" },
+  { regex: /^([0-9]*\.?[0-9]+)\s*(?:件|片|p|pc|pcs|P|PC|PCS)$/u, unit: "件" },
   { regex: /^([0-9]*\.?[0-9]+)\s*只$/u, unit: "只" },
   { regex: /^([0-9]*\.?[0-9]+)\s*才$/u, unit: "才" },
   { regex: /^([0-9]*\.?[0-9]+)\s*米$/u, unit: "米" },

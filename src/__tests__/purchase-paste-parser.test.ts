@@ -23,6 +23,12 @@ describe("parsePurchasePasteLine", () => {
     expect(r!.subItems).toEqual([{ qty: 6.5, unit: "碼" }]);
   });
 
+  it("解析 p 為件", () => {
+    const r = parsePurchasePasteLine("S3354 3p #S1070");
+    expect(r!.productCode).toBe("S3354");
+    expect(r!.subItems).toEqual([{ qty: 3, unit: "件" }]);
+  });
+
   it("解析大寫 Y", () => {
     const r = parsePurchasePasteLine("彩虹皮8852 2Y #S847");
     expect(r!.productCode).toBe("彩虹皮8852");
