@@ -181,6 +181,16 @@ export function resolveParsedLines(
     if (!pcode) continue;
     byCode.set(pcode, p);
 
+    // Also index by supplierProductCode and colorCode for direct paste matching
+    if (p.supplierProductCode) {
+      const sc = p.supplierProductCode.trim().toLowerCase();
+      if (sc && !byCode.has(sc)) byCode.set(sc, p);
+    }
+    if (p.colorCode) {
+      const cc = p.colorCode.trim().toLowerCase();
+      if (cc && !byCode.has(cc)) byCode.set(cc, p);
+    }
+
     const norm = normalizeCode(p.productCode);
     if (norm) {
       (byNorm.get(norm) ?? byNorm.set(norm, []).get(norm)!).push(p);
@@ -192,6 +202,20 @@ export function resolveParsedLines(
     const specNorm = normalizeCode(p.specification);
     if (specNorm && specNorm !== norm) {
       (byNorm.get(specNorm) ?? byNorm.set(specNorm, []).get(specNorm)!).push(p);
+    }
+
+    // Index supplierProductCode and colorCode in normalized form too
+    if (p.supplierProductCode) {
+      const scNorm = normalizeCode(p.supplierProductCode);
+      if (scNorm && scNorm !== norm) {
+        (byNorm.get(scNorm) ?? byNorm.set(scNorm, []).get(scNorm)!).push(p);
+      }
+    }
+    if (p.colorCode) {
+      const ccNorm = normalizeCode(p.colorCode);
+      if (ccNorm && ccNorm !== norm) {
+        (byNorm.get(ccNorm) ?? byNorm.set(ccNorm, []).get(ccNorm)!).push(p);
+      }
     }
 
     const digits = digitsOf(p.productCode);
@@ -261,14 +285,18 @@ export function resolveParsedLines(
       if (hits?.length === 1) return hits[0];
     }
 
-    // 5. Substring match on productCode / spec / name (existing behaviour)
+    // 5. Substring match on productCode / supplierProductCode / colorCode / spec / name
     const hit = catalog.find((p) => {
       const pCode = p.productCode.trim().toLowerCase();
       const pSpec = p.specification.trim().toLowerCase();
       const pName = p.productName.trim().toLowerCase();
+      const pSC = (p.supplierProductCode ?? "").trim().toLowerCase();
+      const pCC = (p.colorCode ?? "").trim().toLowerCase();
       return (
         (pCode.length > 0 &&
           (pCode.includes(codeLower) || codeLower.includes(pCode))) ||
+        (pSC.length >= 3 && (pSC.includes(codeLower) || codeLower.includes(pSC))) ||
+        (pCC.length >= 3 && (pCC.includes(codeLower) || codeLower.includes(pCC))) ||
         (pSpec.length >= 3 && pSpec.includes(codeLower)) ||
         (pName.length >= 3 && pName.includes(codeLower))
       );

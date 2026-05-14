@@ -98,7 +98,8 @@ describe("resolveParsedLines", () => {
     {
       id: "LY9802-PS007",
       productCode: "LY9802",
-      supplierProductCode: "",
+      supplierProductCode: "9802-A",
+      colorCode: "LY-001",
       productName: "蘭陽 LY9802 系列",
       specification: "9802",
       category: "面料",
@@ -155,5 +156,19 @@ describe("resolveParsedLines", () => {
     expect(items[0].matched).toBe(false);
     expect(items[0].warning).toBe("查無此商品");
     expect(items[0].quantity).toBe(5);
+  });
+
+  it("用 colorCode 貼上可匹配", () => {
+    const lines = parsePurchasePasteText("LY-001 8y #P6010");
+    const items = resolveParsedLines(lines, catalog);
+    expect(items[0].matched).toBe(true);
+    expect(items[0].productId).toBe("LY9802-PS007");
+  });
+
+  it("用 supplierProductCode 貼上可匹配", () => {
+    const lines = parsePurchasePasteText("9802-A 5y #P6011");
+    const items = resolveParsedLines(lines, catalog);
+    expect(items[0].matched).toBe(true);
+    expect(items[0].productId).toBe("LY9802-PS007");
   });
 });
