@@ -53,19 +53,19 @@ export interface MaterialGrade {
 }
 
 export const MATERIAL_GRADES: MaterialGrade[] = [
-  { id: 'TW_LV1',      displayName: '台灣 LV1 藍標', materialDescription: '台製機能超纖涼感布/台製貓抓布/舒適棉麻布(藍標)',    ratePerSeatPerCm: 150, origin: '台灣' },
-  { id: 'TW_LV2',      displayName: '台灣 LV2 綠標', materialDescription: '台製高階貓抓布/台製輕奢皮革(綠標)',                  ratePerSeatPerCm: 150, origin: '台灣' },
-  { id: 'TW_LV3',      displayName: '台灣 LV3 黃標', materialDescription: '比利時抗污布/以色列貓抓布/天絲涼感布(黃標)',          ratePerSeatPerCm: 150, origin: '台灣' },
-  { id: 'TW_LV4',      displayName: '台灣 LV4 橘標', materialDescription: '超纖亞麻布/極致涼感布(橘標)',                        ratePerSeatPerCm: 150, origin: '台灣' },
-  { id: 'TW_LV5',      displayName: '台灣 LV5 紅標', materialDescription: '頂級機能布料/高階特殊材質(紅標)',                    ratePerSeatPerCm: 200, origin: '台灣' },
-  { id: 'IMPORT_LV1',  displayName: '進口 LV1',      materialDescription: '進口基礎系列布料(藍標)',                            ratePerSeatPerCm: 200, origin: '進口' },
-  { id: 'IMPORT_LV2',  displayName: '進口 LV2',      materialDescription: '進口中階系列布料(綠標)',                            ratePerSeatPerCm: 250, origin: '進口' },
-  { id: 'IMPORT_LV3',  displayName: '進口 LV3',      materialDescription: '進口高階系列布料(黃標)',                            ratePerSeatPerCm: 250, origin: '進口' },
-  { id: 'IMPORT_LV4',  displayName: '進口 LV4',      materialDescription: '進口頂級系列布料(橘標)',                            ratePerSeatPerCm: 250, origin: '進口' },
-  { id: 'IMPORT_LV5',  displayName: '進口 LV5',      materialDescription: '進口特殊限定系列(紅標)',                            ratePerSeatPerCm: 250, origin: '進口' },
-  { id: 'LEATHER_LV1', displayName: '牛皮 LV1',      materialDescription: '塗料染牛皮/半苯染牛皮(三星)',                       ratePerSeatPerCm: 150, origin: '天然牛皮' },
-  { id: 'LEATHER_LV2', displayName: '牛皮 LV2',      materialDescription: '義大利半苯染Nappa牛皮(四星)',                       ratePerSeatPerCm: 200, origin: '天然牛皮' },
-  { id: 'LEATHER_LV3', displayName: '牛皮 LV3',      materialDescription: '義大利全苯染頂級牛皮(五星)',                        ratePerSeatPerCm: 250, origin: '天然牛皮' },
+  { id: 'TW_LV1',      displayName: '台灣 LV1 藍標', materialDescription: '(經濟型)貓抓皮(TJ79)／貓抓布',                                                                                                              ratePerSeatPerCm: 150, origin: '台灣' },
+  { id: 'TW_LV2',      displayName: '台灣 LV2 綠標', materialDescription: '台製貓抓皮(LY3139)／寵物皮(39/53/55)\n綿羊貓抓絨(LY99)／精品亞麻布(518)',                                                                   ratePerSeatPerCm: 150, origin: '台灣' },
+  { id: 'TW_LV3',      displayName: '台灣 LV3 黃標', materialDescription: '超纖涼感布(LY76)／舒柔貓抓布(LY93/94)\n台製貓抓皮(LY68&69)／三防機能布(BBHH)',                                                              ratePerSeatPerCm: 150, origin: '台灣' },
+  { id: 'TW_LV4',      displayName: '台灣 LV4 橘標', materialDescription: 'ABU 亞麻布／絨布／寵物耐磨布\n天絲(527)&冰絲(528)涼感布／西班牙貓抓布',                                                                       ratePerSeatPerCm: 150, origin: '台灣' },
+  { id: 'TW_LV5',      displayName: '台灣 LV5 紅標', materialDescription: '美國杜邦銀離子抗菌布(ABU855)\n輕柔／銀離子／魯道夫貓抓布\n極致(LY78/91/96)／石墨烯涼感布(529)\n高分子皮絨布(LY95)／超機能亞麻(HS2369)\nSymphonymills 機能亞麻布(Soho／Malta)', ratePerSeatPerCm: 200, origin: '台灣' },
+  { id: 'IMPORT_LV1',  displayName: '進口 LV1',      materialDescription: 'F!NX 荷蘭硅膠皮革／碳纖皮革(JR58)\n歐洲／美國貓抓布／比利時抗污布 FibreGuard\n以色列 那普勒斯／維洛那(1800)',                              ratePerSeatPerCm: 200, origin: '進口' },
+  { id: 'IMPORT_LV2',  displayName: '進口 LV2',      materialDescription: '以色列 贊許(2200)／絲柔雲彩(2300)',                                                                                                         ratePerSeatPerCm: 250, origin: '進口' },
+  { id: 'IMPORT_LV3',  displayName: '進口 LV3',      materialDescription: '以色列 王子系列(2800)',                                                                                                                      ratePerSeatPerCm: 250, origin: '進口' },
+  { id: 'IMPORT_LV4',  displayName: '進口 LV4',      materialDescription: '以色列 極致旗艦款(3200)',                                                                                                                    ratePerSeatPerCm: 250, origin: '進口' },
+  { id: 'IMPORT_LV5',  displayName: '進口 LV5',      materialDescription: '以色列 王中王系列(3900)',                                                                                                                    ratePerSeatPerCm: 250, origin: '進口' },
+  { id: 'LEATHER_LV1', displayName: '牛皮 LV1',      materialDescription: '塗料染 半牛皮(谷懋8／尚S33／勝77)',                                                                                                          ratePerSeatPerCm: 150, origin: '天然牛皮' },
+  { id: 'LEATHER_LV2', displayName: '牛皮 LV2',      materialDescription: '半苯染 半牛皮(尚S69／勝79)',                                                                                                                 ratePerSeatPerCm: 200, origin: '天然牛皮' },
+  { id: 'LEATHER_LV3', displayName: '牛皮 LV3',      materialDescription: '輕苯染 半牛皮(季66／勝98)',                                                                                                                  ratePerSeatPerCm: 250, origin: '天然牛皮' },
 ]
 
 // ─── Base Pricing (from l1_base_pricing.json) ────────────────────────────────
