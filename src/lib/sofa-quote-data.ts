@@ -372,6 +372,7 @@ export function buildQuoteOutput(
   detailLines.push('- - - 詳細資訊 - - -')
   detailLines.push(`Ｌ三人份 ${lc.sizeL3}cm  $${fmtAmount(lc.L3)}`)
   detailLines.push(`Ｌ一人份 ${lc.sizeL1}cm  $${fmtAmount(lc.L1)}`)
+  detailLines.push(`Ｌ平台  $${fmtAmount(lc.platform)}`)
   detailLines.push(`一人坐寬 ${wc.oneSeatWidth.toFixed(1)}cm`)
 
   detailLines.push('')
