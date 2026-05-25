@@ -45,6 +45,7 @@ import type {
   AfterSalesServiceType,
   AfterSalesStatus,
 } from "@/lib/types";
+import { ISSUE_CATEGORIES } from "@/lib/types";
 
 interface Props {
   mode: "create" | "edit";
@@ -78,6 +79,7 @@ function emptyDraft(): DraftService {
     customerSignature: "",
     customerSignedAt: "",
     serviceType: "client" as AfterSalesServiceType,
+    issueCategories: [],
   };
 }
 
@@ -290,6 +292,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           outsourcedNote: service.outsourcedNote ?? "",
           itemLocation: service.itemLocation ?? "",
           itemDescription: service.itemDescription ?? "",
+          issueCategories: service.issueCategories ?? [],
         });
         setMeta({
           serviceId: service.serviceId,
@@ -841,6 +844,41 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
             onChange={(e) => update("issueDescription", e.target.value)}
             placeholder="例: 坐墊滑軌反應偏鬆"
           />
+        </div>
+
+        {/* 問題分類標籤 */}
+        <div className="mt-4">
+          <Label>問題分類</Label>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {ISSUE_CATEGORIES.map((cat) => {
+              const selected = (draft.issueCategories ?? []).includes(cat);
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() => {
+                    const current = draft.issueCategories ?? [];
+                    update(
+                      "issueCategories",
+                      selected
+                        ? current.filter((c) => c !== cat)
+                        : [...current, cat],
+                    );
+                  }}
+                  className={[
+                    "rounded-full px-2.5 py-1 text-xs transition-colors",
+                    selected
+                      ? "bg-[var(--accent)] text-white"
+                      : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
+                    readOnly ? "opacity-50 cursor-not-allowed" : "",
+                  ].join(" ")}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* 問題照片 / 影片 */}
