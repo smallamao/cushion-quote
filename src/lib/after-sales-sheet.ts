@@ -169,9 +169,17 @@ export async function createService(input: {
     createdAt: now,
     updatedAt: now,
   };
-  await client.sheets.spreadsheets.values.append({
+  // Use values.get to find the last row with data in col A, then write to the
+  // next explicit row. This avoids values.append mis-detecting the table start
+  // column when the header row is shorter than the data schema.
+  const idRes = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: MAIN_RANGE_FULL,
+    range: MAIN_RANGE_IDS,
+  });
+  const nextRow = (idRes.data.values ?? []).length + 2; // +1 for header, +1 for next row
+  await client.sheets.spreadsheets.values.update({
+    spreadsheetId: client.spreadsheetId,
+    range: `${MAIN_SHEET}!A${nextRow}:AD${nextRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(service)] },
   });
@@ -261,9 +269,14 @@ export async function createReply(input: {
     attachments: input.attachments,
     createdAt: now,
   };
-  await client.sheets.spreadsheets.values.append({
+  const replyIdRes = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: REPLY_RANGE_FULL,
+    range: `${REPLY_SHEET}!A2:A`,
+  });
+  const replyNextRow = (replyIdRes.data.values ?? []).length + 2;
+  await client.sheets.spreadsheets.values.update({
+    spreadsheetId: client.spreadsheetId,
+    range: `${REPLY_SHEET}!A${replyNextRow}:G${replyNextRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [replyToRow(reply)] },
   });
