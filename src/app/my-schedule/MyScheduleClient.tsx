@@ -160,10 +160,13 @@ export function MyScheduleClient() {
   const isAdmin = user?.role === "admin";
 
   // ── Derived data ──────────────────────────────────────────────────────────
+  const today = new Date().toISOString().slice(0, 10);
+
   // Admin sees all dispatched orders; technician sees only their own.
+  // Only show today and future — past dates are hidden.
   const myServices = services.filter((s) =>
     s.status !== "cancelled" &&
-    s.scheduledDate !== "" &&
+    s.scheduledDate >= today &&
     (isAdmin || s.assignedTo === myName),
   );
   const dateGroups = sortDateGroups(groupByDate(myServices));
