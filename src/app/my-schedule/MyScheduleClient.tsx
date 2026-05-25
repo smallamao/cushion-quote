@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Loader2, MapPin, Phone } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, MapPin, Phone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,16 +15,22 @@ import { buildMapsUrl, groupByDate, sortDateGroups } from "@/lib/schedule-utils"
 interface CompletionState {
   serviceId: string;
   notes: string;
-  photos: string[]; // uploaded URLs
+  photos: string[];
   uploading: boolean;
   saving: boolean;
 }
 
 interface ServiceCardProps {
   service: AfterSalesService;
+  stationNumber: number;
+  isFirst: boolean;
+  isLast: boolean;
+  isAdmin: boolean;
   startingId: string | null;
   onStart: (id: string) => void;
   onComplete: (id: string) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -39,7 +45,18 @@ function formatDateLabel(date: string): string {
 
 // ─── ServiceCard component ────────────────────────────────────────────────────
 
-function ServiceCard({ service, startingId, onStart, onComplete }: ServiceCardProps) {
+function ServiceCard({
+  service,
+  stationNumber,
+  isFirst,
+  isLast,
+  isAdmin,
+  startingId,
+  onStart,
+  onComplete,
+  onMoveUp,
+  onMoveDown,
+}: ServiceCardProps) {
   const {
     serviceId,
     clientName,
@@ -55,18 +72,45 @@ function ServiceCard({ service, startingId, onStart, onComplete }: ServiceCardPr
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-sm space-y-3">
-      {/* Client name + phone */}
+      {/* Station badge + client name + phone + reorder arrows */}
       <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold text-[var(--text-primary)]">{clientName}</span>
-        {clientPhone && (
-          <a
-            href={`tel:${clientPhone}`}
-            className="flex items-center gap-1 text-[var(--accent)] text-sm"
-          >
-            <Phone size={14} />
-            {clientPhone}
-          </a>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="flex-shrink-0 w-7 h-7 rounded-full bg-orange-100 text-orange-700 text-sm font-bold flex items-center justify-center">
+            {stationNumber}
+          </span>
+          <span className="font-semibold text-[var(--text-primary)]">{clientName}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {clientPhone && (
+            <a
+              href={`tel:${clientPhone}`}
+              className="flex items-center gap-1 text-[var(--accent)] text-sm"
+            >
+              <Phone size={14} />
+              {clientPhone}
+            </a>
+          )}
+          {isAdmin && (
+            <div className="flex flex-col ml-2">
+              <button
+                disabled={isFirst}
+                onClick={onMoveUp}
+                className="text-[var(--text-secondary)] disabled:opacity-30 hover:text-[var(--text-primary)] p-0.5"
+                aria-label="上移"
+              >
+                <ChevronUp size={16} />
+              </button>
+              <button
+                disabled={isLast}
+                onClick={onMoveDown}
+                className="text-[var(--text-secondary)] disabled:opacity-30 hover:text-[var(--text-primary)] p-0.5"
+                aria-label="下移"
+              >
+                <ChevronDown size={16} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Address */}
@@ -138,7 +182,9 @@ function ServiceCard({ service, startingId, onStart, onComplete }: ServiceCardPr
         {status === "completed" && (
           <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
             ✓ 已完成
-            {completedDate && <span className="text-[var(--text-secondary)] font-normal">（{completedDate}）</span>}
+            {completedDate && (
+              <span className="text-[var(--text-secondary)] font-normal">（{completedDate}）</span>
+            )}
           </span>
         )}
       </div>
@@ -256,6 +302,40 @@ export function MyScheduleClient() {
     })();
   };
 
+  const handleReorder = (
+    groupItems: AfterSalesService[],
+    index: number,
+    direction: "up" | "down",
+  ) => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= groupItems.length) return;
+
+    // Auto-assign sequential dispatchOrder for items that have none yet
+    const itemsWithOrder = groupItems.map((s, i) => ({
+      ...s,
+      dispatchOrder: s.dispatchOrder ?? i + 1,
+    }));
+
+    const itemA = itemsWithOrder[index];
+    const itemB = itemsWithOrder[targetIndex];
+
+    void (async () => {
+      await Promise.all([
+        fetch(`/api/sheets/after-sales/${itemA.serviceId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dispatchOrder: itemB.dispatchOrder }),
+        }),
+        fetch(`/api/sheets/after-sales/${itemB.serviceId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dispatchOrder: itemA.dispatchOrder }),
+        }),
+      ]);
+      reload();
+    })();
+  };
+
   // ── Loading / error / empty ───────────────────────────────────────────────
 
   if (loading || userLoading || (!isAdmin && !myName)) {
@@ -288,7 +368,15 @@ export function MyScheduleClient() {
         <p className="text-[var(--text-secondary)] text-sm">目前沒有派工給您的行程</p>
       ) : (
         dateGroups.map((group) => {
-          const addressesWithValue = group.items
+          // Sort by dispatchOrder ascending; items with no order go last
+          const sortedItems = [...group.items].sort((a, b) => {
+            if (a.dispatchOrder == null && b.dispatchOrder == null) return 0;
+            if (a.dispatchOrder == null) return 1;
+            if (b.dispatchOrder == null) return -1;
+            return a.dispatchOrder - b.dispatchOrder;
+          });
+
+          const addressesWithValue = sortedItems
             .map((s) => s.deliveryAddress)
             .filter((a): a is string => Boolean(a));
           const showRouteLink = addressesWithValue.length > 1;
@@ -302,7 +390,7 @@ export function MyScheduleClient() {
                     {formatDateLabel(group.date)}
                   </span>
                   <span className="text-xs text-[var(--text-secondary)]">
-                    {group.items.length} 個工單
+                    {sortedItems.length} 個工單
                   </span>
                 </div>
                 {showRouteLink && (
@@ -318,13 +406,19 @@ export function MyScheduleClient() {
               </div>
 
               {/* Service cards */}
-              {group.items.map((service) => (
+              {sortedItems.map((service, idx) => (
                 <ServiceCard
                   key={service.serviceId}
                   service={service}
+                  stationNumber={idx + 1}
+                  isFirst={idx === 0}
+                  isLast={idx === sortedItems.length - 1}
+                  isAdmin={isAdmin}
                   startingId={startingId}
                   onStart={handleStart}
                   onComplete={handleOpenCompletion}
+                  onMoveUp={() => handleReorder(sortedItems, idx, "up")}
+                  onMoveDown={() => handleReorder(sortedItems, idx, "down")}
                 />
               ))}
             </section>

@@ -172,6 +172,7 @@ export interface AfterSalesService {
   itemLocation?: string;
   itemDescription?: string;
   issueCategories?: string[];
+  dispatchOrder?: number;
   createdAt: string;
   updatedAt: string;
   createdBy: string;

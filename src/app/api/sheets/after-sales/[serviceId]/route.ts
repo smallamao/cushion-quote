@@ -78,6 +78,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     itemLocation?: string;
     itemDescription?: string;
     issueCategories?: string[];
+    dispatchOrder?: number;
   }
 
   let body: PatchBody;
