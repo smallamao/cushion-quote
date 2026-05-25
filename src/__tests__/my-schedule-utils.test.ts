@@ -35,18 +35,29 @@ const base: AfterSalesService = {
 
 describe("filterTechnicianPatch", () => {
   it("allows status=in_progress", () => {
-    expect(filterTechnicianPatch({ status: "in_progress" })).toEqual({ ok: true });
+    const result = filterTechnicianPatch({ status: "in_progress" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.filtered).toEqual({ status: "in_progress" });
+    }
   });
 
-  it("allows all completion fields together", () => {
-    expect(
-      filterTechnicianPatch({
+  it("allows all completion fields together and returns only those fields", () => {
+    const result = filterTechnicianPatch({
+      status: "completed",
+      completionNotes: "固定好了",
+      completedDate: "2026-05-25",
+      completionPhotos: [],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.filtered).toEqual({
         status: "completed",
         completionNotes: "固定好了",
         completedDate: "2026-05-25",
         completionPhotos: [],
-      }),
-    ).toEqual({ ok: true });
+      });
+    }
   });
 
   it("rejects a non-allowed field (assignedTo)", () => {

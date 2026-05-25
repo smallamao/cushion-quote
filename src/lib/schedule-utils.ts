@@ -9,10 +9,13 @@ const TECHNICIAN_WRITABLE = new Set([
 
 const TECHNICIAN_ALLOWED_STATUSES = new Set(["in_progress", "completed"]);
 
-/** Returns { ok: true } if body only contains fields a technician may update. */
+/**
+ * Validates and sanitises a technician PATCH body.
+ * Returns the filtered subset of allowed fields, or an error.
+ */
 export function filterTechnicianPatch(
   body: Record<string, unknown>,
-): { ok: boolean; error?: string } {
+): { ok: true; filtered: Record<string, unknown> } | { ok: false; error: string } {
   const forbidden = Object.keys(body).filter((k) => !TECHNICIAN_WRITABLE.has(k));
   if (forbidden.length > 0) {
     return { ok: false, error: `forbidden fields: ${forbidden.join(", ")}` };
@@ -22,7 +25,10 @@ export function filterTechnicianPatch(
       return { ok: false, error: `forbidden status: ${String(body.status)}` };
     }
   }
-  return { ok: true };
+  const filtered = Object.fromEntries(
+    Object.entries(body).filter(([k]) => TECHNICIAN_WRITABLE.has(k)),
+  );
+  return { ok: true, filtered };
 }
 
 export interface DateGroup {

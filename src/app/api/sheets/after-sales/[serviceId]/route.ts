@@ -92,6 +92,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!check.ok) {
       return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
     }
+    // Use the sanitised subset so only allowed fields reach updateService
+    const service = await updateService(serviceId, check.filtered as typeof body);
+    if (!service) {
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, service });
   }
 
   try {
