@@ -170,11 +170,12 @@ export function MyScheduleClient() {
     setStartingId(serviceId);
     void (async () => {
       try {
-        await fetch(`/api/sheets/after-sales/${serviceId}`, {
+        const res = await fetch(`/api/sheets/after-sales/${serviceId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "in_progress" }),
         });
+        if (!res.ok) throw new Error(`伺服器錯誤 ${res.status}`);
         reload();
       } finally {
         setStartingId(null);
@@ -199,23 +200,26 @@ export function MyScheduleClient() {
 
     void (async () => {
       setCompletion((prev) => (prev ? { ...prev, uploading: true } : prev));
-      // Upload sequentially to avoid race on state
-      for (const file of files) {
-        const form = new FormData();
-        form.append("file", file);
-        try {
-          const res = await fetch("/api/upload", { method: "POST", body: form });
-          const json = (await res.json()) as { ok: boolean; url?: string };
-          if (json.ok && json.url) {
-            setCompletion((prev) =>
-              prev ? { ...prev, photos: [...prev.photos, json.url!] } : prev,
-            );
+      try {
+        // Upload sequentially to avoid race on state
+        for (const file of files) {
+          const form = new FormData();
+          form.append("file", file);
+          try {
+            const res = await fetch("/api/upload", { method: "POST", body: form });
+            const json = (await res.json()) as { ok: boolean; url?: string };
+            if (json.ok && json.url) {
+              setCompletion((prev) =>
+                prev ? { ...prev, photos: [...prev.photos, json.url!] } : prev,
+              );
+            }
+          } catch {
+            // silently continue with remaining files
           }
-        } catch {
-          // silently continue with remaining files
         }
+      } finally {
+        setCompletion((prev) => (prev ? { ...prev, uploading: false } : prev));
       }
-      setCompletion((prev) => (prev ? { ...prev, uploading: false } : prev));
     })();
   };
 
@@ -226,7 +230,7 @@ export function MyScheduleClient() {
     setCompletion((prev) => (prev ? { ...prev, saving: true } : prev));
     void (async () => {
       try {
-        await fetch(`/api/sheets/after-sales/${serviceId}`, {
+        const res = await fetch(`/api/sheets/after-sales/${serviceId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -236,6 +240,7 @@ export function MyScheduleClient() {
             completedDate: today,
           }),
         });
+        if (!res.ok) throw new Error(`伺服器錯誤 ${res.status}`);
         setCompletion(null);
         reload();
       } catch {
@@ -278,7 +283,7 @@ export function MyScheduleClient() {
         dateGroups.map((group) => {
           const addressesWithValue = group.items
             .map((s) => s.deliveryAddress)
-            .filter(Boolean);
+            .filter((a): a is string => Boolean(a));
           const showRouteLink = addressesWithValue.length > 1;
 
           return (
