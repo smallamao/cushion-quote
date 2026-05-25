@@ -222,6 +222,7 @@ export const TECHNICIAN_ALLOWED_PREFIXES = [
   "/_next",
   "/logo.png",
   "/favicon.ico",
+  "/my-schedule",
 ];
 
 /**

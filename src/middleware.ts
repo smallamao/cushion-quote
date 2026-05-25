@@ -45,6 +45,7 @@ const TECHNICIAN_ALLOWED_PREFIXES = [
   "/login",
   "/calendar",
   "/inventory",
+  "/my-schedule",
 ];
 
 const TECHNICIAN_BLOCKED_API = [
