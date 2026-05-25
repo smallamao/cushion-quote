@@ -14,6 +14,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useUnreadReplies } from "@/hooks/useUnreadReplies";
 import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
+import { ISSUE_CATEGORIES } from "@/lib/types";
 
 const STATUS_LABEL: Record<AfterSalesStatus, string> = {
   pending: "待確認",
@@ -52,12 +53,13 @@ export function AfterSalesListClient() {
   const debouncedSearch = useDebounce(search, 200);
   const [statusFilter, setStatusFilter] = useState<AfterSalesStatus | "all" | "pending_scheduled">("pending_scheduled");
   const [typeFilter, setTypeFilter] = useState<AfterSalesServiceType | "all">("all");
+  const [categoryFilter, setCategoryFilter] = useState<string | "all">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, typeFilter]);
+  }, [debouncedSearch, statusFilter, typeFilter, categoryFilter]);
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
@@ -68,6 +70,10 @@ export function AfterSalesListClient() {
         return s.status === statusFilter;
       })
       .filter((s) => typeFilter === "all" || (s.serviceType ?? "client") === typeFilter)
+      .filter((s) => {
+        if (categoryFilter === "all") return true;
+        return (s.issueCategories ?? []).includes(categoryFilter);
+      })
       .filter((s) => {
         if (!q) return true;
         return (
@@ -83,7 +89,7 @@ export function AfterSalesListClient() {
         );
       })
       .sort((a, b) => b.serviceId.localeCompare(a.serviceId));
-  }, [services, debouncedSearch, statusFilter, typeFilter]);
+  }, [services, debouncedSearch, statusFilter, typeFilter, categoryFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -96,6 +102,16 @@ export function AfterSalesListClient() {
       counts[s.status] = (counts[s.status] ?? 0) + 1;
     }
     counts.pending_scheduled = (counts.pending ?? 0) + (counts.scheduled ?? 0);
+    return counts;
+  }, [services]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of services) {
+      for (const cat of s.issueCategories ?? []) {
+        counts[cat] = (counts[cat] ?? 0) + 1;
+      }
+    }
     return counts;
   }, [services]);
 
@@ -189,6 +205,36 @@ export function AfterSalesListClient() {
             </button>
           ))}
         </div>
+        <div className="flex w-full flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setCategoryFilter("all")}
+            className={[
+              "inline-flex items-center justify-center gap-1 rounded-full px-3 py-1 text-xs transition-colors",
+              categoryFilter === "all"
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
+            ].join(" ")}
+          >
+            全部問題類型
+          </button>
+          {ISSUE_CATEGORIES.filter((cat) => (categoryCounts[cat] ?? 0) > 0).map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCategoryFilter(categoryFilter === cat ? "all" : cat)}
+              className={[
+                "inline-flex items-center justify-center gap-1 rounded-full px-3 py-1 text-xs transition-colors",
+                categoryFilter === cat
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
+              ].join(" ")}
+            >
+              {cat}
+              <span className="opacity-70">{categoryCounts[cat]}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && (
@@ -254,6 +300,18 @@ export function AfterSalesListClient() {
                     {s.issueDescription && (
                       <span>{s.issueDescription}</span>
                     )}
+                  </div>
+                )}
+                {(s.issueCategories ?? []).length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-0.5">
+                    {(s.issueCategories ?? []).map((cat) => (
+                      <span
+                        key={cat}
+                        className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700"
+                      >
+                        {cat}
+                      </span>
+                    ))}
                   </div>
                 )}
                 <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--text-tertiary)]">
@@ -334,6 +392,18 @@ export function AfterSalesListClient() {
                       <div className="max-w-xs truncate text-xs text-[var(--text-secondary)]">
                         {s.issueDescription}
                       </div>
+                      {(s.issueCategories ?? []).length > 0 && (
+                        <div className="mt-0.5 flex flex-wrap gap-0.5">
+                          {(s.issueCategories ?? []).map((cat) => (
+                            <span
+                              key={cat}
+                              className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700"
+                            >
+                              {cat}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <span
