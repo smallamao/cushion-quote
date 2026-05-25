@@ -18,8 +18,13 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
-  const services = await listServices();
-  return NextResponse.json({ ok: true, services });
+  try {
+    const services = await listServices();
+    return NextResponse.json({ ok: true, services });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "服務暫時無法使用";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

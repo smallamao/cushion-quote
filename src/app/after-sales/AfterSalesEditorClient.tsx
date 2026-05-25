@@ -173,7 +173,11 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
   useEffect(() => {
     if (!autoParsePending.current || !pasteText || equipment.length === 0) return;
     autoParsePending.current = false;
-    handleParsePaste();
+    try {
+      handleParsePaste();
+    } catch {
+      // silently ignore parse errors — user can still fill the form manually
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pasteText, equipment]);
 
