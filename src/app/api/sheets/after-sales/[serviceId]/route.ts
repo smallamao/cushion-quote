@@ -79,6 +79,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     outsourcedNote?: string;
     itemLocation?: string;
     itemDescription?: string;
+    issueCategories?: string[];
   }
 
   let body: PatchBody;

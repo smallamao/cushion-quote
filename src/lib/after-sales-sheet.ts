@@ -9,8 +9,8 @@ import type {
 } from "@/lib/types";
 
 const MAIN_SHEET = "售後服務";
-const MAIN_RANGE_FULL = `${MAIN_SHEET}!A:AD`;
-const MAIN_RANGE_DATA = `${MAIN_SHEET}!A2:AD`;
+const MAIN_RANGE_FULL = `${MAIN_SHEET}!A:AE`;
+const MAIN_RANGE_DATA = `${MAIN_SHEET}!A2:AE`;
 const MAIN_RANGE_IDS = `${MAIN_SHEET}!A2:A`;
 
 const REPLY_SHEET = "售後服務回應";
@@ -57,6 +57,7 @@ function rowToService(row: string[]): AfterSalesService {
     outsourcedNote: row[27] || undefined,
     itemLocation: row[28] || undefined,
     itemDescription: row[29] || undefined,
+    issueCategories: parseJsonArray(row[30]),
     createdAt: row[20] ?? "",
     updatedAt: row[21] ?? "",
     createdBy: row[22] ?? "",
@@ -95,6 +96,7 @@ function serviceToRow(s: AfterSalesService): string[] {
     s.outsourcedNote ?? "",
     s.itemLocation ?? "",
     s.itemDescription ?? "",
+    JSON.stringify(s.issueCategories ?? []),
   ];
 }
 
@@ -179,7 +181,7 @@ export async function createService(input: {
   const nextRow = (idRes.data.values ?? []).length + 2; // +1 for header, +1 for next row
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${MAIN_SHEET}!A${nextRow}:AD${nextRow}`,
+    range: `${MAIN_SHEET}!A${nextRow}:AE${nextRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(service)] },
   });
@@ -210,7 +212,7 @@ export async function updateService(
   };
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${MAIN_SHEET}!A${sheetRow}:AD${sheetRow}`,
+    range: `${MAIN_SHEET}!A${sheetRow}:AE${sheetRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(updated)] },
   });

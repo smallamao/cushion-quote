@@ -132,6 +132,17 @@ export interface User {
   lastReadRepliesAt?: string;
 }
 
+export const ISSUE_CATEGORIES = [
+  "皮革損壞",
+  "布料問題",
+  "骨架/木框",
+  "五金件",
+  "電動功能",
+  "填充物",
+  "縫線/車縫",
+  "其他",
+] as const;
+
 export interface AfterSalesService {
   serviceId: string;
   receivedDate: string;
@@ -160,6 +171,7 @@ export interface AfterSalesService {
   outsourcedNote?: string;
   itemLocation?: string;
   itemDescription?: string;
+  issueCategories?: string[];
   createdAt: string;
   updatedAt: string;
   createdBy: string;

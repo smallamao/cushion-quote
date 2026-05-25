@@ -61,6 +61,7 @@ export async function POST(request: Request) {
     outsourcedNote?: string;
     itemLocation?: string;
     itemDescription?: string;
+    issueCategories?: string[];
   }
 
   let body: CreateBody;
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
         outsourcedNote: body.outsourcedNote,
         itemLocation: body.itemLocation,
         itemDescription: body.itemDescription,
+        issueCategories: body.issueCategories ?? [],
         createdBy: session.displayName,
       },
     });
