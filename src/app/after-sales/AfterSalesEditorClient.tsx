@@ -856,6 +856,7 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
                 <button
                   key={cat}
                   type="button"
+                  aria-pressed={selected}
                   disabled={readOnly}
                   onClick={() => {
                     const current = draft.issueCategories ?? [];
