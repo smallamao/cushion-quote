@@ -1500,7 +1500,10 @@ function CustomerView({ card, customFields, attachments, onBack }: CustomerViewP
             onClick={() => setResult({
               title: "維修單資訊",
               content: repairText,
-              onCopied: async () => { router.push("/after-sales/new" as never); },
+              onCopied: async () => {
+                sessionStorage.setItem("as_quick_paste", repairText);
+                router.push("/after-sales/new" as never);
+              },
             })}
           >
             <span className="mr-1">📋</span>維修單資訊

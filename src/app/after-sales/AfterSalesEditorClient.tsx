@@ -157,6 +157,25 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
   // Paste-to-parse state (create mode only)
   const [pasteText, setPasteText] = useState("");
   const [pasteMatched, setPasteMatched] = useState<string[] | null>(null);
+  const autoParsePending = useRef(false);
+
+  // Auto-fill from sessionStorage when navigated from 維修單資訊
+  useEffect(() => {
+    if (mode !== "create") return;
+    const text = sessionStorage.getItem("as_quick_paste");
+    if (!text) return;
+    sessionStorage.removeItem("as_quick_paste");
+    setPasteText(text);
+    autoParsePending.current = true;
+  }, [mode]);
+
+  // Trigger parse once pasteText is set and equipment is loaded
+  useEffect(() => {
+    if (!autoParsePending.current || !pasteText || equipment.length === 0) return;
+    autoParsePending.current = false;
+    handleParsePaste();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pasteText, equipment]);
 
   function handleParsePaste() {
     const result = parseAfterSalesText(pasteText);
