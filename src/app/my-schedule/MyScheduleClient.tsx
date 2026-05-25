@@ -157,10 +157,14 @@ export function MyScheduleClient() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const myName = user?.displayName ?? "";
+  const isAdmin = user?.role === "admin";
 
   // ── Derived data ──────────────────────────────────────────────────────────
-  const myServices = services.filter(
-    (s) => s.assignedTo === myName && s.status !== "cancelled",
+  // Admin sees all dispatched orders; technician sees only their own.
+  const myServices = services.filter((s) =>
+    s.status !== "cancelled" &&
+    s.scheduledDate !== "" &&
+    (isAdmin || s.assignedTo === myName),
   );
   const dateGroups = sortDateGroups(groupByDate(myServices));
 
@@ -251,7 +255,7 @@ export function MyScheduleClient() {
 
   // ── Loading / error / empty ───────────────────────────────────────────────
 
-  if (loading || userLoading || !myName) {
+  if (loading || userLoading || (!isAdmin && !myName)) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="animate-spin text-[var(--text-secondary)]" size={32} />
