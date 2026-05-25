@@ -1379,8 +1379,9 @@ function ChecklistView({ card, onBack, onCountChange }: { card: TrelloCard; onBa
 }
 
 function CustomerView({ card, customFields, attachments, onBack }: CustomerViewProps) {
+  const router = useRouter();
   const [snapshotOpen, setSnapshotOpen] = useState(false);
-  const [result, setResult] = useState<{ title: string; content: string } | null>(null);
+  const [result, setResult] = useState<{ title: string; content: string; onCopied?: () => Promise<void> } | null>(null);
   const snapshotImageGroups = useMemo(() => getAllTrelloImageUrlGroups(attachments, "full"), [attachments]);
 
   const descLines = card.desc.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -1496,7 +1497,11 @@ function CustomerView({ card, customFields, attachments, onBack }: CustomerViewP
             size="sm"
             variant="outline"
             className="w-full"
-            onClick={() => setResult({ title: "維修單資訊", content: repairText })}
+            onClick={() => setResult({
+              title: "維修單資訊",
+              content: repairText,
+              onCopied: async () => { router.push("/after-sales/new" as never); },
+            })}
           >
             <span className="mr-1">📋</span>維修單資訊
           </Button>
@@ -1515,7 +1520,7 @@ function CustomerView({ card, customFields, attachments, onBack }: CustomerViewP
       )}
 
       {result && (
-        <ResultModal title={result.title} content={result.content} onClose={() => setResult(null)} />
+        <ResultModal title={result.title} content={result.content} onClose={() => setResult(null)} onCopied={result.onCopied} />
       )}
       {snapshotOpen && (
         <ImageModal images={snapshotImageGroups} onClose={() => setSnapshotOpen(false)} />
