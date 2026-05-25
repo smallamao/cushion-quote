@@ -17,8 +17,10 @@ export function filterTechnicianPatch(
   if (forbidden.length > 0) {
     return { ok: false, error: `forbidden fields: ${forbidden.join(", ")}` };
   }
-  if ("status" in body && !TECHNICIAN_ALLOWED_STATUSES.has(body.status as string)) {
-    return { ok: false, error: `forbidden status: ${String(body.status)}` };
+  if ("status" in body) {
+    if (typeof body.status !== "string" || !TECHNICIAN_ALLOWED_STATUSES.has(body.status)) {
+      return { ok: false, error: `forbidden status: ${String(body.status)}` };
+    }
   }
   return { ok: true };
 }
@@ -42,8 +44,10 @@ export function groupByDate(services: AfterSalesService[]): DateGroup[] {
 /**
  * Sorts date groups: today first, then future dates ascending, then past dates descending.
  */
-export function sortDateGroups(groups: DateGroup[]): DateGroup[] {
-  const today = new Date().toISOString().slice(0, 10);
+export function sortDateGroups(
+  groups: DateGroup[],
+  today: string = new Date().toISOString().slice(0, 10),
+): DateGroup[] {
   const todayGroups = groups.filter((g) => g.date === today);
   const future = groups
     .filter((g) => g.date > today)

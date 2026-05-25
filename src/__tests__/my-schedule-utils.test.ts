@@ -83,6 +83,17 @@ describe("groupByDate", () => {
 });
 
 describe("sortDateGroups", () => {
+  it("puts today before future dates", () => {
+    const groups = [
+      { date: "2099-01-01", items: [] },
+      { date: "2026-05-25", items: [] },
+    ];
+    // Inject today as "2026-05-25" so the test is deterministic
+    const sorted = sortDateGroups(groups, "2026-05-25");
+    expect(sorted[0].date).toBe("2026-05-25");
+    expect(sorted[1].date).toBe("2099-01-01");
+  });
+
   it("puts future dates before past dates", () => {
     const groups = [
       { date: "2024-01-01", items: [] },
@@ -126,10 +137,10 @@ describe("buildMapsUrl", () => {
     expect(url).toContain(encodeURIComponent("台北市信義區信義路五段7號"));
   });
 
-  it("encodes all addresses in multi-stop url", () => {
+  it("encodes all addresses in multi-stop url in order", () => {
     const url = buildMapsUrl(["地址A", "地址B", "地址C"]);
-    expect(url).toContain(encodeURIComponent("地址A"));
-    expect(url).toContain(encodeURIComponent("地址B"));
-    expect(url).toContain(encodeURIComponent("地址C"));
+    expect(url).toBe(
+      `https://www.google.com/maps/dir/${encodeURIComponent("地址A")}/${encodeURIComponent("地址B")}/${encodeURIComponent("地址C")}`,
+    );
   });
 });
