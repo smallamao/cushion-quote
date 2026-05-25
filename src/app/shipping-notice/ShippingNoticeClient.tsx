@@ -2111,12 +2111,12 @@ export function ShippingNoticeClient() {
   }, [cards, submittedQuery]);
 
   useEffect(() => {
-    setCardAttachmentsCardId(previewCardId);
     if (!previewCardId) {
       // On initial mount cards haven't loaded yet from sessionStorage restore —
       // don't clear the just-restored attachments. Only clear once we've already
       // seen a real card (i.e., the user is deliberately switching away).
       if (hasLoadedPreviewCard.current) {
+        setCardAttachmentsCardId(null);
         setCardAttachments([]);
         attachedCardIdRef.current = null;
       }
@@ -2124,6 +2124,7 @@ export function ShippingNoticeClient() {
     }
 
     hasLoadedPreviewCard.current = true;
+    setCardAttachmentsCardId(previewCardId);
 
     // Skip fetch if we already have this card's attachments (e.g., restored from sessionStorage)
     if (attachedCardIdRef.current === previewCardId) return;
