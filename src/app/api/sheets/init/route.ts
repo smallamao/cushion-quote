@@ -278,6 +278,24 @@ const SHEET_DEFINITIONS = [
       "同步時間",
     ],
   },
+  {
+    title: "售後服務",
+    headers: [
+      "serviceId", "receivedDate", "relatedOrderNo", "shipmentDate",
+      "clientName", "clientPhone", "clientContact2", "clientPhone2",
+      "deliveryAddress", "modelCode", "modelNameSnapshot", "issueDescription",
+      "issuePhotos", "status", "assignedTo", "scheduledDate",
+      "dispatchNotes", "completedDate", "completionNotes", "completionPhotos",
+      "createdAt", "updatedAt", "createdBy",
+      "customerSignature", "customerSignedAt",
+      "serviceType", "outsourcedVendor", "outsourcedNote",
+      "itemLocation", "itemDescription",
+    ],
+  },
+  {
+    title: "售後服務回應",
+    headers: ["replyId", "serviceId", "occurredAt", "author", "content", "attachments", "createdAt"],
+  },
 ];
 
 const DEFAULT_SETTINGS_ROWS = [

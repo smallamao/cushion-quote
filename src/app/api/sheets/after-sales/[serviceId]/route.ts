@@ -27,14 +27,19 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
   const { serviceId } = await context.params;
-  const [service, replies] = await Promise.all([
-    findServiceById(serviceId),
-    listReplies(serviceId),
-  ]);
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  try {
+    const [service, replies] = await Promise.all([
+      findServiceById(serviceId),
+      listReplies(serviceId),
+    ]);
+    if (!service) {
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, service, replies });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "服務暫時無法使用";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, service, replies });
 }
 
 export async function PATCH(request: Request, context: RouteContext) {

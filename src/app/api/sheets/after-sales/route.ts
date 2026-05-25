@@ -66,37 +66,42 @@ export async function POST(request: Request) {
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const service = await createService({
-    service: {
-      receivedDate: body.receivedDate || today,
-      relatedOrderNo: body.relatedOrderNo ?? "",
-      shipmentDate: body.shipmentDate ?? "",
-      clientName: body.clientName ?? "",
-      clientPhone: body.clientPhone ?? "",
-      clientContact2: body.clientContact2 ?? "",
-      clientPhone2: body.clientPhone2 ?? "",
-      deliveryAddress: body.deliveryAddress ?? "",
-      modelCode: body.modelCode ?? "",
-      modelNameSnapshot: body.modelNameSnapshot ?? "",
-      issueDescription: body.issueDescription ?? "",
-      issuePhotos: body.issuePhotos ?? [],
-      status: body.status ?? "pending",
-      assignedTo: body.assignedTo ?? "",
-      scheduledDate: body.scheduledDate ?? "",
-      dispatchNotes: body.dispatchNotes ?? "",
-      completedDate: body.completedDate ?? "",
-      completionNotes: body.completionNotes ?? "",
-      completionPhotos: body.completionPhotos ?? [],
-      serviceType: body.serviceType,
-      outsourcedVendor: body.outsourcedVendor,
-      outsourcedNote: body.outsourcedNote,
-      itemLocation: body.itemLocation,
-      itemDescription: body.itemDescription,
-      createdBy: session.displayName,
-    },
-  });
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "建立失敗" }, { status: 500 });
+  try {
+    const service = await createService({
+      service: {
+        receivedDate: body.receivedDate || today,
+        relatedOrderNo: body.relatedOrderNo ?? "",
+        shipmentDate: body.shipmentDate ?? "",
+        clientName: body.clientName ?? "",
+        clientPhone: body.clientPhone ?? "",
+        clientContact2: body.clientContact2 ?? "",
+        clientPhone2: body.clientPhone2 ?? "",
+        deliveryAddress: body.deliveryAddress ?? "",
+        modelCode: body.modelCode ?? "",
+        modelNameSnapshot: body.modelNameSnapshot ?? "",
+        issueDescription: body.issueDescription ?? "",
+        issuePhotos: body.issuePhotos ?? [],
+        status: body.status ?? "pending",
+        assignedTo: body.assignedTo ?? "",
+        scheduledDate: body.scheduledDate ?? "",
+        dispatchNotes: body.dispatchNotes ?? "",
+        completedDate: body.completedDate ?? "",
+        completionNotes: body.completionNotes ?? "",
+        completionPhotos: body.completionPhotos ?? [],
+        serviceType: body.serviceType,
+        outsourcedVendor: body.outsourcedVendor,
+        outsourcedNote: body.outsourcedNote,
+        itemLocation: body.itemLocation,
+        itemDescription: body.itemDescription,
+        createdBy: session.displayName,
+      },
+    });
+    if (!service) {
+      return NextResponse.json({ ok: false, error: "建立失敗（資料庫連線問題）" }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, service }, { status: 201 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "建立失敗";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, service }, { status: 201 });
 }

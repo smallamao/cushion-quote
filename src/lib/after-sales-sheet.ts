@@ -136,11 +136,15 @@ function generateServiceId(existing: AfterSalesService[], date: string): string 
 export async function listServices(): Promise<AfterSalesService[]> {
   const client = await getSheetsClient();
   if (!client) return [];
-  const res = await client.sheets.spreadsheets.values.get({
-    spreadsheetId: client.spreadsheetId,
-    range: MAIN_RANGE_DATA,
-  });
-  return (res.data.values ?? []).map(rowToService).filter((s) => s.serviceId);
+  try {
+    const res = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: MAIN_RANGE_DATA,
+    });
+    return (res.data.values ?? []).map(rowToService).filter((s) => s.serviceId);
+  } catch {
+    return [];
+  }
 }
 
 export async function findServiceById(
