@@ -88,9 +88,14 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   }
 
-  const service = await updateService(serviceId, body);
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  try {
+    const service = await updateService(serviceId, body);
+    if (!service) {
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, service });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "儲存失敗";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, service });
 }

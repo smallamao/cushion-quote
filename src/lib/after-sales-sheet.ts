@@ -135,15 +135,16 @@ function generateServiceId(existing: AfterSalesService[], date: string): string 
 
 export async function listServices(): Promise<AfterSalesService[]> {
   const client = await getSheetsClient();
-  if (!client) return [];
+  if (!client) throw new Error("sheets_unavailable");
   try {
     const res = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
       range: MAIN_RANGE_DATA,
     });
     return (res.data.values ?? []).map(rowToService).filter((s) => s.serviceId);
-  } catch {
-    return [];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "sheets_error";
+    throw new Error(msg);
   }
 }
 
