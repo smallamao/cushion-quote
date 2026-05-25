@@ -4,7 +4,6 @@ import {
   Briefcase,
   Calculator,
   Calendar,
-  CalendarCheck2,
   CircleHelp,
   FileText,
   HandCoins,
@@ -42,7 +41,6 @@ export const navLinks: NavLinkDef[] = [
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
   { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin", "technician"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"], group: "operations" },
-  { href: "/my-schedule", label: "我的行程", icon: CalendarCheck2, roles: ["admin", "technician"], group: "operations" },
   { href: "/calendar", label: "行事曆", icon: Calendar, roles: ["admin", "technician"], group: "operations" },
   // ── 財務 ──
   { href: "/remittance", label: "匯款資訊", icon: Wallet, roles: ["admin"], group: "finance" },

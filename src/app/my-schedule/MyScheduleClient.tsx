@@ -362,8 +362,6 @@ export function MyScheduleClient() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
-      <h1 className="text-xl font-bold text-[var(--text-primary)]">我的行程</h1>
-
       {dateGroups.length === 0 ? (
         <p className="text-[var(--text-secondary)] text-sm">目前沒有派工給您的行程</p>
       ) : (

@@ -1,5 +1,5 @@
-import { AfterSalesListClient } from "@/app/after-sales/AfterSalesListClient";
+import { AfterSalesTabsClient } from "@/app/after-sales/AfterSalesTabsClient";
 
 export default function AfterSalesPage() {
-  return <AfterSalesListClient />;
+  return <AfterSalesTabsClient />;
 }
