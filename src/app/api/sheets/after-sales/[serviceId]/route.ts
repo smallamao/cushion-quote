@@ -6,6 +6,7 @@ import {
   listReplies,
   updateService,
 } from "@/lib/after-sales-sheet";
+import { filterTechnicianPatch } from "@/lib/schedule-utils";
 import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
 function getSession(request: Request) {
@@ -47,9 +48,6 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
-  if (session.role === "technician") {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-  }
   const { serviceId } = await context.params;
 
   interface PatchBody {
@@ -87,6 +85,13 @@ export async function PATCH(request: Request, context: RouteContext) {
     body = (await request.json()) as PatchBody;
   } catch {
     return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
+  }
+
+  if (session.role === "technician") {
+    const check = filterTechnicianPatch(body as Record<string, unknown>);
+    if (!check.ok) {
+      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+    }
   }
 
   try {
