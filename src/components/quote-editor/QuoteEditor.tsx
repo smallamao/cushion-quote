@@ -1678,9 +1678,10 @@ export function QuoteEditor() {
   );
 
   function handleNewQuote() {
-    if (hasUnsavedChanges() && !confirm("目前有未儲存變更，確定要放棄並新建報價嗎？")) {
-      return;
-    }
+    const msg = hasUnsavedChanges()
+      ? "目前有未儲存變更，確定要放棄並新建報價嗎？"
+      : "確定要新建報價？目前報價將保留在紀錄中。";
+    if (!confirm(msg)) return;
 
     clearAutoDraft();
     setDraftSessionId(generateQuoteDraftSessionId());
