@@ -602,7 +602,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
               <div className="flex items-center gap-4 text-sm">
                 <span>
                   <span className="text-xs text-[var(--text-secondary)]">進價: </span>
-                  <span className="font-mono font-medium">${(getEffectiveCost(p) ?? 0).toLocaleString()}</span>
+                  <span className="font-mono font-medium">${(p.unitPrice ?? 0).toLocaleString()}</span>
                 </span>
                 <span>
                   <span className="text-xs text-[var(--text-secondary)]">牌價: </span>
@@ -712,7 +712,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
                   {supplierMap[p.supplierId] || p.supplierId}
                 </td>
                 <td className="px-3 py-2 text-right font-mono">
-                  {(getEffectiveCost(p) ?? 0).toLocaleString()}
+                  {(p.unitPrice ?? 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-right font-mono">
                   {(p.listPricePerCai ?? 0).toLocaleString()}
