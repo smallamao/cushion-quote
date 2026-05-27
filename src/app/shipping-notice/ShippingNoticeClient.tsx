@@ -1620,8 +1620,8 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
           cf.idCustomField === fieldId ? { ...cf, value: { text: defaultValue } } : cf,
         ),
       );
-    } catch {
-      // best-effort, don't block the user
+    } catch (err) {
+      console.error("[椅腳寫回] 失敗:", err);
     }
   }
 
