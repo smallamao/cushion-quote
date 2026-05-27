@@ -1604,6 +1604,27 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
     return () => document.removeEventListener("paste", handlePaste);
   }, [card.id]);
 
+  async function writeBackChairLegIfEmpty(): Promise<void> {
+    const existing = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
+    if (existing) return;
+    const productCode = card.labels.find((l) => l.name.startsWith("成交/"))?.name.replace("成交/", "");
+    const defaultValue = PRODUCTS.find((p) => p.displayName === productCode)?.defaultFoot ?? "";
+    if (!defaultValue) return;
+    const fieldId = customFields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.CHAIR_LEG)
+      ? S_ORDER_CUSTOM_FIELDS.CHAIR_LEG
+      : TRELLO.CUSTOM_FIELDS.CHAIR_LEG;
+    try {
+      await updateCustomField(card.id, fieldId, { text: defaultValue });
+      setCustomFields((prev) =>
+        prev.map((cf) =>
+          cf.idCustomField === fieldId ? { ...cf, value: { text: defaultValue } } : cf,
+        ),
+      );
+    } catch {
+      // best-effort, don't block the user
+    }
+  }
+
   function handleAction(type: "schedule" | "cutting") {
     if (loading) return;
     let text: string;
@@ -1612,6 +1633,7 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
       case "schedule":
         title = "排程簡訊";
         text = buildScheduleSMS(card, customFields);
+        void writeBackChairLegIfEmpty();
         break;
       case "cutting":
         title = "裁剪工作單";
