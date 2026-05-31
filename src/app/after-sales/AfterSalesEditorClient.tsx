@@ -379,6 +379,27 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
     }
   }
 
+  async function checkDuplicatePhone(phone: string): Promise<AfterSalesService | null> {
+    try {
+      const res = await fetch("/api/sheets/after-sales", { cache: "no-store" });
+      const json = (await res.json()) as {
+        ok: boolean;
+        services?: AfterSalesService[];
+      };
+      if (!json.ok || !json.services) return null;
+      return (
+        json.services.find(
+          (s) =>
+            s.serviceId !== serviceId &&
+            (s.clientPhone === phone || s.clientPhone2 === phone) &&
+            (s.status === "pending" || s.status === "scheduled"),
+        ) ?? null
+      );
+    } catch {
+      return null;
+    }
+  }
+
   async function handleSave() {
     if (draft.serviceType !== "factory_display" && !draft.clientName.trim()) {
       alert("請填寫客戶姓名");
@@ -386,6 +407,25 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
     }
     setSaving(true);
     try {
+      // Duplicate phone check — only in create mode when a phone is filled
+      const phoneToCheck = draft.clientPhone.trim() || draft.clientPhone2.trim();
+      if (mode === "create" && phoneToCheck) {
+        const duplicate = await checkDuplicatePhone(phoneToCheck);
+        if (duplicate) {
+          const shouldClose = confirm(
+            `此電話已有未結案工單 ${duplicate.serviceId}（${duplicate.clientName}，${duplicate.receivedDate}），是否將舊單一併標示為已完成？\n\n選「取消」則只建立新單，不影響舊單。`,
+          );
+          if (shouldClose) {
+            const today = new Date().toISOString().slice(0, 10);
+            await fetch(`/api/sheets/after-sales/${duplicate.serviceId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "completed", completedDate: today }),
+            });
+          }
+        }
+      }
+
       if (mode === "create") {
         const res = await fetch("/api/sheets/after-sales", {
           method: "POST",

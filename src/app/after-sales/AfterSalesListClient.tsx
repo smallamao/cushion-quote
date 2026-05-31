@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Stethoscope } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Loader2, Plus, Search, Stethoscope } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +40,7 @@ export function AfterSalesListClient() {
   const router = useRouter();
   const isMobile = useIsMobile();
   const { user } = useCurrentUser();
-  const { services, loading, error } = useAfterSales();
+  const { services, loading, error, reload } = useAfterSales();
   const { markAsRead } = useUnreadReplies();
   const isAdmin = user?.role === "admin";
 
@@ -56,6 +56,40 @@ export function AfterSalesListClient() {
   const [categoryFilter, setCategoryFilter] = useState<string | "all">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [showStale, setShowStale] = useState(false);
+
+  const STALE_DAYS = 14;
+  const staleThreshold = new Date();
+  staleThreshold.setDate(staleThreshold.getDate() - STALE_DAYS);
+  const staleStr = staleThreshold.toISOString().slice(0, 10);
+
+  const handleQuickComplete = useCallback(async (serviceId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setCompletingIds((prev) => new Set(prev).add(serviceId));
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await fetch(`/api/sheets/after-sales/${serviceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", completedDate: today }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) {
+        alert(json.error ?? "結案失敗");
+      }
+      void reload();
+    } catch {
+      alert("結案失敗");
+    } finally {
+      setCompletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(serviceId);
+        return next;
+      });
+    }
+  }, [reload]);
 
   useEffect(() => {
     setPage(1);
@@ -95,6 +129,14 @@ export function AfterSalesListClient() {
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
   const pageRows = filtered.slice(pageStart, pageStart + pageSize);
+
+  const recentRows = pageRows.filter(
+    (s) => s.status === "completed" || s.status === "cancelled" || s.receivedDate >= staleStr,
+  );
+  const staleRows = pageRows.filter(
+    (s) => s.status !== "completed" && s.status !== "cancelled" && s.receivedDate < staleStr,
+  );
+  const hasStale = staleRows.length > 0;
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: services.length };
@@ -255,8 +297,10 @@ export function AfterSalesListClient() {
               尚無符合的售後單
             </div>
           )}
-          {pageRows.map((s) => {
+          {(showStale ? [...recentRows, ...staleRows] : recentRows).map((s) => {
             const safeStatus = getSafeStatus(s.status);
+            const isCompleting = completingIds.has(s.serviceId);
+            const showComplete = safeStatus !== "completed" && safeStatus !== "cancelled";
             return (
               <div
                 key={s.serviceId}
@@ -275,11 +319,27 @@ export function AfterSalesListClient() {
                       <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700">展示品</span>
                     )}
                   </div>
-                  <span
-                    className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
-                  >
-                    {STATUS_LABEL[safeStatus]}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {showComplete && (
+                      <button
+                        type="button"
+                        disabled={isCompleting}
+                        onClick={(e) => void handleQuickComplete(s.serviceId, e)}
+                        className="rounded px-1.5 py-0.5 text-[11px] bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
+                      >
+                        {isCompleting ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          "結案"
+                        )}
+                      </button>
+                    )}
+                    <span
+                      className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
+                    >
+                      {STATUS_LABEL[safeStatus]}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-1 text-sm font-medium">
                   {s.clientName}
@@ -352,8 +412,10 @@ export function AfterSalesListClient() {
                   </td>
                 </tr>
               )}
-              {pageRows.map((s) => {
+              {(showStale ? [...recentRows, ...staleRows] : recentRows).map((s) => {
                 const safeStatus = getSafeStatus(s.status);
+                const isCompleting = completingIds.has(s.serviceId);
+                const showComplete = safeStatus !== "completed" && safeStatus !== "cancelled";
                 return (
                   <tr
                     key={s.serviceId}
@@ -406,11 +468,27 @@ export function AfterSalesListClient() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
-                      >
-                        {STATUS_LABEL[safeStatus]}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {showComplete && (
+                          <button
+                            type="button"
+                            disabled={isCompleting}
+                            onClick={(e) => void handleQuickComplete(s.serviceId, e)}
+                            className="rounded px-1.5 py-0.5 text-[11px] bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
+                          >
+                            {isCompleting ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              "結案"
+                            )}
+                          </button>
+                        )}
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
+                        >
+                          {STATUS_LABEL[safeStatus]}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-xs">{s.assignedTo || "—"}</td>
                   </tr>
@@ -421,6 +499,16 @@ export function AfterSalesListClient() {
         </div>
       )}
 
+      {hasStale && (
+        <button
+          type="button"
+          onClick={() => setShowStale(!showStale)}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] py-2 text-xs text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+        >
+          {showStale ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {showStale ? "收起" : "展開"}久未處理（{staleRows.length} 筆）
+        </button>
+      )}
       <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
