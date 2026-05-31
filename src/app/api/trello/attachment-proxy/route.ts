@@ -40,8 +40,10 @@ export async function GET(request: Request) {
   );
   if (!isAllowed) return new NextResponse("forbidden", { status: 403 });
 
+  // S3 pre-signed URLs (downloadUrl) must NOT have an Authorization header — S3 rejects it
+  const isS3 = parsed.hostname.includes("s3.amazonaws.com");
   const authHeader =
-    TRELLO_KEY && TRELLO_TOKEN
+    !isS3 && TRELLO_KEY && TRELLO_TOKEN
       ? `OAuth oauth_consumer_key="${TRELLO_KEY}", oauth_token="${TRELLO_TOKEN}"`
       : undefined;
 

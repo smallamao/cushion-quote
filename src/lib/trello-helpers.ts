@@ -37,6 +37,7 @@ export interface TrelloAttachment {
   id: string;
   name: string;
   url: string;
+  downloadUrl?: string;
   mimeType: string;
   bytes: number;
   date: string;
@@ -140,7 +141,11 @@ function getAttachmentImageUrls(
 ): string[] {
   const previews = attachment.previews ?? [];
   const orderedPreviews = preference === "thumbnail" ? previews : [...previews].reverse();
-  return dedupeUrls([...orderedPreviews.map((preview) => preview.url), attachment.url]);
+  // Use downloadUrl for uploaded files — attachment.url requires OAuth for S3-backed files
+  const baseUrl = attachment.isUpload && attachment.downloadUrl
+    ? attachment.downloadUrl
+    : attachment.url;
+  return dedupeUrls([...orderedPreviews.map((preview) => preview.url), baseUrl]);
 }
 
 export function getTrelloAttachmentImageUrls(

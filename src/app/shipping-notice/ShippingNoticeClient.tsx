@@ -59,7 +59,7 @@ async function fetchCustomFields(cardId: string): Promise<CustomFieldItem[]> {
 
 async function fetchAttachments(cardId: string): Promise<TrelloAttachment[]> {
   return trelloGet<TrelloAttachment[]>(`cards/${cardId}/attachments`, {
-    fields: "id,name,url,mimeType,bytes,date,isUpload,previews",
+    fields: "id,name,url,downloadUrl,mimeType,bytes,date,isUpload,previews",
   });
 }
 
@@ -2067,10 +2067,19 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
 export function ShippingNoticeClient() {
   const { drivers } = useActiveDrivers();
   const [listNames, setListNames] = useState<Record<string, string>>(LIST_NAMES);
-  const [query, setQuery] = useState("");
-  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [query, setQuery] = useState<string>(() =>
+    typeof window === "undefined" ? "" : (sessionStorage.getItem("shipping_notice_query") ?? ""),
+  );
+  const [submittedQuery, setSubmittedQuery] = useState<string>(() =>
+    typeof window === "undefined" ? "" : (sessionStorage.getItem("shipping_notice_query") ?? ""),
+  );
   const [searchKey, setSearchKey] = useState(0);
-  const [cards, setCards] = useState<TrelloCard[]>([]);
+  const [cards, setCards] = useState<TrelloCard[]>(() => {
+    if (typeof window === "undefined") return [];
+    const raw = sessionStorage.getItem("shipping_notice_cards");
+    if (!raw) return [];
+    try { return JSON.parse(raw) as TrelloCard[]; } catch { return []; }
+  });
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [selectedCard, setSelectedCard] = useState<TrelloCard | null>(null);
@@ -2093,7 +2102,10 @@ export function ShippingNoticeClient() {
   const [cardCustomFieldsMap, setCardCustomFieldsMap] = useState<Record<string, CustomFieldItem[]>>({});
   const [previewImages, setPreviewImages] = useState<string[][] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const skipSearchRef = useRef(false);
+  // Skip the first search effect trigger if state was restored from sessionStorage
+  const skipSearchRef = useRef<boolean>(
+    typeof window !== "undefined" && !!sessionStorage.getItem("shipping_notice_query"),
+  );
   const selectedCardId = selectedCard?.id ?? null;
   const previewCardId = selectedCardId ?? cards[0]?.id ?? null;
   // thumbnail URLs for the last image (display in search card)
@@ -2119,19 +2131,10 @@ export function ShippingNoticeClient() {
   }, []);
 
   useEffect(() => {
-    const savedQuery = sessionStorage.getItem("shipping_notice_query");
-    const savedCards = sessionStorage.getItem("shipping_notice_cards");
-    if (!savedQuery) return;
-    setQuery(savedQuery);
-    if (savedCards) {
-      try {
-        const parsed = JSON.parse(savedCards) as TrelloCard[];
-        setCards(parsed);
-        if (parsed.length === 1) setSelectedCard(parsed[0]);
-        skipSearchRef.current = true;
-        setSubmittedQuery(savedQuery);
-      } catch { /* ignore */ }
-    }
+    // cards/query/submittedQuery are already restored via lazy initializers;
+    // only selectedCard needs wiring up here (can't be inferred from sessionStorage alone)
+    if (cards.length === 1) setSelectedCard(cards[0]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
