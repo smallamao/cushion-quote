@@ -180,7 +180,8 @@ function buildReceiptMessage(
     accountSuffix = ` (LINE PAY驗證碼： ${linepayCode})`;
   }
 
-  const clientReply = `${rocDate} 已經確認收到${payLabel}款項 $${amount}${accountSuffix} 囉！ 非常感謝😊`;
+  const fmtAmount = Number(amount).toLocaleString("zh-TW");
+  const clientReply = `${rocDate} 已經確認收到${payLabel}款項 $${fmtAmount}${accountSuffix} 囉！ 非常感謝😊`;
 
   if (msgType === "客戶回覆聯") return clientReply;
 
@@ -189,7 +190,7 @@ function buildReceiptMessage(
   const lines: string[] = [];
   if (orderNumber) lines.push(`訂單編號：${orderNumber}`);
   lines.push(`匯款日期：${rocDate}`);
-  lines.push(`匯款金額：$${amount}${amountTag}`);
+  lines.push(`匯款金額：$${fmtAmount}${amountTag}`);
   if (paymentType === "匯款" && lastFive) {
     lines.push(`帳號末五碼：${lastFive}`);
   }
