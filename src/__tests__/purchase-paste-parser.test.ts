@@ -51,6 +51,13 @@ describe("parsePurchasePasteLine", () => {
     ]);
   });
 
+  it("解析小才為才", () => {
+    const r = parsePurchasePasteLine("S3313 40小才 #S1073");
+    expect(r!.productCode).toBe("S3313");
+    expect(r!.caseRef).toBe("S1073");
+    expect(r!.subItems).toEqual([{ qty: 40, unit: "才" }]);
+  });
+
   it("無 # 時 caseRef 為空", () => {
     const r = parsePurchasePasteLine("LY9802 15y");
     expect(r!.caseRef).toBe("");
