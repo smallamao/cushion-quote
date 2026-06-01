@@ -59,6 +59,7 @@ import type {
 const UNIT_OPTIONS: PurchaseUnit[] = [
   "碼",
   "才",
+  "小才",
   "米",
   "只",
   "片",

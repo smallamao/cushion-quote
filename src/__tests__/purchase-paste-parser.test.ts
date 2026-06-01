@@ -55,7 +55,7 @@ describe("parsePurchasePasteLine", () => {
     const r = parsePurchasePasteLine("S3313 40小才 #S1073");
     expect(r!.productCode).toBe("S3313");
     expect(r!.caseRef).toBe("S1073");
-    expect(r!.subItems).toEqual([{ qty: 40, unit: "才" }]);
+    expect(r!.subItems).toEqual([{ qty: 40, unit: "小才" }]);
   });
 
   it("無 # 時 caseRef 為空", () => {
