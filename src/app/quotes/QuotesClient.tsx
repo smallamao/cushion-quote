@@ -111,6 +111,7 @@ export function QuotesClient() {
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [optOutSet, setOptOutSet] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setPage(1);
@@ -119,10 +120,17 @@ export function QuotesClient() {
   const load = useCallback(async (background = false) => {
     if (!background) setLoading(true);
     try {
-      const response = await fetch("/api/sheets/versions?includeLines=false", { cache: "no-store" });
-      if (!response.ok) throw new Error("load");
-      const payload = (await response.json()) as { versions: VersionRow[] };
+      const [versionsRes, optOutRes] = await Promise.all([
+        fetch("/api/sheets/versions?includeLines=false", { cache: "no-store" }),
+        fetch("/api/sheets/einvoices/opt-out", { cache: "no-store" }),
+      ]);
+      if (!versionsRes.ok) throw new Error("load");
+      const payload = (await versionsRes.json()) as { versions: VersionRow[] };
       setVersions(payload.versions);
+      if (optOutRes.ok) {
+        const ids = (await optOutRes.json()) as string[];
+        setOptOutSet(new Set(ids));
+      }
     } catch {
       if (!background) setVersions([]);
     } finally {
@@ -441,25 +449,31 @@ export function QuotesClient() {
             <ReceiptText className="h-4 w-4" />
           </button>
         )}
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            if (!confirm("確定設定此報價單「不開發票」？")) return;
-            const res = await fetch("/api/sheets/einvoices/opt-out", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ versionId: version.versionId, action: "add" }),
-            });
-            const data = await res.json();
-            if (data.ok) {
-              void load();
-            }
-          }}
-          className="text-red-400 hover:text-red-600 transition-colors"
-          title="設定不開發票"
-        >
-          <Slash className="h-4 w-4" />
-        </button>
+        {optOutSet.has(version.versionId) ? (
+          <span className="text-[var(--text-tertiary)] cursor-default" title="已設定不開發票">
+            <Slash className="h-4 w-4" />
+          </span>
+        ) : (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (!confirm("確定設定此報價單「不開發票」？")) return;
+              const res = await fetch("/api/sheets/einvoices/opt-out", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ versionId: version.versionId, action: "add" }),
+              });
+              const data = (await res.json()) as { ok: boolean };
+              if (data.ok) {
+                setOptOutSet((prev) => new Set(prev).add(version.versionId));
+              }
+            }}
+            className="text-red-400 hover:text-red-600 transition-colors"
+            title="設定不開發票"
+          >
+            <Slash className="h-4 w-4" />
+          </button>
+        )}
         {existingAr && (
           <button
             onClick={(e) => { e.stopPropagation(); router.push(`/receivables/${existingAr.arId}`); }}
