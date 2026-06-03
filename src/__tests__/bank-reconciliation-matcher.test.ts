@@ -86,6 +86,21 @@ describe("matchAllTransactions", () => {
     expect(entries[0].arId).toBe("AR-202605-001");
   });
 
+  it("金額差恰好 50 → 中信心（邊界值）", () => {
+    const tx = makeTx({ credit: 8750, memo: "Ｓ８７９" }); // diff = 50
+    const entries = matchAllTransactions([tx], [S879_AR]);
+    expect(entries[0].confidence).toBe("medium");
+    expect(entries[0].arId).toBe("AR-202605-001");
+  });
+
+  it("金額差 51 → 無配對分期，scheduleId=null", () => {
+    const tx = makeTx({ credit: 8749, memo: "Ｓ８７９" }); // diff = 51
+    const entries = matchAllTransactions([tx], [S879_AR]);
+    expect(entries[0].scheduleId).toBeNull();
+    // AR still found via caseId, confidence is medium (AR found but no schedule)
+    expect(entries[0].arId).toBe("AR-202605-001");
+  });
+
   it("找到 AR 但無匹配分期金額 → arId 有值，scheduleId 為 null，中信心", () => {
     const tx = makeTx({
       credit: 50000,

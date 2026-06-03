@@ -28,7 +28,8 @@ function findBestSchedule(
   const exact = candidates.find((s) => s.amount === amount);
   if (exact) return { schedule: exact, confidence: "high" };
 
-  const close = candidates.find((s) => Math.abs(s.amount - amount) <= AMOUNT_TOLERANCE);
+  const closeMatches = candidates.filter((s) => Math.abs(s.amount - amount) <= AMOUNT_TOLERANCE);
+  const close = closeMatches.sort((a, b) => Math.abs(a.amount - amount) - Math.abs(b.amount - amount))[0] ?? null;
   if (close) return { schedule: close, confidence: "medium" };
 
   return null;
