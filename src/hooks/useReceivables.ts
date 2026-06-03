@@ -5,11 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   ARRecord,
   ARScheduleRecord,
+  ARWithSchedules,
   CreateARPayload,
   RecordARPaymentPayload,
 } from "@/lib/types";
-
-type ARWithSchedules = ARRecord & { schedules?: ARScheduleRecord[] };
 
 interface UseReceivablesOptions {
   caseId?: string;

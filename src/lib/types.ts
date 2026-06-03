@@ -1085,7 +1085,7 @@ export interface PurchaseProductHistoryResponse {
 // Re-export Company/Contact types
 export type { Company, Contact, CompanyWithContacts, CompanyWithPrimaryContact } from "./types/company";
 
-// ─── 銀行入帳核對 ───────────────────────────────────────────
+// ===== 銀行入帳核對 (Bank Reconciliation) =====
 
 export type BankPaymentType =
   | "訂金"
@@ -1107,9 +1107,11 @@ export interface BankTransaction {
   description: string;   // 摘要（手機轉帳 / 跨行轉帳 等）
   debit: number | null;  // 支出（null = 無）
   credit: number | null; // 存入（null = 無）
+  balance: number;       // 餘額
   memo: string;          // 備註/資金用途（原始字串）
 }
 
+/** View model — lives in browser state only, not persisted as a flat row. */
 export interface ReconciliationEntry {
   tx: BankTransaction;
   status: ReconcileStatus;
