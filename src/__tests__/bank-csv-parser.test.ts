@@ -98,4 +98,13 @@ describe("parseSinopacCSV", () => {
     const { transactions: transactions2 } = parseSinopacCSV(csv);
     expect(transactions[0].txId).toBe(transactions2[0].txId);
   });
+
+  it("txId 對不同交易回傳不同值", () => {
+    const csv = `${HEADER}
+2026/05/20 16:52,2026/05/20,手機轉帳, ,24885,627297,,100018009897,
+2026/05/20 16:52,2026/05/20,手機轉帳, ,24885,627297,,200018009898,`;
+    const { transactions } = parseSinopacCSV(csv);
+    expect(transactions).toHaveLength(2);
+    expect(transactions[0].txId).not.toBe(transactions[1].txId);
+  });
 });

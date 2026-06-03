@@ -41,8 +41,10 @@ function makeTxId(
   debit: number | null,
   credit: number | null,
   balance: number,
+  description: string,
+  memo: string,
 ): string {
-  return `${txDate}T${txTime}|${debit ?? ""}|${credit ?? ""}|${balance}`;
+  return `${txDate}T${txTime}|${debit ?? ""}|${credit ?? ""}|${balance}|${description}|${memo}`;
 }
 
 export interface ParseBankCSVResult {
@@ -91,7 +93,7 @@ export function parseSinopacCSV(csvText: string): ParseBankCSVResult {
     const memo = cols[7]?.trim() ?? "";
 
     transactions.push({
-      txId: makeTxId(txDate, txTime, debit, credit, balance),
+      txId: makeTxId(txDate, txTime, debit, credit, balance, description, memo),
       txDate,
       txTime,
       valueDate,
