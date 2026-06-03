@@ -10,6 +10,7 @@ import {
   Package,
   ReceiptText,
   Ruler,
+  ScanLine,
   Settings,
   ShoppingCart,
   Stethoscope,
@@ -45,6 +46,7 @@ export const navLinks: NavLinkDef[] = [
   // ── 財務 ──
   { href: "/remittance", label: "匯款資訊", icon: Wallet, roles: ["admin"], group: "finance" },
   { href: "/receivables", label: "應收帳款", icon: Wallet, roles: ["admin"], group: "finance" },
+  { href: "/bank-reconciliation", label: "核對入帳", icon: ScanLine, roles: ["admin"], group: "finance" },
   { href: "/commissions", label: "佣金結算", icon: HandCoins, roles: ["admin"], group: "finance" },
   { href: "/einvoices", label: "電子發票", icon: ReceiptText, roles: ["admin"], group: "finance" },
   // ── 倉儲 ──
