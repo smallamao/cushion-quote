@@ -1084,4 +1084,47 @@ export interface PurchaseProductHistoryResponse {
 
 // Re-export Company/Contact types
 export type { Company, Contact, CompanyWithContacts, CompanyWithPrimaryContact } from "./types/company";
+
+// ─── 銀行入帳核對 ───────────────────────────────────────────
+
+export type BankPaymentType =
+  | "訂金"
+  | "尾款"
+  | "全額"
+  | "進貨款"
+  | "佣金"
+  | "雜項";
+
+export type ReconcileStatus = "pending" | "confirmed" | "ignored";
+export type ReconcileConfidence = "high" | "medium" | "none";
+
+export interface BankTransaction {
+  /** 合成唯一識別：txDate+txTime+debit+credit+balance，防重複上傳 */
+  txId: string;
+  txDate: string;        // YYYY-MM-DD
+  txTime: string;        // HH:mm
+  valueDate: string;     // 計息日 YYYY-MM-DD
+  description: string;   // 摘要（手機轉帳 / 跨行轉帳 等）
+  debit: number | null;  // 支出（null = 無）
+  credit: number | null; // 存入（null = 無）
+  memo: string;          // 備註/資金用途（原始字串）
+}
+
+export interface ReconciliationEntry {
+  tx: BankTransaction;
+  status: ReconcileStatus;
+  confidence: ReconcileConfidence;
+  /** 比對到的 AR ID（null = 無對應 AR） */
+  arId: string | null;
+  /** 比對到的分期 ID（null = 未找到適合分期） */
+  scheduleId: string | null;
+  caseId: string | null;
+  caseNameSnapshot: string | null;
+  clientNameSnapshot: string | null;
+  paymentType: BankPaymentType | null;
+}
+
+export interface ARWithSchedules extends ARRecord {
+  schedules: ARScheduleRecord[];
+}
 export { companyToClient } from "./types/company";
