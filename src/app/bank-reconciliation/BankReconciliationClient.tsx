@@ -81,6 +81,7 @@ export function BankReconciliationClient() {
   const [accountNumber, setAccountNumber] = useState("");
   const [arList, setArList] = useState<ARWithSchedules[]>([]);
   const [arLoading, setArLoading] = useState(true);
+  const [arError, setArError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitResults, setSubmitResults] = useState<
     Record<string, "ok" | "error">
@@ -93,7 +94,7 @@ export function BankReconciliationClient() {
       .then((data: { ars: ARWithSchedules[] }) =>
         setArList(data.ars ?? []),
       )
-      .catch(() => {})
+      .catch(() => { setArError(true); })
       .finally(() => setArLoading(false));
   }, []);
 
@@ -122,6 +123,7 @@ export function BankReconciliationClient() {
   const confirmable = entries.filter(
     (e) =>
       e.status !== "ignored" &&
+      e.status !== "confirmed" &&
       e.tx.credit !== null &&
       e.arId !== null &&
       e.scheduleId !== null &&
@@ -181,11 +183,18 @@ export function BankReconciliationClient() {
       {entries.length === 0 ? (
         <>
           <UploadArea onFile={handleFile} />
-          {arLoading ? (
+          {arLoading && (
             <p className="text-center text-xs text-[var(--text-tertiary)]">
               正在載入 AR 資料…
             </p>
-          ) : (
+          )}
+          {arError && (
+            <div className="flex gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>無法載入 AR 資料，請重新整理頁面。</p>
+            </div>
+          )}
+          {!arLoading && !arError && (
             <p className="text-center text-xs text-[var(--text-tertiary)]">
               已載入 {arList.length} 筆 AR，上傳 CSV 後自動比對
             </p>
@@ -250,7 +259,6 @@ export function BankReconciliationClient() {
             {entries.map((entry) => {
               const { tx, confidence, caseId, caseNameSnapshot, paymentType } =
                 entry;
-              const isCompleting = submitResults[tx.txId] === "ok";
               const hasFailed = submitResults[tx.txId] === "error";
 
               return (
@@ -342,13 +350,9 @@ export function BankReconciliationClient() {
                             updateEntry(tx.txId, {
                               caseId: val || null,
                               arId: matched?.arId ?? null,
-                              scheduleId: matched
-                                ? (entry.scheduleId ?? null)
-                                : null,
-                              caseNameSnapshot:
-                                matched?.caseNameSnapshot ?? null,
-                              clientNameSnapshot:
-                                matched?.clientNameSnapshot ?? null,
+                              scheduleId: null,
+                              caseNameSnapshot: matched?.caseNameSnapshot ?? null,
+                              clientNameSnapshot: matched?.clientNameSnapshot ?? null,
                             });
                           }}
                           className="h-7 rounded border border-[var(--border)] bg-[var(--surface-2)] px-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
@@ -417,9 +421,6 @@ export function BankReconciliationClient() {
                     )}
 
                   {/* Write-back results */}
-                  {isCompleting && (
-                    <p className="mt-1 text-xs text-green-600">✓ 已寫入 AR</p>
-                  )}
                   {hasFailed && (
                     <p className="mt-1 text-xs text-red-600">
                       ✗ 寫入失敗，請手動更新
