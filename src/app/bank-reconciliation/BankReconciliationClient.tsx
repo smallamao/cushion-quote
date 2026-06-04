@@ -76,9 +76,14 @@ function UploadArea({ onFile }: { onFile: (text: string) => void }) {
 // ── Main Component ──────────────────────────────────────────
 
 export function BankReconciliationClient() {
-  const [entries, setEntries] = useState<ReconciliationEntry[]>([]);
+  const [entries, setEntries] = useState<ReconciliationEntry[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(sessionStorage.getItem("recon_entries") ?? "[]") as ReconciliationEntry[]; } catch { return []; }
+  });
   const [parseErrors, setParseErrors] = useState<string[]>([]);
-  const [accountNumber, setAccountNumber] = useState("");
+  const [accountNumber, setAccountNumber] = useState<string>(() =>
+    typeof window === "undefined" ? "" : (sessionStorage.getItem("recon_account") ?? ""),
+  );
   const [arList, setArList] = useState<ARWithSchedules[]>([]);
   const [arLoading, setArLoading] = useState(true);
   const [arError, setArError] = useState(false);
@@ -100,9 +105,11 @@ export function BankReconciliationClient() {
 
   const updateEntry = useCallback(
     (txId: string, patch: Partial<ReconciliationEntry>) => {
-      setEntries((prev) =>
-        prev.map((e) => (e.tx.txId === txId ? { ...e, ...patch } : e)),
-      );
+      setEntries((prev) => {
+        const next = prev.map((e) => (e.tx.txId === txId ? { ...e, ...patch } : e));
+        try { sessionStorage.setItem("recon_entries", JSON.stringify(next)); } catch { /* quota */ }
+        return next;
+      });
     },
     [],
   );
@@ -112,9 +119,11 @@ export function BankReconciliationClient() {
       const result = parseSinopacCSV(csvText);
       setParseErrors(result.errors);
       setAccountNumber(result.accountNumber);
+      sessionStorage.setItem("recon_account", result.accountNumber);
       setSubmitResults({});
       const matched = matchAllTransactions(result.transactions, arList);
       setEntries(matched);
+      try { sessionStorage.setItem("recon_entries", JSON.stringify(matched)); } catch { /* quota */ }
     },
     [arList],
   );
@@ -234,6 +243,9 @@ export function BankReconciliationClient() {
                   setEntries([]);
                   setParseErrors([]);
                   setSubmitResults({});
+                  setAccountNumber("");
+                  sessionStorage.removeItem("recon_entries");
+                  sessionStorage.removeItem("recon_account");
                 }}
                 className="text-xs"
               >

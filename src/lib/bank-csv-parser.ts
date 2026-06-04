@@ -66,12 +66,27 @@ export function parseSinopacCSV(csvText: string): ParseBankCSVResult {
     };
   }
 
-  // Row 1: 帳號 header
+  // 從第 1 行擷取帳號（第 2 個欄位）
   const accountNumber = (lines[0]?.split(",")[1] ?? "").trim();
 
-  // Row 2: 欄位 header（跳過）
-  // Row 3+: 資料
-  for (let i = 2; i < lines.length; i++) {
+  // 動態找「交易日」欄位標題行，相容各種永豐 CSV header 行數
+  let dataStartIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const firstCol = lines[i]?.split(",")[0]?.trim() ?? "";
+    if (firstCol === "交易日") {
+      dataStartIndex = i + 1;
+      break;
+    }
+  }
+  if (dataStartIndex === -1) {
+    return {
+      transactions: [],
+      accountNumber,
+      errors: ["CSV 格式不正確：找不到欄位標題行（交易日）"],
+    };
+  }
+
+  for (let i = dataStartIndex; i < lines.length; i++) {
     const line = lines[i]?.trim();
     if (!line) continue;
 
