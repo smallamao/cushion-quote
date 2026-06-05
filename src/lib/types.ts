@@ -1130,3 +1130,18 @@ export interface ARWithSchedules extends ARRecord {
   schedules: ARScheduleRecord[];
 }
 export { companyToClient } from "./types/company";
+
+/** 已確認的核對紀錄，永久存入 Google Sheets */
+export interface BankReconRecord {
+  reconId: string;       // 唯一 ID，格式 BR-{txId 前 12 碼}
+  txId: string;          // 銀行交易 ID（dedup 用）
+  txDate: string;        // 交易日期 YYYY-MM-DD
+  amount: number;        // 入帳金額（credit）
+  description: string;   // 交易摘要
+  memo: string;          // 備註欄
+  caseId: string;        // 案件號
+  caseNameSnapshot: string;
+  clientNameSnapshot: string;
+  paymentType: BankPaymentType;
+  confirmedAt: string;   // ISO 8601
+}

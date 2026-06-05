@@ -296,6 +296,14 @@ const SHEET_DEFINITIONS = [
     title: "售後服務回應",
     headers: ["replyId", "serviceId", "occurredAt", "author", "content", "attachments", "createdAt"],
   },
+  {
+    title: "銀行核對紀錄",
+    headers: [
+      "reconId", "txId", "txDate", "amount", "description",
+      "memo", "caseId", "caseNameSnapshot", "clientNameSnapshot",
+      "paymentType", "confirmedAt",
+    ],
+  },
 ];
 
 const DEFAULT_SETTINGS_ROWS = [

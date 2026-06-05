@@ -7,6 +7,7 @@ import { matchAllTransactions } from "@/lib/bank-reconciliation-matcher";
 import type {
   ARWithSchedules,
   BankPaymentType,
+  BankReconRecord,
   ReconciliationEntry,
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,13 @@ export function BankReconciliationClient() {
   const [submitResults, setSubmitResults] = useState<
     Record<string, "ok" | "error">
   >({});
+  const [historyRecords, setHistoryRecords] = useState<BankReconRecord[]>([]);
+  const [historyMonth, setHistoryMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Load AR data on mount
   useEffect(() => {
@@ -113,6 +121,19 @@ export function BankReconciliationClient() {
     },
     [],
   );
+
+  const loadHistory = useCallback(async (month: string) => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/sheets/bank-recon?month=${month}`, { cache: "no-store" });
+      const data = (await res.json()) as { records: BankReconRecord[] };
+      setHistoryRecords(data.records ?? []);
+    } catch {
+      setHistoryRecords([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
 
   const handleFile = useCallback(
     (csvText: string) => {
@@ -173,6 +194,29 @@ export function BankReconciliationClient() {
     }
 
     setSubmitResults(results);
+
+    // 把成功的 entry 存到歷史紀錄
+    const successEntries = confirmable
+      .filter((e) => results[e.tx.txId] === "ok")
+      .map((e) => ({
+        txId: e.tx.txId,
+        txDate: e.tx.txDate,
+        amount: e.tx.credit!,
+        description: e.tx.description,
+        memo: e.tx.memo,
+        caseId: e.caseId!,
+        caseNameSnapshot: e.caseNameSnapshot ?? "",
+        clientNameSnapshot: e.clientNameSnapshot ?? "",
+        paymentType: e.paymentType!,
+      }));
+    if (successEntries.length > 0) {
+      void fetch("/api/sheets/bank-recon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries: successEntries }),
+      });
+    }
+
     setSubmitting(false);
   }
 
@@ -188,6 +232,69 @@ export function BankReconciliationClient() {
         <ScanLine className="h-5 w-5 shrink-0 text-[var(--accent)]" />
         <h1 className="text-xl font-bold">核對入帳</h1>
       </div>
+
+      {/* History toggle */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => {
+            if (!showHistory) {
+              void loadHistory(historyMonth);
+            }
+            setShowHistory((v) => !v);
+          }}
+          className="text-sm text-[var(--accent)] underline"
+        >
+          {showHistory ? "收起歷史紀錄" : "查看歷史紀錄"}
+        </button>
+      </div>
+
+      {showHistory && (
+        <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold">歷史核對紀錄</h2>
+            <input
+              type="month"
+              value={historyMonth}
+              onChange={(e) => {
+                setHistoryMonth(e.target.value);
+                void loadHistory(e.target.value);
+              }}
+              className="h-7 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 text-xs"
+            />
+          </div>
+          {historyLoading && (
+            <p className="text-center text-xs text-[var(--text-tertiary)]">載入中…</p>
+          )}
+          {!historyLoading && historyRecords.length === 0 && (
+            <p className="text-center text-xs text-[var(--text-tertiary)]">
+              {historyMonth} 無紀錄
+            </p>
+          )}
+          {!historyLoading && historyRecords.length > 0 && (
+            <div className="space-y-1.5">
+              {historyRecords.map((r) => (
+                <div
+                  key={r.reconId}
+                  className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-sm"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-mono text-xs text-[var(--text-tertiary)]">
+                      {r.txDate} · {r.description}
+                    </span>
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      {r.caseId} {r.caseNameSnapshot} · {r.paymentType}
+                    </span>
+                  </div>
+                  <span className="font-semibold text-green-700">
+                    +${r.amount.toLocaleString("zh-TW")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {entries.length === 0 ? (
         <>
