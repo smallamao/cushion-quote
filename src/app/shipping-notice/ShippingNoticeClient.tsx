@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation } from "lucide-react";
+import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation, Scissors, MessageSquare, User } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -148,6 +148,27 @@ async function updateCustomField(
   value: { text?: string; number?: string; date?: string },
 ): Promise<void> {
   await trelloPutQ(`cards/${cardId}/customField/${fieldId}/item`, {}, { value });
+}
+
+/**
+ * 若「椅腳」自訂欄位為空，依款式寫回預設椅腳值至 Trello。
+ * 回傳已寫入的 { fieldId, value }，未變更（已有值或無預設）時回傳 null。
+ * 由案件詳情頁與排程出貨頂部捷徑共用，確保兩處行為一致。
+ */
+async function applyDefaultChairLeg(
+  card: TrelloCard,
+  customFields: CustomFieldItem[],
+): Promise<{ fieldId: string; value: { text: string } } | null> {
+  const existing = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
+  if (existing) return null;
+  const productCode = card.labels.find((l) => l.name.startsWith("成交/"))?.name.replace("成交/", "");
+  const defaultValue = PRODUCTS.find((p) => p.displayName === productCode)?.defaultFoot ?? "";
+  if (!defaultValue) return null;
+  const fieldId = customFields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.CHAIR_LEG)
+    ? S_ORDER_CUSTOM_FIELDS.CHAIR_LEG
+    : TRELLO.CUSTOM_FIELDS.CHAIR_LEG;
+  await updateCustomField(card.id, fieldId, { text: defaultValue });
+  return { fieldId, value: { text: defaultValue } };
 }
 
 async function addCheckItem(checklistId: string, name: string): Promise<CheckItem> {
@@ -1605,19 +1626,12 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
   }, [card.id]);
 
   async function writeBackChairLegIfEmpty(): Promise<void> {
-    const existing = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
-    if (existing) return;
-    const productCode = card.labels.find((l) => l.name.startsWith("成交/"))?.name.replace("成交/", "");
-    const defaultValue = PRODUCTS.find((p) => p.displayName === productCode)?.defaultFoot ?? "";
-    if (!defaultValue) return;
-    const fieldId = customFields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.CHAIR_LEG)
-      ? S_ORDER_CUSTOM_FIELDS.CHAIR_LEG
-      : TRELLO.CUSTOM_FIELDS.CHAIR_LEG;
     try {
-      await updateCustomField(card.id, fieldId, { text: defaultValue });
+      const applied = await applyDefaultChairLeg(card, customFields);
+      if (!applied) return;
       setCustomFields((prev) =>
         prev.map((cf) =>
-          cf.idCustomField === fieldId ? { ...cf, value: { text: defaultValue } } : cf,
+          cf.idCustomField === applied.fieldId ? { ...cf, value: applied.value } : cf,
         ),
       );
     } catch (err) {
@@ -2101,6 +2115,9 @@ export function ShippingNoticeClient() {
   const hasLoadedPreviewCard = useRef(false);
   const [cardCustomFieldsMap, setCardCustomFieldsMap] = useState<Record<string, CustomFieldItem[]>>({});
   const [previewImages, setPreviewImages] = useState<string[][] | null>(null);
+  // 頂部快速鍵：對「目前這張案件」直接產生工作單／簡訊／客戶資訊文字
+  const [quickResult, setQuickResult] = useState<{ title: string; content: string } | null>(null);
+  const [quickBusy, setQuickBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Skip the first search effect trigger if state was restored from sessionStorage
   const skipSearchRef = useRef<boolean>(
@@ -2219,11 +2236,84 @@ export function ShippingNoticeClient() {
     setSearchKey((k) => k + 1);
   }
 
+  // 頂部快速鍵的目標案件：優先用已選取的那張，否則在結果只有一張時自動採用。
+  const targetCard = selectedCard ?? (cards.length === 1 ? cards[0] : null);
+
+  async function handleQuickAction(type: "cutting" | "schedule" | "customer") {
+    if (!targetCard || quickBusy) return;
+    setQuickBusy(true);
+    try {
+      // 自訂欄位優先用搜尋時預抓的；從 sessionStorage 還原的情況下會缺，故即時補抓。
+      let fields = cardCustomFieldsMap[targetCard.id];
+      if (!fields) {
+        const fetched = await fetchCustomFields(targetCard.id).catch(() => [] as CustomFieldItem[]);
+        fields = fetched;
+        setCardCustomFieldsMap((prev) => ({ ...prev, [targetCard.id]: fetched }));
+      }
+      if (type === "cutting") {
+        setQuickResult({ title: "裁剪工作單", content: buildCuttingWorkOrder(targetCard, fields) });
+      } else if (type === "customer") {
+        setQuickResult({ title: "客戶資訊", content: buildCustomerInfoText(targetCard, fields) });
+      } else {
+        setQuickResult({ title: "排程簡訊", content: buildScheduleSMS(targetCard, fields) });
+        // 與詳情頁一致：非同步把空白椅腳欄位寫回預設值（不影響當下顯示內容）。
+        void applyDefaultChairLeg(targetCard, fields)
+          .then((applied) => {
+            if (!applied) return;
+            setCardCustomFieldsMap((prev) => {
+              const cur = prev[targetCard.id] ?? [];
+              return {
+                ...prev,
+                [targetCard.id]: cur.map((cf) =>
+                  cf.idCustomField === applied.fieldId ? { ...cf, value: applied.value } : cf,
+                ),
+              };
+            });
+          })
+          .catch((err) => console.error("[椅腳寫回] 失敗:", err));
+      }
+    } finally {
+      setQuickBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Truck className="h-5 w-5 shrink-0 text-[var(--accent)]" />
         <h1 className="text-xl font-bold">排程出貨</h1>
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            size="icon"
+            variant="outline"
+            disabled={!targetCard || quickBusy}
+            title={targetCard ? "裁剪工作單" : "請先搜尋並點選一張案件"}
+            aria-label="裁剪工作單"
+            onClick={() => void handleQuickAction("cutting")}
+          >
+            <Scissors className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            disabled={!targetCard || quickBusy}
+            title={targetCard ? "排程簡訊" : "請先搜尋並點選一張案件"}
+            aria-label="排程簡訊"
+            onClick={() => void handleQuickAction("schedule")}
+          >
+            <MessageSquare className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            disabled={!targetCard || quickBusy}
+            title={targetCard ? "客戶資訊" : "請先搜尋並點選一張案件"}
+            aria-label="客戶資訊"
+            onClick={() => void handleQuickAction("customer")}
+          >
+            <User className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="flex max-w-sm gap-2">
@@ -2383,6 +2473,9 @@ export function ShippingNoticeClient() {
       </div>
 
       {previewImages && <ImageModal images={previewImages} onClose={() => setPreviewImages(null)} />}
+      {quickResult && (
+        <ResultModal title={quickResult.title} content={quickResult.content} onClose={() => setQuickResult(null)} />
+      )}
     </div>
   );
 }
