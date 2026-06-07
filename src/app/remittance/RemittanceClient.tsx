@@ -131,10 +131,11 @@ function buildRemittanceMessage(
 ): string {
   const payType = isBalance ? "餘額" : "訂金";
   const deadline = getPayDeadline(isBalance);
+  const fmtAmount = Number(amount).toLocaleString("zh-TW");
   const lines: string[] = [];
 
   lines.push(`感謝您下訂馬鈴薯沙發😊`);
-  lines.push(`${payType} $${amount} 煩請於 ${deadline} 前匯入～`);
+  lines.push(`${payType} $${fmtAmount} 煩請於 ${deadline} 前匯入～`);
   lines.push(``);
   lines.push(`銀行戶名：${account.holderName}`);
   lines.push(`代號：${account.bankCode} ${account.bankName}`);
