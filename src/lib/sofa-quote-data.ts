@@ -2,7 +2,7 @@ import { ARMREST_OPTIONS, PLATFORM_STORAGE_STYLES, type BackrestStyle } from "@/
 
 export const SMALL_CHAIR_STYLES = ["小置物椅", "豆腐椅", "斜娃椅", "小圓凳", "圓凳", "小饅頭椅"] as const
 export type SmallChairStyle = typeof SMALL_CHAIR_STYLES[number]
-export type PlatformMode = "none" | "changeStorage" | "swapSmallChairs"
+export type PlatformMode = "none" | "changeStorage" | "swapSmallChairs" | "removePlatform" | "noStorage"
 
 // ─── Products ────────────────────────────────────────────────────────────────
 
@@ -188,6 +188,19 @@ const PRICE_REMOVE_STANDARD_USB = -1000
 const PRICE_WIRELESS = 1200
 const PRICE_PLATFORM_NO_STORAGE = -1000
 const PRICE_BACKREST_CHANGE_PER_SEAT = 500
+
+// 扣除平台（整張平台直接拿掉）依面料等級的扣除金額。
+// 注意：與「平台無置物」不同——此選項代表完全沒有那張平台。
+const PRICE_PLATFORM_REMOVAL_BY_GRADE: Record<string, number> = {
+  TW_LV1: -4000, TW_LV2: -4200, TW_LV3: -5200, TW_LV4: -5200, TW_LV5: -5800,
+  IMPORT_LV1: -6500, IMPORT_LV2: -7200, IMPORT_LV3: -7200, IMPORT_LV4: -8000, IMPORT_LV5: -9000,
+  LEATHER_LV1: -6200, LEATHER_LV2: -7800, LEATHER_LV3: -9000,
+}
+
+/** 取得「扣除平台」依面料等級的扣除金額（負數）；未知等級回傳 0。 */
+export function getPlatformRemovalDiscount(gradeId: string): number {
+  return PRICE_PLATFORM_REMOVAL_BY_GRADE[gradeId] ?? 0
+}
 const PRICE_STORAGE_PLATFORM_CHANGE = 1500
 const PRICE_SEAT_DEPTH_PER_UNIT = 1500
 const PRICE_BACK_HEIGHT_PER_UNIT = 1200
@@ -245,6 +258,9 @@ export interface SofaAddons {
   smallChair2Style: string
   smallChair2Color: string
   smallChair2Leg: string
+  // 優惠活動
+  promoCampaignId: string
+  promoWeekday: boolean
 }
 
 export const DEFAULT_ADDONS: SofaAddons = {
@@ -282,6 +298,64 @@ export const DEFAULT_ADDONS: SofaAddons = {
   smallChair2Style: "",
   smallChair2Color: "",
   smallChair2Leg: "",
+  promoCampaignId: "",
+  promoWeekday: false,
+}
+
+// ─── 優惠活動 ────────────────────────────────────────────────────────────────
+// fixed：固定折抵金額，可設平日加碼（由使用者手動勾選平日）。
+// tiered：依「沙發本體價」滿額階梯折抵，取符合的最高階。
+export type PromoType = "fixed" | "tiered"
+
+export interface PromoTier {
+  threshold: number
+  credit: number
+}
+
+export interface PromoCampaign {
+  id: string
+  name: string
+  type: PromoType
+  baseCredit?: number     // fixed 用
+  weekdayBonus?: number   // fixed 用：平日加碼
+  tiers?: PromoTier[]     // tiered 用
+}
+
+const STANDARD_PROMO_TIERS: PromoTier[] = [
+  { threshold: 20000, credit: 1000 },
+  { threshold: 40000, credit: 2000 },
+  { threshold: 60000, credit: 3000 },
+]
+
+export const PROMO_CAMPAIGNS: PromoCampaign[] = [
+  { id: "booking", name: "預約購物金", type: "fixed", baseCredit: 1000, weekdayBonus: 1000 },
+  { id: "mothers_day", name: "母親節購物金", type: "tiered", tiers: STANDARD_PROMO_TIERS },
+  { id: "community_group", name: "社區團購購物金", type: "tiered", tiers: STANDARD_PROMO_TIERS },
+]
+
+export function getPromoCampaign(id: string): PromoCampaign | null {
+  return PROMO_CAMPAIGNS.find((c) => c.id === id) ?? null
+}
+
+/**
+ * 計算優惠活動折抵金額（回傳正數＝折抵額）。
+ * @param sofaBodyPrice 沙發本體價（base + 加寬調整），滿額階梯以此為準
+ * @param isWeekday 是否平日（fixed 型加碼用）
+ */
+export function calcPromoDiscount(
+  campaign: PromoCampaign | null,
+  sofaBodyPrice: number,
+  isWeekday: boolean,
+): number {
+  if (!campaign) return 0
+  if (campaign.type === "fixed") {
+    return (campaign.baseCredit ?? 0) + (isWeekday ? (campaign.weekdayBonus ?? 0) : 0)
+  }
+  let credit = 0
+  for (const t of campaign.tiers ?? []) {
+    if (sofaBodyPrice >= t.threshold) credit = Math.max(credit, t.credit)
+  }
+  return credit
 }
 
 export const NO_SLIDE_RAIL_STYLES = ["ELEC", "POINT", "BSK", "BJ", "EDSON", "FLA", "HANA", "HAILY"]
@@ -290,7 +364,7 @@ export function getSlideRailRate(productCode: string): number {
   return ["BOOM", "BOOMs"].includes(productCode) ? 800 : 1000;
 }
 
-export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0, platformAdjFee = 0): number {
+export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0, platformAdjFee = 0, removePlatformDiscount = 0): number {
   const groundCost = addons.groundOption === "full" ? PRICE_GROUND_FULL
     : addons.groundOption === "half" ? PRICE_GROUND_HALF : 0;
   const heightDiscount = addons.heightReductionCm > 0 ? PRICE_HEIGHT_REDUCTION : 0;
@@ -299,9 +373,10 @@ export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0, platf
   const removeUsbDiscount = addons.removeStandardUsb ? PRICE_REMOVE_STANDARD_USB : 0;
   const wirelessCost = addons.wirelessChargeCount * PRICE_WIRELESS;
   const slideRailCost = addons.slideRailCount * addons.slideRailRatePerSeat;
-  const platformNoStorageDiscount = addons.platformNoStorage ? PRICE_PLATFORM_NO_STORAGE : 0;
+  const platformNoStorageDiscount = (addons.platformNoStorage || addons.platformMode === "noStorage") ? PRICE_PLATFORM_NO_STORAGE : 0;
   const backrestCost = (addons.backrestChange && addons.backrestTargetStyle) ? PRICE_BACKREST_CHANGE_PER_SEAT * seatCount : 0;
   const changeStorageFee = (addons.platformMode === "changeStorage" && addons.storagePlatformStyle) ? PRICE_STORAGE_PLATFORM_CHANGE : 0;
+  const platformRemovalDiscount = addons.platformMode === "removePlatform" ? removePlatformDiscount : 0;
   const obaFrameCost = (() => {
     if (!addons.obaCustomFrame || addons.armMode === "none") return 0;
     const effectiveRight = addons.armMode === "both_same" ? addons.leftArmCode : addons.rightArmCode;
@@ -316,7 +391,7 @@ export function calcAddons(addons: SofaAddons, seatCount = 3, armCost = 0, platf
   return groundCost + heightDiscount + armrestDiscount + usbCost
     + removeUsbDiscount + wirelessCost + slideRailCost + platformNoStorageDiscount
     + backrestCost + changeStorageFee + armCost + platformAdjFee + obaFrameCost
-    + seatDepthCost + backHeightCost;
+    + seatDepthCost + backHeightCost + platformRemovalDiscount;
 }
 
 export function buildQuoteOutput(
@@ -332,7 +407,7 @@ export function buildQuoteOutput(
 ): QuoteOutput {
   const lc = calcLShape(product, basePrice)
   const wc = calcWidthAdjustment(inputWidth, product, seatCount, grade)
-  const addonTotal = addons ? calcAddons(addons, seatCount, armCost, platformAdjFee) : 0
+  const addonTotal = addons ? calcAddons(addons, seatCount, armCost, platformAdjFee, getPlatformRemovalDiscount(grade.id)) : 0
 
   const isEdsonBj = ['EDSON', 'BJ'].includes(product.displayName)
   const reductionText = getReductionDiscount(product, inputWidth)
@@ -384,12 +459,13 @@ export function buildQuoteOutput(
   const grandTotal = sofaTotal + addonTotal
   copyLines.push(`${grade.materialDescription} $${fmtAmount(grandTotal)}`)
   if (reductionText) copyLines.push(reductionText)
-  if (addons?.platformMode !== "changeStorage" || !addons.storagePlatformStyle) {
+  if (addons?.platformMode !== "removePlatform"
+    && (addons?.platformMode !== "changeStorage" || !addons.storagePlatformStyle)) {
     copyLines.push(`平台尺寸w${product.footSeatSize}cm`)
   }
   copyLines.push(`椅腳樣式：${legStyle ?? product.defaultFoot}`)
   copyLines.push('')
-  if (['BOOM', 'LEMON', 'MULE'].includes(product.displayName)) {
+  if (['BOOM', 'LEMON', 'MULE'].includes(product.displayName) && addons?.platformMode !== "removePlatform") {
     copyLines.push('訂平台無置物 - $1,000')
   }
   if (['LEO', 'OBA'].includes(product.displayName)) {
@@ -401,7 +477,7 @@ export function buildQuoteOutput(
     copyLines.push('扣除煞車滑軌 - $3,000')
   }
 
-  if (addons && (addonTotal !== 0 || addons.platformMode === "swapSmallChairs" || addons.seatDepthAdj !== 0 || addons.backHeightAdj > 0)) {
+  if (addons && (addonTotal !== 0 || addons.platformMode === "swapSmallChairs" || addons.platformMode === "removePlatform" || addons.seatDepthAdj !== 0 || addons.backHeightAdj > 0)) {
     copyLines.push('')
     copyLines.push('【進階選項】')
     if (addons.groundOption === "half") copyLines.push(`桶身落地（半落地）+${fmtAmount(PRICE_GROUND_HALF)}`)
@@ -433,7 +509,7 @@ export function buildQuoteOutput(
       const total = addons.slideRailCount * addons.slideRailRatePerSeat;
       copyLines.push(`加裝滑軌 ×${addons.slideRailCount}座 +${fmtAmount(total)}`)
     }
-    if (addons.platformNoStorage) copyLines.push(`平台無置物 ${fmtAmount(PRICE_PLATFORM_NO_STORAGE)}`)
+    if (addons.platformNoStorage || addons.platformMode === "noStorage") copyLines.push(`平台無置物 ${fmtAmount(PRICE_PLATFORM_NO_STORAGE)}`)
     if (addons.platformMode === "changeStorage" && addons.storagePlatformStyle) {
       const ps = PLATFORM_STORAGE_STYLES.find((p) => p.code === addons.storagePlatformStyle);
       const pw = ps ? ps.standardWidth + addons.storagePlatformWidthAdj : 0;
@@ -441,6 +517,9 @@ export function buildQuoteOutput(
       const dimPart = ps ? ` w${pw}×${pd}cm` : "";
       const totalFee = PRICE_STORAGE_PLATFORM_CHANGE + platformAdjFee;
       copyLines.push(`改 ${addons.storagePlatformStyle} 置物平台${dimPart} +$${fmtAmount(totalFee)}`);
+    }
+    if (addons.platformMode === "removePlatform") {
+      copyLines.push(`扣除平台 - $${fmtAmount(Math.abs(getPlatformRemovalDiscount(grade.id)))}`);
     }
     if (addons.platformMode === "swapSmallChairs") {
       const chairLine = (style: string, color: string, leg: string) => {
@@ -488,6 +567,22 @@ export function buildQuoteOutput(
           : [effectiveRight2];
         const obaCount = sides.filter((c) => c === "OBA").length;
         if (obaCount > 0) copyLines.push(`訂製歐巴扶手框 ×${obaCount} +$${fmtAmount(obaCount * 1000)}`);
+      }
+    }
+
+    copyLines.push('')
+    copyLines.push(`總金額 $${fmtAmount(grandTotal)}`)
+  }
+
+  // 優惠活動（滿額門檻以沙發本體價 sofaTotal 為準）
+  if (addons) {
+    const promoCampaign = getPromoCampaign(addons.promoCampaignId)
+    if (promoCampaign) {
+      const promoDiscount = calcPromoDiscount(promoCampaign, sofaTotal, addons.promoWeekday)
+      if (promoDiscount > 0) {
+        copyLines.push('')
+        copyLines.push(`優惠活動：${promoCampaign.name} -$${fmtAmount(promoDiscount)}`)
+        copyLines.push(`活動後總金額 $${fmtAmount(grandTotal - promoDiscount)}`)
       }
     }
   }

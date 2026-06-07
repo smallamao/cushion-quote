@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcAddons, getSlideRailRate, type SofaAddons, buildQuoteOutput, SOFA_PRODUCTS, MATERIAL_GRADES, getBasePrice, DEFAULT_ADDONS } from "@/lib/sofa-quote-data";
+import { calcAddons, getSlideRailRate, type SofaAddons, buildQuoteOutput, SOFA_PRODUCTS, MATERIAL_GRADES, getBasePrice, DEFAULT_ADDONS, getPlatformRemovalDiscount, getPromoCampaign, calcPromoDiscount } from "@/lib/sofa-quote-data";
 
 const base: SofaAddons = {
   ...DEFAULT_ADDONS,
@@ -129,5 +129,134 @@ describe("calcAddons — new params", () => {
   });
   it("複合：半落地 + 改背枕 + armCost 700", () => {
     expect(calcAddons({ ...DEFAULT_ADDONS, groundOption: "half", backrestChange: true, backrestTargetStyle: "ICE" }, 3, 700)).toBe(1500 + 1500 + 700);
+  });
+});
+
+describe("扣除平台 (removePlatform)", () => {
+  it("getPlatformRemovalDiscount 依面料等級回傳正確扣除金額", () => {
+    expect(getPlatformRemovalDiscount("TW_LV1")).toBe(-4000);
+    expect(getPlatformRemovalDiscount("TW_LV3")).toBe(-5200);
+    expect(getPlatformRemovalDiscount("TW_LV5")).toBe(-5800);
+    expect(getPlatformRemovalDiscount("IMPORT_LV1")).toBe(-6500);
+    expect(getPlatformRemovalDiscount("IMPORT_LV5")).toBe(-9000);
+    expect(getPlatformRemovalDiscount("LEATHER_LV2")).toBe(-7800);
+  });
+
+  it("未知等級回傳 0", () => {
+    expect(getPlatformRemovalDiscount("UNKNOWN")).toBe(0);
+  });
+
+  it("removePlatform 模式時套用扣除金額", () => {
+    expect(calcAddons({ ...DEFAULT_ADDONS, platformMode: "removePlatform" }, 3, 0, 0, -4000)).toBe(-4000);
+  });
+
+  it("非 removePlatform 模式時忽略扣除金額", () => {
+    expect(calcAddons({ ...DEFAULT_ADDONS, platformMode: "none" }, 3, 0, 0, -4000)).toBe(0);
+  });
+
+  it("買 quote 複製文字含『扣除平台』且不含平台尺寸行", () => {
+    const product = SOFA_PRODUCTS.find((p) => p.displayName === "ELEC")!;
+    const grade = MATERIAL_GRADES.find((g) => g.id === "TW_LV1")!;
+    const basePrice = getBasePrice("ELEC", "TW_LV1");
+    const { copyText } = buildQuoteOutput(product, grade, 262, 3, basePrice, {
+      ...DEFAULT_ADDONS,
+      platformMode: "removePlatform",
+    });
+    expect(copyText).toContain("扣除平台 - $4,000");
+    expect(copyText).not.toContain("平台尺寸");
+    // 總價 = basePrice 42600 - 4000 = 38600
+    expect(copyText).toContain("38,600");
+  });
+
+  it("扣除金額隨面料等級改變（IMPORT_LV5 → -9000）", () => {
+    const product = SOFA_PRODUCTS.find((p) => p.displayName === "ELEC")!;
+    const grade = MATERIAL_GRADES.find((g) => g.id === "IMPORT_LV5")!;
+    const basePrice = getBasePrice("ELEC", "IMPORT_LV5");
+    const { copyText } = buildQuoteOutput(product, grade, 262, 3, basePrice, {
+      ...DEFAULT_ADDONS,
+      platformMode: "removePlatform",
+    });
+    expect(copyText).toContain("扣除平台 - $9,000");
+  });
+});
+
+describe("平台無置物 (noStorage 模式)", () => {
+  it("noStorage 模式 → -1000", () => {
+    expect(calcAddons({ ...DEFAULT_ADDONS, platformMode: "noStorage" }, 3)).toBe(-1000);
+  });
+  it("布林 platformNoStorage 仍相容 → -1000", () => {
+    expect(calcAddons({ ...DEFAULT_ADDONS, platformNoStorage: true }, 3)).toBe(-1000);
+  });
+  it("複製文字含『平台無置物 -1,000』", () => {
+    const product = SOFA_PRODUCTS.find((p) => p.displayName === "BOOM")!;
+    const grade = MATERIAL_GRADES.find((g) => g.id === "TW_LV1")!;
+    const basePrice = getBasePrice("BOOM", "TW_LV1");
+    const { copyText } = buildQuoteOutput(product, grade, product.width, 3, basePrice, {
+      ...DEFAULT_ADDONS,
+      platformMode: "noStorage",
+    });
+    expect(copyText).toContain("平台無置物 -1,000");
+  });
+});
+
+describe("優惠活動 (promo)", () => {
+  it("預約購物金：假日 -1000、平日 -2000", () => {
+    const c = getPromoCampaign("booking");
+    expect(calcPromoDiscount(c, 50000, false)).toBe(1000);
+    expect(calcPromoDiscount(c, 50000, true)).toBe(2000);
+  });
+
+  it("滿額階梯（母親節）依沙發本體價取最高階", () => {
+    const c = getPromoCampaign("mothers_day");
+    expect(calcPromoDiscount(c, 19999, false)).toBe(0);
+    expect(calcPromoDiscount(c, 20000, false)).toBe(1000);
+    expect(calcPromoDiscount(c, 40000, false)).toBe(2000);
+    expect(calcPromoDiscount(c, 60000, false)).toBe(3000);
+    expect(calcPromoDiscount(c, 99999, false)).toBe(3000);
+  });
+
+  it("社區團購與母親節階梯相同", () => {
+    expect(calcPromoDiscount(getPromoCampaign("community_group"), 40000, false)).toBe(2000);
+  });
+
+  it("無活動 → 0", () => {
+    expect(calcPromoDiscount(null, 99999, true)).toBe(0);
+    expect(getPromoCampaign("")).toBeNull();
+  });
+
+  it("複製文字含優惠活動與活動後總金額（母親節，本體 42,600 → 折 2,000）", () => {
+    const product = SOFA_PRODUCTS.find((p) => p.displayName === "ELEC")!;
+    const grade = MATERIAL_GRADES.find((g) => g.id === "TW_LV1")!;
+    const basePrice = getBasePrice("ELEC", "TW_LV1");
+    const { copyText } = buildQuoteOutput(product, grade, product.width, 3, basePrice, {
+      ...DEFAULT_ADDONS,
+      promoCampaignId: "mothers_day",
+    });
+    expect(copyText).toContain("優惠活動：母親節購物金 -$2,000");
+    expect(copyText).toContain("活動後總金額 $40,600");
+  });
+
+  it("複製文字：預約購物金平日 -2,000", () => {
+    const product = SOFA_PRODUCTS.find((p) => p.displayName === "ELEC")!;
+    const grade = MATERIAL_GRADES.find((g) => g.id === "TW_LV1")!;
+    const basePrice = getBasePrice("ELEC", "TW_LV1");
+    const { copyText } = buildQuoteOutput(product, grade, product.width, 3, basePrice, {
+      ...DEFAULT_ADDONS,
+      promoCampaignId: "booking",
+      promoWeekday: true,
+    });
+    expect(copyText).toContain("優惠活動：預約購物金 -$2,000");
+    expect(copyText).toContain("活動後總金額 $40,600");
+  });
+
+  it("未達門檻不顯示優惠活動", () => {
+    const product = SOFA_PRODUCTS.find((p) => p.displayName === "ELEC")!;
+    const grade = MATERIAL_GRADES.find((g) => g.id === "TW_LV1")!;
+    // 用較低 basePrice 模擬未達門檻：傳入 basePrice 10000
+    const { copyText } = buildQuoteOutput(product, grade, product.width, 3, 10000, {
+      ...DEFAULT_ADDONS,
+      promoCampaignId: "mothers_day",
+    });
+    expect(copyText).not.toContain("優惠活動");
   });
 });

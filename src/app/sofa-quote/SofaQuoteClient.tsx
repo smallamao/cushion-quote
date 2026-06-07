@@ -11,6 +11,10 @@ import {
   fmtAmount,
   DEFAULT_ADDONS,
   calcAddons,
+  getPlatformRemovalDiscount,
+  PROMO_CAMPAIGNS,
+  getPromoCampaign,
+  calcPromoDiscount,
   calcSeatDepthFee,
   calcBackHeightFee,
   getSlideRailRate,
@@ -19,6 +23,7 @@ import {
   type SofaProduct,
   type MaterialGrade,
   type SofaAddons,
+  type PlatformMode,
 } from "@/lib/sofa-quote-data";
 import {
   ARMREST_OPTIONS,
@@ -225,6 +230,7 @@ export function SofaQuoteClient() {
   const [showBackrestPicker, setShowBackrestPicker] = useState(false);
   const [showPlatformPanel, setShowPlatformPanel] = useState(false);
   const [showPlatformStylePicker, setShowPlatformStylePicker] = useState(false);
+  const [showPromoPanel, setShowPromoPanel] = useState(false);
   const [showSmallChair1Picker, setShowSmallChair1Picker] = useState(false);
   const [showSmallChair2Picker, setShowSmallChair2Picker] = useState(false);
 
@@ -265,6 +271,8 @@ export function SofaQuoteClient() {
     () => calcArmCost(addons.armMode, addons.leftArmCode, effectiveRightCode),
     [addons.armMode, addons.leftArmCode, effectiveRightCode],
   );
+  // 改扶手區小計：改扶手費用 + 移除扶手折扣（-1,500/個）
+  const armSectionTotal = armCost + addons.removeArmrestCount * -1500;
 
   const selectedPlatformBase = PLATFORM_STORAGE_STYLES.find(
     (p) => p.code === addons.storagePlatformStyle,
@@ -288,11 +296,19 @@ export function SofaQuoteClient() {
     [platformDimFees],
   );
 
-  const addonTotal = useMemo(() => calcAddons(addons, seatCount, armCost, storagePlatformAdjFee), [addons, seatCount, armCost, storagePlatformAdjFee]);
+  const platformRemovalDiscount = getPlatformRemovalDiscount(grade.id);
+  const addonTotal = useMemo(() => calcAddons(addons, seatCount, armCost, storagePlatformAdjFee, platformRemovalDiscount), [addons, seatCount, armCost, storagePlatformAdjFee, platformRemovalDiscount]);
 
-  // 只計算「進階選項」card 自己的子項，不含改扶手／改背枕／改平台
+  // 優惠活動：滿額門檻以沙發本體價（base + 加寬調整）為準
+  const selectedPromo = getPromoCampaign(addons.promoCampaignId);
+  const sofaBodyPrice = basePrice + widthCalc.adjustPrice;
+  const promoDiscount = calcPromoDiscount(selectedPromo, sofaBodyPrice, addons.promoWeekday);
+  const grandTotalBeforePromo = sofaBodyPrice + addonTotal;
+  const finalTotal = grandTotalBeforePromo - promoDiscount;
+
+  // 只計算「進階選項」card 自己的子項，不含改扶手（含移除扶手）／改背枕／改平台
   const advancedOnlyTotal = useMemo(() => calcAddons(
-    { ...addons, armMode: "none", backrestChange: false, platformMode: "none" },
+    { ...addons, armMode: "none", backrestChange: false, platformMode: "none", removeArmrestCount: 0 },
     seatCount, 0, 0,
   ), [addons, seatCount]);
 
@@ -557,9 +573,9 @@ export function SofaQuoteClient() {
         >
           <span>改扶手</span>
           <span className="flex items-center gap-2">
-            {armCost > 0 && (
-              <span className="text-sm font-semibold text-red-500">
-                +${fmtAmount(armCost)}
+            {armSectionTotal !== 0 && (
+              <span className={`text-sm font-semibold ${armSectionTotal > 0 ? "text-red-500" : "text-blue-500"}`}>
+                {armSectionTotal > 0 ? "+" : "-"}${fmtAmount(Math.abs(armSectionTotal))}
               </span>
             )}
             <span className="text-[var(--text-tertiary)]">{showArmPanel ? "▲" : "▼"}</span>
@@ -642,9 +658,25 @@ export function SofaQuoteClient() {
               </label>
             )}
 
-            {addons.armMode !== "none" && armCost > 0 && (
-              <div className="rounded-[var(--radius-md)] bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-                改扶手費用：${fmtAmount(armCost)}
+            {/* 移除扶手 */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-[var(--text-secondary)]">移除扶手（-1,500/個）</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAddons((a) => ({ ...a, removeArmrestCount: Math.max(0, a.removeArmrestCount - 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Minus className="h-3 w-3" />
+                </button>
+                <span className="w-4 text-center text-sm font-bold">{addons.removeArmrestCount}</span>
+                <button onClick={() => setAddons((a) => ({ ...a, removeArmrestCount: Math.min(2, a.removeArmrestCount + 1) }))}
+                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            {armSectionTotal !== 0 && (
+              <div className={`rounded-[var(--radius-md)] px-3 py-2 text-sm font-medium ${armSectionTotal > 0 ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"}`}>
+                改扶手費用：{armSectionTotal > 0 ? "+" : "-"}${fmtAmount(Math.abs(armSectionTotal))}
               </div>
             )}
           </div>
@@ -732,9 +764,15 @@ export function SofaQuoteClient() {
               {addons.platformMode === "changeStorage" && addons.storagePlatformStyle && (
                 <span className="text-sm font-semibold text-red-500">+${fmtAmount(1500 + storagePlatformAdjFee)}</span>
               )}
+              {addons.platformMode === "removePlatform" && (
+                <span className="text-sm font-semibold text-blue-500">-${fmtAmount(Math.abs(platformRemovalDiscount))}</span>
+              )}
+              {addons.platformMode === "noStorage" && (
+                <span className="text-sm font-semibold text-blue-500">-$1,000</span>
+              )}
               {addons.platformMode !== "none" && (
                 <span className="text-xs text-[var(--accent)]">
-                  {addons.platformMode === "changeStorage" ? "改置物平台" : "換小椅"}
+                  {addons.platformMode === "changeStorage" ? "改置物平台" : addons.platformMode === "swapSmallChairs" ? "換小椅" : addons.platformMode === "removePlatform" ? "扣除平台" : "平台無置物"}
                 </span>
               )}
               <span className="text-[var(--text-tertiary)]">{showPlatformPanel ? "▲" : "▼"}</span>
@@ -747,7 +785,7 @@ export function SofaQuoteClient() {
               <div className="space-y-1">
                 <p className="text-xs text-[var(--text-secondary)]">平台選項</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {(["none", "changeStorage", "swapSmallChairs"] as const).map((mode) => (
+                  {(["none", "changeStorage", "swapSmallChairs", "removePlatform", ...(["BOOM", "BOOMs", "LEMON", "MULE"].includes(product.displayName) ? ["noStorage"] : [])] as PlatformMode[]).map((mode) => (
                     <button key={mode}
                       onClick={() => setAddons((prev) => ({
                         ...prev,
@@ -769,11 +807,18 @@ export function SofaQuoteClient() {
                           : "bg-[var(--bg-subtle)] text-[var(--text-secondary)]",
                       ].join(" ")}
                     >
-                      {mode === "none" ? "不更改" : mode === "changeStorage" ? "改置物平台 +1,500" : "換兩張小椅子"}
+                      {mode === "none" ? "不更改" : mode === "changeStorage" ? "改置物平台 +1,500" : mode === "swapSmallChairs" ? "換兩張小椅子" : mode === "removePlatform" ? "扣除平台" : "平台無置物 -1,000"}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* 扣除平台 */}
+              {addons.platformMode === "removePlatform" && (
+                <div className="rounded-[var(--radius-md)] bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">
+                  扣除平台（整張平台拿掉）：依面料等級 {grade.displayName} 扣 -${fmtAmount(Math.abs(platformRemovalDiscount))}
+                </div>
+              )}
 
               {/* 改置物平台 */}
               {addons.platformMode === "changeStorage" && (
@@ -985,22 +1030,6 @@ export function SofaQuoteClient() {
               </div>
             </div>
 
-            {/* 移除扶手 */}
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-[var(--text-secondary)]">移除扶手（-1,500/個）</p>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setAddons((a) => ({ ...a, removeArmrestCount: Math.max(0, a.removeArmrestCount - 1) }))}
-                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
-                  <Minus className="h-3 w-3" />
-                </button>
-                <span className="w-4 text-center text-sm font-bold">{addons.removeArmrestCount}</span>
-                <button onClick={() => setAddons((a) => ({ ...a, removeArmrestCount: Math.min(2, a.removeArmrestCount + 1) }))}
-                  className="flex h-7 w-7 items-center justify-center rounded border border-[var(--border)] text-[var(--text-secondary)]">
-                  <Plus className="h-3 w-3" />
-                </button>
-              </div>
-            </div>
-
             {/* USB */}
             <div className="flex items-center justify-between">
               <p className="text-xs text-[var(--text-secondary)]">加裝 USB 充電（+1,500/組）</p>
@@ -1050,19 +1079,6 @@ export function SofaQuoteClient() {
             </div>
             )}
 
-            {/* 平台無置物 (BOOM/BOOMs/LEMON/MULE only) */}
-            {["BOOM", "BOOMs", "LEMON", "MULE"].includes(product.displayName) && (
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-[var(--text-secondary)]">平台無置物 <span className="text-blue-500">-1,000</span></p>
-                <button
-                  onClick={() => setAddons((a) => ({ ...a, platformNoStorage: !a.platformNoStorage }))}
-                  className={`rounded px-3 py-1 text-xs font-medium transition-colors ${addons.platformNoStorage ? "bg-[var(--accent)] text-white" : "border border-[var(--border)] text-[var(--text-secondary)]"}`}
-                >
-                  {addons.platformNoStorage ? "✓ 已選" : "選取"}
-                </button>
-              </div>
-            )}
-
             {/* Reset button */}
             {advancedOnlyTotal !== 0 && (
               <button
@@ -1072,6 +1088,74 @@ export function SofaQuoteClient() {
                 重置進階選項
               </button>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* 優惠活動 */}
+      <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+        <button
+          onClick={() => setShowPromoPanel((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-[var(--text-primary)]"
+        >
+          <span>優惠活動</span>
+          <span className="flex items-center gap-2">
+            {promoDiscount > 0 && (
+              <span className="text-sm font-semibold text-blue-500">-${fmtAmount(promoDiscount)}</span>
+            )}
+            {selectedPromo && (
+              <span className="text-xs text-[var(--accent)]">{selectedPromo.name}</span>
+            )}
+            <span className="text-[var(--text-tertiary)]">{showPromoPanel ? "▲" : "▼"}</span>
+          </span>
+        </button>
+
+        {showPromoPanel && (
+          <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
+            <div className="space-y-1">
+              <p className="text-xs text-[var(--text-secondary)]">選擇活動</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[{ id: "", name: "無" }, ...PROMO_CAMPAIGNS].map((c) => (
+                  <button key={c.id || "none"}
+                    onClick={() => setAddons((prev) => ({ ...prev, promoCampaignId: c.id }))}
+                    className={[
+                      "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                      addons.promoCampaignId === c.id
+                        ? "bg-[var(--accent)] text-white"
+                        : "bg-[var(--bg-subtle)] text-[var(--text-secondary)]",
+                    ].join(" ")}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {selectedPromo?.type === "fixed" && (selectedPromo.weekdayBonus ?? 0) > 0 && (
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-[var(--text-secondary)]">平日加碼 <span className="text-blue-500">-{fmtAmount(selectedPromo.weekdayBonus ?? 0)}</span></p>
+                <button
+                  onClick={() => setAddons((a) => ({ ...a, promoWeekday: !a.promoWeekday }))}
+                  className={`rounded px-3 py-1 text-xs font-medium transition-colors ${addons.promoWeekday ? "bg-[var(--accent)] text-white" : "border border-[var(--border)] text-[var(--text-secondary)]"}`}
+                >
+                  {addons.promoWeekday ? "✓ 平日" : "假日"}
+                </button>
+              </div>
+            )}
+
+            {selectedPromo?.type === "tiered" && (
+              <p className="text-[10px] text-[var(--text-tertiary)]">
+                滿額階梯（依沙發本體 ${fmtAmount(sofaBodyPrice)}）：滿20,000折1,000／40,000折2,000／60,000折3,000
+              </p>
+            )}
+
+            {promoDiscount > 0 ? (
+              <div className="rounded-[var(--radius-md)] bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">
+                {selectedPromo?.name} 折抵 -${fmtAmount(promoDiscount)}，活動後總金額 ${fmtAmount(finalTotal)}
+              </div>
+            ) : selectedPromo?.type === "tiered" && addons.promoCampaignId ? (
+              <p className="text-xs text-[var(--text-tertiary)]">沙發本體未達滿額門檻（最低滿 $20,000）</p>
+            ) : null}
           </div>
         )}
       </div>
