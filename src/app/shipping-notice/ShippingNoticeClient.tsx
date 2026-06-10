@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation, Scissors, MessageSquare, User } from "lucide-react";
+import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation, Scissors, MessageSquare, User, CalendarDays, CalendarClock } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -2118,6 +2118,9 @@ export function ShippingNoticeClient() {
   // 頂部快速鍵：對「目前這張案件」直接產生工作單／簡訊／客戶資訊文字
   const [quickResult, setQuickResult] = useState<{ title: string; content: string } | null>(null);
   const [quickBusy, setQuickBusy] = useState(false);
+  // 頂部快速鍵：更改排程日期／出貨日期
+  const [dateEditor, setDateEditor] = useState<{ type: "schedule" | "due"; cardId: string; value: string } | null>(null);
+  const [savingDate, setSavingDate] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Skip the first search effect trigger if state was restored from sessionStorage
   const skipSearchRef = useRef<boolean>(
@@ -2277,6 +2280,65 @@ export function ShippingNoticeClient() {
     }
   }
 
+  // 開啟日期編輯小視窗，並帶入目前案件的現有日期
+  async function openDateEditor(type: "schedule" | "due") {
+    const card = targetCard;
+    if (!card || quickBusy) return;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    let value = "";
+    if (type === "due") {
+      if (card.due) {
+        const d = new Date(card.due);
+        value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
+    } else {
+      let fields = cardCustomFieldsMap[card.id];
+      if (!fields) {
+        const fetched = await fetchCustomFields(card.id).catch(() => [] as CustomFieldItem[]);
+        fields = fetched;
+        setCardCustomFieldsMap((prev) => ({ ...prev, [card.id]: fetched }));
+      }
+      const sd = getCustomFieldDateAny(fields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY, S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY);
+      if (sd) value = `${sd.getFullYear()}-${pad(sd.getMonth() + 1)}-${pad(sd.getDate())}`;
+    }
+    setDateEditor({ type, cardId: card.id, value });
+  }
+
+  // 儲存日期並寫回 Trello，同時更新本地畫面
+  async function saveDateEditor() {
+    if (!dateEditor || !dateEditor.value) return;
+    setSavingDate(true);
+    try {
+      const { type, cardId, value } = dateEditor;
+      const iso = new Date(value).toISOString();
+      if (type === "due") {
+        const card = cards.find((c) => c.id === cardId) ?? selectedCard;
+        await updateCardDue(cardId, iso, card?.dueComplete ?? false);
+        setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, due: iso } : c)));
+        setSelectedCard((prev) => (prev && prev.id === cardId ? { ...prev, due: iso } : prev));
+      } else {
+        const fields = cardCustomFieldsMap[cardId] ?? [];
+        const fieldId = fields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY)
+          ? S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY
+          : TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY;
+        await updateCardScheduleDay(cardId, iso, fieldId);
+        setCardCustomFieldsMap((prev) => {
+          const cur = prev[cardId] ?? [];
+          const exists = cur.some((cf) => cf.idCustomField === fieldId);
+          const next = exists
+            ? cur.map((cf) => (cf.idCustomField === fieldId ? { ...cf, value: { date: iso } } : cf))
+            : [...cur, { id: fieldId, idCustomField: fieldId, value: { date: iso } }];
+          return { ...prev, [cardId]: next };
+        });
+      }
+      setDateEditor(null);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "更新失敗");
+    } finally {
+      setSavingDate(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -2312,6 +2374,26 @@ export function ShippingNoticeClient() {
             onClick={() => void handleQuickAction("customer")}
           >
             <User className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            disabled={!targetCard || quickBusy}
+            title={targetCard ? "更改排程日期" : "請先搜尋並點選一張案件"}
+            aria-label="更改排程日期"
+            onClick={() => void openDateEditor("schedule")}
+          >
+            <CalendarDays className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            disabled={!targetCard || quickBusy}
+            title={targetCard ? "更改出貨日期" : "請先搜尋並點選一張案件"}
+            aria-label="更改出貨日期"
+            onClick={() => void openDateEditor("due")}
+          >
+            <CalendarClock className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -2475,6 +2557,43 @@ export function ShippingNoticeClient() {
       {previewImages && <ImageModal images={previewImages} onClose={() => setPreviewImages(null)} />}
       {quickResult && (
         <ResultModal title={quickResult.title} content={quickResult.content} onClose={() => setQuickResult(null)} />
+      )}
+      {dateEditor && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!savingDate) setDateEditor(null); }}
+        >
+          <div
+            className="w-full max-w-xs rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-3 text-sm font-medium text-[var(--text-primary)]">
+              {dateEditor.type === "due" ? "更改出貨日期" : "更改排程日期"}
+            </p>
+            <input
+              type={dateEditor.type === "due" ? "datetime-local" : "date"}
+              value={dateEditor.value}
+              onChange={(e) => setDateEditor((prev) => (prev ? { ...prev, value: e.target.value } : prev))}
+              className="w-full rounded border border-[var(--border)] bg-[var(--bg-input)] px-2 py-1.5 text-sm"
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => void saveDateEditor()}
+                disabled={savingDate || !dateEditor.value}
+                className="flex-1 rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {savingDate ? "儲存中…" : "儲存"}
+              </button>
+              <button
+                onClick={() => setDateEditor(null)}
+                disabled={savingDate}
+                className="rounded px-3 py-1.5 text-sm text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
