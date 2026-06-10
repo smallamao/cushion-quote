@@ -164,8 +164,9 @@ describe("扣除平台 (removePlatform)", () => {
     });
     expect(copyText).toContain("扣除平台 - $4,000");
     expect(copyText).not.toContain("平台尺寸");
-    // 總價 = basePrice 42600 - 4000 = 38600
-    expect(copyText).toContain("38,600");
+    // 「正常報價」維持原始本體價 42,600，扣除另列，最後總金額才是 38,600
+    expect(copyText).toContain("(經濟型)貓抓皮(TJ79)／貓抓布 $42,600");
+    expect(copyText).toContain("總金額 $38,600");
   });
 
   it("扣除金額隨面料等級改變（IMPORT_LV5 → -9000）", () => {

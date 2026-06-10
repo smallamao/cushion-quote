@@ -457,7 +457,8 @@ export function buildQuoteOutput(
   const copyLines: string[] = []
   copyLines.push(`${product.displayName} ${product.moduleName} ${inputWidth}cm 三件式L型`)
   const grandTotal = sofaTotal + addonTotal
-  copyLines.push(`${grade.materialDescription} $${fmtAmount(grandTotal)}`)
+  // 「正常報價」顯示沙發本體原始價，加減項在下方逐條列出，最後以「總金額」呈現扣除後金額
+  copyLines.push(`${grade.materialDescription} $${fmtAmount(sofaTotal)}`)
   if (reductionText) copyLines.push(reductionText)
   if (addons?.platformMode !== "removePlatform"
     && (addons?.platformMode !== "changeStorage" || !addons.storagePlatformStyle)) {
