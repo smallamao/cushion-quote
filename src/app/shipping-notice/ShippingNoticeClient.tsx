@@ -2298,8 +2298,9 @@ export function ShippingNoticeClient() {
         fields = fetched;
         setCardCustomFieldsMap((prev) => ({ ...prev, [card.id]: fetched }));
       }
-      const sd = getCustomFieldDateAny(fields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY, S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY);
-      if (sd) value = `${sd.getFullYear()}-${pad(sd.getMonth() + 1)}-${pad(sd.getDate())}`;
+      // 有設定值就帶入；空值則預設今日日期
+      const sd = getCustomFieldDateAny(fields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY, S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY) ?? new Date();
+      value = `${sd.getFullYear()}-${pad(sd.getMonth() + 1)}-${pad(sd.getDate())}`;
     }
     setDateEditor({ type, cardId: card.id, value });
   }
