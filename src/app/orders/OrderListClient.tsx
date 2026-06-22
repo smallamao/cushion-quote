@@ -19,9 +19,9 @@ import type { CustomOrder, OrderItemCategory, OrderStatus } from "@/lib/types";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
   production: { label: "排程/生產中", className: "badge-sent" },
-  waiting: { label: "待出貨", className: "badge-draft" },
+  waiting: { label: "待出貨", className: "badge-deleted" },
   completed: { label: "完成", className: "badge-accepted" },
-  cancelled: { label: "取消", className: "badge-deleted" },
+  cancelled: { label: "取消", className: "badge-draft" },
 };
 
 const CATEGORY_OPTIONS: OrderItemCategory[] = [
