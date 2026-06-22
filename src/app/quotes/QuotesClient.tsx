@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Copy, Edit, Eye, FileCheck2, FilePlus2, Loader2, ReceiptText, RefreshCw, Slash, Trash2, Wallet } from "lucide-react";
+import { ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, Copy, Edit, Eye, FileCheck2, FilePlus2, Loader2, ReceiptText, RefreshCw, Slash, Trash2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -107,6 +107,7 @@ export function QuotesClient() {
     }
     return m;
   }, [ars]);
+  const [orderByVersionId, setOrderByVersionId] = useState<Map<string, string>>(new Map());
   const [expandedQuoteIds, setExpandedQuoteIds] = useState<Set<string>>(new Set());
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -141,6 +142,22 @@ export function QuotesClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/sheets/orders?archived=false", { cache: "no-store" });
+        const data = (await res.json()) as { orders?: Array<{ orderId: string; versionId: string }> };
+        const map = new Map<string, string>();
+        (data.orders ?? []).forEach((o) => {
+          if (o.versionId) map.set(o.versionId, o.orderId);
+        });
+        setOrderByVersionId(map);
+      } catch {
+        // 查不到就略過
+      }
+    })();
+  }, []);
 
   // Re-fetch in background when navigating back via browser back button (bfcache restore)
   useEffect(() => {
@@ -398,6 +415,8 @@ export function QuotesClient() {
     const isBusy = busyVersionId === version.versionId;
     const existingAr = arByVersionId.get(version.versionId);
     const canCreateAR = version.versionStatus === "accepted" && !existingAr;
+    const existingOrderId = orderByVersionId.get(version.versionId);
+    const canCreateOrder = version.versionStatus === "accepted" && !existingOrderId;
     return (
       <div className="flex items-center justify-center gap-1">
         <button
@@ -447,6 +466,42 @@ export function QuotesClient() {
             disabled={isBusy}
           >
             <ReceiptText className="h-4 w-4" />
+          </button>
+        )}
+        {canCreateOrder && (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (isBusy) return;
+              try {
+                const res = await fetch("/api/sheets/orders", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ sourceType: "quote", versionId: version.versionId }),
+                });
+                const json = (await res.json()) as { ok: boolean; orderId?: string; error?: string };
+                if (!json.ok) throw new Error(json.error ?? "建立失敗");
+                setOrderByVersionId((prev) => new Map(prev).set(version.versionId, json.orderId!));
+                router.push(`/orders/${json.orderId}` as never);
+              } catch (err) {
+                alert(err instanceof Error ? err.message : "建立訂單失敗");
+              }
+            }}
+            className="text-emerald-600 hover:text-emerald-700 transition-colors"
+            title="建立訂製訂單"
+            disabled={isBusy}
+          >
+            <ClipboardList className="h-4 w-4" />
+          </button>
+        )}
+        {!canCreateOrder && existingOrderId && version.versionStatus === "accepted" && (
+          <button
+            onClick={(e) => { e.stopPropagation(); router.push(`/orders/${existingOrderId}` as never); }}
+            className="text-emerald-500 hover:text-emerald-600 transition-colors"
+            title={`查看訂單 ${existingOrderId}`}
+            disabled={isBusy}
+          >
+            <ClipboardCheck className="h-4 w-4" />
           </button>
         )}
         {optOutSet.has(version.versionId) ? (
