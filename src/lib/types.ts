@@ -1171,6 +1171,7 @@ export interface OrderItem {
   quantity: string;
   foamSpec: string;
   foamColor: "orange" | "red" | null;
+  imageUrl?: string;
 }
 
 export interface OrderNote {

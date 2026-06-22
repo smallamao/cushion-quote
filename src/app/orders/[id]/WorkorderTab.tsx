@@ -262,6 +262,63 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                   </Select>
                 </div>
               </div>
+              {/* Per-item image */}
+              <div className="mt-2">
+                <Label className="text-xs">品項照片</Label>
+                <div className="mt-1 flex items-start gap-2">
+                  {item.imageUrl ? (
+                    <div className="relative">
+                      <img
+                        src={item.imageUrl}
+                        alt=""
+                        className="h-20 w-28 rounded border object-contain bg-[var(--bg-subtle)]"
+                      />
+                      <button
+                        type="button"
+                        className="absolute -right-1 -top-1 rounded-full bg-red-500 p-0.5 text-white shadow"
+                        onClick={() => {
+                          updateDraft(
+                            "items",
+                            draft.items.map((it: OrderItem) =>
+                              it.id === item.id ? { ...it, imageUrl: undefined } : it,
+                            ),
+                          );
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : null}
+                  <label className="cursor-pointer">
+                    <span className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs hover:bg-[var(--bg-hover)]">
+                      <ImagePlus className="h-3 w-3" />
+                      上傳照片
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const url = await uploadFile(file);
+                          updateDraft(
+                            "items",
+                            draft.items.map((it: OrderItem) =>
+                              it.id === item.id ? { ...it, imageUrl: url } : it,
+                            ),
+                          );
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : "圖片上傳失敗");
+                        } finally {
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
               <div className="mt-2 flex justify-end">
                 <Button
                   variant="ghost"

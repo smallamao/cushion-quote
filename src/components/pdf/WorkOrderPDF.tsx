@@ -252,6 +252,13 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                   {item.foamSpec ? (
                     <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
                   ) : null}
+                  {item.imageUrl ? (
+                    /* eslint-disable-next-line jsx-a11y/alt-text */
+                    <Image
+                      src={item.imageUrl}
+                      style={{ width: 200, height: 140, objectFit: "contain", marginTop: 4 }}
+                    />
+                  ) : null}
                 </View>
               );
             })}
