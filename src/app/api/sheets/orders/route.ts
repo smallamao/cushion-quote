@@ -6,6 +6,7 @@ import {
   ORDER_RANGE_IDS,
   generateOrderId,
   isoNow,
+  todayDateStr,
   orderRecordToRow,
   orderRowToRecord,
 } from "@/lib/order-utils";
@@ -105,8 +106,7 @@ export async function POST(request: Request) {
       .filter(Boolean);
 
     const now = isoNow();
-    const today = new Date();
-    const yearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    const yearMonth = todayDateStr().slice(0, 7);
     const orderId = generateOrderId(existingIds, yearMonth);
 
     let clientName = "";

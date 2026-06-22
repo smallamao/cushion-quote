@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import {
-  ORDER_RANGE_DATA,
   ORDER_RANGE_IDS,
   ORDER_ROW_RANGE,
   isoNow,
@@ -27,19 +26,29 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   try {
-    const res = await client.sheets.spreadsheets.values.get({
+    // Step 1: find row index using IDs only (cheap)
+    const idRes = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: ORDER_RANGE_DATA,
+      range: ORDER_RANGE_IDS,
     });
-    const rows = (res.data.values ?? []) as string[][];
-    const row = rows.find((r) => r[0] === orderId);
-    if (!row) {
-      return NextResponse.json(
-        { ok: false, error: "order not found" },
-        { status: 404 },
-      );
+    const idRows = (idRes.data.values ?? []) as string[][];
+    const rowIndex = idRows.findIndex((r) => r[0] === orderId);
+    if (rowIndex === -1) {
+      return NextResponse.json({ ok: false, error: "order not found" }, { status: 404 });
     }
-    return NextResponse.json({ order: orderRowToRecord(row) });
+    const sheetRow = rowIndex + 2;
+
+    // Step 2: fetch single row
+    const rowRes = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: ORDER_ROW_RANGE(sheetRow),
+    });
+    const rowData = (rowRes.data.values ?? [])[0] as string[] | undefined;
+    if (!rowData) {
+      return NextResponse.json({ ok: false, error: "order row missing" }, { status: 404 });
+    }
+    const order = orderRowToRecord(rowData);
+    return NextResponse.json({ order });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

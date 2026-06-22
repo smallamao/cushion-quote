@@ -29,6 +29,10 @@ export function isoNow(): string {
   return new Date().toISOString();
 }
 
+export function todayDateStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 // 33 columns A (index 0) through AG (index 32)
 export function orderRowToRecord(row: string[]): CustomOrder {
   return {

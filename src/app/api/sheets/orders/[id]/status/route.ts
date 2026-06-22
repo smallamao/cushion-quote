@@ -4,6 +4,7 @@ import {
   ORDER_RANGE_IDS,
   ORDER_ROW_RANGE,
   isoNow,
+  todayDateStr,
   orderRowToRecord,
   orderRecordToRow,
 } from "@/lib/order-utils";
@@ -24,6 +25,11 @@ export async function PATCH(request: Request, context: RouteContext) {
       { ok: false, error: "status is required" },
       { status: 400 },
     );
+  }
+
+  const VALID_ORDER_STATUSES = ["production", "waiting", "completed", "cancelled"] as const;
+  if (!VALID_ORDER_STATUSES.includes(body.status as (typeof VALID_ORDER_STATUSES)[number])) {
+    return NextResponse.json({ ok: false, error: "invalid status value" }, { status: 400 });
   }
 
   const client = await getSheetsClient();
@@ -65,8 +71,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const existing = orderRowToRecord(existingRows[0]);
 
     // Set completedDate to today if transitioning to "completed" and it was empty
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const todayStr = todayDateStr();
     const completedDate =
       body.status === "completed" && !existing.completedDate
         ? todayStr
