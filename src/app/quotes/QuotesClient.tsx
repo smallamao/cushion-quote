@@ -147,6 +147,7 @@ export function QuotesClient() {
     void (async () => {
       try {
         const res = await fetch("/api/sheets/orders?archived=false", { cache: "no-store" });
+        if (!res.ok) return;
         const data = (await res.json()) as { orders?: Array<{ orderId: string; versionId: string }> };
         const map = new Map<string, string>();
         (data.orders ?? []).forEach((o) => {
