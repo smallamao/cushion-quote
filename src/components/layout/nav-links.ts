@@ -45,6 +45,7 @@ export const navLinks: NavLinkDef[] = [
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
   { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin", "technician"], group: "operations" },
   { href: "/orders", label: "訂製訂單", icon: ClipboardList, roles: ["admin"], group: "operations" },
+  { href: "/purchase-orders", label: "布料採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"], group: "operations" },
   { href: "/calendar", label: "行事曆", icon: Calendar, roles: ["admin", "technician"], group: "operations" },
   // ── 財務 ──

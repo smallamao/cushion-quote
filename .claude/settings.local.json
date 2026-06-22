@@ -24,7 +24,12 @@
       "Bash(sips:*)",
       "Bash(npm test:*)",
       "Bash(node:*)",
-      "Bash(pkill -f \"next dev\")"
+      "Bash(pkill -f \"next dev\")",
+      "Bash(awk '{print $2, $11, $12}')",
+      "Read(//private/etc/**)"
+    ],
+    "additionalDirectories": [
+      "/Users/Mao/SynologyDrive/馬鈴薯沙發/工具小程式/繃布報價/src/app/api/sheets/einvoices/[invoiceId]"
     ]
   }
 }

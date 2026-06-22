@@ -136,15 +136,27 @@ export function BankReconciliationClient() {
   }, []);
 
   const handleFile = useCallback(
-    (csvText: string) => {
+    async (csvText: string) => {
       const result = parseSinopacCSV(csvText);
       setParseErrors(result.errors);
       setAccountNumber(result.accountNumber);
       sessionStorage.setItem("recon_account", result.accountNumber);
       setSubmitResults({});
       const matched = matchAllTransactions(result.transactions, arList);
-      setEntries(matched);
-      try { sessionStorage.setItem("recon_entries", JSON.stringify(matched)); } catch { /* quota */ }
+
+      // 查歷史已確認的 txId，把重複出現的標為 confirmed，避免重複操作
+      let confirmedTxIds = new Set<string>();
+      try {
+        const res = await fetch("/api/sheets/bank-recon", { cache: "no-store" });
+        const data = (await res.json()) as { records: BankReconRecord[] };
+        confirmedTxIds = new Set((data.records ?? []).map((r) => r.txId));
+      } catch { /* 查不到就略過，不影響主流程 */ }
+
+      const withConfirmed = matched.map((e) =>
+        confirmedTxIds.has(e.tx.txId) ? { ...e, status: "confirmed" as const } : e,
+      );
+      setEntries(withConfirmed);
+      try { sessionStorage.setItem("recon_entries", JSON.stringify(withConfirmed)); } catch { /* quota */ }
     },
     [arList],
   );

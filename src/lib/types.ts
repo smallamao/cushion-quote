@@ -1221,3 +1221,29 @@ export interface CustomOrder {
   updatedAt: string;
   createdBy: string;
 }
+
+export interface POLineItem {
+  id: string;
+  materialName: string;
+  colorCode: string;
+  quantity: number;
+  unit: "碼" | "公尺";
+  suggestedQty: number;
+  linkedOrderNumbers: string[];
+  notes: string;
+}
+
+export type FabricPOStatus = "draft" | "ordered" | "received" | "cancelled";
+
+export interface FabricPurchaseOrder {
+  poId: string;
+  supplierName: string;
+  status: FabricPOStatus;
+  lineItems: POLineItem[];
+  orderedAt: string;
+  expectedAt: string;
+  receivedAt: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
