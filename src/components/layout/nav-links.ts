@@ -5,8 +5,10 @@ import {
   Calculator,
   Calendar,
   CircleHelp,
+  ClipboardList,
   FileText,
   HandCoins,
+  MessageSquareText,
   Package,
   ReceiptText,
   Ruler,
@@ -38,9 +40,11 @@ export const navLinks: NavLinkDef[] = [
   { href: "/quotes", label: "報價紀錄", icon: FileText, roles: ["admin"], group: "business" },
   { href: "/cases", label: "案件紀錄", icon: Briefcase, roles: ["admin"], group: "business" },
   { href: "/referrals", label: "轉介紹", icon: Users, roles: ["admin"], group: "business" },
+  { href: "/templates", label: "快速回覆", icon: MessageSquareText, roles: ["admin", "technician"], group: "business" },
   // ── 作業 ──
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
   { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin", "technician"], group: "operations" },
+  { href: "/orders", label: "訂製訂單", icon: ClipboardList, roles: ["admin"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"], group: "operations" },
   { href: "/calendar", label: "行事曆", icon: Calendar, roles: ["admin", "technician"], group: "operations" },
   // ── 財務 ──
