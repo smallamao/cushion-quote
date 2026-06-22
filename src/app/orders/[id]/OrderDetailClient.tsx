@@ -62,12 +62,7 @@ const DELIVERY_OPTIONS: Array<{ value: OrderDeliveryMethod; label: string }> = [
   { value: "到府施工", label: "到府施工" },
 ];
 
-const STATUS_QUICK_BUTTONS: Array<{ value: OrderStatus; label: string }> = [
-  { value: "production", label: "排程/生產中" },
-  { value: "waiting", label: "待出貨" },
-  { value: "completed", label: "完成" },
-  { value: "cancelled", label: "取消" },
-];
+const STATUS_QUICK_BUTTONS = STATUS_OPTIONS;
 
 export function OrderDetailClient({ orderId }: Props) {
   const router = useRouter();
