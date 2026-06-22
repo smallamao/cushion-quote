@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
   const client = await getSheetsClient();
   if (!client) {
-    return NextResponse.json({ orders: [] as CustomOrder[] });
+    return NextResponse.json({ orders: [] as CustomOrder[], error: "Google Sheets 未設定" }, { status: 503 });
   }
 
   try {
@@ -118,6 +118,7 @@ export async function POST(request: Request) {
     let materialName = "";
     let materialCode = "";
     const materialImageUrl = "";
+    let initialNotes: CustomOrder["notes"] = [];
 
     if (body.sourceType === "quote") {
       if (!body.versionId) {
@@ -141,9 +142,20 @@ export async function POST(request: Request) {
           { status: 404 },
         );
       }
-      // col[2]=caseId, col[18]=含稅總額, col[29]=clientNameSnapshot
+      // col[2]=caseId, col[18]=含稅總額, col[24]=對外說明, col[29]=clientNameSnapshot
       caseId = versionRow[2] ?? "";
       quotedAmount = parseFloat(versionRow[18] ?? "0") || 0;
+      const scopeDescription = versionRow[24] ?? "";
+      initialNotes = scopeDescription
+        .split("\n")
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.length > 0)
+        .map((text: string, i: number) => ({
+          id: `note-${i + 1}`,
+          text,
+          color: "black" as const,
+          isWarning: false,
+        }));
       clientName = versionRow[29] ?? "";
 
       // 2. Find the case for caseName → orderTitle
@@ -214,7 +226,7 @@ export async function POST(request: Request) {
       materialImageUrl,
       deadline: "",
       items: [],
-      notes: [],
+      notes: initialNotes,
       photos: [],
       invoiceStatus: "pending",
       isArchived: false,
