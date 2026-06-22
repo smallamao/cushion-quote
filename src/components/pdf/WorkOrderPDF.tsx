@@ -129,11 +129,9 @@ const s = StyleSheet.create({
     paddingLeft: 12,
   },
   materialImage: {
-    width: 140,
-    height: 140,
-    objectFit: "cover",
-    borderWidth: 0.5,
-    borderColor: C.border,
+    width: 160,
+    height: 160,
+    objectFit: "contain",
     flexShrink: 0,
   },
   separator: {
@@ -230,32 +228,55 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           </View>
         ) : null}
 
-        {/* 3. 補充說明：items (left) + material image (right) */}
-        {(hasItems || hasMaterialImage) ? (
+        {/* 3. 補充說明：items full width */}
+        {hasItems ? (
           <>
             <Text style={s.sectionLabel}>補充說明：</Text>
+            {order.items.map((item: OrderItem) => {
+              const parts: string[] = [];
+              if (item.dimensions) parts.push(item.dimensions);
+              if (item.quantity) parts.push(`* ${item.quantity}`);
+              const dimQty = parts.join("  ");
+              const foamStyle =
+                item.foamColor === "orange"
+                  ? s.foamSpecOrange
+                  : item.foamColor === "red"
+                    ? s.foamSpecRed
+                    : s.foamSpecDefault;
+              return (
+                <View key={item.id} style={s.itemBlock}>
+                  <Text style={s.itemName}>· {safeText(item.name)}</Text>
+                  {dimQty ? (
+                    <Text style={s.itemDimQty}>{safeText(dimQty)}</Text>
+                  ) : null}
+                  {item.foamSpec ? (
+                    <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
+                  ) : null}
+                </View>
+              );
+            })}
+          </>
+        ) : null}
+
+        {/* 4. Notes (left) + material image (right) — 2-col */}
+        {(hasNotes || hasMaterialImage) ? (
+          <>
+            <View style={s.separator} />
             <View style={s.itemsRow}>
               <View style={s.itemsCol}>
-                {order.items.map((item: OrderItem) => {
-                  const parts: string[] = [];
-                  if (item.dimensions) parts.push(item.dimensions);
-                  if (item.quantity) parts.push(`* ${item.quantity}`);
-                  const dimQty = parts.join("  ");
-                  const foamStyle =
-                    item.foamColor === "orange"
-                      ? s.foamSpecOrange
-                      : item.foamColor === "red"
-                        ? s.foamSpecRed
-                        : s.foamSpecDefault;
+                {order.notes.map((note: OrderNote) => {
+                  const noteStyle =
+                    note.color === "red"
+                      ? s.noteTextRed
+                      : note.color === "orange"
+                        ? s.noteTextOrange
+                        : s.noteTextBlack;
+                  const prefix = note.isWarning ? "⚠️ " : "";
                   return (
-                    <View key={item.id} style={s.itemBlock}>
-                      <Text style={s.itemName}>· {safeText(item.name)}</Text>
-                      {dimQty ? (
-                        <Text style={s.itemDimQty}>{safeText(dimQty)}</Text>
-                      ) : null}
-                      {item.foamSpec ? (
-                        <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
-                      ) : null}
+                    <View key={note.id} style={s.noteRow}>
+                      <Text style={noteStyle}>
+                        ◆ {prefix}{safeText(note.text)}
+                      </Text>
                     </View>
                   );
                 })}
@@ -265,29 +286,6 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                 <Image src={order.materialImageUrl} style={s.materialImage} />
               ) : null}
             </View>
-          </>
-        ) : null}
-
-        {/* 4. Notes — full width, large bold ◆ */}
-        {hasNotes ? (
-          <>
-            <View style={s.separator} />
-            {order.notes.map((note: OrderNote) => {
-              const noteStyle =
-                note.color === "red"
-                  ? s.noteTextRed
-                  : note.color === "orange"
-                    ? s.noteTextOrange
-                    : s.noteTextBlack;
-              const prefix = note.isWarning ? "⚠️ " : "";
-              return (
-                <View key={note.id} style={s.noteRow}>
-                  <Text style={noteStyle}>
-                    ◆ {prefix}{safeText(note.text)}
-                  </Text>
-                </View>
-              );
-            })}
           </>
         ) : null}
 
