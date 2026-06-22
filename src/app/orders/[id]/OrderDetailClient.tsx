@@ -25,6 +25,7 @@ import type {
   OrderItemCategory,
   OrderStatus,
 } from "@/lib/types";
+import { FinanceTab } from "./FinanceTab";
 import { WorkorderTab } from "./WorkorderTab";
 
 interface Props {
@@ -545,23 +546,15 @@ export function OrderDetailClient({ orderId }: Props) {
           />
         </TabsContent>
 
-        {/* Tab C: 財務 (placeholder) */}
+        {/* Tab C: 財務 */}
         <TabsContent value="finance">
-          <div className="space-y-6">
-            <div className="p-8 text-center text-muted-foreground">
-              此功能即將推出
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={() => void handleSave()} disabled={saving || !isDirty}>
-                {saving ? (
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-1 h-4 w-4" />
-                )}
-                儲存變更
-              </Button>
-            </div>
-          </div>
+          <FinanceTab
+            draft={draft}
+            updateDraft={updateDraft}
+            onSave={handleSave}
+            saving={saving}
+            isDirty={isDirty}
+          />
         </TabsContent>
       </Tabs>
     </div>
