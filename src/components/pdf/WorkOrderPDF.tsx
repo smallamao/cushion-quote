@@ -35,123 +35,143 @@ const C = {
 const s = StyleSheet.create({
   page: {
     fontFamily: "NotoSansTC",
-    fontSize: 10,
+    fontSize: 11,
     color: C.black,
-    paddingTop: 32,
-    paddingBottom: 40,
-    paddingHorizontal: 36,
+    paddingTop: 36,
+    paddingBottom: 48,
+    paddingHorizontal: 40,
     backgroundColor: C.white,
   },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
-  },
-  headerLeft: {
-    flex: 1,
-  },
-  orderNumberLabel: {
-    fontSize: 12,
-    color: C.dark,
-    marginBottom: 4,
-  },
-  orderNumber: {
-    fontSize: 24,
+  // 編號：S891 — all on one line, big bold
+  orderTitle: {
+    fontSize: 28,
     fontWeight: 700,
     color: C.black,
+    marginBottom: 10,
   },
-  materialImage: {
-    width: 100,
-    height: 100,
-    objectFit: "cover",
-    borderWidth: 0.5,
-    borderColor: C.border,
-  },
+  // Meta rows: 訂製內容、安裝日、材質、交期
   metaRow: {
     flexDirection: "row",
-    marginBottom: 4,
+    marginBottom: 3,
     alignItems: "flex-start",
   },
   metaLabel: {
-    fontSize: 10,
-    color: C.dark,
-    width: 56,
+    fontSize: 12,
+    fontWeight: 700,
+    color: C.black,
+    width: 70,
+    flexShrink: 0,
   },
   metaValue: {
-    fontSize: 10,
+    fontSize: 12,
+    fontWeight: 700,
     color: C.black,
     flex: 1,
   },
   metaValueRed: {
-    fontSize: 10,
+    fontSize: 12,
+    fontWeight: 700,
+    color: C.red,
+    flex: 1,
+    textDecoration: "underline",
+  },
+  metaValueRedNoLine: {
+    fontSize: 12,
+    fontWeight: 700,
     color: C.red,
     flex: 1,
   },
-  separator: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    marginVertical: 12,
-  },
+  // 補充說明 section label
   sectionLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 700,
-    color: C.dark,
-    marginBottom: 6,
+    color: C.black,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  // 2-col: items left + material image right
+  itemsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  itemsCol: {
+    flex: 1,
   },
   itemBlock: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
   itemName: {
     fontSize: 12,
     fontWeight: 700,
     color: C.black,
-    marginBottom: 2,
+    marginBottom: 1,
   },
   itemDimQty: {
-    fontSize: 10,
-    color: C.dark,
-    marginBottom: 2,
+    fontSize: 11,
+    color: C.black,
+    paddingLeft: 12,
+    marginBottom: 1,
   },
   foamSpecDefault: {
-    fontSize: 10,
+    fontSize: 11,
     color: C.dark,
+    paddingLeft: 12,
   },
   foamSpecOrange: {
-    fontSize: 10,
+    fontSize: 11,
     color: C.orange,
+    paddingLeft: 12,
   },
   foamSpecRed: {
-    fontSize: 10,
+    fontSize: 11,
     color: C.red,
+    paddingLeft: 12,
   },
+  materialImage: {
+    width: 140,
+    height: 140,
+    objectFit: "cover",
+    borderWidth: 0.5,
+    borderColor: C.border,
+    flexShrink: 0,
+  },
+  separator: {
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    marginVertical: 10,
+  },
+  // Notes — larger, bold, ◆ prefix
   noteRow: {
-    marginBottom: 4,
+    marginBottom: 5,
   },
   noteTextBlack: {
-    fontSize: 10,
+    fontSize: 13,
+    fontWeight: 700,
     color: C.black,
-    lineHeight: 1.5,
+    lineHeight: 1.4,
   },
   noteTextRed: {
-    fontSize: 10,
+    fontSize: 13,
+    fontWeight: 700,
     color: C.red,
-    lineHeight: 1.5,
+    lineHeight: 1.4,
   },
   noteTextOrange: {
-    fontSize: 10,
+    fontSize: 13,
+    fontWeight: 700,
     color: C.orange,
-    lineHeight: 1.5,
+    lineHeight: 1.4,
   },
+  // Photos — 2 per row
   photoGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginTop: 4,
   },
   photo: {
-    width: 220,
-    height: 160,
+    width: 253,
+    height: 190,
     objectFit: "cover",
   },
 });
@@ -171,40 +191,36 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
   const hasPhotos = photoUrls.length > 0;
   const hasMaterialImage = Boolean(order.materialImageUrl);
 
+  const materialLabel = [order.materialName, order.materialCode]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <Document title={`施工工單 ${order.orderNumber || order.orderId}`}>
       <Page size="A4" style={s.page}>
-        {/* Header: order number on left, material image on right */}
-        <View style={s.headerRow}>
-          <View style={s.headerLeft}>
-            <Text style={s.orderNumberLabel}>編號：</Text>
-            <Text style={s.orderNumber}>{safeText(order.orderNumber || order.orderId)}</Text>
-          </View>
-          {hasMaterialImage ? (
-            /* eslint-disable-next-line jsx-a11y/alt-text */
-            <Image src={order.materialImageUrl} style={s.materialImage} />
-          ) : null}
-        </View>
 
-        {/* Order meta info */}
+        {/* 1. 編號：S891 — single large bold line */}
+        <Text style={s.orderTitle}>
+          {"編號：" + safeText(order.orderNumber || order.orderId)}
+        </Text>
+
+        {/* 2. Meta rows */}
         {order.orderTitle ? (
           <View style={s.metaRow}>
             <Text style={s.metaLabel}>訂製內容：</Text>
             <Text style={s.metaValue}>{safeText(order.orderTitle)}</Text>
           </View>
         ) : null}
-        {(order.materialName || order.materialCode) ? (
-          <View style={s.metaRow}>
-            <Text style={s.metaLabel}>材質：</Text>
-            <Text style={s.metaValueRed}>
-              {safeText([order.materialName, order.materialCode].filter(Boolean).join(" "))}
-            </Text>
-          </View>
-        ) : null}
         {order.installDate ? (
           <View style={s.metaRow}>
             <Text style={s.metaLabel}>安裝日：</Text>
-            <Text style={s.metaValueRed}>{safeText(order.installDate)}</Text>
+            <Text style={s.metaValueRedNoLine}>{safeText(order.installDate)}</Text>
+          </View>
+        ) : null}
+        {materialLabel ? (
+          <View style={s.metaRow}>
+            <Text style={s.metaLabel}>材質：</Text>
+            <Text style={s.metaValueRed}>{safeText(materialLabel)}</Text>
           </View>
         ) : null}
         {order.deadline ? (
@@ -214,35 +230,45 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           </View>
         ) : null}
 
-        {/* Items section */}
-        {hasItems ? (
+        {/* 3. 補充說明：items (left) + material image (right) */}
+        {(hasItems || hasMaterialImage) ? (
           <>
-            <View style={s.separator} />
             <Text style={s.sectionLabel}>補充說明：</Text>
-            {order.items.map((item: OrderItem) => {
-              const dimQty = [item.dimensions, item.quantity].filter(Boolean).join("  ");
-              const foamStyle =
-                item.foamColor === "orange"
-                  ? s.foamSpecOrange
-                  : item.foamColor === "red"
-                    ? s.foamSpecRed
-                    : s.foamSpecDefault;
-              return (
-                <View key={item.id} style={s.itemBlock}>
-                  <Text style={s.itemName}>· {safeText(item.name)}</Text>
-                  {dimQty ? (
-                    <Text style={s.itemDimQty}>{safeText(dimQty)}</Text>
-                  ) : null}
-                  {item.foamSpec ? (
-                    <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
-                  ) : null}
-                </View>
-              );
-            })}
+            <View style={s.itemsRow}>
+              <View style={s.itemsCol}>
+                {order.items.map((item: OrderItem) => {
+                  const parts: string[] = [];
+                  if (item.dimensions) parts.push(item.dimensions);
+                  if (item.quantity) parts.push(`* ${item.quantity}`);
+                  const dimQty = parts.join("  ");
+                  const foamStyle =
+                    item.foamColor === "orange"
+                      ? s.foamSpecOrange
+                      : item.foamColor === "red"
+                        ? s.foamSpecRed
+                        : s.foamSpecDefault;
+                  return (
+                    <View key={item.id} style={s.itemBlock}>
+                      <Text style={s.itemName}>· {safeText(item.name)}</Text>
+                      {dimQty ? (
+                        <Text style={s.itemDimQty}>{safeText(dimQty)}</Text>
+                      ) : null}
+                      {item.foamSpec ? (
+                        <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+              {hasMaterialImage ? (
+                /* eslint-disable-next-line jsx-a11y/alt-text */
+                <Image src={order.materialImageUrl} style={s.materialImage} />
+              ) : null}
+            </View>
           </>
         ) : null}
 
-        {/* Notes section */}
+        {/* 4. Notes — full width, large bold ◆ */}
         {hasNotes ? (
           <>
             <View style={s.separator} />
@@ -265,7 +291,7 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           </>
         ) : null}
 
-        {/* Photos grid */}
+        {/* 5. Photos — 2 per row */}
         {hasPhotos ? (
           <>
             <View style={s.separator} />
@@ -277,6 +303,7 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
             </View>
           </>
         ) : null}
+
       </Page>
     </Document>
   );
