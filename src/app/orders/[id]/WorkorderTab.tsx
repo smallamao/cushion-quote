@@ -140,8 +140,7 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                       const url = await uploadFile(file);
                       updateDraft("materialImageUrl", url);
                     } catch (err) {
-                      // Upload errors surface via thrown exception; caller may handle
-                      console.error(err);
+                      alert(err instanceof Error ? err.message : "圖片上傳失敗");
                     } finally {
                       setMaterialUploading(false);
                       e.target.value = "";
@@ -454,7 +453,7 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                 const urls = await Promise.all(files.map(uploadFile));
                 updateDraft("photos", [...draft.photos, ...urls]);
               } catch (err) {
-                console.error(err);
+                alert(err instanceof Error ? err.message : "圖片上傳失敗");
               } finally {
                 setPhotosUploading(false);
                 e.target.value = "";
