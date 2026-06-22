@@ -42,7 +42,7 @@ const C = {
   muted: "#666666",
   light: "#999999",
   border: "#D1D5DB",
-  sectionBg: "#F59E0B",
+  sectionBg: "#CD9934",
   sectionText: "#FFFFFF",
   rowBg: "#FAFAFA",
   white: "#FFFFFF",
@@ -266,7 +266,7 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
 
         {/* 客戶報修單 section */}
         <View style={s.sectionBar}>
-          <Text style={s.sectionTitle}>客戶報修單</Text>
+          <Text style={s.sectionTitle}>售後服務單</Text>
         </View>
         <View style={s.infoTable}>
           <InfoRow
@@ -302,7 +302,7 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
 
         {/* 報修資訊 section */}
         <View style={s.sectionBar}>
-          <Text style={s.sectionTitle}>報修資訊</Text>
+          <Text style={s.sectionTitle}>產品資訊</Text>
         </View>
         <View style={s.infoTable}>
           <InfoRow
@@ -312,13 +312,13 @@ function AfterSalesDocument({ service, replies = [], settings }: AfterSalesPDFPr
         </View>
         {service.issueDescription ? (
           <View style={s.noteBlock}>
-            <Text style={s.noteLabel}>報修項目</Text>
+            <Text style={s.noteLabel}>服務項目</Text>
             <Text style={s.noteText}>{service.issueDescription}</Text>
           </View>
         ) : null}
         {service.dispatchNotes ? (
           <View style={s.noteBlock}>
-            <Text style={s.noteLabel}>報修備註</Text>
+            <Text style={s.noteLabel}>備註</Text>
             <Text style={s.noteText}>{service.dispatchNotes}</Text>
           </View>
         ) : null}
