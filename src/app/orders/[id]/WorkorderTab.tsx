@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ImagePlus, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import {
   Select,
   SelectContent,
@@ -35,6 +36,23 @@ interface WorkorderTabProps {
 export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: WorkorderTabProps) {
   const [materialUploading, setMaterialUploading] = useState(false);
   const [photosUploading, setPhotosUploading] = useState(false);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const handleGeneratePdf = useCallback(async () => {
+    setPdfLoading(true);
+    try {
+      const { generateWorkOrderPdfBlob } = await import("@/components/pdf/WorkOrderPDF");
+      const blob = await generateWorkOrderPdfBlob({ order: draft });
+      setPdfBlob(blob);
+      setPdfOpen(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "PDF 生成失敗");
+    } finally {
+      setPdfLoading(false);
+    }
+  }, [draft]);
 
   return (
     <div className="space-y-6">
@@ -453,7 +471,17 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
       </div>
 
       {/* 儲存按鈕 */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => void handleGeneratePdf()} disabled={pdfLoading}>
+          {pdfLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              生成中...
+            </>
+          ) : (
+            "📄 產生施工工單 PDF"
+          )}
+        </Button>
         <Button onClick={() => void onSave()} disabled={saving || !isDirty}>
           {saving ? (
             <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -463,6 +491,14 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
           儲存變更
         </Button>
       </div>
+
+      <PDFPreviewModal
+        open={pdfOpen}
+        onOpenChange={setPdfOpen}
+        pdfBlob={pdfBlob}
+        fileName={`工單-${draft.orderNumber || draft.orderId}.pdf`}
+        loading={pdfLoading}
+      />
     </div>
   );
 }
