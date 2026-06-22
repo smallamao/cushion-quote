@@ -99,13 +99,28 @@ const s = StyleSheet.create({
     flex: 1,
   },
   itemBlock: {
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  // Header-type item: bold section title
+  itemBlockHeader: {
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  itemNameHeader: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: C.black,
   },
   itemName: {
     fontSize: 12,
     fontWeight: 700,
     color: C.black,
     marginBottom: 1,
+  },
+  colorCodeRed: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: C.red,
   },
   itemDimQty: {
     fontSize: 11,
@@ -233,6 +248,16 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           <>
             <Text style={s.sectionLabel}>補充說明：</Text>
             {order.items.map((item: OrderItem) => {
+              const isHeader = item.itemType === "header";
+
+              if (isHeader) {
+                return (
+                  <View key={item.id} style={s.itemBlockHeader}>
+                    <Text style={s.itemNameHeader}>· {safeText(item.name)}</Text>
+                  </View>
+                );
+              }
+
               const parts: string[] = [];
               if (item.dimensions) parts.push(item.dimensions);
               if (item.quantity) parts.push(`* ${item.quantity}`);
@@ -245,7 +270,13 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                     : s.foamSpecDefault;
               return (
                 <View key={item.id} style={s.itemBlock}>
-                  <Text style={s.itemName}>· {safeText(item.name)}</Text>
+                  {/* name + colorCode inline */}
+                  <Text style={s.itemName}>
+                    <Text>{`· ${safeText(item.name)}`}</Text>
+                    {item.colorCode ? (
+                      <Text style={s.colorCodeRed}>{` (${safeText(item.colorCode)})`}</Text>
+                    ) : null}
+                  </Text>
                   {dimQty ? (
                     <Text style={s.itemDimQty}>{safeText(dimQty)}</Text>
                   ) : null}
@@ -256,7 +287,7 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                     /* eslint-disable-next-line jsx-a11y/alt-text */
                     <Image
                       src={item.imageUrl}
-                      style={{ width: 200, height: 140, objectFit: "contain", marginTop: 4 }}
+                      style={{ width: 260, height: 160, objectFit: "contain", marginTop: 6 }}
                     />
                   ) : null}
                 </View>

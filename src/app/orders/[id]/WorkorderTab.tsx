@@ -165,198 +165,227 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
           品項清單
         </h3>
         <div className="space-y-3">
-          {draft.items.map((item: OrderItem) => (
-            <div
-              key={item.id}
-              className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3"
-            >
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <Label className="text-xs">名稱</Label>
-                  <Input
-                    value={item.name}
-                    onChange={(e) => {
-                      updateDraft(
-                        "items",
-                        draft.items.map((it: OrderItem) =>
-                          it.id === item.id ? { ...it, name: e.target.value } : it,
-                        ),
-                      );
-                    }}
-                    placeholder="品項名稱"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">數量</Label>
-                  <Input
-                    value={item.quantity}
-                    onChange={(e) => {
-                      updateDraft(
-                        "items",
-                        draft.items.map((it: OrderItem) =>
-                          it.id === item.id ? { ...it, quantity: e.target.value } : it,
-                        ),
-                      );
-                    }}
-                    placeholder="數量"
-                  />
-                </div>
-              </div>
-              <div className="mt-2">
-                <Label className="text-xs">尺寸</Label>
-                <Input
-                  value={item.dimensions}
-                  onChange={(e) => {
-                    updateDraft(
-                      "items",
-                      draft.items.map((it: OrderItem) =>
-                        it.id === item.id ? { ...it, dimensions: e.target.value } : it,
-                      ),
-                    );
-                  }}
-                  placeholder="例：60×60×10 cm"
-                />
-              </div>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <Label className="text-xs">泡棉規格</Label>
-                  <Input
-                    value={item.foamSpec}
-                    onChange={(e) => {
-                      updateDraft(
-                        "items",
-                        draft.items.map((it: OrderItem) =>
-                          it.id === item.id ? { ...it, foamSpec: e.target.value } : it,
-                        ),
-                      );
-                    }}
-                    placeholder="例：45D 高彈"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">顏色</Label>
-                  <Select
-                    value={item.foamColor ?? "none"}
-                    onValueChange={(v) => {
-                      updateDraft(
-                        "items",
-                        draft.items.map((it: OrderItem) =>
-                          it.id === item.id
-                            ? {
-                                ...it,
-                                foamColor: (v === "none" ? null : v) as OrderItem["foamColor"],
-                              }
-                            : it,
-                        ),
-                      );
-                    }}
+          {draft.items.map((item: OrderItem) => {
+            const isHeader = item.itemType === "header";
+            const updateItem = (patch: Partial<OrderItem>) =>
+              updateDraft(
+                "items",
+                draft.items.map((it: OrderItem) =>
+                  it.id === item.id ? { ...it, ...patch } : it,
+                ),
+              );
+            return (
+              <div
+                key={item.id}
+                className={
+                  isHeader
+                    ? "rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/20"
+                    : "rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3"
+                }
+              >
+                {/* Type toggle row */}
+                <div className="mb-2 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateItem({ itemType: isHeader ? "normal" : "header" })
+                    }
+                    className={
+                      isHeader
+                        ? "rounded border border-amber-400 bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+                        : "rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+                    }
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="無" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">無</SelectItem>
-                      <SelectItem value="orange">橘</SelectItem>
-                      <SelectItem value="red">紅</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    {isHeader ? "📌 標題列" : "品項"}
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-red-500 hover:text-red-700"
+                    onClick={() =>
+                      updateDraft(
+                        "items",
+                        draft.items.filter((it: OrderItem) => it.id !== item.id),
+                      )
+                    }
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 </div>
-              </div>
-              {/* Per-item image */}
-              <div className="mt-2">
-                <Label className="text-xs">品項照片</Label>
-                <div className="mt-1 flex items-start gap-2">
-                  {item.imageUrl ? (
-                    <div className="relative">
-                      <img
-                        src={item.imageUrl}
-                        alt=""
-                        className="h-20 w-28 rounded border object-contain bg-[var(--bg-subtle)]"
-                      />
-                      <button
-                        type="button"
-                        className="absolute -right-1 -top-1 rounded-full bg-red-500 p-0.5 text-white shadow"
-                        onClick={() => {
-                          updateDraft(
-                            "items",
-                            draft.items.map((it: OrderItem) =>
-                              it.id === item.id ? { ...it, imageUrl: undefined } : it,
-                            ),
-                          );
-                        }}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ) : null}
-                  <label className="cursor-pointer">
-                    <span className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs hover:bg-[var(--bg-hover)]">
-                      <ImagePlus className="h-3 w-3" />
-                      上傳照片
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        try {
-                          const url = await uploadFile(file);
-                          updateDraft(
-                            "items",
-                            draft.items.map((it: OrderItem) =>
-                              it.id === item.id ? { ...it, imageUrl: url } : it,
-                            ),
-                          );
-                        } catch (err) {
-                          alert(err instanceof Error ? err.message : "圖片上傳失敗");
-                        } finally {
-                          e.target.value = "";
-                        }
-                      }}
+
+                {/* Header: only name */}
+                {isHeader ? (
+                  <div>
+                    <Label className="text-xs">標題文字</Label>
+                    <Input
+                      value={item.name}
+                      onChange={(e) => updateItem({ name: e.target.value })}
+                      placeholder="例：景美門市（中間車「周公」洗標）"
+                      className="font-medium"
                     />
-                  </label>
-                </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Normal item: name + colorCode */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-2">
+                        <Label className="text-xs">名稱</Label>
+                        <Input
+                          value={item.name}
+                          onChange={(e) => updateItem({ name: e.target.value })}
+                          placeholder="品項名稱"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">色號（紅字）</Label>
+                        <Input
+                          value={item.colorCode ?? ""}
+                          onChange={(e) =>
+                            updateItem({ colorCode: e.target.value || undefined })
+                          }
+                          placeholder="1000-02"
+                          className="text-red-600"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      <div className="col-span-2">
+                        <Label className="text-xs">尺寸／規格</Label>
+                        <Input
+                          value={item.dimensions}
+                          onChange={(e) => updateItem({ dimensions: e.target.value })}
+                          placeholder="例：方木腳H12cm 或 60×60×10cm"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">數量</Label>
+                        <Input
+                          value={item.quantity}
+                          onChange={(e) => updateItem({ quantity: e.target.value })}
+                          placeholder="1pcs"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      <div className="col-span-2">
+                        <Label className="text-xs">泡棉規格</Label>
+                        <Input
+                          value={item.foamSpec}
+                          onChange={(e) => updateItem({ foamSpec: e.target.value })}
+                          placeholder="例：0.08 黑硬Q"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">規格色</Label>
+                        <Select
+                          value={item.foamColor ?? "none"}
+                          onValueChange={(v) =>
+                            updateItem({
+                              foamColor: (v === "none" ? null : v) as OrderItem["foamColor"],
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="無" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">無</SelectItem>
+                            <SelectItem value="orange">橘</SelectItem>
+                            <SelectItem value="red">紅</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    {/* Per-item photo */}
+                    <div className="mt-2">
+                      <Label className="text-xs">色票照片</Label>
+                      <div className="mt-1 flex items-start gap-2">
+                        {item.imageUrl ? (
+                          <div className="relative">
+                            <img
+                              src={item.imageUrl}
+                              alt=""
+                              className="h-20 w-36 rounded border object-contain bg-[var(--bg-subtle)]"
+                            />
+                            <button
+                              type="button"
+                              className="absolute -right-1 -top-1 rounded-full bg-red-500 p-0.5 text-white shadow"
+                              onClick={() => updateItem({ imageUrl: undefined })}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : null}
+                        <label className="cursor-pointer">
+                          <span className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs hover:bg-[var(--bg-hover)]">
+                            <ImagePlus className="h-3 w-3" />
+                            上傳色票
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try {
+                                const url = await uploadFile(file);
+                                updateItem({ imageUrl: url });
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : "圖片上傳失敗");
+                              } finally {
+                                e.target.value = "";
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="mt-2 flex justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-500 hover:text-red-700"
-                  onClick={() =>
-                    updateDraft(
-                      "items",
-                      draft.items.filter((it: OrderItem) => it.id !== item.id),
-                    )
-                  }
-                >
-                  <Trash2 className="mr-1 h-3 w-3" />
-                  刪除
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          onClick={() => {
-            const newItem: OrderItem = {
-              id: crypto.randomUUID(),
-              name: "",
-              dimensions: "",
-              quantity: "",
-              foamSpec: "",
-              foamColor: null,
-            };
-            updateDraft("items", [...draft.items, newItem]);
-          }}
-        >
-          <Plus className="mr-1 h-3 w-3" />
-          新增品項
-        </Button>
+        <div className="mt-3 flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const newItem: OrderItem = {
+                id: crypto.randomUUID(),
+                name: "",
+                dimensions: "",
+                quantity: "",
+                foamSpec: "",
+                foamColor: null,
+              };
+              updateDraft("items", [...draft.items, newItem]);
+            }}
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            新增品項
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const newHeader: OrderItem = {
+                id: crypto.randomUUID(),
+                name: "",
+                dimensions: "",
+                quantity: "",
+                foamSpec: "",
+                foamColor: null,
+                itemType: "header",
+              };
+              updateDraft("items", [...draft.items, newHeader]);
+            }}
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            新增標題行
+          </Button>
+        </div>
       </div>
 
       {/* 特殊備註 */}
