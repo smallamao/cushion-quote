@@ -76,7 +76,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   type PostBody =
     | { sourceType: "quote"; versionId: string }
-    | { sourceType: "direct"; clientName: string; orderNumber: string };
+    | { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string };
 
   const body = (await request.json()) as PostBody;
 
@@ -115,6 +115,7 @@ export async function POST(request: Request) {
     let caseId = "";
     let versionId = "";
     let quotedAmount = 0;
+    let directItemCategory = "";
     let materialName = "";
     let materialCode = "";
     const materialImageUrl = "";
@@ -196,8 +197,10 @@ export async function POST(request: Request) {
       }
     } else {
       // sourceType === "direct"
-      clientName = (body as { sourceType: "direct"; clientName: string; orderNumber: string }).clientName ?? "";
-      orderNumber = (body as { sourceType: "direct"; clientName: string; orderNumber: string }).orderNumber ?? "";
+      const directBody = body as { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string };
+      clientName = directBody.clientName ?? "";
+      orderNumber = directBody.orderNumber ?? "";
+      directItemCategory = directBody.itemCategory ?? "";
     }
 
     const newOrder: CustomOrder = {
@@ -207,7 +210,7 @@ export async function POST(request: Request) {
       clientName,
       orderNumber,
       orderTitle,
-      itemCategory: "",
+      itemCategory: (directItemCategory as import("@/lib/types").OrderItemCategory) || "",
       deliveryMethod: "",
       status: "production",
       sourceType: body.sourceType,

@@ -47,7 +47,7 @@ export function NewOrderClient() {
   async function handleCreate(
     payload:
       | { sourceType: "quote"; versionId: string }
-      | { sourceType: "direct"; clientName: string; orderNumber: string }
+      | { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string }
   ) {
     setCreating(true);
     setError("");
@@ -94,6 +94,7 @@ export function NewOrderClient() {
       sourceType: "direct",
       clientName: clientName.trim(),
       orderNumber: orderNumber.trim(),
+      ...(itemCategory ? { itemCategory } : {}),
     });
   }
 
