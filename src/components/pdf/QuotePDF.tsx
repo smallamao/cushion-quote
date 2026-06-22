@@ -444,7 +444,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
             <View style={s.descLeft}>
               <Text style={s.descTitle}>補充說明</Text>
               {description.trim() ? (
-                <Text style={s.descText}>{description}</Text>
+                <Text style={s.descText}>{description.replace(/❖/g, "◆")}</Text>
               ) : null}
             </View>
             {descriptionImageUrl ? (
