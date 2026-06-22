@@ -121,10 +121,10 @@ export function calcOrderFinancials(order: CustomOrder): OrderFinancials {
   return { totalCost, netProfit, marginRate };
 }
 
-export async function generateOrderId(
+export function generateOrderId(
   existingIds: string[],
   yearMonth: string,
-): Promise<string> {
+): string {
   const prefix = `ORD-${yearMonth}-`;
   const existing = existingIds
     .filter((id) => id.startsWith(prefix))
