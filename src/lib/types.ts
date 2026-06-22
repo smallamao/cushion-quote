@@ -1145,3 +1145,73 @@ export interface BankReconRecord {
   paymentType: BankPaymentType;
   confirmedAt: string;   // ISO 8601
 }
+
+// ===== 訂製訂單 (Custom Orders) =====
+
+export type OrderStatus = "production" | "waiting" | "completed" | "cancelled";
+export type OrderSourceType = "quote" | "direct";
+export type OrderDeliveryMethod = "自運" | "宅配" | "到府施工";
+export type OrderInvoiceStatus = "pending" | "issued" | "exempt";
+export type OrderItemCategory =
+  | "坐/背墊"
+  | "臥榻墊"
+  | "縫布裱板"
+  | "到府清潔"
+  | "到府施工"
+  | "訂製沙發"
+  | "泡棉內裏"
+  | "皮/布套"
+  | "維修"
+  | "大和樂活";
+
+export interface OrderItem {
+  id: string;
+  name: string;
+  dimensions: string;
+  quantity: string;
+  foamSpec: string;
+  foamColor: "orange" | "red" | null;
+}
+
+export interface OrderNote {
+  id: string;
+  text: string;
+  color: "black" | "red" | "orange";
+  isWarning: boolean;
+}
+
+export interface CustomOrder {
+  orderId: string;
+  caseId: string;
+  versionId: string;
+  clientName: string;
+  orderNumber: string;
+  orderTitle: string;
+  itemCategory: OrderItemCategory | "";
+  deliveryMethod: OrderDeliveryMethod | "";
+  status: OrderStatus;
+  sourceType: OrderSourceType;
+  orderDate: string;
+  supplierOrderDate: string;
+  productionDueDate: string;
+  installDate: string;
+  completedDate: string;
+  quotedAmount: number;
+  materialCost: number;
+  laborCost: number;
+  shippingCost: number;
+  otherCost: number;
+  materialName: string;
+  materialCode: string;
+  materialImageUrl: string;
+  deadline: string;
+  items: OrderItem[];
+  notes: OrderNote[];
+  photos: string[];
+  invoiceStatus: OrderInvoiceStatus;
+  isArchived: boolean;
+  internalNotes: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}

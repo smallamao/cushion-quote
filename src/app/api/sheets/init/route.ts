@@ -304,6 +304,19 @@ const SHEET_DEFINITIONS = [
       "paymentType", "confirmedAt",
     ],
   },
+  {
+    title: "訂製訂單",
+    headers: [
+      "orderId", "caseId", "versionId", "clientName", "orderNumber",
+      "orderTitle", "itemCategory", "deliveryMethod", "status", "sourceType",
+      "orderDate", "supplierOrderDate", "productionDueDate", "installDate", "completedDate",
+      "quotedAmount", "materialCost", "laborCost", "shippingCost", "otherCost",
+      "materialName", "materialCode", "materialImageUrl", "deadline",
+      "itemsJson", "notesJson", "photosJson",
+      "invoiceStatus", "isArchived", "internalNotes",
+      "createdAt", "updatedAt", "createdBy",
+    ],
+  },
 ];
 
 const DEFAULT_SETTINGS_ROWS = [
