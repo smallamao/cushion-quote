@@ -1167,13 +1167,16 @@ export type OrderItemCategory =
 export interface OrderItem {
   id: string;
   name: string;
-  dimensions: string;
+  dimensions: string;        // multiline text; user enters newlines for multiple size lines
   quantity: string;
   foamSpec: string;
   foamColor: "orange" | "red" | null;
-  imageUrl?: string;
   itemType?: "normal" | "header";
   colorCode?: string;
+  subNote?: string;          // single-line note belonging to this item
+  photos?: string[];         // replaces imageUrl, up to 4 photos per item
+  /** @deprecated use photos instead */
+  imageUrl?: string;
 }
 
 export interface OrderNote {

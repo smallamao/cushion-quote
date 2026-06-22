@@ -35,7 +35,7 @@ export function todayDateStr(): string {
 
 // 33 columns A (index 0) through AG (index 32)
 export function orderRowToRecord(row: string[]): CustomOrder {
-  return {
+  const record: CustomOrder = {
     orderId: row[0] ?? "",
     caseId: row[1] ?? "",
     versionId: row[2] ?? "",
@@ -70,6 +70,16 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     updatedAt: row[31] ?? "",
     createdBy: row[32] ?? "",
   };
+
+  // Migrate legacy imageUrl → photos[0] for each item
+  record.items = record.items.map((item: OrderItem) => {
+    if (item.imageUrl && !item.photos?.length) {
+      return { ...item, photos: [item.imageUrl] };
+    }
+    return item;
+  });
+
+  return record;
 }
 
 export function orderRecordToRow(r: CustomOrder): string[] {

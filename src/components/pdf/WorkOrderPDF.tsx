@@ -133,6 +133,12 @@ const s = StyleSheet.create({
     color: C.dark,
     paddingLeft: 12,
   },
+  itemSubNote: {
+    fontSize: 11,
+    color: C.dark,
+    paddingLeft: 12,
+    marginTop: 3,
+  },
   foamSpecOrange: {
     fontSize: 11,
     color: C.orange,
@@ -258,10 +264,6 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                 );
               }
 
-              const parts: string[] = [];
-              if (item.dimensions) parts.push(item.dimensions);
-              if (item.quantity) parts.push(`* ${item.quantity}`);
-              const dimQty = parts.join("  ");
               const foamStyle =
                 item.foamColor === "orange"
                   ? s.foamSpecOrange
@@ -277,18 +279,27 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                       <Text style={s.colorCodeRed}>{` (${safeText(item.colorCode)})`}</Text>
                     ) : null}
                   </Text>
-                  {dimQty ? (
-                    <Text style={s.itemDimQty}>{safeText(dimQty)}</Text>
+                  {/* Dimensions — may have \n for multiple lines */}
+                  {item.dimensions ? (
+                    <Text style={s.itemDimQty}>{safeText(item.dimensions)}</Text>
+                  ) : null}
+                  {/* Quantity on separate line */}
+                  {item.quantity ? (
+                    <Text style={s.itemDimQty}>{`* ${safeText(item.quantity)}`}</Text>
                   ) : null}
                   {item.foamSpec ? (
                     <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
                   ) : null}
-                  {item.imageUrl ? (
+                  {(item.photos ?? []).slice(0, 4).map((url, pi) => (
                     /* eslint-disable-next-line jsx-a11y/alt-text */
                     <Image
-                      src={item.imageUrl}
+                      key={pi}
+                      src={url}
                       style={{ width: 260, height: 160, objectFit: "contain", marginTop: 6 }}
                     />
+                  ))}
+                  {item.subNote ? (
+                    <Text style={s.itemSubNote}>{safeText(item.subNote)}</Text>
                   ) : null}
                 </View>
               );

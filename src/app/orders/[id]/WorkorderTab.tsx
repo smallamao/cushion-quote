@@ -6,6 +6,7 @@ import { ImagePlus, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import {
   Select,
@@ -248,23 +249,23 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                         />
                       </div>
                     </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2">
-                      <div className="col-span-2">
-                        <Label className="text-xs">尺寸／規格</Label>
-                        <Input
-                          value={item.dimensions}
-                          onChange={(e) => updateItem({ dimensions: e.target.value })}
-                          placeholder="例：方木腳H12cm 或 60×60×10cm"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">數量</Label>
-                        <Input
-                          value={item.quantity}
-                          onChange={(e) => updateItem({ quantity: e.target.value })}
-                          placeholder="1pcs"
-                        />
-                      </div>
+                    <div className="mt-2">
+                      <Label className="text-xs">尺寸／規格（可換行輸入多行）</Label>
+                      <Textarea
+                        value={item.dimensions}
+                        onChange={(e) => updateItem({ dimensions: e.target.value })}
+                        placeholder={"例：w96 x 176cm *5pcs\nw22 x 176cm *1pcs"}
+                        rows={3}
+                        className="resize-none text-sm"
+                      />
+                    </div>
+                    <div className="mt-2">
+                      <Label className="text-xs">數量</Label>
+                      <Input
+                        value={item.quantity}
+                        onChange={(e) => updateItem({ quantity: e.target.value })}
+                        placeholder="1pcs"
+                      />
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       <div className="col-span-2">
@@ -296,50 +297,67 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                         </Select>
                       </div>
                     </div>
-                    {/* Per-item photo */}
+                    {/* Per-item photos (up to 4) */}
                     <div className="mt-2">
-                      <Label className="text-xs">色票照片</Label>
-                      <div className="mt-1 flex items-start gap-2">
-                        {item.imageUrl ? (
-                          <div className="relative">
+                      <Label className="text-xs">色票照片（最多 4 張）</Label>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {(item.photos ?? []).map((url, idx) => (
+                          <div key={idx} className="relative">
                             <img
-                              src={item.imageUrl}
+                              src={url}
                               alt=""
-                              className="h-20 w-36 rounded border object-contain bg-[var(--bg-subtle)]"
+                              className="h-20 w-32 rounded border object-contain bg-[var(--bg-subtle)]"
                             />
                             <button
                               type="button"
                               className="absolute -right-1 -top-1 rounded-full bg-red-500 p-0.5 text-white shadow"
-                              onClick={() => updateItem({ imageUrl: undefined })}
+                              onClick={() =>
+                                updateItem({
+                                  photos: (item.photos ?? []).filter((_, i) => i !== idx),
+                                })
+                              }
                             >
                               <X className="h-3 w-3" />
                             </button>
                           </div>
+                        ))}
+                        {(item.photos?.length ?? 0) < 4 ? (
+                          <label className="cursor-pointer">
+                            <span className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs hover:bg-[var(--bg-hover)]">
+                              <ImagePlus className="h-3 w-3" />
+                              上傳照片
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="sr-only"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                try {
+                                  const url = await uploadFile(file);
+                                  updateItem({ photos: [...(item.photos ?? []), url] });
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : "圖片上傳失敗");
+                                } finally {
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                          </label>
                         ) : null}
-                        <label className="cursor-pointer">
-                          <span className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs hover:bg-[var(--bg-hover)]">
-                            <ImagePlus className="h-3 w-3" />
-                            上傳色票
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="sr-only"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              try {
-                                const url = await uploadFile(file);
-                                updateItem({ imageUrl: url });
-                              } catch (err) {
-                                alert(err instanceof Error ? err.message : "圖片上傳失敗");
-                              } finally {
-                                e.target.value = "";
-                              }
-                            }}
-                          />
-                        </label>
                       </div>
+                    </div>
+                    {/* Per-item sub-note */}
+                    <div className="mt-2">
+                      <Label className="text-xs">品項備注</Label>
+                      <Input
+                        value={item.subNote ?? ""}
+                        onChange={(e) =>
+                          updateItem({ subNote: e.target.value || undefined })
+                        }
+                        placeholder="例：壁面完成面高度249cm（已扣地板厚度7mm）"
+                      />
                     </div>
                   </>
                 )}
