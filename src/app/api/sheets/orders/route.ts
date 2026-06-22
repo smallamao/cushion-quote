@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 
   const client = await getSheetsClient();
   if (!client) {
-    return NextResponse.json({ orders: [] as CustomOrder[], error: "Google Sheets 未設定" }, { status: 503 });
+    return NextResponse.json({ ok: false, orders: [] as CustomOrder[], error: "Google Sheets 未設定" }, { status: 503 });
   }
 
   try {
@@ -63,10 +63,10 @@ export async function GET(request: Request) {
       );
     }
 
-    return NextResponse.json({ orders });
+    return NextResponse.json({ ok: true, orders });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
-    return NextResponse.json({ orders: [], error: message }, { status: 500 });
+    return NextResponse.json({ ok: false, orders: [], error: message }, { status: 500 });
   }
 }
 

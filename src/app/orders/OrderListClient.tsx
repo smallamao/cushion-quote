@@ -74,12 +74,12 @@ export function OrderListClient() {
         ? "/api/sheets/orders?archived=true"
         : "/api/sheets/orders";
       const res = await fetch(url);
-      const json = (await res.json()) as { ok: boolean; data?: CustomOrder[]; error?: string };
+      const json = (await res.json()) as { ok: boolean; orders?: CustomOrder[]; error?: string };
       if (!json.ok) {
         setError(json.error ?? "載入失敗");
         setOrders([]);
       } else {
-        setOrders(json.data ?? []);
+        setOrders(json.orders ?? []);
       }
     } catch {
       setError("網路錯誤，請稍後再試");
