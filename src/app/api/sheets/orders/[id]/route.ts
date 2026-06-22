@@ -48,7 +48,7 @@ export async function GET(_request: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "order row missing" }, { status: 404 });
     }
     const order = orderRowToRecord(rowData);
-    return NextResponse.json({ order });
+    return NextResponse.json({ ok: true, order });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
