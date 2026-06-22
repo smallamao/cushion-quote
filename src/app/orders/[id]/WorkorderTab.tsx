@@ -236,7 +236,7 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                 <div>
                   <Label className="text-xs">顏色</Label>
                   <Select
-                    value={item.foamColor ?? ""}
+                    value={item.foamColor ?? "none"}
                     onValueChange={(v) => {
                       updateDraft(
                         "items",
@@ -244,7 +244,7 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                           it.id === item.id
                             ? {
                                 ...it,
-                                foamColor: (v === "" ? null : v) as OrderItem["foamColor"],
+                                foamColor: (v === "none" ? null : v) as OrderItem["foamColor"],
                               }
                             : it,
                         ),
@@ -255,7 +255,7 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                       <SelectValue placeholder="無" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">無</SelectItem>
+                      <SelectItem value="none">無</SelectItem>
                       <SelectItem value="orange">橘</SelectItem>
                       <SelectItem value="red">紅</SelectItem>
                     </SelectContent>
