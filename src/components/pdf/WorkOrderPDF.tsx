@@ -283,8 +283,7 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                   {(item.dimensions || item.quantity) ? (
                     <Text style={s.itemDimQty}>
                       {item.dimensions ? safeText(item.dimensions) : ""}
-                      {item.dimensions && item.quantity ? "  " : ""}
-                      {item.quantity ? `*${safeText(item.quantity)}` : ""}
+                      {item.quantity ? ` * ${safeText(item.quantity)}` : ""}
                     </Text>
                   ) : null}
                   {(item.photos ?? []).slice(0, 4).map((url, pi) => (
