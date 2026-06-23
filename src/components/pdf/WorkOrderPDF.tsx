@@ -149,8 +149,8 @@ const s = StyleSheet.create({
     color: C.red,
   },
   materialImage: {
-    width: 130,
-    height: 80,
+    width: 180,
+    height: 120,
     objectFit: "contain",
     flexShrink: 0,
   },
@@ -256,10 +256,9 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           ) : null}
         </View>
 
-        {/* 3. 補充說明：items full width */}
+        {/* 3. items full width */}
         {hasItems ? (
           <>
-            <Text style={s.sectionLabel}>補充說明：</Text>
             {order.items.map((item: OrderItem) => {
               const isHeader = item.itemType === "header";
 
