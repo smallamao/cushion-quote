@@ -42,9 +42,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 40,
     backgroundColor: C.white,
   },
-  // 編號：S891 — large but not overwhelming
+  // 編號：S891
   orderTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 700,
     color: C.black,
     marginBottom: 6,
@@ -56,27 +56,27 @@ const s = StyleSheet.create({
     alignItems: "flex-start",
   },
   metaLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: C.black,
     width: 70,
     flexShrink: 0,
   },
   metaValue: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: C.black,
     flex: 1,
   },
   metaValueRed: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: C.red,
     flex: 1,
     textDecoration: "underline",
   },
   metaValueRedNoLine: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: C.red,
     flex: 1,
