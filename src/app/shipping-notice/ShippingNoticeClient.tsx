@@ -2082,7 +2082,7 @@ export function ShippingNoticeClient() {
   const { drivers } = useActiveDrivers();
   const [listNames, setListNames] = useState<Record<string, string>>(LIST_NAMES);
   const [query, setQuery] = useState<string>(() =>
-    typeof window === "undefined" ? "" : (sessionStorage.getItem("shipping_notice_query") ?? ""),
+    typeof window === "undefined" ? "P" : (sessionStorage.getItem("shipping_notice_query") || "P"),
   );
   const [submittedQuery, setSubmittedQuery] = useState<string>(() =>
     typeof window === "undefined" ? "" : (sessionStorage.getItem("shipping_notice_query") ?? ""),
@@ -2407,7 +2407,13 @@ export function ShippingNoticeClient() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
-            placeholder="搜尋訂單號碼（P1234）或客戶名稱"
+            onFocus={(e) => {
+              // Move cursor to end so user types after "P"
+              const len = e.target.value.length;
+              e.target.setSelectionRange(len, len);
+            }}
+            placeholder="P1234"
+            inputMode="decimal"
             className="pl-9"
           />
         </div>
