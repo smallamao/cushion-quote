@@ -1223,8 +1223,18 @@ export interface CustomOrder {
   materialPurchases: MaterialPurchase[];
 }
 
+export type MaterialCostType = "material" | "labor" | "outsourcing" | "other";
+
+export const MATERIAL_COST_TYPE_LABELS: Record<MaterialCostType, string> = {
+  material: "直接材料",
+  labor: "直接人工",
+  outsourcing: "委外/代工",
+  other: "其他",
+};
+
 export interface MaterialPurchase {
   id: string;
+  costType: MaterialCostType;
   item: string;
   amount: number;
   date: string;

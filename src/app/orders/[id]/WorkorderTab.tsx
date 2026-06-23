@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useState } from "react";
+import { useCallback, useState } from "react";
 import { ImagePlus, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote } from "@/lib/types";
+import type { CustomOrder, OrderItem, OrderNote } from "@/lib/types";
 
 async function uploadFile(file: File): Promise<string> {
   const formData = new FormData();
@@ -38,32 +38,6 @@ interface WorkorderTabProps {
 export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: WorkorderTabProps) {
   const [materialUploading, setMaterialUploading] = useState(false);
   const [photosUploading, setPhotosUploading] = useState(false);
-  const [receiptUploading, setReceiptUploading] = useState<string | null>(null); // purchaseId being uploaded
-  const uid = useId();
-
-  const purchases: MaterialPurchase[] = draft.materialPurchases ?? [];
-
-  function addPurchase() {
-    const newItem: MaterialPurchase = {
-      id: `${uid}-${Date.now()}`,
-      item: "",
-      amount: 0,
-      date: "",
-      receiptUrls: [],
-    };
-    updateDraft("materialPurchases", [...purchases, newItem]);
-  }
-
-  function updatePurchase(id: string, patch: Partial<MaterialPurchase>) {
-    updateDraft(
-      "materialPurchases",
-      purchases.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-    );
-  }
-
-  function removePurchase(id: string) {
-    updateDraft("materialPurchases", purchases.filter((p) => p.id !== id));
-  }
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -610,122 +584,6 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
             <Loader2 className="h-3 w-3 animate-spin" />
             上傳中...
           </span>
-        )}
-      </div>
-
-      {/* 原料採購記錄 */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
-            原料採購記錄
-          </h3>
-          <Button size="sm" variant="outline" onClick={addPurchase}>
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            新增
-          </Button>
-        </div>
-
-        {purchases.length === 0 && (
-          <p className="text-sm text-[var(--text-tertiary)]">尚無採購記錄，點「新增」加入。</p>
-        )}
-
-        <div className="space-y-3">
-          {purchases.map((p) => (
-            <div key={p.id} className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <div>
-                  <Label className="text-xs">品項</Label>
-                  <Input
-                    value={p.item}
-                    onChange={(e) => updatePurchase(p.id, { item: e.target.value })}
-                    placeholder="例：泡棉、面料…"
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">金額</Label>
-                  <Input
-                    type="number"
-                    value={p.amount || ""}
-                    onChange={(e) => updatePurchase(p.id, { amount: Number(e.target.value) })}
-                    placeholder="0"
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">到料日</Label>
-                  <Input
-                    type="date"
-                    value={p.date}
-                    onChange={(e) => updatePurchase(p.id, { date: e.target.value })}
-                    className="h-8 text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Receipt images */}
-              {p.receiptUrls.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {p.receiptUrls.map((url, i) => (
-                    <div key={i} className="relative">
-                      <img src={url} alt="" className="h-16 w-16 rounded border object-cover" />
-                      <button
-                        type="button"
-                        className="absolute -right-1 -top-1 rounded-full bg-red-500 p-0.5 text-white shadow"
-                        onClick={() => updatePurchase(p.id, { receiptUrls: p.receiptUrls.filter((_, j) => j !== i) })}
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
-                <label className="cursor-pointer">
-                  <span className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs hover:bg-[var(--bg-hover)]">
-                    <ImagePlus className="h-3 w-3" />
-                    {receiptUploading === p.id ? "上傳中…" : "上傳到料單"}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="sr-only"
-                    disabled={receiptUploading === p.id}
-                    onChange={async (e) => {
-                      const files = Array.from(e.target.files ?? []);
-                      if (!files.length) return;
-                      setReceiptUploading(p.id);
-                      try {
-                        const urls = await Promise.all(files.map(uploadFile));
-                        updatePurchase(p.id, { receiptUrls: [...p.receiptUrls, ...urls] });
-                      } catch (err) {
-                        alert(err instanceof Error ? err.message : "上傳失敗");
-                      } finally {
-                        setReceiptUploading(null);
-                        e.target.value = "";
-                      }
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => removePurchase(p.id)}
-                  className="ml-auto flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  刪除
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {purchases.length > 0 && (
-          <div className="mt-3 text-right text-sm font-medium text-[var(--text-primary)]">
-            合計：${purchases.reduce((s, p) => s + (p.amount || 0), 0).toLocaleString()}
-          </div>
         )}
       </div>
 
