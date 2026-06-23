@@ -283,12 +283,15 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                   {item.dimensions ? (
                     <Text style={s.itemDimQty}>{safeText(item.dimensions)}</Text>
                   ) : null}
-                  {/* Quantity on separate line */}
-                  {item.quantity ? (
-                    <Text style={s.itemDimQty}>{`* ${safeText(item.quantity)}`}</Text>
-                  ) : null}
-                  {item.foamSpec ? (
-                    <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
+                  {/* Quantity + foamSpec on same line */}
+                  {(item.quantity || item.foamSpec) ? (
+                    <Text style={s.itemDimQty}>
+                      {item.quantity ? `*${safeText(item.quantity)}` : ""}
+                      {item.quantity && item.foamSpec ? "  " : ""}
+                      {item.foamSpec ? (
+                        <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
+                      ) : null}
+                    </Text>
                   ) : null}
                   {(item.photos ?? []).slice(0, 4).map((url, pi) => (
                     /* eslint-disable-next-line jsx-a11y/alt-text */
