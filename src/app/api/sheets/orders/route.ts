@@ -59,7 +59,14 @@ export async function GET(request: Request) {
         (o) =>
           o.clientName.toLowerCase().includes(q) ||
           o.orderNumber.toLowerCase().includes(q) ||
-          o.orderTitle.toLowerCase().includes(q),
+          o.orderTitle.toLowerCase().includes(q) ||
+          o.materialCode.toLowerCase().includes(q) ||
+          o.materialName.toLowerCase().includes(q) ||
+          o.items.some(
+            (it) =>
+              it.colorCode?.toLowerCase().includes(q) ||
+              it.name.toLowerCase().includes(q),
+          ),
       );
     }
 

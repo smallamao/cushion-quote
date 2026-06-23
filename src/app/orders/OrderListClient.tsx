@@ -166,13 +166,19 @@ export function OrderListClient() {
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
     return orders.filter((o) => {
-      if (
-        q &&
-        !o.clientName.toLowerCase().includes(q) &&
-        !o.orderNumber.toLowerCase().includes(q) &&
-        !o.orderTitle.toLowerCase().includes(q)
-      ) {
-        return false;
+      if (q) {
+        const hit =
+          o.clientName.toLowerCase().includes(q) ||
+          o.orderNumber.toLowerCase().includes(q) ||
+          o.orderTitle.toLowerCase().includes(q) ||
+          o.materialCode.toLowerCase().includes(q) ||
+          o.materialName.toLowerCase().includes(q) ||
+          o.items.some(
+            (it) =>
+              it.colorCode?.toLowerCase().includes(q) ||
+              it.name.toLowerCase().includes(q),
+          );
+        if (!hit) return false;
       }
       if (categoryFilter !== "all" && o.itemCategory !== categoryFilter) {
         return false;
