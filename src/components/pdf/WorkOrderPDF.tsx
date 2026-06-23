@@ -42,12 +42,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 40,
     backgroundColor: C.white,
   },
-  // 編號：S891 — all on one line, big bold
+  // 編號：S891 — large but not overwhelming
   orderTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 700,
     color: C.black,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   // Meta rows: 訂製內容、安裝日、材質、交期
   metaRow: {
@@ -81,13 +81,15 @@ const s = StyleSheet.create({
     color: C.red,
     flex: 1,
   },
-  // 補充說明 section label
+  // 補充說明 section label — small grey label, not competing with content
   sectionLabel: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: 700,
-    color: C.black,
-    marginTop: 6,
+    color: C.dark,
+    marginTop: 8,
     marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
   // 2-col: items left + material image right
   itemsRow: {
@@ -99,15 +101,15 @@ const s = StyleSheet.create({
     flex: 1,
   },
   itemBlock: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  // Header-type item: bold section title
+  // Header-type item: same size as itemName, differentiated by bullet style
   itemBlockHeader: {
-    marginBottom: 6,
-    marginTop: 4,
+    marginBottom: 4,
+    marginTop: 6,
   },
   itemNameHeader: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 700,
     color: C.black,
   },
@@ -129,21 +131,21 @@ const s = StyleSheet.create({
     marginBottom: 1,
   },
   foamSpecDefault: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.dark,
   },
   itemSubNote: {
     fontSize: 12,
     color: C.dark,
     paddingLeft: 12,
-    marginTop: 3,
+    marginTop: 2,
   },
   foamSpecOrange: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.orange,
   },
   foamSpecRed: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.red,
   },
   materialImage: {
