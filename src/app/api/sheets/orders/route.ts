@@ -244,6 +244,7 @@ export async function POST(request: Request) {
       createdAt: now,
       updatedAt: now,
       createdBy: "",
+      materialPurchases: [],
     };
 
     await client.sheets.spreadsheets.values.append({

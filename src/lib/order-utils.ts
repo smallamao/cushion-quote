@@ -1,11 +1,11 @@
-import type { CustomOrder, OrderItem, OrderNote } from "@/lib/types";
+import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AG`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AG10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AH`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AH10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AG${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:AH${sheetRow}`;
 
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
@@ -69,6 +69,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     createdAt: row[30] ?? "",
     updatedAt: row[31] ?? "",
     createdBy: row[32] ?? "",
+    materialPurchases: parseJsonSafe<MaterialPurchase[]>(row[33], []),
   };
 
   // Migrate legacy imageUrl → photos[0] for each item
@@ -117,6 +118,7 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     r.createdAt,
     r.updatedAt,
     r.createdBy,
+    JSON.stringify(r.materialPurchases ?? []),
   ];
 }
 

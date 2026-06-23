@@ -1220,5 +1220,14 @@ export interface CustomOrder {
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+  materialPurchases: MaterialPurchase[];
+}
+
+export interface MaterialPurchase {
+  id: string;
+  item: string;
+  amount: number;
+  date: string;
+  receiptUrls: string[];
 }
 
