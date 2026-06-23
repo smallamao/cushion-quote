@@ -220,31 +220,39 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           {"編號：" + safeText(order.orderNumber || order.orderId)}
         </Text>
 
-        {/* 2. Meta rows */}
-        {order.orderTitle ? (
-          <View style={s.metaRow}>
-            <Text style={s.metaLabel}>訂製內容：</Text>
-            <Text style={s.metaValue}>{safeText(order.orderTitle)}</Text>
+        {/* 2. Meta rows (left) + material image (right) */}
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 16 }}>
+          <View style={{ flex: 1 }}>
+            {order.orderTitle ? (
+              <View style={s.metaRow}>
+                <Text style={s.metaLabel}>訂製內容：</Text>
+                <Text style={s.metaValue}>{safeText(order.orderTitle)}</Text>
+              </View>
+            ) : null}
+            {order.installDate ? (
+              <View style={s.metaRow}>
+                <Text style={s.metaLabel}>安裝日：</Text>
+                <Text style={s.metaValueRedNoLine}>{safeText(order.installDate)}</Text>
+              </View>
+            ) : null}
+            {materialLabel ? (
+              <View style={s.metaRow}>
+                <Text style={s.metaLabel}>材質：</Text>
+                <Text style={s.metaValueRed}>{safeText(materialLabel)}</Text>
+              </View>
+            ) : null}
+            {order.deadline ? (
+              <View style={s.metaRow}>
+                <Text style={s.metaLabel}>交期：</Text>
+                <Text style={s.metaValueRed}>{safeText(order.deadline)}</Text>
+              </View>
+            ) : null}
           </View>
-        ) : null}
-        {order.installDate ? (
-          <View style={s.metaRow}>
-            <Text style={s.metaLabel}>安裝日：</Text>
-            <Text style={s.metaValueRedNoLine}>{safeText(order.installDate)}</Text>
-          </View>
-        ) : null}
-        {materialLabel ? (
-          <View style={s.metaRow}>
-            <Text style={s.metaLabel}>材質：</Text>
-            <Text style={s.metaValueRed}>{safeText(materialLabel)}</Text>
-          </View>
-        ) : null}
-        {order.deadline ? (
-          <View style={s.metaRow}>
-            <Text style={s.metaLabel}>交期：</Text>
-            <Text style={s.metaValueRed}>{safeText(order.deadline)}</Text>
-          </View>
-        ) : null}
+          {hasMaterialImage ? (
+            /* eslint-disable-next-line jsx-a11y/alt-text */
+            <Image src={order.materialImageUrl} style={s.materialImage} />
+          ) : null}
+        </View>
 
         {/* 3. 補充說明：items full width */}
         {hasItems ? (
@@ -303,33 +311,27 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           </>
         ) : null}
 
-        {/* 4. Notes (left) + material image (right) — 2-col */}
-        {(hasNotes || hasMaterialImage) ? (
+        {/* 4. Notes — full width */}
+        {hasNotes ? (
           <>
             <View style={s.separator} />
-            <View style={s.itemsRow}>
-              <View style={s.itemsCol}>
-                {order.notes.map((note: OrderNote) => {
-                  const noteStyle =
-                    note.color === "red"
-                      ? s.noteTextRed
-                      : note.color === "orange"
-                        ? s.noteTextOrange
-                        : s.noteTextBlack;
-                  const prefix = note.isWarning ? "⚠️ " : "";
-                  return (
-                    <View key={note.id} style={s.noteRow}>
-                      <Text style={noteStyle}>
-                        ◆ {prefix}{safeText(note.text)}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-              {hasMaterialImage ? (
-                /* eslint-disable-next-line jsx-a11y/alt-text */
-                <Image src={order.materialImageUrl} style={s.materialImage} />
-              ) : null}
+            <View>
+              {order.notes.map((note: OrderNote) => {
+                const noteStyle =
+                  note.color === "red"
+                    ? s.noteTextRed
+                    : note.color === "orange"
+                      ? s.noteTextOrange
+                      : s.noteTextBlack;
+                const prefix = note.isWarning ? "⚠️ " : "";
+                return (
+                  <View key={note.id} style={s.noteRow}>
+                    <Text style={noteStyle}>
+                      ◆ {prefix}{safeText(note.text)}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
           </>
         ) : null}
