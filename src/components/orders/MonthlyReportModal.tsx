@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Printer } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import type { CustomOrder } from "@/lib/types";
 
 interface Props {
@@ -61,6 +61,32 @@ export function MonthlyReportModal({
     ? `${toRocMonth(selectedMonth)} 訂製出貨明細`
     : "訂製出貨明細";
 
+  function handleCsvDownload() {
+    const rows = [
+      ["單號", "品項", "下單日", "金額", "出貨日", "備注"],
+      ...filtered.map((o) => [
+        o.orderNumber || o.orderId,
+        o.orderTitle || o.itemCategory || "",
+        o.orderDate || "",
+        o.quotedAmount ? String(o.quotedAmount) : "",
+        o.installDate || o.completedDate || "",
+        o.internalNotes || "",
+      ]),
+      ["", "", "總金額", String(total), "", ""],
+    ];
+    const csv = rows
+      .map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const bom = "﻿"; // UTF-8 BOM for Excel/Notion compatibility
+    const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function handlePrint() {
     const content = printRef.current;
     if (!content) return;
@@ -97,9 +123,9 @@ export function MonthlyReportModal({
           <DialogTitle>訂製出貨月報</DialogTitle>
         </DialogHeader>
 
-        <div className="flex items-center gap-3 pb-2">
+        <div className="flex items-center gap-3 pb-2 flex-wrap">
           <Select value={selectedMonth} onValueChange={onMonthChange}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-52">
               <SelectValue placeholder="選擇月份" />
             </SelectTrigger>
             <SelectContent>
@@ -113,16 +139,26 @@ export function MonthlyReportModal({
           <span className="text-sm text-[var(--text-secondary)]">
             共 {filtered.length} 筆
           </span>
-          <Button
-            size="sm"
-            variant="outline"
-            className="ml-auto"
-            onClick={handlePrint}
-            disabled={filtered.length === 0}
-          >
-            <Printer className="h-3.5 w-3.5 mr-1" />
-            列印
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCsvDownload}
+              disabled={filtered.length === 0}
+            >
+              <Download className="h-3.5 w-3.5 mr-1" />
+              匯出 CSV
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handlePrint}
+              disabled={filtered.length === 0}
+            >
+              <Printer className="h-3.5 w-3.5 mr-1" />
+              列印
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-auto flex-1">
