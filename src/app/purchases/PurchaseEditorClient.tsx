@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Eye, Package, PackagePlus, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Calculator, Eye, Package, PackagePlus, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -46,6 +46,7 @@ import {
 import { detectSupplierFromCodes } from "@/lib/supplier-detector";
 import { QuickCreateProductDialog } from "@/components/purchases/QuickCreateProductDialog";
 import { BulkCreateProductDialog } from "@/components/purchases/BulkCreateProductDialog";
+import { WorkOrderSuggestDialog, type SuggestedItem } from "@/components/purchases/WorkOrderSuggestDialog";
 import type {
   CaseRecord,
   PurchaseOrder,
@@ -207,6 +208,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateItemIdx, setQuickCreateItemIdx] = useState<number | null>(null);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [workOrderSuggestOpen, setWorkOrderSuggestOpen] = useState(false);
   const [receiveOccurredAt, setReceiveOccurredAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [receiveReferenceNumber, setReceiveReferenceNumber] = useState("");
   const [receiveNotes, setReceiveNotes] = useState("");
@@ -463,6 +465,27 @@ export function PurchaseEditorClient({ orderId }: Props) {
 
   function addBlankItem() {
     setItems((prev) => [...prev, emptyItem()]);
+  }
+
+  function handleWorkOrderSuggest(suggested: SuggestedItem[]) {
+    const newItems: EditableItem[] = suggested.map((s) => ({
+      itemId: "",
+      productId: "",
+      productCode: s.colorCode,
+      productName: s.colorCode,
+      specification: s.itemName,
+      unit: "碼" as const,
+      quantity: s.suggestedQty,
+      receivedQuantity: 0,
+      unitPrice: 0,
+      notes: `${s.orderNumber} · ${s.itemName}`,
+      matched: false,
+    }));
+    const hasOnlyEmpty = items.every(
+      (it) => !it.productCode && !it.productName && it.quantity === 0,
+    );
+    setItems(hasOnlyEmpty ? newItems : [...items, ...newItems]);
+    setNotice({ tone: "success", text: `已加入 ${newItems.length} 筆建議用量，單價請手動填入` });
   }
 
   function selectProduct(index: number, productId: string) {
@@ -1008,13 +1031,24 @@ export function PurchaseEditorClient({ orderId }: Props) {
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setShowPaste(true)}
-          className="text-xs text-[var(--accent)] hover:underline"
-        >
-          + 顯示貼上解析器
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowPaste(true)}
+            className="text-xs text-[var(--accent)] hover:underline"
+          >
+            + 顯示貼上解析器
+          </button>
+          <span className="text-[var(--text-tertiary)] text-xs">·</span>
+          <button
+            type="button"
+            onClick={() => setWorkOrderSuggestOpen(true)}
+            className="text-xs text-[var(--accent)] hover:underline flex items-center gap-1"
+          >
+            <Calculator className="h-3 w-3" />
+            從工單計算建議用量
+          </button>
+        </div>
       )}
 
       {/* Items table */}
@@ -1386,6 +1420,12 @@ export function PurchaseEditorClient({ orderId }: Props) {
         existingProducts={products}
         onSubmit={async (drafts) => addProduct(drafts)}
         onCreated={handleBulkCreated}
+      />
+
+      <WorkOrderSuggestDialog
+        open={workOrderSuggestOpen}
+        onClose={() => setWorkOrderSuggestOpen(false)}
+        onConfirm={handleWorkOrderSuggest}
       />
 
       <Dialog open={receiveDialogOpen} onOpenChange={setReceiveDialogOpen}>
