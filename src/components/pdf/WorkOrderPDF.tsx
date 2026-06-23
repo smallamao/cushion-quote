@@ -131,7 +131,6 @@ const s = StyleSheet.create({
   foamSpecDefault: {
     fontSize: 11,
     color: C.dark,
-    paddingLeft: 12,
   },
   itemSubNote: {
     fontSize: 11,
@@ -142,12 +141,10 @@ const s = StyleSheet.create({
   foamSpecOrange: {
     fontSize: 11,
     color: C.orange,
-    paddingLeft: 12,
   },
   foamSpecRed: {
     fontSize: 11,
     color: C.red,
-    paddingLeft: 12,
   },
   materialImage: {
     width: 160,
@@ -272,25 +269,22 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                     : s.foamSpecDefault;
               return (
                 <View key={item.id} style={s.itemBlock}>
-                  {/* name + colorCode inline */}
+                  {/* name + foamSpec + colorCode on same line */}
                   <Text style={s.itemName}>
                     <Text>{`· ${safeText(item.name)}`}</Text>
+                    {item.foamSpec ? (
+                      <Text style={foamStyle}>{` ${safeText(item.foamSpec)}`}</Text>
+                    ) : null}
                     {item.colorCode ? (
                       <Text style={s.colorCodeRed}>{` (${safeText(item.colorCode)})`}</Text>
                     ) : null}
                   </Text>
-                  {/* Dimensions — may have \n for multiple lines */}
-                  {item.dimensions ? (
-                    <Text style={s.itemDimQty}>{safeText(item.dimensions)}</Text>
-                  ) : null}
-                  {/* Quantity + foamSpec on same line */}
-                  {(item.quantity || item.foamSpec) ? (
+                  {/* Dimensions + quantity on same line */}
+                  {(item.dimensions || item.quantity) ? (
                     <Text style={s.itemDimQty}>
+                      {item.dimensions ? safeText(item.dimensions) : ""}
+                      {item.dimensions && item.quantity ? "  " : ""}
                       {item.quantity ? `*${safeText(item.quantity)}` : ""}
-                      {item.quantity && item.foamSpec ? "  " : ""}
-                      {item.foamSpec ? (
-                        <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
-                      ) : null}
                     </Text>
                   ) : null}
                   {(item.photos ?? []).slice(0, 4).map((url, pi) => (
