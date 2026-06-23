@@ -20,6 +20,14 @@ interface Props {
   onConfirm: (croppedDataUrl: string) => void;
 }
 
+const ASPECT_PRESETS = [
+  { label: "自由", value: undefined },
+  { label: "1:1", value: 1 },
+  { label: "4:3", value: 4 / 3 },
+  { label: "3:4", value: 3 / 4 },
+  { label: "16:9", value: 16 / 9 },
+] as const;
+
 async function extractCrop(imageSrc: string, pixelCrop: Area): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -47,6 +55,9 @@ export function ImageCropModal({ open, imageSrc, onClose, onConfirm }: Props) {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [aspectIndex, setAspectIndex] = useState(0); // 0 = 自由
+
+  const aspect = ASPECT_PRESETS[aspectIndex].value;
 
   const onCropComplete = useCallback((_: Area, pixels: Area) => {
     setCroppedAreaPixels(pixels);
@@ -59,15 +70,10 @@ export function ImageCropModal({ open, imageSrc, onClose, onConfirm }: Props) {
       const dataUrl = await extractCrop(imageSrc, croppedAreaPixels);
       onConfirm(dataUrl);
     } catch {
-      // fallback: use original
       onConfirm(imageSrc);
     } finally {
       setProcessing(false);
     }
-  }
-
-  function handleSkip() {
-    onConfirm(imageSrc);
   }
 
   return (
@@ -77,13 +83,32 @@ export function ImageCropModal({ open, imageSrc, onClose, onConfirm }: Props) {
           <DialogTitle>調整材料圖片裁切範圍</DialogTitle>
         </DialogHeader>
 
+        {/* Aspect ratio presets */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-[var(--text-tertiary)] mr-1">比例</span>
+          {ASPECT_PRESETS.map((p, i) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => { setAspectIndex(i); setCrop({ x: 0, y: 0 }); }}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                aspectIndex === i
+                  ? "bg-[var(--accent)] text-white"
+                  : "border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
         {/* Crop area */}
         <div className="relative h-72 w-full overflow-hidden rounded-md bg-black">
           <Cropper
             image={imageSrc}
             crop={crop}
             zoom={zoom}
-            aspect={1}
+            aspect={aspect}
             onCropChange={setCrop}
             onZoomChange={setZoom}
             onCropComplete={onCropComplete}
@@ -107,7 +132,7 @@ export function ImageCropModal({ open, imageSrc, onClose, onConfirm }: Props) {
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={handleSkip} disabled={processing}>
+          <Button variant="ghost" onClick={() => onConfirm(imageSrc)} disabled={processing}>
             不裁切，直接使用
           </Button>
           <Button variant="outline" onClick={onClose} disabled={processing}>
