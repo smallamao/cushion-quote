@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
+import { ImageCropModal } from "@/components/pdf/ImageCropModal";
 import {
   Select,
   SelectContent,
@@ -40,12 +41,16 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [cropOpen, setCropOpen] = useState(false);
 
-  const handleGeneratePdf = useCallback(async () => {
+  async function generatePdfWithImage(imageUrl: string) {
     setPdfLoading(true);
     try {
+      const orderForPdf = imageUrl !== draft.materialImageUrl
+        ? { ...draft, materialImageUrl: imageUrl }
+        : draft;
       const { generateWorkOrderPdfBlob } = await import("@/components/pdf/WorkOrderPDF");
-      const blob = await generateWorkOrderPdfBlob({ order: draft });
+      const blob = await generateWorkOrderPdfBlob({ order: orderForPdf });
       setPdfBlob(blob);
       setPdfOpen(true);
     } catch (err) {
@@ -53,6 +58,15 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
     } finally {
       setPdfLoading(false);
     }
+  }
+
+  const handleGeneratePdf = useCallback(() => {
+    if (draft.materialImageUrl) {
+      setCropOpen(true);
+    } else {
+      void generatePdfWithImage("");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
 
   return (
@@ -602,6 +616,18 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
         fileName={`工單-${draft.orderNumber || draft.orderId}.pdf`}
         loading={pdfLoading}
       />
+
+      {draft.materialImageUrl && (
+        <ImageCropModal
+          open={cropOpen}
+          imageSrc={draft.materialImageUrl}
+          onClose={() => setCropOpen(false)}
+          onConfirm={(cropped) => {
+            setCropOpen(false);
+            void generatePdfWithImage(cropped);
+          }}
+        />
+      )}
     </div>
   );
 }
