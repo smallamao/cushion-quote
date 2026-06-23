@@ -44,10 +44,10 @@ const s = StyleSheet.create({
   },
   // 編號：S891 — all on one line, big bold
   orderTitle: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: 700,
     color: C.black,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   // Meta rows: 訂製內容、安裝日、材質、交期
   metaRow: {
@@ -83,7 +83,7 @@ const s = StyleSheet.create({
   },
   // 補充說明 section label
   sectionLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
     color: C.black,
     marginTop: 6,
@@ -107,48 +107,48 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
   itemNameHeader: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
     color: C.black,
   },
   itemName: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: C.black,
     marginBottom: 1,
   },
   colorCodeRed: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: C.red,
   },
   itemDimQty: {
-    fontSize: 11,
+    fontSize: 12,
     color: C.black,
     paddingLeft: 12,
     marginBottom: 1,
   },
   foamSpecDefault: {
-    fontSize: 11,
+    fontSize: 12,
     color: C.dark,
   },
   itemSubNote: {
-    fontSize: 11,
+    fontSize: 12,
     color: C.dark,
     paddingLeft: 12,
     marginTop: 3,
   },
   foamSpecOrange: {
-    fontSize: 11,
+    fontSize: 12,
     color: C.orange,
   },
   foamSpecRed: {
-    fontSize: 11,
+    fontSize: 12,
     color: C.red,
   },
   materialImage: {
-    width: 160,
-    height: 160,
+    width: 130,
+    height: 80,
     objectFit: "contain",
     flexShrink: 0,
   },
