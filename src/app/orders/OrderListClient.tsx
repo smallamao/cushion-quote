@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList, Copy, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ClipboardList, Copy, FileBarChart2, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { MonthlyReportModal } from "@/components/orders/MonthlyReportModal";
 import type { CustomOrder, OrderItemCategory, OrderStatus } from "@/lib/types";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
@@ -75,6 +76,11 @@ export function OrderListClient() {
   const [deleteTarget, setDeleteTarget] = useState<CustomOrder | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [copying, setCopying] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportMonth, setReportMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -216,6 +222,14 @@ export function OrderListClient() {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             <span className="ml-1 hidden sm:inline">重新整理</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setReportOpen(true)}
+          >
+            <FileBarChart2 className="h-4 w-4" />
+            <span className="ml-1 hidden sm:inline">月報</span>
           </Button>
           <Button onClick={() => router.push("/orders/new" as never)}>
             <Plus className="mr-1 h-4 w-4" />
@@ -495,6 +509,16 @@ export function OrderListClient() {
           </table>
         </div>
       )}
+
+      {/* Monthly report modal */}
+      <MonthlyReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        orders={orders}
+        selectedMonth={reportMonth}
+        onMonthChange={setReportMonth}
+        months={months}
+      />
 
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
