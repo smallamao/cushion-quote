@@ -2,9 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList, Loader2, Plus, RefreshCw, Search } from "lucide-react";
+import { ClipboardList, Copy, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -63,6 +71,68 @@ export function OrderListClient() {
   const [categoryFilter, setCategoryFilter] = useState<OrderItemCategory | "all">("all");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
+
+  const [deleteTarget, setDeleteTarget] = useState<CustomOrder | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [copying, setCopying] = useState<string | null>(null);
+
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/sheets/orders/${deleteTarget.orderId}`, { method: "DELETE" });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "刪除失敗");
+      setOrders((prev) => prev.filter((o) => o.orderId !== deleteTarget.orderId));
+      setDeleteTarget(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "刪除失敗");
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget]);
+
+  const handleCopy = useCallback(async (order: CustomOrder) => {
+    setCopying(order.orderId);
+    try {
+      const res = await fetch(`/api/sheets/orders/${order.orderId}`);
+      const json = (await res.json()) as { ok: boolean; order?: CustomOrder; error?: string };
+      if (!json.ok || !json.order) throw new Error(json.error ?? "讀取失敗");
+      const src = json.order;
+      const body: Partial<CustomOrder> = {
+        clientName: src.clientName,
+        orderTitle: `${src.orderTitle}（複製）`,
+        itemCategory: src.itemCategory,
+        orderDate: src.orderDate,
+        quotedAmount: src.quotedAmount,
+        materialCost: src.materialCost,
+        laborCost: src.laborCost,
+        shippingCost: src.shippingCost,
+        otherCost: src.otherCost,
+        materialName: src.materialName,
+        materialCode: src.materialCode,
+        materialImageUrl: src.materialImageUrl,
+        items: src.items,
+        notes: src.notes,
+        internalNotes: src.internalNotes,
+        photos: src.photos,
+        deliveryMethod: src.deliveryMethod,
+        sourceType: src.sourceType,
+      };
+      const createRes = await fetch("/api/sheets/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const createJson = (await createRes.json()) as { ok: boolean; orderId?: string; error?: string };
+      if (!createJson.ok) throw new Error(createJson.error ?? "複製失敗");
+      router.push(`/orders/${createJson.orderId}` as never);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "複製失敗");
+    } finally {
+      setCopying(null);
+    }
+  }, [router]);
 
   const months = useMemo(() => getLast12Months(), []);
 
@@ -273,6 +343,33 @@ export function OrderListClient() {
                     <span>{order.itemCategory || "—"}</span>
                     <span>下單：{order.orderDate || "—"}</span>
                   </div>
+                  <div className="mt-2 flex items-center justify-end gap-1 border-t border-[var(--border)] pt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-[var(--text-secondary)]"
+                      title="複製訂單"
+                      disabled={copying === order.orderId}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleCopy(order);
+                      }}
+                    >
+                      {copying === order.orderId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-red-500"
+                      title="刪除訂單"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(order);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -346,17 +443,44 @@ export function OrderListClient() {
                         {order.installDate || "—"}
                       </td>
                       <td className="px-3 py-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/orders/${order.orderId}` as never);
-                          }}
-                        >
-                          查看
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/orders/${order.orderId}` as never);
+                            }}
+                          >
+                            查看
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-[var(--text-secondary)]"
+                            title="複製訂單"
+                            disabled={copying === order.orderId}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleCopy(order);
+                            }}
+                          >
+                            {copying === order.orderId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                            title="刪除訂單"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(order);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -365,6 +489,24 @@ export function OrderListClient() {
           </table>
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>確認刪除</DialogTitle>
+            <DialogDescription>
+              確定要刪除訂單「{deleteTarget?.orderNumber || deleteTarget?.orderId}」（{deleteTarget?.clientName}）？此操作無法還原。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>取消</Button>
+            <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting}>
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "確認刪除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
