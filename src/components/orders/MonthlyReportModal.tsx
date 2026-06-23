@@ -38,6 +38,22 @@ function fmtMoney(n: number): string {
   return `$${n.toLocaleString("zh-TW", { maximumFractionDigits: 0 })}`;
 }
 
+function fmtMoneyNotion(n: number): string {
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtDateNotion(iso: string): string {
+  // "2026-06-26" → "2026/06/26"
+  return iso ? iso.replace(/-/g, "/") : "";
+}
+
+const STATUS_NOTION: Record<string, string> = {
+  production: "排程 | Production",
+  waiting: "待出貨 | Waiting",
+  completed: "完成 | Completed",
+  cancelled: "取消 | Cancelled",
+};
+
 export function MonthlyReportModal({
   open,
   onClose,
@@ -63,16 +79,21 @@ export function MonthlyReportModal({
 
   function handleCsvDownload() {
     const rows = [
-      ["單號", "品項", "下單日", "金額", "出貨日", "備注"],
-      ...filtered.map((o) => [
-        o.orderNumber || o.orderId,
-        o.orderTitle || o.itemCategory || "",
-        o.orderDate || "",
-        o.quotedAmount ? String(o.quotedAmount) : "",
-        o.installDate || o.completedDate || "",
-        o.internalNotes || "",
-      ]),
-      ["", "", "總金額", String(total), "", ""],
+      ["品項", "Name", "狀態", "下單日", "出貨日", "色號", "報價", "成本", "備注"],
+      ...filtered.map((o) => {
+        const cost = (o.materialCost || 0) + (o.laborCost || 0) + (o.shippingCost || 0) + (o.otherCost || 0);
+        return [
+          o.itemCategory || "",
+          `${o.orderNumber || o.orderId} ${o.clientName}`.trim(),
+          STATUS_NOTION[o.status] ?? o.status,
+          fmtDateNotion(o.orderDate || ""),
+          fmtDateNotion(o.installDate || o.completedDate || ""),
+          o.materialCode || "",
+          o.quotedAmount ? fmtMoneyNotion(o.quotedAmount) : "",
+          cost ? fmtMoneyNotion(cost) : "",
+          o.internalNotes || "",
+        ];
+      }),
     ];
     const csv = rows
       .map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(","))
