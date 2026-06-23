@@ -123,7 +123,7 @@ const s = StyleSheet.create({
     color: C.red,
   },
   itemDimQty: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.black,
     paddingLeft: 12,
     marginBottom: 1,
@@ -299,7 +299,7 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                     <Image
                       key={pi}
                       src={url}
-                      style={{ width: 260, height: 160, objectFit: "contain", marginTop: 6 }}
+                      style={{ width: 360, height: 240, objectFit: "contain", marginTop: 8 }}
                     />
                   ))}
                   {item.subNote ? (
