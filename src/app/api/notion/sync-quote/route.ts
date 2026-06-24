@@ -23,9 +23,10 @@ function mapStatus(versionStatus: string): string {
 
 function buildProperties(version: ReturnType<typeof versionRowToRecord>) {
   const fmtMoney = (n: number) => (n ? `$${Math.round(n).toLocaleString("zh-TW")}` : "");
+  const title = version.clientNameSnapshot || version.versionLabel || version.versionId;
 
   const props: Record<string, unknown> = {
-    編號: { title: [{ text: { content: version.versionLabel || version.versionId } }] },
+    編號: { title: [{ text: { content: title } }] },
     聯絡人: { rich_text: [{ text: { content: version.clientNameSnapshot || "" } }] },
     訂製內容: { rich_text: [{ text: { content: version.projectNameSnapshot || version.quoteNameSnapshot || "" } }] },
     報價: { rich_text: [{ text: { content: fmtMoney(version.totalAmount) } }] },
@@ -40,12 +41,12 @@ function buildProperties(version: ReturnType<typeof versionRowToRecord>) {
   return props;
 }
 
-async function findExistingPage(versionLabel: string, dbId: string): Promise<string | null> {
+async function findExistingPage(title: string, dbId: string): Promise<string | null> {
   const res = await fetch(`${NOTION_API}/databases/${dbId}/query`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({
-      filter: { property: "編號", title: { equals: versionLabel } },
+      filter: { property: "編號", title: { equals: title } },
       page_size: 1,
     }),
   });
@@ -53,8 +54,30 @@ async function findExistingPage(versionLabel: string, dbId: string): Promise<str
   return data.results?.[0]?.id ?? null;
 }
 
+async function upsertImageBlock(pageId: string, imageUrl: string): Promise<void> {
+  // Remove existing image blocks
+  const blocksRes = await fetch(`${NOTION_API}/blocks/${pageId}/children`, { headers: headers() });
+  if (blocksRes.ok) {
+    const blocksData = (await blocksRes.json()) as { results?: { id: string; type: string }[] };
+    for (const block of blocksData.results ?? []) {
+      if (block.type === "image") {
+        await fetch(`${NOTION_API}/blocks/${block.id}`, { method: "DELETE", headers: headers() });
+      }
+    }
+  }
+
+  // Append new image block
+  await fetch(`${NOTION_API}/blocks/${pageId}/children`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({
+      children: [{ type: "image", image: { type: "external", external: { url: imageUrl } } }],
+    }),
+  });
+}
+
 export async function POST(req: NextRequest) {
-  const { versionId } = (await req.json()) as { versionId: string };
+  const { versionId, jpgUrl } = (await req.json()) as { versionId: string; jpgUrl?: string };
   if (!versionId) return NextResponse.json({ ok: false, error: "versionId required" }, { status: 400 });
 
   const token = process.env.NOTION_TOKEN;
@@ -74,9 +97,9 @@ export async function POST(req: NextRequest) {
 
   const version = versionRowToRecord(row);
   const properties = buildProperties(version);
-  const label = version.versionLabel || version.versionId;
+  const notionTitle = version.clientNameSnapshot || version.versionLabel || version.versionId;
 
-  const existingId = await findExistingPage(label, dbId);
+  const existingId = await findExistingPage(notionTitle, dbId);
 
   let notionPageId: string;
   let action: "created" | "updated";
@@ -106,6 +129,10 @@ export async function POST(req: NextRequest) {
     const page = (await crRes.json()) as { id: string };
     notionPageId = page.id;
     action = "created";
+  }
+
+  if (jpgUrl) {
+    await upsertImageBlock(notionPageId, jpgUrl);
   }
 
   const notionUrl = `https://notion.so/${notionPageId.replace(/-/g, "")}`;

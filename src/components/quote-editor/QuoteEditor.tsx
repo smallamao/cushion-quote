@@ -84,6 +84,7 @@ import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPri
 import {
   buildPdfFileName,
   generateAndDownloadJpg,
+  generateJpgBlob,
   generatePDFBlob,
 } from "@/components/pdf/QuotePDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
@@ -2355,10 +2356,37 @@ export function QuoteEditor() {
                 onClick={async () => {
                   setNotionSyncing(true);
                   try {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const jpgBlob = await generateJpgBlob({
+                      quoteId,
+                      quoteDate: today,
+                      validityDays: settings.quoteValidityDays,
+                      validUntil: validUntil || undefined,
+                      client: { companyName, contactName, phone, email, address, taxId },
+                      projectName,
+                      quoteName,
+                      channel,
+                      items,
+                      description,
+                      descriptionImageUrl: descriptionImageUrl || undefined,
+                      includeTax,
+                      subtotal,
+                      tax,
+                      total,
+                      termsTemplate: termsTemplate.replace(/(\d+\.)\s/g, "$1 "),
+                      settings,
+                    });
+                    const fd = new FormData();
+                    fd.append("file", new File([jpgBlob], "quote.jpg", { type: "image/jpeg" }));
+                    fd.append("folder", "notion-quotes");
+                    const upRes = await fetch("/api/upload", { method: "POST", body: fd });
+                    const upJson = (await upRes.json()) as { ok: boolean; url?: string; error?: string };
+                    if (!upJson.ok) throw new Error(upJson.error ?? "圖片上傳失敗");
+
                     const res = await fetch("/api/notion/sync-quote", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ versionId }),
+                      body: JSON.stringify({ versionId, jpgUrl: upJson.url }),
                     });
                     const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
                     if (!json.ok) { alert(json.error ?? "同步失敗"); return; }
