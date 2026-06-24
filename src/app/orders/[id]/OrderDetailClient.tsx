@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,8 @@ export function OrderDetailClient({ orderId }: Props) {
   const [activeTab, setActiveTab] = useState<"basic" | "workorder" | "finance">("basic");
   const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [statusChanging, setStatusChanging] = useState(false);
+  const [notionSyncing, setNotionSyncing] = useState(false);
+  const [notionResult, setNotionResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   // Load order on mount
   useEffect(() => {
@@ -185,6 +187,30 @@ export function OrderDetailClient({ orderId }: Props) {
     }
   }
 
+  async function handleNotionSync() {
+    setNotionSyncing(true);
+    setNotionResult(null);
+    try {
+      const res = await fetch("/api/notion/sync-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+      const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
+      if (!json.ok) {
+        setNotionResult({ ok: false, message: json.error ?? "同步失敗" });
+        return;
+      }
+      const label = json.action === "updated" ? "已更新" : "已建立";
+      setNotionResult({ ok: true, message: `Notion ${label}` });
+      if (json.notionUrl) window.open(json.notionUrl, "_blank");
+    } catch (err) {
+      setNotionResult({ ok: false, message: err instanceof Error ? err.message : "同步失敗" });
+    } finally {
+      setNotionSyncing(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -223,9 +249,9 @@ export function OrderDetailClient({ orderId }: Props) {
           <h1 className="text-xl font-bold">訂單詳情: {orderId}</h1>
         </div>
 
-        {/* Status quick buttons — admin only */}
+        {/* Status quick buttons + Notion sync — admin only */}
         {isAdmin && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {STATUS_QUICK_BUTTONS.map((btn) => (
               <button
                 key={btn.value}
@@ -247,9 +273,27 @@ export function OrderDetailClient({ orderId }: Props) {
                 {btn.label}
               </button>
             ))}
+            <div className="ml-1 h-4 w-px bg-[var(--border)]" />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={notionSyncing}
+              onClick={() => void handleNotionSync()}
+              className="h-7 text-xs"
+            >
+              {notionSyncing
+                ? <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                : <Upload className="mr-1 h-3 w-3" />}
+              同步到 Notion
+            </Button>
           </div>
         )}
       </div>
+      {notionResult && (
+        <div className={`rounded-md px-3 py-2 text-sm ${notionResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+          {notionResult.message}
+        </div>
+      )}
 
       {/* Save result feedback */}
       {saveResult && (
