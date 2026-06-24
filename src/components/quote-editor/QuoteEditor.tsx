@@ -25,6 +25,7 @@ import {
   Save,
   Trash2,
   Undo2,
+  Upload,
   X,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -656,6 +657,7 @@ export function QuoteEditor() {
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [saving, setSaving] = useState(false);
+  const [notionSyncing, setNotionSyncing] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyingVersion, setCopyingVersion] = useState(false);
@@ -2345,6 +2347,37 @@ export function QuoteEditor() {
               )}
               {saving ? "儲存中..." : isEditMode ? "更新" : "儲存"}
             </Button>
+            {versionId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={notionSyncing}
+                onClick={async () => {
+                  setNotionSyncing(true);
+                  try {
+                    const res = await fetch("/api/notion/sync-quote", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ versionId }),
+                    });
+                    const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
+                    if (!json.ok) { alert(json.error ?? "同步失敗"); return; }
+                    const label = json.action === "updated" ? "已更新" : "已建立";
+                    alert(`Notion ${label}`);
+                    if (json.notionUrl) window.open(json.notionUrl, "_blank");
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : "同步失敗");
+                  } finally {
+                    setNotionSyncing(false);
+                  }
+                }}
+                className="text-violet-600"
+                title="同步到 Notion 訂製資料"
+              >
+                {notionSyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                Notion
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
