@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, Copy, Edit, Eye, FileCheck2, FilePlus2, Loader2, ReceiptText, RefreshCw, Slash, Trash2, Wallet } from "lucide-react";
+import { ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, Copy, Edit, Eye, FileCheck2, FilePlus2, Loader2, ReceiptText, RefreshCw, Slash, Trash2, Upload, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -89,6 +89,7 @@ export function QuotesClient() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showSuperseded, setShowSuperseded] = useState(false);
   const [busyVersionId, setBusyVersionId] = useState("");
+  const [notionSyncingId, setNotionSyncingId] = useState("");
   const [contractDialogVersion, setContractDialogVersion] = useState<VersionRow | null>(null);
   const [contractDraft, setContractDraft] = useState({
     signedBack: false,
@@ -555,6 +556,35 @@ export function QuotesClient() {
           disabled={isBusy}
         >
           <Trash2 className="h-4 w-4" />
+        </button>
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            setNotionSyncingId(version.versionId);
+            try {
+              const res = await fetch("/api/notion/sync-quote", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ versionId: version.versionId }),
+              });
+              const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
+              if (!json.ok) { alert(json.error ?? "同步失敗"); return; }
+              const label = json.action === "updated" ? "已更新" : "已建立";
+              alert(`Notion ${label}`);
+              if (json.notionUrl) window.open(json.notionUrl, "_blank");
+            } catch (err) {
+              alert(err instanceof Error ? err.message : "同步失敗");
+            } finally {
+              setNotionSyncingId("");
+            }
+          }}
+          className="text-violet-500 hover:text-violet-700 transition-colors"
+          title="同步到 Notion 訂製資料"
+          disabled={notionSyncingId === version.versionId || isBusy}
+        >
+          {notionSyncingId === version.versionId
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <Upload className="h-4 w-4" />}
         </button>
       </div>
     );
