@@ -13,18 +13,26 @@ function headers() {
   };
 }
 
-const VALID_CATEGORIES = [
-  "維修", "訂製坐背墊", "訂製皮布套", "更換泡棉",
-  "訂製臥榻墊", "訂製款沙發", "床頭繃布", "到府清潔",
-];
+// System itemCategory → Notion 品項 select name
+const CATEGORY_MAP: Record<string, string> = {
+  "坐/背墊": "坐/背墊",
+  "臥榻墊": "臥榻墊",
+  "縫布裱板": "繃布裱板工程",
+  "到府清潔": "到府清潔",
+  "到府施工": "到府施工",
+  "訂製沙發": "訂製款沙發",
+  "泡棉內裏": "泡棉內裏",
+  "皮/布套": "皮/布套",
+  "維修": "維修",
+  "大和樂活": "大和樂活",
+};
 
+// System status → Notion 狀態 select name
 function mapStatus(status: string): string {
   switch (status) {
-    case "production":
-    case "completed":
-    case "delivered": return "成交";
-    case "cancelled": return "Fail";
-    default: return "詢價";
+    case "completed": return "待出貨 | Wait For Shipping";
+    case "delivered": return "完成 | Completed";
+    default: return "排程 | Production";
   }
 }
 
@@ -34,40 +42,51 @@ function buildProperties(order: CustomOrder) {
       ? order.materialPurchases!.reduce((s, p) => s + (p.amount || 0), 0)
       : order.materialCost + order.laborCost + order.shippingCost + order.otherCost;
 
-  const fmtMoney = (n: number) => (n ? `$${n.toLocaleString("zh-TW")}` : "");
+  // Collect color codes from items
+  const colorCodes = order.items
+    .map((it) => it.colorCode)
+    .filter((c): c is string => Boolean(c))
+    .join(", ");
+
+  const name = [order.clientName, order.orderTitle].filter(Boolean).join(" ");
 
   const props: Record<string, unknown> = {
-    編號: { title: [{ text: { content: order.orderNumber || order.orderId } }] },
-    聯絡人: { rich_text: [{ text: { content: order.clientName || "" } }] },
-    訂製內容: { rich_text: [{ text: { content: order.orderTitle || "" } }] },
-    報價: { rich_text: [{ text: { content: fmtMoney(order.quotedAmount) } }] },
-    估價: { rich_text: [{ text: { content: fmtMoney(totalCost) } }] },
+    Name: { title: [{ text: { content: name || order.orderNumber || order.orderId } }] },
+    報價: { number: order.quotedAmount || 0 },
+    成本: { number: totalCost || 0 },
     狀態: { select: { name: mapStatus(order.status) } },
   };
 
-  // 詢價日 — use orderDate (creation date), fallback to createdAt date part
-  const dateStr = order.orderDate || order.createdAt?.slice(0, 10) || null;
-  if (dateStr) {
-    props["詢價日"] = { date: { start: dateStr } };
+  if (order.shippingCost > 0) {
+    props["運費"] = { number: order.shippingCost };
   }
 
-  if (order.itemCategory && VALID_CATEGORIES.includes(order.itemCategory)) {
-    props["分類"] = { select: { name: order.itemCategory } };
+  if (order.orderDate) {
+    props["下單日"] = { date: { start: order.orderDate } };
+  }
+
+  if (order.installDate) {
+    props["出貨日"] = { date: { start: order.installDate } };
+  }
+
+  if (colorCodes) {
+    props["色號"] = { rich_text: [{ text: { content: colorCodes } }] };
+  }
+
+  const notionCategory = order.itemCategory ? CATEGORY_MAP[order.itemCategory] : undefined;
+  if (notionCategory) {
+    props["品項"] = { select: { name: notionCategory } };
   }
 
   return props;
 }
 
-async function findExistingPage(orderNumber: string): Promise<string | null> {
-  const dbId = process.env.NOTION_QUOTE_DB_ID!;
+async function findExistingPage(name: string, dbId: string): Promise<string | null> {
   const res = await fetch(`${NOTION_API}/databases/${dbId}/query`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({
-      filter: {
-        property: "編號",
-        title: { equals: orderNumber },
-      },
+      filter: { property: "Name", title: { equals: name } },
       page_size: 1,
     }),
   });
@@ -80,10 +99,9 @@ export async function POST(req: NextRequest) {
   if (!orderId) return NextResponse.json({ ok: false, error: "orderId required" }, { status: 400 });
 
   const token = process.env.NOTION_TOKEN;
-  const dbId = process.env.NOTION_QUOTE_DB_ID;
+  const dbId = process.env.NOTION_ORDER_DB_ID;
   if (!token || !dbId) return NextResponse.json({ ok: false, error: "Notion 未設定" }, { status: 503 });
 
-  // Fetch order from Sheets
   const client = await getSheetsClient();
   if (!client) return NextResponse.json({ ok: false, error: "Sheets 未設定" }, { status: 503 });
 
@@ -97,16 +115,16 @@ export async function POST(req: NextRequest) {
 
   const order = orderRowToRecord(row);
   const properties = buildProperties(order);
-  const orderNum = order.orderNumber || order.orderId;
+  const pageName = (order.clientName && order.orderTitle)
+    ? `${order.clientName} ${order.orderTitle}`
+    : order.orderNumber || order.orderId;
 
-  // Check if page already exists (by 編號)
-  const existingId = await findExistingPage(orderNum);
+  const existingId = await findExistingPage(pageName, dbId);
 
   let notionPageId: string;
   let action: "created" | "updated";
 
   if (existingId) {
-    // Update existing page
     const upRes = await fetch(`${NOTION_API}/pages/${existingId}`, {
       method: "PATCH",
       headers: headers(),
@@ -119,7 +137,6 @@ export async function POST(req: NextRequest) {
     notionPageId = existingId;
     action = "updated";
   } else {
-    // Create new page
     const crRes = await fetch(`${NOTION_API}/pages`, {
       method: "POST",
       headers: headers(),
