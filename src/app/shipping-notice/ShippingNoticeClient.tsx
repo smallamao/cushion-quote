@@ -164,7 +164,7 @@ async function applyDefaultChairLeg(
   const productCode = card.labels.find((l) => l.name.startsWith("成交/"))?.name.replace("成交/", "");
   const defaultValue = PRODUCTS.find((p) => p.displayName === productCode)?.defaultFoot ?? "";
   if (!defaultValue) return null;
-  const fieldId = customFields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.CHAIR_LEG)
+  const fieldId = card.idBoard !== TRELLO.BOARD_ID
     ? S_ORDER_CUSTOM_FIELDS.CHAIR_LEG
     : TRELLO.CUSTOM_FIELDS.CHAIR_LEG;
   await updateCustomField(card.id, fieldId, { text: defaultValue });
@@ -714,7 +714,7 @@ function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: Pro
       // Always update schedule day if provided
       if (scheduleDate) {
         const iso = new Date(scheduleDate).toISOString();
-        const scheduleDayFieldId = customFields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY)
+        const scheduleDayFieldId = card.idBoard !== TRELLO.BOARD_ID
           ? S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY
           : TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY;
         await updateCardScheduleDay(card.id, iso, scheduleDayFieldId);
@@ -741,7 +741,7 @@ function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: Pro
     if (existing) return;
     const defaultValue = resolveChairLeg();
     if (!defaultValue) return;
-    const fieldId = customFields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.CHAIR_LEG)
+    const fieldId = card.idBoard !== TRELLO.BOARD_ID
       ? S_ORDER_CUSTOM_FIELDS.CHAIR_LEG
       : TRELLO.CUSTOM_FIELDS.CHAIR_LEG;
     try {
@@ -1073,8 +1073,7 @@ function CustomFieldsView({
   const [saving, setSaving] = useState(false);
 
   function resolveFieldId(field: FieldDef): string {
-    // If the card has data under the S Order field ID, use that for reads/writes.
-    if (field.sOrderId && customFields.some((cf) => cf.idCustomField === field.sOrderId)) {
+    if (field.sOrderId && card.idBoard !== TRELLO.BOARD_ID) {
       return field.sOrderId;
     }
     return field.id;
@@ -2318,8 +2317,8 @@ export function ShippingNoticeClient() {
         setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, due: iso } : c)));
         setSelectedCard((prev) => (prev && prev.id === cardId ? { ...prev, due: iso } : prev));
       } else {
-        const fields = cardCustomFieldsMap[cardId] ?? [];
-        const fieldId = fields.some((cf) => cf.idCustomField === S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY)
+        const editCard = cards.find((c) => c.id === cardId) ?? selectedCard;
+        const fieldId = editCard?.idBoard !== TRELLO.BOARD_ID
           ? S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY
           : TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY;
         await updateCardScheduleDay(cardId, iso, fieldId);
