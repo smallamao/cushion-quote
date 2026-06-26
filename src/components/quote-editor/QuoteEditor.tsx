@@ -2386,7 +2386,7 @@ export function QuoteEditor() {
                     const res = await fetch("/api/notion/sync-quote", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ versionId, jpgUrl: upJson.url }),
+                      body: JSON.stringify({ versionId, jpgUrl: upJson.url, clientName: companyName || undefined }),
                     });
                     const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
                     if (!json.ok) { alert(json.error ?? "同步失敗"); return; }

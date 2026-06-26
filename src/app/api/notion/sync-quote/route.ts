@@ -77,7 +77,7 @@ async function upsertImageBlock(pageId: string, imageUrl: string): Promise<void>
 }
 
 export async function POST(req: NextRequest) {
-  const { versionId, jpgUrl } = (await req.json()) as { versionId: string; jpgUrl?: string };
+  const { versionId, jpgUrl, clientName: clientNameOverride } = (await req.json()) as { versionId: string; jpgUrl?: string; clientName?: string };
   if (!versionId) return NextResponse.json({ ok: false, error: "versionId required" }, { status: 400 });
 
   const token = process.env.NOTION_TOKEN;
@@ -96,6 +96,8 @@ export async function POST(req: NextRequest) {
   if (!row) return NextResponse.json({ ok: false, error: "報價版本不存在" }, { status: 404 });
 
   const version = versionRowToRecord(row);
+  // Prefer live clientName from request (editor state) over potentially-empty snapshot
+  if (clientNameOverride) version.clientNameSnapshot = clientNameOverride;
   const properties = buildProperties(version);
   const notionTitle = version.clientNameSnapshot || version.versionLabel || version.versionId;
 
