@@ -944,7 +944,7 @@ export function CalculatorModal({
                   <div className="space-y-1 text-xs text-orange-700">
                     {dualCai.detailMode === "equal" ? (
                       <>
-                        <div>• 逐片進位: 每片 {Math.ceil(dualCai.perPieceRaw)} 才 × {effectiveSplitCount} 片 = {dualCai.perPieceCeilTotal} 才</div>
+                        <div>• 逐片進位: 每片 {dualCai.ceiledPerPanel ?? Math.ceil(dualCai.perPieceRaw)} 才 × {effectiveSplitCount} 片 = {dualCai.perPieceCeilTotal} 才</div>
                         <div>• 整面進位: 總計 {dualCai.rawTotal.toFixed(2)} 才 → {dualCai.surfaceCeilTotal} 才</div>
                       </>
                     ) : (

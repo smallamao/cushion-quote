@@ -21,6 +21,7 @@ export interface MultiPanelCaiResult {
   surfaceCeilTotal: number;
   rawTotal: number;
   rawPerPanels: number[];
+  ceiledPerPanel?: number;
   difference: number;
 }
 
@@ -357,6 +358,7 @@ export function calculateCaiCountDual(
   perPieceCeilTotal: number;
   surfaceCeilTotal: number;
   perPieceRaw: number;
+  ceiledPerPanel: number;
   difference: number;
 } {
   // 單片原始才數（未進位）
@@ -374,6 +376,7 @@ export function calculateCaiCountDual(
     perPieceCeilTotal,
     surfaceCeilTotal,
     perPieceRaw: rawPerPanel,
+    ceiledPerPanel,
     difference: perPieceCeilTotal - surfaceCeilTotal,
   };
 }
