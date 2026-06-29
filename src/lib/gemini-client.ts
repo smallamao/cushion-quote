@@ -78,7 +78,7 @@ export async function recognizeBusinessCard(
       lineId: parsed.lineId ?? "",
       address: parsed.address ?? "",
     };
-  } catch {
-    return { ...EMPTY_RESULT };
+  } catch (err) {
+    throw err instanceof Error ? err : new Error(String(err));
   }
 }
