@@ -565,7 +565,7 @@ export function QuotesClient() {
               const res = await fetch("/api/notion/sync-quote", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ versionId: version.versionId, clientName: version.clientNameSnapshot || undefined }),
+                body: JSON.stringify({ versionId: version.versionId, clientName: version.clientNameSnapshot || version.contactNameSnapshot || undefined }),
               });
               const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
               if (!json.ok) { alert(json.error ?? "同步失敗"); return; }
