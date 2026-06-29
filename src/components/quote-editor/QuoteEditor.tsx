@@ -659,6 +659,7 @@ export function QuoteEditor() {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [saving, setSaving] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
+  const [notionMsg, setNotionMsg] = useState<{ ok: boolean; text: string; url?: string } | null>(null);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyingVersion, setCopyingVersion] = useState(false);
@@ -2389,12 +2390,16 @@ export function QuoteEditor() {
                       body: JSON.stringify({ versionId, jpgUrl: upJson.url, clientName: companyName || undefined }),
                     });
                     const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
-                    if (!json.ok) { alert(json.error ?? "同步失敗"); return; }
+                    if (!json.ok) {
+                      setNotionMsg({ ok: false, text: json.error ?? "同步失敗" });
+                      return;
+                    }
                     const label = json.action === "updated" ? "已更新" : "已建立";
-                    alert(`Notion ${label}`);
                     if (json.notionUrl) window.open(json.notionUrl, "_blank");
+                    setNotionMsg({ ok: true, text: `Notion ${label}`, url: json.notionUrl });
+                    setTimeout(() => setNotionMsg(null), 8000);
                   } catch (err) {
-                    alert(err instanceof Error ? err.message : "同步失敗");
+                    setNotionMsg({ ok: false, text: err instanceof Error ? err.message : "同步失敗" });
                   } finally {
                     setNotionSyncing(false);
                   }
@@ -2458,6 +2463,20 @@ export function QuoteEditor() {
           </div>
         )}
       </div>
+
+      {notionMsg && (
+        <div className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm ${notionMsg.ok ? "bg-violet-50 text-violet-700" : "bg-red-50 text-red-700"}`}>
+          <span>{notionMsg.text}</span>
+          <div className="flex items-center gap-2">
+            {notionMsg.url && (
+              <a href={notionMsg.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:opacity-80">
+                開啟 Notion
+              </a>
+            )}
+            <button onClick={() => setNotionMsg(null)} className="opacity-60 hover:opacity-100">✕</button>
+          </div>
+        </div>
+      )}
 
       <div className={isMobile ? "space-y-2" : "flex flex-wrap items-center gap-3"}>
         <div className="flex items-center gap-2">
