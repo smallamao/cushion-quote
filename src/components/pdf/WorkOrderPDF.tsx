@@ -325,10 +325,9 @@ const s = StyleSheet.create({
 
   // ── Notes section ─────────────────────────────────────────────────────────
   notesBlock: {
-    borderTopWidth: 1,
-    borderTopColor: T.borderMid,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 0,
+    paddingVertical: 6,
+    marginTop: 4,
   },
   notesSectionLabel: {
     fontSize: 7,
