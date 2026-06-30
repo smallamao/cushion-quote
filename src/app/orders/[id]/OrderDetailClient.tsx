@@ -350,6 +350,16 @@ export function OrderDetailClient({ orderId }: Props) {
                   />
                 </div>
 
+                {/* 客戶 */}
+                <div>
+                  <Label>客戶</Label>
+                  <Input
+                    value={draft.clientName}
+                    onChange={(e) => updateDraft("clientName", e.target.value)}
+                    placeholder="客戶名稱"
+                  />
+                </div>
+
                 {/* 訂製內容 */}
                 <div>
                   <Label>訂製內容</Label>

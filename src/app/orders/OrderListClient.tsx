@@ -404,6 +404,7 @@ export function OrderListClient() {
                 <th className="px-3 py-2 text-left">客戶</th>
                 <th className="px-3 py-2 text-left hidden md:table-cell">品項分類</th>
                 <th className="px-3 py-2 text-left">訂製內容</th>
+                <th className="px-3 py-2 text-left hidden xl:table-cell">備注</th>
                 <th className="px-3 py-2 text-left">狀態</th>
                 <th className="px-3 py-2 text-left hidden lg:table-cell">下單日</th>
                 <th className="px-3 py-2 text-left hidden lg:table-cell">安裝/出貨日</th>
@@ -413,7 +414,7 @@ export function OrderListClient() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-12 text-center">
+                  <td colSpan={9} className="px-3 py-12 text-center">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-[var(--text-secondary)]" />
                   </td>
                 </tr>
@@ -421,7 +422,7 @@ export function OrderListClient() {
               {!loading && filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-3 py-12 text-center text-sm text-[var(--text-tertiary)]"
                   >
                     尚無符合的訂單
@@ -442,13 +443,18 @@ export function OrderListClient() {
                           {order.orderNumber || order.orderId}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-sm">{order.clientName}</td>
+                      <td className="px-3 py-2 text-sm">{order.clientName || "—"}</td>
                       <td className="px-3 py-2 text-xs text-[var(--text-secondary)] hidden md:table-cell">
                         {order.itemCategory || "—"}
                       </td>
                       <td className="px-3 py-2">
                         <div className="max-w-xs truncate text-xs text-[var(--text-secondary)]">
                           {order.orderTitle || "—"}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 hidden xl:table-cell">
+                        <div className="max-w-[180px] truncate text-xs text-[var(--text-secondary)]">
+                          {order.internalNotes || "—"}
                         </div>
                       </td>
                       <td className="px-3 py-2">
