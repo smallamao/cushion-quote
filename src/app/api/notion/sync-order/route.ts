@@ -48,7 +48,8 @@ function buildProperties(order: CustomOrder) {
     .filter((c): c is string => Boolean(c))
     .join(", ");
 
-  const name = [order.clientName, order.orderTitle].filter(Boolean).join(" ");
+  // Notion 命名慣例：「工單編號 客戶名」（例：S896 吳燕君）
+  const name = [order.orderNumber, order.clientName].filter(Boolean).join(" ");
 
   const props: Record<string, unknown> = {
     Name: { title: [{ text: { content: name || order.orderNumber || order.orderId } }] },
@@ -134,9 +135,7 @@ export async function POST(req: NextRequest) {
 
   const order = orderRowToRecord(row);
   const properties = buildProperties(order);
-  const pageName = (order.clientName && order.orderTitle)
-    ? `${order.clientName} ${order.orderTitle}`
-    : order.orderNumber || order.orderId;
+  const pageName = [order.orderNumber, order.clientName].filter(Boolean).join(" ") || order.orderId;
 
   const existingId = await findExistingPage(pageName, dbId);
 
