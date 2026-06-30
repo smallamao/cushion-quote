@@ -61,22 +61,27 @@ const s = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // ── Card header: order number + order type + swatch thumbnail ────────────
+  // ── Header section: left info column + right swatch ─────────────────────
+  // Left: 編號 row + 材質 row stacked; Right: swatch spans full height
   cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: 0,
     paddingTop: 10,
-    paddingBottom: 8,
+    paddingBottom: 6,
   },
+  // left column wraps both 編號 and 材質
   cardHeaderLeft: {
     flex: 1,
+    flexDirection: "column",
+  },
+  // 編號：S882  訂製坐墊 on one line
+  headerOrderRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    gap: 10,
+    marginBottom: 6,
   },
   orderNumberPrefix: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     color: T.inkFaint,
     marginRight: 2,
@@ -86,24 +91,25 @@ const s = StyleSheet.create({
     fontWeight: 700,
     color: T.ink,
     letterSpacing: 0.3,
+    marginRight: 10,
   },
   orderTitleText: {
     fontSize: 13,
     fontWeight: 700,
     color: T.inkMid,
   },
-  // Swatch: larger thumbnail now that lines are gone
+  // Swatch: standalone right column, no text crammed in
   swatchBlock: {
-    width: 110,
-    height: 80,
+    width: 120,
+    height: 90,
     flexShrink: 0,
-    marginLeft: 10,
+    marginLeft: 12,
     borderWidth: 1,
     borderColor: T.borderLight,
   },
   swatchImg: {
-    width: 110,
-    height: 80,
+    width: 120,
+    height: 90,
     objectFit: "cover",
   },
   // placeholder styles (unused but kept for TS compatibility)
@@ -436,20 +442,39 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
         <View style={s.card}>
 
           {/* ── 1. Card header: S-number + order type + swatch ───────── */}
+          {/* ── 1. Header: left info col + right swatch ──────────────── */}
           <View style={s.cardHeader}>
 
-            {/* Left: 編號：S882  訂製坐墊 */}
+            {/* Left column: 編號 row + 材質 row stacked */}
             <View style={s.cardHeaderLeft}>
-              <Text style={s.orderNumberPrefix}>編號：</Text>
-              <Text style={s.orderNumber}>
-                {safeText(order.orderNumber || order.orderId)}
-              </Text>
-              {order.orderTitle ? (
-                <Text style={s.orderTitleText}>{safeText(order.orderTitle)}</Text>
+
+              {/* 編號：S882  訂製坐墊 */}
+              <View style={s.headerOrderRow}>
+                <Text style={s.orderNumberPrefix}>編號：</Text>
+                <Text style={s.orderNumber}>
+                  {safeText(order.orderNumber || order.orderId)}
+                </Text>
+                {order.orderTitle ? (
+                  <Text style={s.orderTitleText}>{safeText(order.orderTitle)}</Text>
+                ) : null}
+              </View>
+
+              {/* 材質 — directly below 編號, no gap */}
+              {(order.materialName || order.materialCode) ? (
+                <View style={s.materialRow}>
+                  <Text style={s.materialLabel}>材質</Text>
+                  {order.materialName ? (
+                    <Text style={s.materialName}>{safeText(order.materialName)}</Text>
+                  ) : null}
+                  {order.materialCode ? (
+                    <Text style={s.materialCode}>{safeText(order.materialCode)}</Text>
+                  ) : null}
+                </View>
               ) : null}
+
             </View>
 
-            {/* Right: fabric swatch thumbnail — image only, no text */}
+            {/* Right: swatch image — standalone, larger */}
             {hasSwatch ? (
               <View style={s.swatchBlock}>
                 {/* eslint-disable-next-line jsx-a11y/alt-text */}
@@ -458,19 +483,6 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
             ) : null}
 
           </View>
-
-          {/* ── 1b. Material row — full width, large text ─────────────── */}
-          {(order.materialName || order.materialCode) ? (
-            <View style={s.materialRow}>
-              <Text style={s.materialLabel}>材質</Text>
-              {order.materialName ? (
-                <Text style={s.materialName}>{safeText(order.materialName)}</Text>
-              ) : null}
-              {order.materialCode ? (
-                <Text style={s.materialCode}>{safeText(order.materialCode)}</Text>
-              ) : null}
-            </View>
-          ) : null}
 
           {/* ── 2. Meta strip ────────────────────────────────────────── */}
           {metaCells.length > 0 ? (
