@@ -642,3 +642,44 @@ export async function generateWorkOrderPdfBlob(
 ): Promise<Blob> {
   return pdf(<WorkOrderDocument {...props} />).toBlob();
 }
+
+// Browser-only: render page 1 of work order to JPEG (for Notion image block)
+export async function generateWorkOrderJpgBlob(
+  props: WorkOrderPDFProps,
+  options: { quality?: number; scale?: number } = {},
+): Promise<Blob> {
+  const { quality = 0.92, scale = 2 } = options;
+
+  const pdfBlob = await generateWorkOrderPdfBlob(props);
+  const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+
+  interface WoPdfjsLib {
+    GlobalWorkerOptions: { workerSrc: string };
+    getDocument(params: { data: Uint8Array }): { promise: Promise<{ getPage(n: number): Promise<{ getViewport(p: { scale: number }): { width: number; height: number }; render(p: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number }; canvas: HTMLCanvasElement }): { promise: Promise<void> } }> }> };
+  }
+  // @ts-expect-error runtime import from public/, bypasses webpack
+  const pdfjs = await import(/* webpackIgnore: true */ "/pdf.min.mjs") as WoPdfjsLib;
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+  const pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(pdfArrayBuffer) }).promise;
+  const page = await pdfDoc.getPage(1);
+  const viewport = page.getViewport({ scale });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas 2d context not available");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => { if (blob) resolve(blob); else reject(new Error("canvas toBlob failed")); },
+      "image/jpeg",
+      quality,
+    );
+  });
+}

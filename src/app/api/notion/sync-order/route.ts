@@ -94,8 +94,27 @@ async function findExistingPage(name: string, dbId: string): Promise<string | nu
   return data.results?.[0]?.id ?? null;
 }
 
+async function upsertImageBlock(pageId: string, imageUrl: string): Promise<void> {
+  const blocksRes = await fetch(`${NOTION_API}/blocks/${pageId}/children`, { headers: headers() });
+  if (blocksRes.ok) {
+    const blocksData = (await blocksRes.json()) as { results?: { id: string; type: string }[] };
+    for (const block of blocksData.results ?? []) {
+      if (block.type === "image") {
+        await fetch(`${NOTION_API}/blocks/${block.id}`, { method: "DELETE", headers: headers() });
+      }
+    }
+  }
+  await fetch(`${NOTION_API}/blocks/${pageId}/children`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({
+      children: [{ type: "image", image: { type: "external", external: { url: imageUrl } } }],
+    }),
+  });
+}
+
 export async function POST(req: NextRequest) {
-  const { orderId } = (await req.json()) as { orderId: string };
+  const { orderId, jpgUrl } = (await req.json()) as { orderId: string; jpgUrl?: string };
   if (!orderId) return NextResponse.json({ ok: false, error: "orderId required" }, { status: 400 });
 
   const token = process.env.NOTION_TOKEN;
@@ -149,6 +168,10 @@ export async function POST(req: NextRequest) {
     const page = (await crRes.json()) as { id: string };
     notionPageId = page.id;
     action = "created";
+  }
+
+  if (jpgUrl) {
+    await upsertImageBlock(notionPageId, jpgUrl);
   }
 
   const notionUrl = `https://notion.so/${notionPageId.replace(/-/g, "")}`;

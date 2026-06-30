@@ -26,6 +26,7 @@ import type {
   OrderStatus,
 } from "@/lib/types";
 import { FinanceTab } from "./FinanceTab";
+import { generateWorkOrderJpgBlob } from "@/components/pdf/WorkOrderPDF";
 import { WorkorderTab } from "./WorkorderTab";
 
 interface Props {
@@ -188,13 +189,28 @@ export function OrderDetailClient({ orderId }: Props) {
   }
 
   async function handleNotionSync() {
+    if (!order) return;
     setNotionSyncing(true);
     setNotionResult(null);
     try {
+      // Generate work order JPG and upload to Cloudinary
+      let jpgUrl: string | undefined;
+      try {
+        const jpgBlob = await generateWorkOrderJpgBlob({ order });
+        const fd = new FormData();
+        fd.append("file", new File([jpgBlob], "workorder.jpg", { type: "image/jpeg" }));
+        fd.append("folder", "notion-workorders");
+        const upRes = await fetch("/api/upload", { method: "POST", body: fd });
+        const upJson = (await upRes.json()) as { url?: string };
+        jpgUrl = upJson.url;
+      } catch {
+        // Non-fatal: sync without image if JPG generation fails
+      }
+
       const res = await fetch("/api/notion/sync-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify({ orderId, jpgUrl }),
       });
       const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
       if (!json.ok) {
