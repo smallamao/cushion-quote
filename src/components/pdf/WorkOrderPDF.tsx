@@ -76,6 +76,12 @@ const s = StyleSheet.create({
     alignItems: "baseline",
     gap: 10,
   },
+  orderNumberPrefix: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: T.inkFaint,
+    marginRight: 2,
+  },
   orderNumber: {
     fontSize: 22,
     fontWeight: 700,
@@ -207,123 +213,97 @@ const s = StyleSheet.create({
     marginRight: 5,
   },
 
-  // Normal item row
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
+  // ── Item list (原版清單格式，非欄位表格) ────────────────────────────────
+  // Each item: bullet + name line, then indented dim+qty line
+  itemEntry: {
+    paddingVertical: 7,
+    paddingLeft: 2,
     borderBottomWidth: 1,
     borderBottomColor: T.borderLight,
-    minHeight: 52,
   },
 
-  // Col: 品名 — 80pt wide (wider for material sub-line), right-bordered
-  colName: {
-    width: 80,
+  // Line 1: • 品名  泡棉規格
+  itemLine1: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginBottom: 3,
+  },
+  itemBullet: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: T.inkMid,
+    marginRight: 6,
     flexShrink: 0,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    justifyContent: "center",
-    borderRightWidth: 1,
-    borderRightColor: T.borderMid,
   },
   itemName: {
     fontSize: 13,
     fontWeight: 700,
     color: T.ink,
-    marginBottom: 3,
-  },
-  itemColorCode: {
-    fontSize: 10,
-    fontWeight: 700,
-    color: T.danger,
-    marginTop: 1,
-  },
-
-  // Col: 尺寸規格 — flex, right-bordered
-  colDim: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    justifyContent: "center",
-    borderRightWidth: 1,
-    borderRightColor: T.borderMid,
-  },
-  itemDim: {
-    fontSize: 20,
-    fontWeight: 700,
-    color: T.ink,
-    lineHeight: 1.25,
-  },
-  itemSubNote: {
-    fontSize: 9,
-    color: T.inkMid,
-    marginTop: 3,
-    lineHeight: 1.4,
-  },
-
-  // Col: 數量 — 72pt, right-bordered, quantity is #1 factory check
-  colQty: {
-    width: 72,
-    flexShrink: 0,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRightWidth: 1,
-    borderRightColor: T.borderMid,
-  },
-  itemQty: {
-    fontSize: 24,
-    fontWeight: 700,
-    color: T.ink,
-    textAlign: "center",
-  },
-  itemQtyLabel: {
-    fontSize: 7,
-    color: T.inkFaint,
-    textAlign: "center",
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
-
-  // Col: 泡棉規格 — 90pt, more breathing room
-  colFoam: {
-    width: 90,
-    flexShrink: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    justifyContent: "center",
-  },
-  colFoamLabel: {
-    fontSize: 7,
-    color: T.inkFaint,
-    letterSpacing: 0.5,
-    marginBottom: 4,
+    marginRight: 10,
   },
   itemFoamDefault: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     color: T.inkMid,
-    lineHeight: 1.4,
   },
   itemFoamWarn: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     color: T.warnText,
-    lineHeight: 1.4,
   },
   itemFoamDanger: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     color: T.danger,
-    lineHeight: 1.4,
   },
 
-  // Per-item photo strip (inside dim column)
+  // Line 2 (indented): 尺寸  ×  數量
+  itemLine2: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    paddingLeft: 19,
+    marginBottom: 2,
+  },
+  itemDim: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: T.ink,
+  },
+  itemQtySep: {
+    fontSize: 14,
+    color: T.inkFaint,
+    marginHorizontal: 6,
+  },
+  itemQty: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: T.ink,
+  },
+
+  // Color code / material code per item (indented, red)
+  itemColorCode: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: T.danger,
+    paddingLeft: 19,
+    marginBottom: 2,
+  },
+
+  // Sub-note per item
+  itemSubNote: {
+    fontSize: 10,
+    color: T.inkMid,
+    paddingLeft: 19,
+    lineHeight: 1.4,
+    marginBottom: 2,
+  },
+
+  // Per-item photo strip
   itemPhotoStrip: {
     flexDirection: "row",
     gap: 4,
     marginTop: 5,
+    paddingLeft: 19,
     flexWrap: "wrap",
   },
   itemPhoto: {
@@ -333,6 +313,15 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.borderLight,
   },
+
+  // placeholder styles (kept for TS compatibility)
+  colName: { display: "none" },
+  colDim: { display: "none" },
+  colQty: { display: "none" },
+  colFoam: { display: "none" },
+  colFoamLabel: { display: "none" },
+  itemRow: { display: "none" },
+  itemQtyLabel: { display: "none" },
 
   // ── Notes section ─────────────────────────────────────────────────────────
   notesBlock: {
@@ -455,8 +444,9 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           {/* ── 1. Card header: S-number + order type + swatch ───────── */}
           <View style={s.cardHeader}>
 
-            {/* Left: order number + order type */}
+            {/* Left: 編號：S882  訂製坐墊 */}
             <View style={s.cardHeaderLeft}>
+              <Text style={s.orderNumberPrefix}>編號：</Text>
               <Text style={s.orderNumber}>
                 {safeText(order.orderNumber || order.orderId)}
               </Text>
@@ -531,53 +521,51 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                 const hasPerItemPhotos = (item.photos ?? []).length > 0;
 
                 return (
-                  <View key={item.id} style={s.itemRow}>
+                  <View key={item.id} style={s.itemEntry}>
 
-                    {/* Col 1: 品名 + color code */}
-                    <View style={s.colName}>
+                    {/* Line 1: • 品名  泡棉規格 */}
+                    <View style={s.itemLine1}>
+                      <Text style={s.itemBullet}>•</Text>
                       <Text style={s.itemName}>{safeText(item.name)}</Text>
-                      {item.colorCode ? (
-                        <Text style={s.itemColorCode}>{safeText(item.colorCode)}</Text>
-                      ) : null}
-                    </View>
-
-                    {/* Col 2: 尺寸規格 (22pt) + sub-note + per-item photos */}
-                    <View style={s.colDim}>
-                      {item.dimensions ? (
-                        <Text style={s.itemDim}>{safeText(item.dimensions)}</Text>
-                      ) : null}
-                      {item.subNote ? (
-                        <Text style={s.itemSubNote}>{safeText(item.subNote)}</Text>
-                      ) : null}
-                      {hasPerItemPhotos ? (
-                        <View style={s.itemPhotoStrip}>
-                          {(item.photos ?? []).slice(0, 4).map((url, pi) => (
-                            /* eslint-disable-next-line jsx-a11y/alt-text */
-                            <Image key={pi} src={url} style={s.itemPhoto} />
-                          ))}
-                        </View>
-                      ) : null}
-                    </View>
-
-                    {/* Col 3: 數量 (26pt — biggest on page) */}
-                    <View style={s.colQty}>
-                      {item.quantity ? (
-                        <>
-                          <Text style={s.itemQty}>{safeText(item.quantity)}</Text>
-                          <Text style={s.itemQtyLabel}>數量</Text>
-                        </>
-                      ) : null}
-                    </View>
-
-                    {/* Col 4: 泡棉規格 */}
-                    <View style={s.colFoam}>
                       {item.foamSpec ? (
-                        <>
-                          <Text style={s.colFoamLabel}>泡棉規格</Text>
-                          <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
-                        </>
+                        <Text style={foamStyle}>{safeText(item.foamSpec)}</Text>
                       ) : null}
                     </View>
+
+                    {/* Line 2 (indented): 尺寸 × 數量 */}
+                    {(item.dimensions || item.quantity) ? (
+                      <View style={s.itemLine2}>
+                        {item.dimensions ? (
+                          <Text style={s.itemDim}>{safeText(item.dimensions)}</Text>
+                        ) : null}
+                        {item.dimensions && item.quantity ? (
+                          <Text style={s.itemQtySep}>×</Text>
+                        ) : null}
+                        {item.quantity ? (
+                          <Text style={s.itemQty}>{safeText(item.quantity)}</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+
+                    {/* Color code per item (if different) */}
+                    {item.colorCode ? (
+                      <Text style={s.itemColorCode}>{safeText(item.colorCode)}</Text>
+                    ) : null}
+
+                    {/* Sub-note */}
+                    {item.subNote ? (
+                      <Text style={s.itemSubNote}>{safeText(item.subNote)}</Text>
+                    ) : null}
+
+                    {/* Per-item photos */}
+                    {hasPerItemPhotos ? (
+                      <View style={s.itemPhotoStrip}>
+                        {(item.photos ?? []).slice(0, 4).map((url, pi) => (
+                          /* eslint-disable-next-line jsx-a11y/alt-text */
+                          <Image key={pi} src={url} style={s.itemPhoto} />
+                        ))}
+                      </View>
+                    ) : null}
 
                   </View>
                 );
