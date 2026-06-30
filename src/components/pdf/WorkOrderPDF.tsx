@@ -64,11 +64,10 @@ const s = StyleSheet.create({
   // ── Card header: order number + order type + swatch thumbnail ────────────
   cardHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingHorizontal: 0,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: T.borderMid,
+    paddingTop: 10,
+    paddingBottom: 8,
   },
   cardHeaderLeft: {
     flex: 1,
@@ -93,18 +92,18 @@ const s = StyleSheet.create({
     fontWeight: 700,
     color: T.inkMid,
   },
-  // Swatch: image-only thumbnail, no text crammed in
+  // Swatch: larger thumbnail now that lines are gone
   swatchBlock: {
-    width: 80,
-    height: 56,
+    width: 110,
+    height: 80,
     flexShrink: 0,
-    marginLeft: 8,
+    marginLeft: 10,
     borderWidth: 1,
     borderColor: T.borderLight,
   },
   swatchImg: {
-    width: 80,
-    height: 56,
+    width: 110,
+    height: 80,
     objectFit: "cover",
   },
   // placeholder styles (unused but kept for TS compatibility)
@@ -113,13 +112,12 @@ const s = StyleSheet.create({
   swatchMaterialName: { display: "none" },
   swatchCode: { display: "none" },
 
-  // ── Material row — full width, large & readable ───────────────────────────
+  // ── Material row — no border, spacing only ────────────────────────────────
   materialRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    paddingVertical: 7,
-    borderBottomWidth: 1,
-    borderBottomColor: T.borderMid,
+    paddingVertical: 4,
+    marginBottom: 6,
   },
   materialLabel: {
     fontSize: 9,
@@ -141,24 +139,22 @@ const s = StyleSheet.create({
     color: T.danger,
   },
 
-  // ── Meta strip (安裝日 / 交期 / 客戶) ────────────────────────────────────
+  // ── Meta strip (安裝日 / 交期 / 客戶) — no borders, spacing only ─────────
   metaStrip: {
     flexDirection: "row",
     alignItems: "stretch",
-    borderBottomWidth: 1,
-    borderBottomColor: T.borderMid,
+    marginBottom: 8,
   },
   metaCell: {
     flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRightWidth: 1,
-    borderRightColor: T.borderLight,
+    paddingHorizontal: 0,
+    paddingRight: 16,
+    paddingVertical: 2,
   },
   metaCellLast: {
     flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 0,
+    paddingVertical: 2,
   },
   metaCellLabel: {
     fontSize: 7,
@@ -213,13 +209,11 @@ const s = StyleSheet.create({
     marginRight: 5,
   },
 
-  // ── Item list (原版清單格式，非欄位表格) ────────────────────────────────
-  // Each item: bullet + name line, then indented dim+qty line
+  // ── Item list — no border lines between items, spacing only ──────────────
   itemEntry: {
-    paddingVertical: 7,
+    paddingVertical: 6,
     paddingLeft: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: T.borderLight,
+    marginBottom: 2,
   },
 
   // Line 1: • 品名  泡棉規格
