@@ -1210,6 +1210,8 @@ export interface CustomOrder {
   materialName: string;
   materialCode: string;
   materialImageUrl: string;
+  /** 工單 PDF 色票圖大小縮放（1=預設，範圍約 0.6~1.3）；操作者可在工單編輯頁調整 */
+  materialImageScale?: number;
   deadline: string;
   items: OrderItem[];
   notes: OrderNote[];

@@ -100,17 +100,18 @@ const s = StyleSheet.create({
   },
   // Swatch: standalone right column, no text crammed in
   swatchBlock: {
-    width: 120,
-    height: 90,
-    flexShrink: 0,
-    marginLeft: 12,
-    borderWidth: 1,
-    borderColor: T.borderLight,
+    width: 180,
+    height: 135,
+    // 絕對定位浮在右上角，脫離排版流，避免撐高表頭、讓訂製內容能往上補
+    position: "absolute",
+    top: 6,
+    right: 0,
   },
   swatchImg: {
-    width: 120,
-    height: 90,
-    objectFit: "cover",
+    width: 180,
+    height: 135,
+    // contain：完整顯示使用者裁切後的材質圖，不再被框二次裁切（必要時留白）
+    objectFit: "contain",
   },
   // placeholder styles (unused but kept for TS compatibility)
   swatchCaption: { display: "none" },
@@ -426,12 +427,16 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
   const photoUrls = order.photos.slice(0, 6);
   const hasPhotos = photoUrls.length > 0;
   const hasSwatch = Boolean(order.materialImageUrl);
+  // 色票大小：操作者在工單編輯頁調整，基準 180×135，夾在 0.6~1.3 倍避免破版
+  const swatchScale = Math.min(Math.max(order.materialImageScale ?? 1, 0.6), 1.3);
+  const swatchW = Math.round(180 * swatchScale);
+  const swatchH = Math.round(135 * swatchScale);
 
   // Build meta cells — only include fields that have values
   const metaCells: Array<{ label: string; value: string; variant: "normal" | "danger" | "warn" }> = [];
   if (order.deadline)     metaCells.push({ label: "交期",   value: safeText(order.deadline),     variant: "danger" });
   if (order.installDate)  metaCells.push({ label: "安裝日", value: safeText(order.installDate),  variant: "warn"   });
-  if (order.clientName)   metaCells.push({ label: "客戶",   value: safeText(order.clientName),   variant: "normal" });
+  // 客戶不顯示在施工工單上（隱私／現場不需要）
 
   return (
     <Document title={`施工工單 ${order.orderNumber || order.orderId}`}>
@@ -440,8 +445,15 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
         {/* ── Outer card ─────────────────────────────────────────────── */}
         <View style={s.card}>
 
-          {/* ── 1. Card header: S-number + order type + swatch ───────── */}
-          {/* ── 1. Header: left info col + right swatch ──────────────── */}
+          {/* Swatch floats top-right (absolute), out of flow, so 訂製內容 moves up */}
+          {hasSwatch ? (
+            <View style={[s.swatchBlock, { width: swatchW, height: swatchH }]}>
+              {/* eslint-disable-next-line jsx-a11y/alt-text */}
+              <Image src={order.materialImageUrl} style={[s.swatchImg, { width: swatchW, height: swatchH }]} />
+            </View>
+          ) : null}
+
+          {/* ── 1. Header: left info col ──────────────────────────────── */}
           <View style={s.cardHeader}>
 
             {/* Left column: 編號 row + 材質 row stacked */}
@@ -472,14 +484,6 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
               ) : null}
 
             </View>
-
-            {/* Right: swatch image — standalone, larger */}
-            {hasSwatch ? (
-              <View style={s.swatchBlock}>
-                {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                <Image src={order.materialImageUrl} style={s.swatchImg} />
-              </View>
-            ) : null}
 
           </View>
 

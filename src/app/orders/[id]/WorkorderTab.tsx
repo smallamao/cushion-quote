@@ -121,7 +121,7 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
                 <img
                   src={draft.materialImageUrl}
                   alt="材料"
-                  className="h-28 w-28 rounded border object-cover"
+                  className="h-28 w-28 rounded border object-contain bg-[var(--bg-subtle)]"
                 />
                 <button
                   type="button"
@@ -171,6 +171,29 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
               )}
             </div>
           </div>
+
+          {draft.materialImageUrl && (
+            <div className="mt-3 max-w-xs">
+              <div className="flex items-center justify-between">
+                <Label>工單色票大小</Label>
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {Math.round((draft.materialImageScale ?? 1) * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.6}
+                max={1.3}
+                step={0.05}
+                value={draft.materialImageScale ?? 1}
+                onChange={(e) => updateDraft("materialImageScale", Number(e.target.value))}
+                className="mt-1 w-full accent-[var(--accent)]"
+              />
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                調整工單 PDF 右上角色票圖的大小（不影響裁切，只改顯示尺寸）
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
