@@ -141,7 +141,7 @@ export function NewOrderClient() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          直接建立（B2B）
+          直接建立（直客／B2B）
         </button>
       </div>
 
@@ -177,7 +177,7 @@ export function NewOrderClient() {
         </form>
       )}
 
-      {/* Mode B: direct B2B */}
+      {/* Mode B: direct create (直客／B2B, no quote) */}
       {mode === "direct" && (
         <form onSubmit={handleSubmitDirect} className="space-y-4">
           <div className="space-y-2">
