@@ -2412,7 +2412,8 @@ export function ShippingNoticeClient() {
               e.target.setSelectionRange(len, len);
             }}
             placeholder="P1234"
-            inputMode="decimal"
+            // 空欄位時用文字鍵盤（可打開頭英文，如 P/S/L），有字之後切數字鍵盤輸入號碼
+            inputMode={query.length === 0 ? "text" : "decimal"}
             className="pl-9"
           />
         </div>
