@@ -127,7 +127,7 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   materialLabel: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
@@ -144,6 +144,24 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: 700,
     color: T.danger,
+  },
+
+  // ── 安裝日 / 交期：與材質同款的 inline「標籤＋值」，放左欄材質下方 ──────────
+  metaInlineRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginBottom: 4,
+  },
+  metaInlineLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: T.inkFaint,
+    letterSpacing: 0.8,
+    marginRight: 10,
+  },
+  metaInlineValue: {
+    fontSize: 14,
+    fontWeight: 700,
   },
 
   // ── Meta strip (安裝日 / 交期 / 客戶) — no borders, spacing only ─────────
@@ -331,7 +349,7 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
   notesSectionLabel: {
-    fontSize: 7,
+    fontSize: 12,
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
@@ -435,7 +453,7 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
   // Build meta cells — only include fields that have values
   const metaCells: Array<{ label: string; value: string; variant: "normal" | "danger" | "warn" }> = [];
   if (order.deadline)     metaCells.push({ label: "交期",   value: safeText(order.deadline),     variant: "danger" });
-  if (order.installDate)  metaCells.push({ label: "安裝日", value: safeText(order.installDate),  variant: "warn"   });
+  if (order.installDate)  metaCells.push({ label: "安裝日", value: safeText(order.installDate),  variant: "normal" });
   // 客戶不顯示在施工工單上（隱私／現場不需要）
 
   return (
@@ -483,29 +501,23 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                 </View>
               ) : null}
 
-            </View>
-
-          </View>
-
-          {/* ── 2. Meta strip ────────────────────────────────────────── */}
-          {metaCells.length > 0 ? (
-            <View style={s.metaStrip}>
-              {metaCells.map((cell, i) => {
-                const isLast = i === metaCells.length - 1;
-                const cellStyle = isLast ? s.metaCellLast : s.metaCell;
-                const valueStyle =
-                  cell.variant === "danger" ? s.metaCellValueDanger
-                  : cell.variant === "warn"  ? s.metaCellValueWarn
-                  : s.metaCellValue;
+              {/* 安裝日 / 交期 — inline，格式與位置比照材質 */}
+              {metaCells.map((cell) => {
+                const color =
+                  cell.variant === "danger" ? T.danger
+                  : cell.variant === "warn"  ? T.warnText
+                  : T.ink;
                 return (
-                  <View key={cell.label} style={cellStyle}>
-                    <Text style={s.metaCellLabel}>{cell.label}</Text>
-                    <Text style={valueStyle}>{cell.value}</Text>
+                  <View key={cell.label} style={s.metaInlineRow}>
+                    <Text style={s.metaInlineLabel}>{cell.label}</Text>
+                    <Text style={[s.metaInlineValue, { color }]}>{cell.value}</Text>
                   </View>
                 );
               })}
+
             </View>
-          ) : null}
+
+          </View>
 
           {/* ── 3. Item rows ─────────────────────────────────────────── */}
           {hasItems ? (
