@@ -36,7 +36,7 @@ const CATEGORIES: PurchaseProductCategory[] = [
   "其他",
 ];
 
-const UNITS: PurchaseUnit[] = ["碼", "才", "米", "只", "片", "件", "組", "包", "個"];
+const UNITS: PurchaseUnit[] = ["碼", "才", "米", "只", "對", "片", "件", "組", "包", "個"];
 
 const EMPTY_PRODUCT: PurchaseProduct = {
   id: "",

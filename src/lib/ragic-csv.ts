@@ -119,7 +119,7 @@ function mapCategory(raw: string): PurchaseProductCategory {
 }
 
 function mapUnit(raw: string): PurchaseUnit {
-  const allowed: PurchaseUnit[] = ["碼", "才", "米", "只", "片", "件", "組", "包", "個"];
+  const allowed: PurchaseUnit[] = ["碼", "才", "米", "只", "片", "件", "組", "包", "個", "對"];
   if (allowed.includes(raw as PurchaseUnit)) return raw as PurchaseUnit;
   return "碼";
 }

@@ -63,6 +63,7 @@ const UNIT_OPTIONS: PurchaseUnit[] = [
   "小才",
   "米",
   "只",
+  "對",
   "片",
   "件",
   "組",

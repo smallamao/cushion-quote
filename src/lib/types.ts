@@ -869,7 +869,7 @@ export type PurchaseProductCategory =
   | "五金" // 五金配件
   | "其他"; // 其他材料
 
-export type PurchaseUnit = "碼" | "才" | "小才" | "米" | "只" | "片" | "件" | "組" | "包" | "個";
+export type PurchaseUnit = "碼" | "才" | "小才" | "米" | "只" | "片" | "件" | "組" | "包" | "個" | "對";
 
 export type InventoryTransactionType =
   | "opening"
