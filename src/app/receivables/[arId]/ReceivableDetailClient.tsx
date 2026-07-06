@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowLeft, Loader2, Wallet } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2, Wallet } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -26,11 +27,30 @@ function fmt(n: number): string {
 }
 
 export function ReceivableDetailClient({ arId }: Props) {
-  const { ar, schedules, loading, error, recordPayment } =
+  const { ar, schedules, loading, error, recordPayment, deleteAR } =
     useReceivableDetail(arId);
   const [paymentTarget, setPaymentTarget] = useState<ARScheduleRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
 
   const today = isoDateNow();
+
+  async function handleDelete() {
+    if (!ar) return;
+    const warn =
+      ar.receivedAmount > 0
+        ? `此應收帳款已收 NT$ ${fmt(ar.receivedAmount)}，刪除後收款記錄一併移除且無法復原。\n\n確定要刪除 ${ar.arId}？`
+        : `確定要刪除應收帳款 ${ar.arId}？\n\n將一併移除所有收款分期，且無法復原。若金額有異動，刪除後可從報價紀錄重新「建立應收帳款」。`;
+    if (!confirm(warn)) return;
+    setDeleting(true);
+    try {
+      await deleteAR();
+      router.push("/receivables");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "刪除失敗");
+      setDeleting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -72,6 +92,20 @@ export function ReceivableDetailClient({ arId }: Props) {
             </div>
           </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDelete}
+          disabled={deleting}
+          className="gap-1 text-red-600 hover:bg-red-50 hover:text-red-700"
+        >
+          {deleting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+          刪除
+        </Button>
       </div>
 
       {/* Summary */}

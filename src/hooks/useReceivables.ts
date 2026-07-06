@@ -143,7 +143,18 @@ export function useReceivableDetail(arId: string | null) {
     [arId, load],
   );
 
-  return { ar, schedules, loading, error, reload: load, recordPayment, updateAR };
+  const deleteAR = useCallback(async () => {
+    if (!arId) return;
+    const res = await fetch(`/api/sheets/ar/${encodeURIComponent(arId)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error || "刪除應收帳款失敗");
+    }
+  }, [arId]);
+
+  return { ar, schedules, loading, error, reload: load, recordPayment, updateAR, deleteAR };
 }
 
 interface ARMonthlySummary {

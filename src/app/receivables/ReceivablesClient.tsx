@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -42,6 +42,30 @@ export function ReceivablesClient() {
   const [statusFilter, setStatusFilter] = useState<ARStatus | "all">("all");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [month, setMonth] = useState(() => isoDateNow().slice(0, 7));
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDelete(arId: string, receivedAmount: number) {
+    const warn =
+      receivedAmount > 0
+        ? `此應收帳款已收 NT$ ${fmt(receivedAmount)}，刪除後收款記錄一併移除且無法復原。\n\n確定要刪除 ${arId}？`
+        : `確定要刪除應收帳款 ${arId}？\n\n將一併移除所有收款分期，且無法復原。`;
+    if (!confirm(warn)) return;
+    setDeletingId(arId);
+    try {
+      const res = await fetch(`/api/sheets/ar/${encodeURIComponent(arId)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "刪除失敗");
+      }
+      await reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "刪除失敗");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const { summary } = useARMonthlySummary(month);
 
@@ -235,13 +259,27 @@ export function ReceivablesClient() {
                   </span>
                 </td>
                 <td className="px-3 py-2 text-center">
-                  <Link
-                    href={`/receivables/${ar.arId}`}
-                    className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
-                  >
-                    檢視
-                    <ExternalLink className="h-3 w-3" />
-                  </Link>
+                  <div className="inline-flex items-center gap-3">
+                    <Link
+                      href={`/receivables/${ar.arId}`}
+                      className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
+                    >
+                      檢視
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                    <button
+                      onClick={() => void handleDelete(ar.arId, ar.receivedAmount)}
+                      disabled={deletingId === ar.arId}
+                      className="text-[var(--text-tertiary)] transition-colors hover:text-red-600 disabled:opacity-50"
+                      title="刪除應收帳款"
+                    >
+                      {deletingId === ar.arId ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
