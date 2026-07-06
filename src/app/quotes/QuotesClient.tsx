@@ -460,7 +460,7 @@ export function QuotesClient() {
             <Wallet className="h-4 w-4" />
           </button>
         )}
-        {version.versionStatus === "accepted" && (
+        {version.versionStatus === "accepted" && !optOutSet.has(version.versionId) && (
           <button
             onClick={(e) => { e.stopPropagation(); router.push(`/einvoices?versionId=${encodeURIComponent(version.versionId)}`); }}
             className="text-sky-600 hover:text-sky-700 transition-colors"
