@@ -392,7 +392,7 @@ const s = StyleSheet.create({
 
   // ── Reference photos ──────────────────────────────────────────────────────
   photoSectionLabel: {
-    fontSize: 7,
+    fontSize: 12,
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
