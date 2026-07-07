@@ -299,6 +299,19 @@ function ResultModal({
   onClose: () => void;
   onCopied?: () => Promise<void>;
 }) {
+  // ESC closes this modal. Capture phase + stopPropagation so it wins over the
+  // card-level ESC-to-back handler while the modal is open.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
       <div className="w-full max-w-lg rounded-t-2xl bg-[var(--bg-elevated)] p-5 shadow-2xl sm:rounded-2xl">
@@ -383,9 +396,17 @@ interface ShippingSettingsProps {
 }
 
 function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSettingsProps) {
+  // 訂製維修 orders are collected into a separate (大戶／訂製) account, so the
+  // label surfaces a third receiving-account option and pre-selects it.
+  const isCustomRepair = card.labels.some((l) => l.name?.includes("訂製維修"));
+  const accountOptions: Array<"jinshuei" | "potato" | "custom"> = isCustomRepair
+    ? ["jinshuei", "potato", "custom"]
+    : ["jinshuei", "potato"];
   const [driverKey, setDriverKey] = useState<string>("");
   const [finalPayment, setFinalPayment] = useState("");
-  const [receiveAccount, setReceiveAccount] = useState<"jinshuei" | "potato">("jinshuei");
+  const [receiveAccount, setReceiveAccount] = useState<"jinshuei" | "potato" | "custom">(
+    isCustomRepair ? "custom" : "jinshuei",
+  );
   const [sofaRecycle, setSofaRecycle] = useState(false);
   const [sofaRecycleFree, setSofaRecycleFree] = useState(false);
   const [result, setResult] = useState<{
@@ -413,6 +434,29 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
       }
     }
   }, [card, drivers]);
+
+  // Pre-fill 尾款 from the card's checklist (e.g. "尾款 $62000"). An unchecked
+  // 尾款 item means the balance is still outstanding; a checked one means it's
+  // already settled, so we leave the amount at 0 → "尾款已結清".
+  useEffect(() => {
+    let cancelled = false;
+    void fetchChecklists(card.id)
+      .then((lists) => {
+        if (cancelled) return;
+        const balanceItem = lists
+          .flatMap((l) => l.checkItems)
+          .find((it) => it.name.includes("尾款") && it.state !== "complete");
+        if (!balanceItem) return;
+        const nums = balanceItem.name.match(/\d[\d,]*/g);
+        if (!nums) return;
+        const amount = parseInt(nums[nums.length - 1].replace(/,/g, ""), 10);
+        if (amount > 0) setFinalPayment(String(amount));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [card.id]);
 
   function setQuickTime(hhmm: string) {
     const localDate = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD in local tz
@@ -589,7 +633,7 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
       <div>
         <p className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">收款帳戶</p>
         <div className="flex gap-2">
-          {(["jinshuei", "potato"] as const).map((acc) => (
+          {accountOptions.map((acc) => (
             <button
               key={acc}
               onClick={() => setReceiveAccount(acc)}
@@ -600,7 +644,7 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
                   : "bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
               ].join(" ")}
             >
-              {acc === "jinshuei" ? "陳金水" : "馬鈴薯沙發"}
+              {acc === "jinshuei" ? "陳金水" : acc === "potato" ? "馬鈴薯沙發" : "大戶（訂製）"}
             </button>
           ))}
         </div>
@@ -1597,6 +1641,22 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
       .catch(() => setCustomFields([]))
       .finally(() => setLoading(false));
   }, [card.id, card.due]);
+
+  // ESC acts as 返回: close an open picker/edit first, then step back from a
+  // sub-view to the actions menu, and finally close the whole card. (An open
+  // ResultModal handles ESC itself in the capture phase and stops it here.)
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (showMovePicker) { setShowMovePicker(false); return; }
+      if (showDuePicker) { setShowDuePicker(false); return; }
+      if (editingDesc) { setEditingDesc(false); return; }
+      if (view !== "actions") { setView("actions"); return; }
+      onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showMovePicker, showDuePicker, editingDesc, view, onClose]);
 
   useEffect(() => {
     async function handlePaste(e: ClipboardEvent) {

@@ -426,7 +426,7 @@ export interface ShippingMsgOptions {
   driverPhone: string;
   driverKey: string;
   finalPayment: number;
-  receiveAccount: "jinshuei" | "potato";
+  receiveAccount: "jinshuei" | "potato" | "custom";
   sofaRecycle: boolean;
   sofaRecycleFree: boolean;
   isDriverConfirm: boolean;
@@ -549,10 +549,13 @@ Google 連結🔗  http://bit.ly/35qiKPM
   return msg;
 }
 
-function buildBankLine(account: "jinshuei" | "potato", month: number, day: number): string {
+function buildBankLine(account: "jinshuei" | "potato" | "custom", month: number, day: number): string {
   void month; void day;
   if (account === "potato") {
     return "銀行戶名：馬鈴薯沙發企業社\n代號：807 永豐商業銀行\n分行代碼：0302 學府分行\n帳號：03001800081061";
+  }
+  if (account === "custom") {
+    return "銀行戶名：周春懋\n代號：807 永豐銀行\n分行代碼：1217 營業部\n帳號：16801800085918";
   }
   return "銀行戶名：陳金水\n代號：807 永豐商業銀行\n分行代碼：1664 海山分行\n帳號：16600400697189";
 }
