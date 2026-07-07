@@ -441,8 +441,8 @@ export interface WorkOrderPDFProps {
 }
 
 function WorkOrderDocument({ order }: WorkOrderPDFProps) {
-  // 文字大小倍率（版面編輯器可調），夾在 0.9~1.5
-  const fontScale = Math.min(Math.max(order.fontScale ?? 1, 0.9), 1.5);
+  // 文字大小倍率（版面編輯器可調），夾在 0.9~1.5；預設 1.3（現場反應原字級太小）
+  const fontScale = Math.min(Math.max(order.fontScale ?? 1.3, 0.9), 1.5);
   const s = makeStyles(fontScale);
   const hasItems  = order.items.length > 0;
   const hasNotes  = order.notes.length > 0;

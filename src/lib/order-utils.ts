@@ -61,7 +61,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     materialImageUrl: row[22] ?? "",
     materialImageScale: toNumber(row[34]) || 1,
     photoLayout: parseJsonSafe<WorkOrderPhotoLayoutItem[]>(row[35], []),
-    fontScale: toNumber(row[36]) || 1,
+    fontScale: toNumber(row[36]) || 1.3,
     deadline: row[23] ?? "",
     items: parseJsonSafe<OrderItem[]>(row[24], []),
     notes: parseJsonSafe<OrderNote[]>(row[25], []),
@@ -124,7 +124,7 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     JSON.stringify(r.materialPurchases ?? []),
     String(r.materialImageScale ?? 1),
     JSON.stringify(r.photoLayout ?? []),
-    String(r.fontScale ?? 1),
+    String(r.fontScale ?? 1.3),
   ];
 }
 

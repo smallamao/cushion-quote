@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, RotateCw } from "lucide-react";
+import { Loader2, RotateCw, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { ImageCropModal } from "@/components/pdf/ImageCropModal";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,19 @@ interface Props {
   onClose: () => void;
   /** layout 空陣列＝重設為自動排版；fontScale 一併儲存 */
   onSave: (layout: WorkOrderPhotoLayoutItem[], fontScale: number) => void;
+  /** 在編輯器內裁切後，新圖網址回寫給父層（swatch → materialImageUrl；photo → photos[]） */
+  onReplaceImage: (target: { kind: "photo" | "swatch"; url: string }, newUrl: string) => void;
+}
+
+// 把裁切輸出的 dataURL 上傳成正式網址（Sheets 儲存格放不下 base64）
+async function uploadDataUrl(dataUrl: string): Promise<string> {
+  const blob = await (await fetch(dataUrl)).blob();
+  const fd = new FormData();
+  fd.append("file", new File([blob], `crop-${Date.now()}.jpg`, { type: "image/jpeg" }));
+  const res = await fetch("/api/upload", { method: "POST", body: fd });
+  const json = (await res.json()) as { url?: string; error?: string };
+  if (!res.ok || !json.url) throw new Error(json.error ?? "圖片上傳失敗");
+  return json.url;
 }
 
 type GestureMode = "move" | "resize" | "rotate";
@@ -60,12 +74,14 @@ function defaultSwatchItem(order: CustomOrder): WorkOrderPhotoLayoutItem {
   return { url: "swatch", x: A4_W - 28 - w, y: 39, w, h, rotation: 0, kind: "swatch" };
 }
 
-export function WorkOrderLayoutEditor({ open, order, onClose, onSave }: Props) {
+export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceImage }: Props) {
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgLoading, setBgLoading] = useState(false);
   const [items, setItems] = useState<WorkOrderPhotoLayoutItem[]>([]);
-  const [fontScale, setFontScale] = useState(1);
+  const [fontScale, setFontScale] = useState(1.3);
   const [selected, setSelected] = useState<number | null>(null);
+  const [cropIdx, setCropIdx] = useState<number | null>(null);
+  const [cropSaving, setCropSaving] = useState(false);
   const gestureRef = useRef<Gesture | null>(null);
   const bgUrlRef = useRef<string | null>(null);
   const bgSeqRef = useRef(0);
@@ -112,7 +128,7 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave }: Props) {
       ? [existing.find((p) => p.kind === "swatch") ?? defaultSwatchItem(order)]
       : [];
     setItems([...swatchItems, ...photoItems]);
-    const initialScale = Math.min(Math.max(order.fontScale ?? 1, 0.9), 1.5);
+    const initialScale = Math.min(Math.max(order.fontScale ?? 1.3, 0.9), 1.5);
     setFontScale(initialScale);
     setSelected(null);
     void renderBg(initialScale);
@@ -185,6 +201,27 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave }: Props) {
     e.stopPropagation();
     setSelected(idx);
     gestureRef.current = { mode, idx, startX: e.clientX, startY: e.clientY, orig: items[idx] };
+  }
+
+  // 裁切完成：dataURL 上傳成正式網址 → 回寫父層（並同步本地照片項目的 url）
+  async function handleCropConfirm(result: string) {
+    if (cropIdx === null) return;
+    const it = items[cropIdx];
+    const originalSrc = it.kind === "swatch" ? order.materialImageUrl : it.url;
+    if (result === originalSrc) { setCropIdx(null); return; } // 未變更
+    setCropSaving(true);
+    try {
+      const newUrl = await uploadDataUrl(result);
+      onReplaceImage({ kind: it.kind === "swatch" ? "swatch" : "photo", url: originalSrc }, newUrl);
+      if (it.kind !== "swatch") {
+        setItems((prev) => prev.map((p, i) => (i === cropIdx ? { ...p, url: newUrl } : p)));
+      }
+      setCropIdx(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "裁切上傳失敗");
+    } finally {
+      setCropSaving(false);
+    }
   }
 
   function handleSave() {
@@ -291,6 +328,16 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave }: Props) {
                       >
                         <RotateCw className="h-3 w-3" />
                       </div>
+                      {/* 裁切按鈕 */}
+                      <button
+                        type="button"
+                        className="absolute -top-7 left-1/2 -ml-11 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white shadow hover:bg-black"
+                        title="裁切這張圖"
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => { e.stopPropagation(); setCropIdx(i); }}
+                      >
+                        <Scissors className="h-3 w-3" />
+                      </button>
                       <div className="pointer-events-none absolute left-1/2 -top-2.5 h-2.5 w-px -translate-x-1/2 bg-[var(--accent)]" />
                       {/* 右下縮放控制點 */}
                       <div
@@ -322,6 +369,23 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave }: Props) {
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={handleSave}>儲存版面</Button>
         </DialogFooter>
+
+        {/* 選取項目的裁切（裁完自動上傳並取代原圖） */}
+        {cropIdx !== null && items[cropIdx] && (
+          <ImageCropModal
+            open
+            imageSrc={items[cropIdx].kind === "swatch" ? order.materialImageUrl : items[cropIdx].url}
+            onClose={() => { if (!cropSaving) setCropIdx(null); }}
+            onConfirm={(result) => void handleCropConfirm(result)}
+          />
+        )}
+        {cropSaving && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center rounded-lg bg-black/30">
+            <span className="flex items-center gap-2 rounded bg-white px-3 py-2 text-sm shadow">
+              <Loader2 className="h-4 w-4 animate-spin" /> 裁切上傳中…
+            </span>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -679,6 +679,18 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
           updateDraft("fontScale", fontScale);
           setLayoutOpen(false);
         }}
+        onReplaceImage={(target, newUrl) => {
+          if (target.kind === "swatch") {
+            updateDraft("materialImageUrl", newUrl);
+          } else {
+            updateDraft("photos", draft.photos.map((u) => (u === target.url ? newUrl : u)));
+            // 已存版面若引用舊網址，一併換新，避免取消儲存版面時對不上
+            updateDraft(
+              "photoLayout",
+              (draft.photoLayout ?? []).map((p) => (p.url === target.url ? { ...p, url: newUrl } : p)),
+            );
+          }
+        }}
       />
     </div>
   );
