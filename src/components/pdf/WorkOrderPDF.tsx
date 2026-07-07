@@ -43,10 +43,11 @@ const T = {
   pgH: 28,
 } as const;
 
-const s = StyleSheet.create({
+// 樣式工廠：k = 文字大小倍率（fontScale），所有字級等比縮放
+const makeStyles = (k: number) => StyleSheet.create({
   page: {
     fontFamily: "NotoSansTC",
-    fontSize: 11,
+    fontSize: Math.round(11 * k),
     color: T.ink,
     paddingTop: T.pg,
     paddingBottom: 44,
@@ -81,20 +82,20 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   orderNumberPrefix: {
-    fontSize: 13,
+    fontSize: Math.round(13 * k),
     fontWeight: 700,
     color: T.inkFaint,
     marginRight: 2,
   },
   orderNumber: {
-    fontSize: 24,
+    fontSize: Math.round(24 * k),
     fontWeight: 700,
     color: T.ink,
     letterSpacing: 0.3,
     marginRight: 10,
   },
   orderTitleText: {
-    fontSize: 15,
+    fontSize: Math.round(15 * k),
     fontWeight: 700,
     color: T.inkMid,
   },
@@ -127,21 +128,21 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   materialLabel: {
-    fontSize: 13,
+    fontSize: Math.round(13 * k),
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
     marginRight: 10,
-    width: 32,
+    width: Math.round(32 * k),
   },
   materialName: {
-    fontSize: 16,
+    fontSize: Math.round(16 * k),
     fontWeight: 700,
     color: T.ink,
     marginRight: 10,
   },
   materialCode: {
-    fontSize: 16,
+    fontSize: Math.round(16 * k),
     fontWeight: 700,
     color: T.danger,
   },
@@ -153,14 +154,14 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   metaInlineLabel: {
-    fontSize: 13,
+    fontSize: Math.round(13 * k),
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
     marginRight: 10,
   },
   metaInlineValue: {
-    fontSize: 16,
+    fontSize: Math.round(16 * k),
     fontWeight: 700,
   },
 
@@ -182,25 +183,25 @@ const s = StyleSheet.create({
     paddingVertical: 2,
   },
   metaCellLabel: {
-    fontSize: 7,
+    fontSize: Math.round(7 * k),
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
     marginBottom: 2,
   },
   metaCellValue: {
-    fontSize: 11,
+    fontSize: Math.round(11 * k),
     fontWeight: 700,
     color: T.ink,
   },
   metaCellValueDanger: {
-    fontSize: 11,
+    fontSize: Math.round(11 * k),
     fontWeight: 700,
     color: T.danger,
     textDecoration: "underline",
   },
   metaCellValueWarn: {
-    fontSize: 11,
+    fontSize: Math.round(11 * k),
     fontWeight: 700,
     color: T.warnText,
   },
@@ -222,13 +223,13 @@ const s = StyleSheet.create({
     borderBottomColor: T.borderMid,
   },
   groupHeaderText: {
-    fontSize: 13,
+    fontSize: Math.round(13 * k),
     fontWeight: 700,
     color: T.ink,
     letterSpacing: 0.2,
   },
   groupHeaderPrefix: {
-    fontSize: 13,
+    fontSize: Math.round(13 * k),
     fontWeight: 700,
     color: T.inkFaint,
     marginRight: 5,
@@ -248,30 +249,30 @@ const s = StyleSheet.create({
     marginBottom: 3,
   },
   itemBullet: {
-    fontSize: 15,
+    fontSize: Math.round(15 * k),
     fontWeight: 700,
     color: T.inkMid,
     marginRight: 6,
     flexShrink: 0,
   },
   itemName: {
-    fontSize: 15,
+    fontSize: Math.round(15 * k),
     fontWeight: 700,
     color: T.ink,
     marginRight: 10,
   },
   itemFoamDefault: {
-    fontSize: 14,
+    fontSize: Math.round(14 * k),
     fontWeight: 700,
     color: T.inkMid,
   },
   itemFoamWarn: {
-    fontSize: 14,
+    fontSize: Math.round(14 * k),
     fontWeight: 700,
     color: T.warnText,
   },
   itemFoamDanger: {
-    fontSize: 14,
+    fontSize: Math.round(14 * k),
     fontWeight: 700,
     color: T.danger,
   },
@@ -284,24 +285,24 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
   itemDim: {
-    fontSize: 19,
+    fontSize: Math.round(19 * k),
     fontWeight: 700,
     color: T.ink,
   },
   itemQtySep: {
-    fontSize: 16,
+    fontSize: Math.round(16 * k),
     color: T.inkFaint,
     marginHorizontal: 6,
   },
   itemQty: {
-    fontSize: 19,
+    fontSize: Math.round(19 * k),
     fontWeight: 700,
     color: T.ink,
   },
 
   // Color code / material code per item (indented, red)
   itemColorCode: {
-    fontSize: 13,
+    fontSize: Math.round(13 * k),
     fontWeight: 700,
     color: T.danger,
     paddingLeft: 21,
@@ -310,7 +311,7 @@ const s = StyleSheet.create({
 
   // Sub-note per item
   itemSubNote: {
-    fontSize: 12,
+    fontSize: Math.round(12 * k),
     color: T.inkMid,
     paddingLeft: 21,
     lineHeight: 1.4,
@@ -349,7 +350,7 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
   notesSectionLabel: {
-    fontSize: 13,
+    fontSize: Math.round(13 * k),
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
@@ -361,7 +362,7 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   noteBullet: {
-    fontSize: 14,
+    fontSize: Math.round(14 * k),
     fontWeight: 700,
     color: T.ink,
     marginRight: 5,
@@ -369,21 +370,21 @@ const s = StyleSheet.create({
     flexShrink: 0,
   },
   noteTextBlack: {
-    fontSize: 14,
+    fontSize: Math.round(14 * k),
     fontWeight: 700,
     color: T.ink,
     lineHeight: 1.4,
     flex: 1,
   },
   noteTextDanger: {
-    fontSize: 14,
+    fontSize: Math.round(14 * k),
     fontWeight: 700,
     color: T.danger,
     lineHeight: 1.4,
     flex: 1,
   },
   noteTextWarn: {
-    fontSize: 14,
+    fontSize: Math.round(14 * k),
     fontWeight: 700,
     color: T.warnText,
     lineHeight: 1.4,
@@ -392,7 +393,7 @@ const s = StyleSheet.create({
 
   // ── Reference photos ──────────────────────────────────────────────────────
   photoSectionLabel: {
-    fontSize: 13,
+    fontSize: Math.round(13 * k),
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
@@ -425,7 +426,7 @@ const s = StyleSheet.create({
     paddingTop: 5,
   },
   footerText: {
-    fontSize: 7,
+    fontSize: Math.round(7 * k),
     color: T.inkFaint,
     letterSpacing: 0.3,
   },
@@ -440,11 +441,22 @@ export interface WorkOrderPDFProps {
 }
 
 function WorkOrderDocument({ order }: WorkOrderPDFProps) {
+  // 文字大小倍率（版面編輯器可調），夾在 0.9~1.5
+  const fontScale = Math.min(Math.max(order.fontScale ?? 1, 0.9), 1.5);
+  const s = makeStyles(fontScale);
   const hasItems  = order.items.length > 0;
   const hasNotes  = order.notes.length > 0;
   const photoUrls = order.photos.slice(0, 6);
-  const hasPhotos = photoUrls.length > 0;
   const hasSwatch = Boolean(order.materialImageUrl);
+  // 照片自由版面（版面編輯器儲存的座標，A4 pt）；只採用仍存在於照片清單的項目。
+  // 有版面的照片以絕對座標渲染；沒被排進版面的照片（例如事後新增）仍走自動排版。
+  const layoutItems = (order.photoLayout ?? []).filter(
+    (p) => p.kind !== "swatch" && order.photos.includes(p.url),
+  );
+  const flowPhotoUrls = photoUrls.filter((u) => !layoutItems.some((p) => p.url === u));
+  const hasFlowPhotos = flowPhotoUrls.length > 0;
+  // 色票自由版面：kind=swatch 的項目；渲染時取當下 materialImageUrl（裁切後網址會變，不能靠 url 比對）
+  const swatchLayout = (order.photoLayout ?? []).find((p) => p.kind === "swatch") ?? null;
   // 色票大小：操作者在工單編輯頁調整，基準 180×135，夾在 0.6~1.3 倍避免破版
   const swatchScale = Math.min(Math.max(order.materialImageScale ?? 1, 0.6), 1.3);
   const swatchW = Math.round(180 * swatchScale);
@@ -463,8 +475,9 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
         {/* ── Outer card ─────────────────────────────────────────────── */}
         <View style={s.card}>
 
-          {/* Swatch floats top-right (absolute), out of flow, so 訂製內容 moves up */}
-          {hasSwatch ? (
+          {/* Swatch floats top-right (absolute), out of flow, so 訂製內容 moves up.
+              有自由版面（swatchLayout）時改由 5b 絕對層渲染，這裡跳過 */}
+          {hasSwatch && !swatchLayout ? (
             <View style={[s.swatchBlock, { width: swatchW, height: swatchH }]}>
               {/* eslint-disable-next-line jsx-a11y/alt-text */}
               <Image src={order.materialImageUrl} style={[s.swatchImg, { width: swatchW, height: swatchH }]} />
@@ -620,15 +633,52 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
         {/* end card */}
 
         {/* ── 5. Reference photos (outside card, below) ────────────── */}
-        {hasPhotos ? (
+        {hasFlowPhotos ? (
           <View style={{ marginTop: 4 }}>
             <Text style={s.photoSectionLabel}>客戶現場參考照片</Text>
             <View style={s.photoGrid}>
-              {photoUrls.map((url, i) => (
+              {flowPhotoUrls.map((url, i) => (
                 /* eslint-disable-next-line jsx-a11y/alt-text */
                 <Image key={i} src={url} style={s.photo} />
               ))}
             </View>
+          </View>
+        ) : null}
+
+        {/* ── 5b. Freeform-placed photos (absolute, page-1 coordinates) ── */}
+        {layoutItems.map((p, i) => (
+          <View
+            key={`layout-${i}`}
+            style={{
+              position: "absolute",
+              left: p.x,
+              top: p.y,
+              width: p.w,
+              height: p.h,
+              transform: `rotate(${p.rotation}deg)`,
+            }}
+          >
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image src={p.url} style={{ width: p.w, height: p.h, objectFit: "cover" }} />
+          </View>
+        ))}
+        {/* 色票自由版面：contain 完整顯示（不重複裁切色票資訊） */}
+        {hasSwatch && swatchLayout ? (
+          <View
+            style={{
+              position: "absolute",
+              left: swatchLayout.x,
+              top: swatchLayout.y,
+              width: swatchLayout.w,
+              height: swatchLayout.h,
+              transform: `rotate(${swatchLayout.rotation}deg)`,
+            }}
+          >
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image
+              src={order.materialImageUrl}
+              style={{ width: swatchLayout.w, height: swatchLayout.h, objectFit: "contain" }}
+            />
           </View>
         ) : null}
 

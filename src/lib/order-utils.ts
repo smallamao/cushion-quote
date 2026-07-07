@@ -1,11 +1,11 @@
-import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote } from "@/lib/types";
+import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AI`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AI10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AK`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AK10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AI${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:AK${sheetRow}`;
 
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
@@ -60,6 +60,8 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     materialCode: row[21] ?? "",
     materialImageUrl: row[22] ?? "",
     materialImageScale: toNumber(row[34]) || 1,
+    photoLayout: parseJsonSafe<WorkOrderPhotoLayoutItem[]>(row[35], []),
+    fontScale: toNumber(row[36]) || 1,
     deadline: row[23] ?? "",
     items: parseJsonSafe<OrderItem[]>(row[24], []),
     notes: parseJsonSafe<OrderNote[]>(row[25], []),
@@ -121,6 +123,8 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     r.createdBy,
     JSON.stringify(r.materialPurchases ?? []),
     String(r.materialImageScale ?? 1),
+    JSON.stringify(r.photoLayout ?? []),
+    String(r.fontScale ?? 1),
   ];
 }
 

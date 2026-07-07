@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { ImagePlus, Loader2, Plus, Save, Trash2, X } from "lucide-react";
+import { ImagePlus, LayoutTemplate, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { ImageCropModal } from "@/components/pdf/ImageCropModal";
+import { WorkOrderLayoutEditor } from "@/components/pdf/WorkOrderLayoutEditor";
 import {
   Select,
   SelectContent,
@@ -42,6 +43,7 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [layoutOpen, setLayoutOpen] = useState(false);
 
   async function generatePdfWithImage(imageUrl: string) {
     setPdfLoading(true);
@@ -172,7 +174,7 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
             </div>
           </div>
 
-          {draft.materialImageUrl && (
+          {draft.materialImageUrl && !draft.photoLayout?.some((p) => p.kind === "swatch") && (
             <div className="mt-3 max-w-xs">
               <div className="flex items-center justify-between">
                 <Label>工單色票大小</Label>
@@ -612,6 +614,22 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
 
       {/* 儲存按鈕 */}
       <div className="flex justify-end gap-2">
+        <Button
+          variant="outline"
+          onClick={() => setLayoutOpen(true)}
+          disabled={draft.photos.length === 0 && !draft.materialImageUrl}
+          title={
+            draft.photos.length === 0 && !draft.materialImageUrl
+              ? "請先上傳現場照片或材料圖片"
+              : "拖拉調整照片/色票位置大小旋轉，並可調文字大小"
+          }
+        >
+          <LayoutTemplate className="mr-1 h-4 w-4" />
+          版面編輯
+          {(draft.photoLayout?.length ?? 0) > 0 && (
+            <span className="ml-1 text-xs text-[var(--accent)]">●</span>
+          )}
+        </Button>
         <Button variant="outline" onClick={() => void handleGeneratePdf()} disabled={pdfLoading}>
           {pdfLoading ? (
             <>
@@ -651,6 +669,17 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
           }}
         />
       )}
+
+      <WorkOrderLayoutEditor
+        open={layoutOpen}
+        order={draft}
+        onClose={() => setLayoutOpen(false)}
+        onSave={(layout, fontScale) => {
+          updateDraft("photoLayout", layout);
+          updateDraft("fontScale", fontScale);
+          setLayoutOpen(false);
+        }}
+      />
     </div>
   );
 }

@@ -315,7 +315,7 @@ const SHEET_DEFINITIONS = [
       "itemsJson", "notesJson", "photosJson",
       "invoiceStatus", "isArchived", "internalNotes",
       "createdAt", "updatedAt", "createdBy",
-      "materialPurchasesJson", "materialImageScale",
+      "materialPurchasesJson", "materialImageScale", "photoLayoutJson", "fontScale",
     ],
   },
 ];

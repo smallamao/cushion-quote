@@ -1186,6 +1186,19 @@ export interface OrderNote {
   isWarning: boolean;
 }
 
+/** 工單 PDF 照片自由版面項目；座標/尺寸以 A4 pt 為單位（頁面 595×842），rotation 為度數（順時針） */
+export interface WorkOrderPhotoLayoutItem {
+  /** 照片網址；kind 為 swatch 時忽略（渲染時取當下的 materialImageUrl，避免裁切後網址變動失效） */
+  url: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: number;
+  /** 預設 photo；swatch＝色票圖 */
+  kind?: "photo" | "swatch";
+}
+
 export interface CustomOrder {
   orderId: string;
   caseId: string;
@@ -1212,6 +1225,10 @@ export interface CustomOrder {
   materialImageUrl: string;
   /** 工單 PDF 色票圖大小縮放（1=預設，範圍約 0.6~1.3）；操作者可在工單編輯頁調整 */
   materialImageScale?: number;
+  /** 工單 PDF 現場照片自由版面；空陣列＝沿用自動排版。座標單位為 A4 pt（595×842） */
+  photoLayout?: WorkOrderPhotoLayoutItem[];
+  /** 工單 PDF 文字大小倍率（1=預設，0.9~1.5）；版面編輯器可調 */
+  fontScale?: number;
   deadline: string;
   items: OrderItem[];
   notes: OrderNote[];
