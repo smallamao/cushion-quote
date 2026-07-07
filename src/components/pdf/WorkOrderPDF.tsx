@@ -46,7 +46,7 @@ const T = {
 const s = StyleSheet.create({
   page: {
     fontFamily: "NotoSansTC",
-    fontSize: 10,
+    fontSize: 11,
     color: T.ink,
     paddingTop: T.pg,
     paddingBottom: 44,
@@ -81,20 +81,20 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   orderNumberPrefix: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: T.inkFaint,
     marginRight: 2,
   },
   orderNumber: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 700,
     color: T.ink,
     letterSpacing: 0.3,
     marginRight: 10,
   },
   orderTitleText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: 700,
     color: T.inkMid,
   },
@@ -127,21 +127,21 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   materialLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
     marginRight: 10,
-    width: 26,
+    width: 32,
   },
   materialName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 700,
     color: T.ink,
     marginRight: 10,
   },
   materialCode: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 700,
     color: T.danger,
   },
@@ -153,14 +153,14 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   metaInlineLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
     marginRight: 10,
   },
   metaInlineValue: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 700,
   },
 
@@ -222,13 +222,13 @@ const s = StyleSheet.create({
     borderBottomColor: T.borderMid,
   },
   groupHeaderText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 700,
     color: T.ink,
     letterSpacing: 0.2,
   },
   groupHeaderPrefix: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 700,
     color: T.inkFaint,
     marginRight: 5,
@@ -248,30 +248,30 @@ const s = StyleSheet.create({
     marginBottom: 3,
   },
   itemBullet: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: 700,
     color: T.inkMid,
     marginRight: 6,
     flexShrink: 0,
   },
   itemName: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: 700,
     color: T.ink,
     marginRight: 10,
   },
   itemFoamDefault: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 700,
     color: T.inkMid,
   },
   itemFoamWarn: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 700,
     color: T.warnText,
   },
   itemFoamDanger: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 700,
     color: T.danger,
   },
@@ -280,39 +280,39 @@ const s = StyleSheet.create({
   itemLine2: {
     flexDirection: "row",
     alignItems: "baseline",
-    paddingLeft: 19,
+    paddingLeft: 21,
     marginBottom: 2,
   },
   itemDim: {
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: 700,
     color: T.ink,
   },
   itemQtySep: {
-    fontSize: 14,
+    fontSize: 16,
     color: T.inkFaint,
     marginHorizontal: 6,
   },
   itemQty: {
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: 700,
     color: T.ink,
   },
 
   // Color code / material code per item (indented, red)
   itemColorCode: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 700,
     color: T.danger,
-    paddingLeft: 19,
+    paddingLeft: 21,
     marginBottom: 2,
   },
 
   // Sub-note per item
   itemSubNote: {
-    fontSize: 10,
+    fontSize: 12,
     color: T.inkMid,
-    paddingLeft: 19,
+    paddingLeft: 21,
     lineHeight: 1.4,
     marginBottom: 2,
   },
@@ -349,7 +349,7 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
   notesSectionLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
@@ -361,7 +361,7 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   noteBullet: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 700,
     color: T.ink,
     marginRight: 5,
@@ -369,21 +369,21 @@ const s = StyleSheet.create({
     flexShrink: 0,
   },
   noteTextBlack: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 700,
     color: T.ink,
     lineHeight: 1.4,
     flex: 1,
   },
   noteTextDanger: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 700,
     color: T.danger,
     lineHeight: 1.4,
     flex: 1,
   },
   noteTextWarn: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 700,
     color: T.warnText,
     lineHeight: 1.4,
@@ -392,7 +392,7 @@ const s = StyleSheet.create({
 
   // ── Reference photos ──────────────────────────────────────────────────────
   photoSectionLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 700,
     color: T.inkFaint,
     letterSpacing: 0.8,
@@ -404,8 +404,8 @@ const s = StyleSheet.create({
     gap: 8,
   },
   photo: {
-    width: 243,
-    height: 182,
+    width: 260,
+    height: 195,
     objectFit: "cover",
     borderWidth: 1,
     borderColor: T.borderLight,
