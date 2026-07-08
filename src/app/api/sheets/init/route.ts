@@ -316,6 +316,7 @@ const SHEET_DEFINITIONS = [
       "invoiceStatus", "isArchived", "internalNotes",
       "createdAt", "updatedAt", "createdBy",
       "materialPurchasesJson", "materialImageScale", "photoLayoutJson", "fontScale",
+      "workOrderPdfUrl", "workOrderPdfUpdatedAt",
     ],
   },
 ];

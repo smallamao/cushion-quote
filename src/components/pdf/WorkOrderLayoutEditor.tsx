@@ -21,6 +21,8 @@ const A4_H = 842;
 const CANVAS_W = 460;
 const SCALE = CANVAS_W / A4_W;
 const MIN_SIZE_PT = 40;
+// 對齊吸附範圍（pt）：物件中心距頁面中心／其他物件中心小於此值就吸附
+const SNAP_PT = 6;
 
 interface Props {
   open: boolean;
@@ -51,6 +53,9 @@ interface Gesture {
   startX: number;
   startY: number;
   orig: WorkOrderPhotoLayoutItem;
+  /** 垂直／水平吸附目標（中心座標，pt）：頁面中心＋其他物件中心 */
+  snapV: number[];
+  snapH: number[];
 }
 
 // 預設把照片排在頁面下半部（使用者本來就會再拖）
@@ -78,10 +83,12 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgLoading, setBgLoading] = useState(false);
   const [items, setItems] = useState<WorkOrderPhotoLayoutItem[]>([]);
-  const [fontScale, setFontScale] = useState(1.3);
+  const [fontScale, setFontScale] = useState(1);
   const [selected, setSelected] = useState<number | null>(null);
   const [cropIdx, setCropIdx] = useState<number | null>(null);
   const [cropSaving, setCropSaving] = useState(false);
+  // 拖曳吸附時顯示的對齊輔助線（pt 座標；null＝不顯示）
+  const [guides, setGuides] = useState<{ v: number | null; h: number | null }>({ v: null, h: null });
   const gestureRef = useRef<Gesture | null>(null);
   const bgUrlRef = useRef<string | null>(null);
   const bgSeqRef = useRef(0);
@@ -128,7 +135,8 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
       ? [existing.find((p) => p.kind === "swatch") ?? defaultSwatchItem(order)]
       : [];
     setItems([...swatchItems, ...photoItems]);
-    const initialScale = Math.min(Math.max(order.fontScale ?? 1.3, 0.9), 1.5);
+    // fontScale：1 = 預設（PDF 基準已含 130% 放大），拉桿範圍 0.7~1.2
+    const initialScale = Math.min(Math.max(order.fontScale ?? 1, 0.7), 1.2);
     setFontScale(initialScale);
     setSelected(null);
     void renderBg(initialScale);
@@ -155,16 +163,31 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
       if (!g) return;
       const dxPt = (e.clientX - g.startX) / SCALE;
       const dyPt = (e.clientY - g.startY) / SCALE;
+      if (g.mode === "move") {
+        let x = Math.min(Math.max(g.orig.x + dxPt, -g.orig.w / 2), A4_W - g.orig.w / 2);
+        let y = Math.min(Math.max(g.orig.y + dyPt, -g.orig.h / 2), A4_H - g.orig.h / 2);
+        // Keynote 式吸附：物件中心靠近吸附目標 → 貼齊並顯示輔助線（取最近者）
+        let gv: number | null = null;
+        let gh: number | null = null;
+        let bestV = SNAP_PT;
+        let bestH = SNAP_PT;
+        for (const t of g.snapV) {
+          const d = Math.abs(x + g.orig.w / 2 - t);
+          if (d < bestV) { bestV = d; gv = t; }
+        }
+        for (const t of g.snapH) {
+          const d = Math.abs(y + g.orig.h / 2 - t);
+          if (d < bestH) { bestH = d; gh = t; }
+        }
+        if (gv !== null) x = gv - g.orig.w / 2;
+        if (gh !== null) y = gh - g.orig.h / 2;
+        setGuides({ v: gv, h: gh });
+        setItems((prev) => prev.map((it, i) => (i === g.idx ? { ...it, x, y } : it)));
+        return;
+      }
       setItems((prev) =>
         prev.map((it, i) => {
           if (i !== g.idx) return it;
-          if (g.mode === "move") {
-            return {
-              ...it,
-              x: Math.min(Math.max(g.orig.x + dxPt, -g.orig.w / 2), A4_W - g.orig.w / 2),
-              y: Math.min(Math.max(g.orig.y + dyPt, -g.orig.h / 2), A4_H - g.orig.h / 2),
-            };
-          }
           if (g.mode === "resize") {
             return {
               ...it,
@@ -187,7 +210,10 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
         }),
       );
     }
-    function onUp() { gestureRef.current = null; }
+    function onUp() {
+      gestureRef.current = null;
+      setGuides({ v: null, h: null });
+    }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     return () => {
@@ -200,7 +226,16 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
     e.preventDefault();
     e.stopPropagation();
     setSelected(idx);
-    gestureRef.current = { mode, idx, startX: e.clientX, startY: e.clientY, orig: items[idx] };
+    const others = items.filter((_, j) => j !== idx);
+    gestureRef.current = {
+      mode,
+      idx,
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: items[idx],
+      snapV: [A4_W / 2, ...others.map((o) => o.x + o.w / 2)],
+      snapH: [A4_H / 2, ...others.map((o) => o.y + o.h / 2)],
+    };
   }
 
   // 裁切完成：dataURL 上傳成正式網址 → 回寫父層（並同步本地照片項目的 url）
@@ -247,15 +282,15 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
         </DialogHeader>
 
         <p className="text-xs text-[var(--text-tertiary)]">
-          拖拉移動照片／色票；右下角控制點縮放；上方圓點旋轉。底圖為目前工單文字內容。
+          拖拉移動照片／色票；右下角控制點縮放；上方圓點旋轉。靠近頁面或其他圖片中心會自動吸附對齊（黃線）。
         </p>
 
         {/* 文字大小 */}
         <div className="flex items-center gap-3 px-1">
           <span className="w-14 shrink-0 text-xs text-[var(--text-tertiary)]">文字大小</span>
           <Slider
-            min={0.9}
-            max={1.5}
+            min={0.7}
+            max={1.2}
             step={0.05}
             value={[fontScale]}
             onValueChange={([v]) => setFontScale(v)}
@@ -286,6 +321,20 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
               <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60">
                 <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
               </div>
+            )}
+
+            {/* Keynote 式對齊輔助線（吸附中才顯示） */}
+            {guides.v !== null && (
+              <div
+                className="pointer-events-none absolute bottom-0 top-0 z-[25] w-px bg-amber-400"
+                style={{ left: guides.v * SCALE }}
+              />
+            )}
+            {guides.h !== null && (
+              <div
+                className="pointer-events-none absolute left-0 right-0 z-[25] h-px bg-amber-400"
+                style={{ top: guides.h * SCALE }}
+              />
             )}
 
             {items.map((it, i) => {

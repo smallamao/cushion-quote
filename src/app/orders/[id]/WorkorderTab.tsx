@@ -28,15 +28,38 @@ async function uploadFile(file: File): Promise<string> {
   return json.url;
 }
 
+function fmtDateTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("zh-TW", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 interface WorkorderTabProps {
   draft: CustomOrder;
   updateDraft: <K extends keyof CustomOrder>(key: K, value: CustomOrder[K]) => void;
+  /** 產生 PDF 後把最新網址／時間同步回父層的 order+draft（不影響「未儲存」狀態） */
+  onWorkOrderPdfSaved: (url: string, updatedAt: string) => void;
   onSave: () => Promise<void>;
   saving: boolean;
   isDirty: boolean;
 }
 
-export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: WorkorderTabProps) {
+export function WorkorderTab({
+  draft,
+  updateDraft,
+  onWorkOrderPdfSaved,
+  onSave,
+  saving,
+  isDirty,
+}: WorkorderTabProps) {
   const [materialUploading, setMaterialUploading] = useState(false);
   const [photosUploading, setPhotosUploading] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -44,6 +67,30 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
   const [pdfLoading, setPdfLoading] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
+
+  // 產生後在背景上傳＋存回訂單記錄，取代舊工單；失敗不影響已顯示的預覽
+  async function persistPdf(blob: Blob) {
+    try {
+      const fd = new FormData();
+      fd.append("file", new File([blob], `工單-${draft.orderNumber || draft.orderId}.pdf`, { type: "application/pdf" }));
+      fd.append("folder", "work-order-pdfs");
+      const upRes = await fetch("/api/upload", { method: "POST", body: fd });
+      const upJson = (await upRes.json()) as { url?: string };
+      if (!upRes.ok || !upJson.url) return;
+
+      const patchRes = await fetch(`/api/sheets/orders/${draft.orderId}/workorder-pdf`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: upJson.url }),
+      });
+      const patchJson = (await patchRes.json()) as { ok: boolean; workOrderPdfUpdatedAt?: string };
+      if (patchJson.ok) {
+        onWorkOrderPdfSaved(upJson.url, patchJson.workOrderPdfUpdatedAt ?? new Date().toISOString());
+      }
+    } catch {
+      // 非阻斷：預覽已可用，僅「已存工單」紀錄未更新
+    }
+  }
 
   async function generatePdfWithImage(imageUrl: string) {
     setPdfLoading(true);
@@ -55,8 +102,24 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
       const blob = await generateWorkOrderPdfBlob({ order: orderForPdf });
       setPdfBlob(blob);
       setPdfOpen(true);
+      void persistPdf(blob);
     } catch (err) {
       alert(err instanceof Error ? err.message : "PDF 生成失敗");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
+  async function viewStoredPdf() {
+    if (!draft.workOrderPdfUrl) return;
+    setPdfLoading(true);
+    try {
+      const res = await fetch(draft.workOrderPdfUrl);
+      if (!res.ok) throw new Error("讀取已存工單失敗");
+      setPdfBlob(await res.blob());
+      setPdfOpen(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "讀取已存工單失敗");
     } finally {
       setPdfLoading(false);
     }
@@ -613,41 +676,60 @@ export function WorkorderTab({ draft, updateDraft, onSave, saving, isDirty }: Wo
       </div>
 
       {/* 儲存按鈕 */}
-      <div className="flex justify-end gap-2">
-        <Button
-          variant="outline"
-          onClick={() => setLayoutOpen(true)}
-          disabled={draft.photos.length === 0 && !draft.materialImageUrl}
-          title={
-            draft.photos.length === 0 && !draft.materialImageUrl
-              ? "請先上傳現場照片或材料圖片"
-              : "拖拉調整照片/色票位置大小旋轉，並可調文字大小"
-          }
-        >
-          <LayoutTemplate className="mr-1 h-4 w-4" />
-          版面編輯
-          {(draft.photoLayout?.length ?? 0) > 0 && (
-            <span className="ml-1 text-xs text-[var(--accent)]">●</span>
+      <div className="flex flex-col items-end gap-1.5">
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setLayoutOpen(true)}
+            disabled={draft.photos.length === 0 && !draft.materialImageUrl}
+            title={
+              draft.photos.length === 0 && !draft.materialImageUrl
+                ? "請先上傳現場照片或材料圖片"
+                : "拖拉調整照片/色票位置大小旋轉，並可調文字大小"
+            }
+          >
+            <LayoutTemplate className="mr-1 h-4 w-4" />
+            版面編輯
+            {(draft.photoLayout?.length ?? 0) > 0 && (
+              <span className="ml-1 text-xs text-[var(--accent)]">●</span>
+            )}
+          </Button>
+          {draft.workOrderPdfUrl && (
+            <Button
+              variant="outline"
+              onClick={() => void viewStoredPdf()}
+              disabled={pdfLoading}
+              title="開啟上次產生的工單，不重新生成"
+            >
+              📄 查看工單 PDF
+            </Button>
           )}
-        </Button>
-        <Button variant="outline" onClick={() => void handleGeneratePdf()} disabled={pdfLoading}>
-          {pdfLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              生成中...
-            </>
-          ) : (
-            "📄 產生施工工單 PDF"
-          )}
-        </Button>
-        <Button onClick={() => void onSave()} disabled={saving || !isDirty}>
-          {saving ? (
-            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-1 h-4 w-4" />
-          )}
-          儲存變更
-        </Button>
+          <Button variant="outline" onClick={() => void handleGeneratePdf()} disabled={pdfLoading}>
+            {pdfLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                生成中...
+              </>
+            ) : draft.workOrderPdfUrl ? (
+              "🔄 重新產生並取代"
+            ) : (
+              "📄 產生施工工單 PDF"
+            )}
+          </Button>
+          <Button onClick={() => void onSave()} disabled={saving || !isDirty}>
+            {saving ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-1 h-4 w-4" />
+            )}
+            儲存變更
+          </Button>
+        </div>
+        {draft.workOrderPdfUpdatedAt && (
+          <p className="text-xs text-[var(--text-tertiary)]">
+            最後產生：{fmtDateTime(draft.workOrderPdfUpdatedAt)}
+          </p>
+        )}
       </div>
 
       <PDFPreviewModal

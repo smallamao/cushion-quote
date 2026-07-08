@@ -610,6 +610,10 @@ export function OrderDetailClient({ orderId }: Props) {
           <WorkorderTab
             draft={draft}
             updateDraft={updateDraft}
+            onWorkOrderPdfSaved={(url, updatedAt) => {
+              setOrder((prev) => (prev ? { ...prev, workOrderPdfUrl: url, workOrderPdfUpdatedAt: updatedAt } : prev));
+              setDraft((prev) => (prev ? { ...prev, workOrderPdfUrl: url, workOrderPdfUpdatedAt: updatedAt } : prev));
+            }}
             onSave={handleSave}
             saving={saving}
             isDirty={isDirty}

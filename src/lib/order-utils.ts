@@ -1,11 +1,11 @@
 import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AK`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AK10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AM`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AM10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AK${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:AM${sheetRow}`;
 
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
@@ -14,6 +14,13 @@ function toNumber(value: string | undefined): number {
 
 function toBoolean(value: string | undefined): boolean {
   return value === "TRUE" || value === "true" || value === "1";
+}
+
+// fontScale：1 = 預設（PDF 基準字級已含 130% 放大）
+// 舊資料為絕對倍率（>1.2，當時預設 1.3）→ 讀取時換算回相對值，下次儲存即自動更正
+function migrateFontScale(v: number): number {
+  if (!v) return 1;
+  return v > 1.2 ? Math.round((v / 1.3) * 100) / 100 : v;
 }
 
 function parseJsonSafe<T>(value: string | undefined, fallback: T): T {
@@ -61,7 +68,9 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     materialImageUrl: row[22] ?? "",
     materialImageScale: toNumber(row[34]) || 1,
     photoLayout: parseJsonSafe<WorkOrderPhotoLayoutItem[]>(row[35], []),
-    fontScale: toNumber(row[36]) || 1.3,
+    fontScale: migrateFontScale(toNumber(row[36])),
+    workOrderPdfUrl: row[37] ?? "",
+    workOrderPdfUpdatedAt: row[38] ?? "",
     deadline: row[23] ?? "",
     items: parseJsonSafe<OrderItem[]>(row[24], []),
     notes: parseJsonSafe<OrderNote[]>(row[25], []),
@@ -124,7 +133,9 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     JSON.stringify(r.materialPurchases ?? []),
     String(r.materialImageScale ?? 1),
     JSON.stringify(r.photoLayout ?? []),
-    String(r.fontScale ?? 1.3),
+    String(r.fontScale ?? 1),
+    r.workOrderPdfUrl ?? "",
+    r.workOrderPdfUpdatedAt ?? "",
   ];
 }
 

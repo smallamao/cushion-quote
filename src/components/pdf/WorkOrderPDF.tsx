@@ -43,7 +43,7 @@ const T = {
   pgH: 28,
 } as const;
 
-// 樣式工廠：k = 文字大小倍率（fontScale），所有字級等比縮放
+// 樣式工廠：k = 最終字級倍率（fontScale × 1.3 預設放大），所有字級等比縮放
 const makeStyles = (k: number) => StyleSheet.create({
   page: {
     fontFamily: "NotoSansTC",
@@ -441,9 +441,11 @@ export interface WorkOrderPDFProps {
 }
 
 function WorkOrderDocument({ order }: WorkOrderPDFProps) {
-  // 文字大小倍率（版面編輯器可調），夾在 0.9~1.5；預設 1.3（現場反應原字級太小）
-  const fontScale = Math.min(Math.max(order.fontScale ?? 1.3, 0.9), 1.5);
-  const s = makeStyles(fontScale);
+  // 文字大小倍率：1 = 預設（基準已含 130% 放大，現場反應原字級太小），夾在 0.7~1.2
+  // 舊資料相容：>1.2 為改版前的絕對倍率（當時預設 1.3）→ 換算回相對值
+  const raw = order.fontScale ?? 1;
+  const fontScale = Math.min(Math.max(raw > 1.2 ? raw / 1.3 : raw, 0.7), 1.2);
+  const s = makeStyles(fontScale * 1.3);
   const hasItems  = order.items.length > 0;
   const hasNotes  = order.notes.length > 0;
   const photoUrls = order.photos.slice(0, 6);

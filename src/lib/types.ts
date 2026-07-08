@@ -1227,8 +1227,12 @@ export interface CustomOrder {
   materialImageScale?: number;
   /** 工單 PDF 現場照片自由版面；空陣列＝沿用自動排版。座標單位為 A4 pt（595×842） */
   photoLayout?: WorkOrderPhotoLayoutItem[];
-  /** 工單 PDF 文字大小倍率（1=預設，0.9~1.5）；版面編輯器可調 */
+  /** 工單 PDF 文字大小倍率（1=預設，已含130%基準放大；範圍約 0.7~1.2）；版面編輯器可調 */
   fontScale?: number;
+  /** 最後一次產生的施工工單 PDF 網址；產生 PDF 時自動上傳並取代 */
+  workOrderPdfUrl?: string;
+  /** workOrderPdfUrl 的產生時間（ISO） */
+  workOrderPdfUpdatedAt?: string;
   deadline: string;
   items: OrderItem[];
   notes: OrderNote[];
