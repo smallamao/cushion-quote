@@ -103,6 +103,19 @@ export async function POST(request: Request) {
   }
 
   try {
+    // For quote sourceType: check if order already exists for this versionId (idempotency)
+    if (body.sourceType === "quote" && body.versionId) {
+      const checkRes = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: ORDER_RANGE_DATA,
+      });
+      const existingRows = (checkRes.data.values ?? []) as string[][];
+      const existingOrder = existingRows.find((r) => r[2] === body.versionId);
+      if (existingOrder) {
+        return NextResponse.json({ ok: true, orderId: existingOrder[0], alreadyExists: true }, { status: 200 });
+      }
+    }
+
     // Read existing IDs for generateOrderId
     const idRes = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,

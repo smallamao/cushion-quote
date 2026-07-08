@@ -171,7 +171,11 @@ export function OrderListClient() {
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
+    // Defensive dedup by orderId (in case of race-condition duplicates in Sheets)
+    const seen = new Set<string>();
     return orders.filter((o) => {
+      if (seen.has(o.orderId)) return false;
+      seen.add(o.orderId);
       if (q) {
         const hit =
           o.clientName.toLowerCase().includes(q) ||
