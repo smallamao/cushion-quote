@@ -26,6 +26,7 @@ import type {
   OrderStatus,
 } from "@/lib/types";
 import { FinanceTab } from "./FinanceTab";
+import { LinkedPurchasesSection } from "./LinkedPurchasesSection";
 import { generateWorkOrderJpgBlob } from "@/components/pdf/WorkOrderPDF";
 import { WorkorderTab } from "./WorkorderTab";
 
@@ -632,13 +633,16 @@ export function OrderDetailClient({ orderId }: Props) {
 
         {/* Tab C: 財務 */}
         <TabsContent value="finance">
-          <FinanceTab
-            draft={draft}
-            updateDraft={updateDraft}
-            onSave={handleSave}
-            saving={saving}
-            isDirty={isDirty}
-          />
+          <div className="space-y-6">
+            <FinanceTab
+              draft={draft}
+              updateDraft={updateDraft}
+              onSave={handleSave}
+              saving={saving}
+              isDirty={isDirty}
+            />
+            <LinkedPurchasesSection orderId={orderId} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
