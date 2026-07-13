@@ -471,6 +471,10 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
   const swatchW = Math.round(180 * swatchScale);
   const swatchH = Math.round(135 * swatchScale);
 
+  // 出單日期：產生 PDF 當下的本地日期（顯示於頁尾）
+  const now = new Date();
+  const issueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
   // Build meta cells — only include fields that have values
   const metaCells: Array<{ label: string; value: string; variant: "normal" | "danger" | "warn" }> = [];
   if (order.deadline)     metaCells.push({ label: "交期",   value: safeText(order.deadline),     variant: "danger" });
@@ -704,7 +708,7 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
 
         {/* ── Footer ─────────────────────────────────────────────────── */}
         <View style={s.footer} fixed>
-          <Text style={s.footerText}>馬鈴薯沙發 施工工單</Text>
+          <Text style={s.footerText}>馬鈴薯沙發 施工工單 · 出單日期 {issueDate}</Text>
           <Text style={s.footerText}>
             {order.orderNumber || order.orderId}
           </Text>
