@@ -4,7 +4,7 @@ import { Download, FileText, Loader2, ReceiptText, RefreshCw, RotateCcw, SendHor
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { EInvoiceCandidate, EInvoiceRecord } from "@/lib/types";
+import type { ARRecord, EInvoiceCandidate, EInvoiceRecord } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -84,6 +84,23 @@ const INVOICE_STATUS_CLASS: Record<string, string> = {
   needs_review: "bg-amber-100 text-amber-700",
 };
 
+// 收款狀態（來自對應的應收帳款）
+const AR_STATUS_LABEL: Record<string, string> = {
+  draft: "待收款",
+  active: "待收款",
+  partial: "部分收款",
+  paid: "已收款",
+  overdue: "逾期",
+};
+
+const AR_STATUS_CLASS: Record<string, string> = {
+  draft: "bg-slate-100 text-slate-600",
+  active: "bg-sky-100 text-sky-700",
+  partial: "bg-amber-100 text-amber-700",
+  paid: "bg-emerald-100 text-emerald-700",
+  overdue: "bg-red-100 text-red-700",
+};
+
 function extractErrorMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== "object") return fallback;
   const current = payload as Record<string, unknown>;
@@ -139,6 +156,8 @@ export function EInvoicesClient() {
 
   const [candidates, setCandidates] = useState<EInvoiceCandidate[]>([]);
   const [invoices, setInvoices] = useState<EInvoiceRecord[]>([]);
+  // 應收帳款清單：發票列表顯示收款狀態用（發票 → 對應應收 → 收款進度）
+  const [ars, setArs] = useState<ARRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, DraftOverride>>({});
   const [loading, setLoading] = useState(true);
@@ -190,9 +209,10 @@ export function EInvoicesClient() {
   const load = useCallback(async (options: LoadOptions = {}) => {
     setLoading(true);
     try {
-      const [candidateResponse, invoiceResponse] = await Promise.all([
+      const [candidateResponse, invoiceResponse, arResponse] = await Promise.all([
         fetch(`/api/sheets/einvoices/candidates${versionId ? `?versionId=${encodeURIComponent(versionId)}` : ""}`, { cache: "no-store" }),
         fetch("/api/sheets/einvoices", { cache: "no-store" }),
+        fetch("/api/sheets/ar", { cache: "no-store" }),
       ]);
       if (!candidateResponse.ok || !invoiceResponse.ok) {
         throw new Error("讀取電子發票資料失敗");
@@ -201,6 +221,11 @@ export function EInvoicesClient() {
       const invoicePayload = (await invoiceResponse.json()) as { invoices: EInvoiceRecord[] };
       setCandidates(candidatePayload.candidates);
       setInvoices(invoicePayload.invoices);
+      // 應收讀取失敗不阻斷發票功能，只是不顯示收款狀態
+      if (arResponse.ok) {
+        const arPayload = (await arResponse.json()) as { ars?: ARRecord[] };
+        setArs(arPayload.ars ?? []);
+      }
       setDrafts((current) => {
         const next = { ...current };
         for (const candidate of candidatePayload.candidates) {
@@ -255,6 +280,29 @@ export function EInvoicesClient() {
       );
     });
   }, [invoices, historySearch, historyStatusFilter]);
+
+  // 發票 → 對應應收帳款：sourceType=ar 用 sourceId 直查；其他來源用 versionId 對
+  const arLookup = useMemo(() => {
+    const byArId = new Map<string, ARRecord>();
+    const byVersionId = new Map<string, ARRecord>();
+    for (const ar of ars) {
+      if (ar.arStatus === "cancelled") continue;
+      byArId.set(ar.arId, ar);
+      if (ar.versionId && !byVersionId.has(ar.versionId)) byVersionId.set(ar.versionId, ar);
+    }
+    return { byArId, byVersionId };
+  }, [ars]);
+
+  function paymentInfoFor(invoice: EInvoiceRecord): ARRecord | null {
+    if (invoice.status === "cancelled") return null;
+    if (invoice.sourceType === "ar") {
+      return arLookup.byArId.get(invoice.sourceId) ?? null;
+    }
+    if (invoice.versionId) {
+      return arLookup.byVersionId.get(invoice.versionId) ?? null;
+    }
+    return null;
+  }
 
   function updateDraft(candidateId: string, patch: Partial<DraftOverride>) {
     setDrafts((current) => ({
@@ -1405,9 +1453,25 @@ export function EInvoicesClient() {
                       {invoice.buyerType === "b2b" || Boolean(invoice.buyerTaxId?.trim()) ? "B2B" : "B2C"}
                     </span>
                   </div>
-                  {/* 第三行：金額 + 開票日期 */}
+                  {/* 第三行：金額 + 收款狀態 + 開票日期 */}
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-[var(--text-primary)]">{formatCurrency(invoice.totalAmount)}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium text-[var(--text-primary)]">{formatCurrency(invoice.totalAmount)}</span>
+                      {(() => {
+                        const ar = paymentInfoFor(invoice);
+                        if (!ar) return null;
+                        return (
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${AR_STATUS_CLASS[ar.arStatus] ?? AR_STATUS_CLASS.active}`}
+                            title={`應收 ${ar.arId}：已收 ${formatCurrency(ar.receivedAmount)}／未收 ${formatCurrency(ar.outstandingAmount)}`}
+                          >
+                            {AR_STATUS_LABEL[ar.arStatus] ?? ar.arStatus}
+                            {(ar.arStatus === "partial" || ar.arStatus === "overdue") &&
+                              `｜未收 ${formatCurrency(ar.outstandingAmount)}`}
+                          </span>
+                        );
+                      })()}
+                    </span>
                     <span className="text-xs text-[var(--text-secondary)]">{invoice.invoiceDate ? invoice.invoiceDate.slice(0, 10) : ""}</span>
                   </div>
                   {/* 發票號碼（已開立才顯示）*/}
