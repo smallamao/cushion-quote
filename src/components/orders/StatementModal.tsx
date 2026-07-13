@@ -83,6 +83,9 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
   const [monthTitle, setMonthTitle] = useState(() => rocMonthTitleOf(new Date()));
   const [lines, setLines] = useState<LineDraft[]>([]);
   const [companyTaxIds, setCompanyTaxIds] = useState<Map<string, string>>(new Map());
+  // 客戶資料庫中屬於「公司行號」（非屋主散客）的名稱集合
+  const [businessNames, setBusinessNames] = useState<Set<string>>(new Set());
+  const [showAllClients, setShowAllClients] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -91,34 +94,53 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
   const [markDate, setMarkDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [marking, setMarking] = useState(false);
 
-  // 有未收款訂單的客戶清單（筆數多的排前面）
+  // 名稱看起來像公司行號（訂單客戶名未進客戶庫時的後備判斷）
+  const looksLikeBusiness = (name: string): boolean =>
+    /(有限|股份|企業|公司|法人|工作室|設計|傢飾|家具|窗飾|實業|商行|行號|工程)/.test(name);
+
+  const isBusinessClient = (name: string): boolean =>
+    businessNames.has(name) || Boolean(companyTaxIds.get(name)) || looksLikeBusiness(name);
+
+  // 有未收款訂單的客戶清單（筆數多的排前面）；預設只列 B 端（公司行號）
   const clientOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const o of orders) {
       if (!o.clientName || o.status === "cancelled" || o.paidDate || o.isArchived) continue;
       counts.set(o.clientName, (counts.get(o.clientName) ?? 0) + 1);
     }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [orders]);
+    return [...counts.entries()]
+      .filter(([name]) => showAllClients || isBusinessClient(name))
+      .sort((a, b) => b[1] - a[1]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, showAllClients, businessNames, companyTaxIds]);
 
-  // 客戶資料庫：名稱 → 統編（比對公司全名或簡稱）
+  // 客戶資料庫：名稱 → 統編，以及公司行號名稱集合（用於過濾散客）
   useEffect(() => {
     if (!open) return;
     void (async () => {
       try {
         const res = await fetch("/api/sheets/clients", { cache: "no-store" });
         const json = (await res.json()) as {
-          companies?: Array<{ companyName?: string; shortName?: string; taxId?: string }>;
+          companies?: Array<{ companyName?: string; shortName?: string; taxId?: string; clientType?: string }>;
         };
         const map = new Map<string, string>();
+        const biz = new Set<string>();
         for (const c of json.companies ?? []) {
-          if (!c.taxId) continue;
-          if (c.companyName) map.set(c.companyName, c.taxId);
-          if (c.shortName) map.set(c.shortName, c.taxId);
+          if (c.taxId) {
+            if (c.companyName) map.set(c.companyName, c.taxId);
+            if (c.shortName) map.set(c.shortName, c.taxId);
+          }
+          // 非屋主散客（homeowner）即視為 B 端；有統編也算
+          const isBiz = (c.clientType && c.clientType !== "homeowner") || Boolean(c.taxId);
+          if (isBiz) {
+            if (c.companyName) biz.add(c.companyName);
+            if (c.shortName) biz.add(c.shortName);
+          }
         }
         setCompanyTaxIds(map);
+        setBusinessNames(biz);
       } catch {
-        /* 拿不到統編就手動填 */
+        /* 拿不到就靠名稱後備判斷 */
       }
     })();
   }, [open]);
@@ -230,17 +252,34 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
 
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-64">
-              <Label className="text-xs">客戶（未收款筆數）</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">客戶（未收款筆數）</Label>
+                <label className="flex cursor-pointer items-center gap-1 text-[11px] text-[var(--text-tertiary)]">
+                  <input
+                    type="checkbox"
+                    className="h-3 w-3"
+                    checked={showAllClients}
+                    onChange={(e) => setShowAllClients(e.target.checked)}
+                  />
+                  含散客
+                </label>
+              </div>
               <Select value={clientName} onValueChange={setClientName}>
                 <SelectTrigger>
-                  <SelectValue placeholder="選擇客戶" />
+                  <SelectValue placeholder={showAllClients ? "選擇客戶" : "選擇公司行號客戶"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {clientOptions.map(([name, count]) => (
-                    <SelectItem key={name} value={name}>
-                      {name}（{count}）
-                    </SelectItem>
-                  ))}
+                  {clientOptions.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-[var(--text-tertiary)]">
+                      無公司行號客戶，可勾「含散客」顯示全部
+                    </div>
+                  ) : (
+                    clientOptions.map(([name, count]) => (
+                      <SelectItem key={name} value={name}>
+                        {name}（{count}）
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
