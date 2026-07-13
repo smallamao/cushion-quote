@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Loader2, Save, Upload } from "lucide-react";
+import { ArrowLeft, Loader2, Save, ShoppingCart, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -290,6 +290,16 @@ export function OrderDetailClient({ orderId }: Props) {
               </button>
             ))}
             <div className="ml-1 h-4 w-px bg-[var(--border)]" />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => router.push(`/purchases/new?fromOrder=${encodeURIComponent(orderId)}` as never)}
+              className="h-7 text-xs"
+              title="以此工單品項建立採購單，自動帶入建議布料用量並關聯訂單"
+            >
+              <ShoppingCart className="mr-1 h-3 w-3" />
+              建立採購單
+            </Button>
             <Button
               size="sm"
               variant="outline"

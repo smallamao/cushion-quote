@@ -320,6 +320,7 @@ export function parsePurchaseOrdersCsv(text: string): PurchaseOrder[] {
       orderId: o["採購單號"] ?? "",
       orderDate: normalizeDate(o["採購日期"] ?? ""),
       supplierId: o["廠商編號"] ?? "",
+      relatedOrderId: "",
       caseId: "",
       caseNameSnapshot: "",
       supplierSnapshot: {

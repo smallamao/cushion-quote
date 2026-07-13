@@ -3,7 +3,9 @@
 import { ArrowLeft, Calculator, Eye, Package, PackagePlus, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { calculateFabricNeeded } from "@/lib/dimension-parser";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -48,7 +50,7 @@ import { QuickCreateProductDialog } from "@/components/purchases/QuickCreateProd
 import { BulkCreateProductDialog } from "@/components/purchases/BulkCreateProductDialog";
 import { WorkOrderSuggestDialog, type SuggestedItem } from "@/components/purchases/WorkOrderSuggestDialog";
 import type {
-  CaseRecord,
+  CustomOrder,
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderStatus,
@@ -56,6 +58,12 @@ import type {
   PurchaseUnit,
   Supplier,
 } from "@/lib/types";
+
+/** 顯示用標籤：工單號（無則 orderId）＋客戶 */
+function orderLabel(o: CustomOrder): string {
+  const num = o.orderNumber || o.orderId;
+  return o.clientName ? `${num} ${o.clientName}` : num;
+}
 
 const UNIT_OPTIONS: PurchaseUnit[] = [
   "碼",
@@ -155,10 +163,13 @@ function buildSnapshot(supplier: Supplier | null): PurchaseOrder["supplierSnapsh
 }
 
 interface Props {
+  /** 編輯既有採購單時的採購單號 */
   orderId?: string;
+  /** 由訂單頁「建立採購單」帶入的訂製訂單 orderId：自動關聯並預填建議用量 */
+  fromOrderId?: string;
 }
 
-export function PurchaseEditorClient({ orderId }: Props) {
+export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
   const router = useRouter();
   const { suppliers, loading: loadingSuppliers } = useSuppliers();
   const { products, loading: loadingProducts, addProduct } = usePurchaseProducts();
@@ -183,8 +194,12 @@ export function PurchaseEditorClient({ orderId }: Props) {
     settings.factoryAddress || "236新北市土城區廣福街77巷6-6號";
 
   const [supplierId, setSupplierId] = useState("");
-  const [cases, setCases] = useState<CaseRecord[]>([]);
-  const [linkedCaseId, setLinkedCaseId] = useState("none");
+  const [customOrders, setCustomOrders] = useState<CustomOrder[]>([]);
+  const [linkedOrderId, setLinkedOrderId] = useState("none");
+  // 舊採購單可能只綁過案件（無 relatedOrderId）。編輯時若未重新關聯訂單，
+  // 保留原本的案件關聯，避免存檔把 caseId 清掉、破壞案件採購成本彙整。
+  const [originalCaseId, setOriginalCaseId] = useState("");
+  const [originalCaseName, setOriginalCaseName] = useState("");
   const [orderDate, setOrderDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
@@ -245,15 +260,52 @@ export function PurchaseEditorClient({ orderId }: Props) {
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetch("/api/sheets/cases", { cache: "no-store" });
-        if (!response.ok) throw new Error("load cases");
-        const payload = (await response.json()) as { cases: CaseRecord[] };
-        setCases(payload.cases);
+        const response = await fetch("/api/sheets/orders", { cache: "no-store" });
+        if (!response.ok) throw new Error("load orders");
+        const payload = (await response.json()) as { orders: CustomOrder[] };
+        setCustomOrders(payload.orders ?? []);
       } catch {
-        setCases([]);
+        setCustomOrders([]);
       }
     })();
   }, []);
+
+  // 由訂單頁「建立採購單」帶入：自動關聯該訂製訂單並預填建議用量（只做一次）
+  const prefilledFromOrderRef = useRef(false);
+  useEffect(() => {
+    if (isEditing || !fromOrderId || prefilledFromOrderRef.current) return;
+    const ord = customOrders.find((o) => o.orderId === fromOrderId);
+    if (!ord) return; // 等訂單清單載入後再執行
+    prefilledFromOrderRef.current = true;
+    setLinkedOrderId(ord.orderId);
+    const suggested: SuggestedItem[] = ord.items
+      .filter((it) => it.itemType !== "header" && it.dimensions)
+      .map((it) => {
+        const calc = calculateFabricNeeded({
+          dimensions: it.dimensions,
+          fabricWidthCm: 145,
+          unit: "碼",
+        });
+        return {
+          colorCode: it.colorCode ?? "",
+          itemName: it.name,
+          dimensions: it.dimensions,
+          suggestedQty: calc.suggestedQty,
+          orderNumber: ord.orderNumber || ord.orderId,
+          orderId: ord.orderId,
+        };
+      });
+    if (suggested.length > 0) {
+      handleWorkOrderSuggest(suggested);
+    } else {
+      setNotice({
+        tone: "warning",
+        text: `已關聯工單 ${ord.orderNumber || ord.orderId}，但無可計算用量的品項（需有尺寸），請手動加入`,
+      });
+    }
+    // handleWorkOrderSuggest 為穩定的區域函式；僅需 fromOrderId/customOrders 觸發
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromOrderId, isEditing, customOrders]);
 
   useEffect(() => {
     if (!orderId) return;
@@ -267,7 +319,9 @@ export function PurchaseEditorClient({ orderId }: Props) {
         return;
       }
       setSupplierId(data.order.supplierId);
-      setLinkedCaseId(data.order.caseId || "none");
+      setLinkedOrderId(data.order.relatedOrderId || "none");
+      setOriginalCaseId(data.order.caseId || "");
+      setOriginalCaseName(data.order.caseNameSnapshot || "");
       setOrderDate(data.order.orderDate);
       setExpectedDeliveryDate(data.order.expectedDeliveryDate);
       setDeliveryAddress(data.order.deliveryAddress);
@@ -297,7 +351,7 @@ export function PurchaseEditorClient({ orderId }: Props) {
   }, [orderId]);
 
   const supplier = suppliers.find((s) => s.supplierId === supplierId) || null;
-  const linkedCase = cases.find((item) => item.caseId === linkedCaseId) || null;
+  const linkedOrder = customOrders.find((o) => o.orderId === linkedOrderId) || null;
   const supplierProducts = useMemo(
     () => products.filter((p) => p.supplierId === supplierId),
     [products, supplierId]
@@ -437,13 +491,14 @@ export function PurchaseEditorClient({ orderId }: Props) {
       setNotes(merged.join(", "));
     }
 
-    // Smart case detection: auto-select if only one case detected or most common
-    const detectedCaseId = detectPrimaryCaseId(lines);
-    if (detectedCaseId && linkedCaseId === "none") {
-      const caseExists = cases.some((c) => c.caseId === detectedCaseId);
-      if (caseExists) {
-        setLinkedCaseId(detectedCaseId);
-      }
+    // Smart order detection: paste refs like "S896" are 工單號 → auto-select
+    // the matching 訂製訂單 (fall back to orderId match).
+    const detectedRef = detectPrimaryCaseId(lines);
+    if (detectedRef && linkedOrderId === "none") {
+      const match = customOrders.find(
+        (o) => o.orderNumber === detectedRef || o.orderId === detectedRef,
+      );
+      if (match) setLinkedOrderId(match.orderId);
     }
 
     setPasteText("");
@@ -619,8 +674,9 @@ export function PurchaseEditorClient({ orderId }: Props) {
         orderId: orderId ?? "",
         orderDate,
         supplierId,
-        caseId: linkedCaseId === "none" ? "" : linkedCaseId,
-        caseNameSnapshot: linkedCase?.caseName ?? "",
+        relatedOrderId: linkedOrderId === "none" ? "" : linkedOrderId,
+        caseId: linkedOrder ? linkedOrder.caseId : originalCaseId,
+        caseNameSnapshot: linkedOrder ? orderLabel(linkedOrder) : originalCaseName,
         supplierSnapshot: buildSnapshot(supplier),
         subtotal,
         shippingFee,
@@ -759,8 +815,9 @@ export function PurchaseEditorClient({ orderId }: Props) {
       orderId: orderId ?? previewNextOrderId,
       orderDate,
       supplierId,
-      caseId: linkedCaseId === "none" ? "" : linkedCaseId,
-      caseNameSnapshot: linkedCase?.caseName ?? "",
+      relatedOrderId: linkedOrderId === "none" ? "" : linkedOrderId,
+      caseId: linkedOrder ? linkedOrder.caseId : originalCaseId,
+      caseNameSnapshot: linkedOrder ? orderLabel(linkedOrder) : originalCaseName,
       supplierSnapshot: buildSnapshot(supplier),
       subtotal,
       shippingFee,
@@ -940,16 +997,16 @@ export function PurchaseEditorClient({ orderId }: Props) {
             />
           </div>
           <div>
-            <Label className="mb-1 block text-xs">關聯案件</Label>
-            <Select value={linkedCaseId} onValueChange={setLinkedCaseId}>
+            <Label className="mb-1 block text-xs">關聯訂製訂單</Label>
+            <Select value={linkedOrderId} onValueChange={setLinkedOrderId}>
               <SelectTrigger>
-                <SelectValue placeholder="選擇案件（可略過）" />
+                <SelectValue placeholder="選擇訂製訂單（可略過）" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">不綁定案件</SelectItem>
-                {cases.map((item) => (
-                  <SelectItem key={item.caseId} value={item.caseId}>
-                    {item.caseId} — {item.caseName || item.clientNameSnapshot || "未命名案件"}
+                <SelectItem value="none">不綁定訂單</SelectItem>
+                {customOrders.map((o) => (
+                  <SelectItem key={o.orderId} value={o.orderId}>
+                    {orderLabel(o)}
                   </SelectItem>
                 ))}
               </SelectContent>

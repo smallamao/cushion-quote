@@ -95,6 +95,7 @@ function orderFromRow(row: string[]): PurchaseOrder {
     expectedDeliveryDate: row[13] ?? "",
     createdAt: row[14] ?? "",
     updatedAt: row[15] ?? "",
+    relatedOrderId: row[16] ?? "",
   };
 }
 

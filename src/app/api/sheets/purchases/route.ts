@@ -47,6 +47,7 @@ function rowToOrder(row: string[]): PurchaseOrder {
       orderId: row[0] ?? "",
       orderDate: row[1] ?? "",
       supplierId: row[2] ?? "",
+      relatedOrderId: "",
       caseId: "",
       caseNameSnapshot: "",
       supplierSnapshot,
@@ -80,6 +81,7 @@ function rowToOrder(row: string[]): PurchaseOrder {
     expectedDeliveryDate: row[13] ?? "",
     createdAt: row[14] ?? "",
     updatedAt: row[15] ?? "",
+    relatedOrderId: row[16] ?? "",
   };
 }
 
@@ -101,6 +103,7 @@ function orderToRow(o: PurchaseOrder): string[] {
     o.expectedDeliveryDate,
     o.createdAt,
     o.updatedAt,
+    o.relatedOrderId,
   ];
 }
 

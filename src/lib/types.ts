@@ -943,7 +943,11 @@ export interface PurchaseOrder {
   orderId: string; // PS-20260409-02
   orderDate: string; // 2026/04/09 (採購日期)
   supplierId: string; // PS006 (關聯廠商)
+  /** 關聯的訂製訂單 orderId（採購由已成立的訂製訂單觸發）。空字串＝不綁定 */
+  relatedOrderId: string;
+  /** 該訂製訂單的 caseId，建立時自動帶入，供案件採購成本彙整（依 caseId 加總） */
   caseId: string;
+  /** 顯示用快照：關聯訂單的工單號＋客戶（歷史不可變） */
   caseNameSnapshot: string;
   // 廠商快照（建立時拍照，確保歷史不可變）
   supplierSnapshot: {
