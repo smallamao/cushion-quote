@@ -16,6 +16,7 @@ import {
   versionRowToRecord,
 } from "../../_v2-utils";
 import { syncAutoCommissionSettlements } from "../../_settlement-utils";
+import { syncVersionToParents } from "../../_version-sync-utils";
 
 interface PutVersionPayload {
   version: QuoteVersionRecord;
@@ -155,6 +156,9 @@ export async function PUT(
 
     await syncAutoCommissionSettlements(client, record);
 
+    // 版本狀態可能在編輯器內變更 → 連動報價/案件/應收帳款，避免狀態脫鉤
+    await syncVersionToParents(client, record);
+
     return NextResponse.json({ ok: true, versionId, lineCount: lines.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
@@ -208,6 +212,12 @@ export async function PATCH(
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(updated)] },
     });
+
+    // 狀態連動（修正「版本已接受、案件仍報價中」的脫鉤）：
+    // 報價列表的狀態下拉、合約回簽都走這個端點，過去漏了連動，
+    // 造成版本 accepted 但報價/案件/應收帳款全部沒跟上。
+    await syncAutoCommissionSettlements(client, updated);
+    await syncVersionToParents(client, updated);
 
     return NextResponse.json({ ok: true, version: updated });
   } catch (err) {
