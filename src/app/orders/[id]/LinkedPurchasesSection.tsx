@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2, ShoppingCart } from "lucide-react";
 
@@ -28,35 +27,13 @@ function fmtMoney(n: number | null | undefined): string {
 
 interface Props {
   orderId: string;
+  purchases: PurchaseOrder[];
+  loading: boolean;
 }
 
-// 訂單頁反查：列出關聯到此訂製訂單的採購單（relatedOrderId 相符）
-export function LinkedPurchasesSection({ orderId }: Props) {
-  const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(
-          `/api/sheets/purchases?relatedOrderId=${encodeURIComponent(orderId)}`,
-          { cache: "no-store" },
-        );
-        const json = (await res.json()) as { orders?: PurchaseOrder[] };
-        if (!cancelled) setPurchases(json.orders ?? []);
-      } catch {
-        if (!cancelled) setPurchases([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [orderId]);
-
+// 訂單頁反查：列出關聯到此訂製訂單的採購單（relatedOrderId 相符）。
+// 資料由父層 OrderDetailClient 一次抓取後傳入（財務頁計成本亦共用同一份）。
+export function LinkedPurchasesSection({ orderId, purchases, loading }: Props) {
   const total = purchases
     .filter((p) => p.status !== "cancelled")
     .reduce((s, p) => s + (p.totalAmount || 0), 0);

@@ -24,6 +24,7 @@ import type {
   OrderInvoiceStatus,
   OrderItemCategory,
   OrderStatus,
+  PurchaseOrder,
 } from "@/lib/types";
 import { FinanceTab } from "./FinanceTab";
 import { LinkedPurchasesSection } from "./LinkedPurchasesSection";
@@ -83,6 +84,9 @@ export function OrderDetailClient({ orderId }: Props) {
   const [statusChanging, setStatusChanging] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
   const [notionResult, setNotionResult] = useState<{ ok: boolean; message: string } | null>(null);
+  // 關聯採購單（供財務頁計入成本 + 反查區塊顯示）；一次抓、兩處共用
+  const [linkedPurchases, setLinkedPurchases] = useState<PurchaseOrder[]>([]);
+  const [linkedPurchasesLoading, setLinkedPurchasesLoading] = useState(true);
 
   // Load order on mount
   useEffect(() => {
@@ -115,6 +119,34 @@ export function OrderDetailClient({ orderId }: Props) {
       cancelled = true;
     };
   }, [orderId]);
+
+  // 抓此訂單的關聯採購單（relatedOrderId 相符）
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLinkedPurchasesLoading(true);
+      try {
+        const res = await fetch(
+          `/api/sheets/purchases?relatedOrderId=${encodeURIComponent(orderId)}`,
+          { cache: "no-store" },
+        );
+        const json = (await res.json()) as { orders?: PurchaseOrder[] };
+        if (!cancelled) setLinkedPurchases(json.orders ?? []);
+      } catch {
+        if (!cancelled) setLinkedPurchases([]);
+      } finally {
+        if (!cancelled) setLinkedPurchasesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
+  // 關聯採購單成本：排除已取消，計入訂單總成本
+  const linkedPurchaseCost = linkedPurchases
+    .filter((p) => p.status !== "cancelled")
+    .reduce((s, p) => s + (p.totalAmount || 0), 0);
 
   const updateDraft = useCallback(<K extends keyof CustomOrder>(
     key: K,
@@ -640,8 +672,13 @@ export function OrderDetailClient({ orderId }: Props) {
               onSave={handleSave}
               saving={saving}
               isDirty={isDirty}
+              linkedPurchaseCost={linkedPurchaseCost}
             />
-            <LinkedPurchasesSection orderId={orderId} />
+            <LinkedPurchasesSection
+              orderId={orderId}
+              purchases={linkedPurchases}
+              loading={linkedPurchasesLoading}
+            />
           </div>
         </TabsContent>
       </Tabs>

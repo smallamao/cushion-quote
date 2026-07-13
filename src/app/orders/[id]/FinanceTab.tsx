@@ -30,9 +30,18 @@ interface FinanceTabProps {
   onSave: () => Promise<void>;
   saving: boolean;
   isDirty: boolean;
+  /** 關聯採購單成本（非已取消合計），計入總成本 */
+  linkedPurchaseCost?: number;
 }
 
-export function FinanceTab({ draft, updateDraft, onSave, saving, isDirty }: FinanceTabProps) {
+export function FinanceTab({
+  draft,
+  updateDraft,
+  onSave,
+  saving,
+  isDirty,
+  linkedPurchaseCost = 0,
+}: FinanceTabProps) {
   const uid = useId();
   const [receiptUploading, setReceiptUploading] = useState<string | null>(null);
 
@@ -42,7 +51,9 @@ export function FinanceTab({ draft, updateDraft, onSave, saving, isDirty }: Fina
   const hasPurchases = purchases.length > 0;
   const totalCostFromPurchases = purchases.reduce((s, p) => s + (p.amount || 0), 0);
   const legacyTotalCost = draft.materialCost + draft.laborCost + draft.shippingCost + draft.otherCost;
-  const totalCost = hasPurchases ? totalCostFromPurchases : legacyTotalCost;
+  const manualCost = hasPurchases ? totalCostFromPurchases : legacyTotalCost;
+  // 總成本 = 手動進貨成本明細 + 關聯採購單（非已取消）
+  const totalCost = manualCost + linkedPurchaseCost;
 
   const netProfit = draft.quotedAmount - totalCost;
   const marginRate = draft.quotedAmount > 0 ? (netProfit / draft.quotedAmount) * 100 : 0;
@@ -275,6 +286,21 @@ export function FinanceTab({ draft, updateDraft, onSave, saving, isDirty }: Fina
             <p className={`mt-1 text-lg font-semibold ${marginColor}`}>{marginRate.toFixed(1)}%</p>
           </div>
         </div>
+        {linkedPurchaseCost > 0 && (
+          <div className="mt-3 space-y-1 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-secondary)]">
+            <div className="flex justify-between">
+              <span>進貨成本明細（手動）</span>
+              <span>${manualCost.toLocaleString("zh-TW")}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>關聯採購單（非已取消，自動計入）</span>
+              <span>${linkedPurchaseCost.toLocaleString("zh-TW")}</span>
+            </div>
+            <p className="pt-1 text-[11px] text-[var(--text-tertiary)]">
+              總成本已包含關聯採購單金額；已取消的採購單不計入。
+            </p>
+          </div>
+        )}
       </div>
 
       {/* 儲存 */}
