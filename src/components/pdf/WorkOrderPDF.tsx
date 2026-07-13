@@ -450,13 +450,20 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
   const hasNotes  = order.notes.length > 0;
   const photoUrls = order.photos.slice(0, 6);
   const hasSwatch = Boolean(order.materialImageUrl);
-  // 照片自由版面（版面編輯器儲存的座標，A4 pt）；只採用仍存在於照片清單的項目。
+  // 照片自由版面（版面編輯器儲存的座標，A4 pt）；只採用仍存在於對應清單的項目。
   // 有版面的照片以絕對座標渲染；沒被排進版面的照片（例如事後新增）仍走自動排版。
+  const allItemPhotoUrls = order.items.flatMap((it) => (it.photos ?? []).slice(0, 4));
   const layoutItems = (order.photoLayout ?? []).filter(
-    (p) => p.kind !== "swatch" && order.photos.includes(p.url),
+    (p) =>
+      (p.kind === "itemPhoto" && allItemPhotoUrls.includes(p.url)) ||
+      ((p.kind === "photo" || !p.kind) && order.photos.includes(p.url)),
   );
   const flowPhotoUrls = photoUrls.filter((u) => !layoutItems.some((p) => p.url === u));
   const hasFlowPhotos = flowPhotoUrls.length > 0;
+  // 已排進自由版面的品項照片 → 品項列內不再重複顯示
+  const layoutItemPhotoUrls = new Set(
+    layoutItems.filter((p) => p.kind === "itemPhoto").map((p) => p.url),
+  );
   // 色票自由版面：kind=swatch 的項目；渲染時取當下 materialImageUrl（裁切後網址會變，不能靠 url 比對）
   const swatchLayout = (order.photoLayout ?? []).find((p) => p.kind === "swatch") ?? null;
   // 色票大小：操作者在工單編輯頁調整，基準 180×135，夾在 0.6~1.3 倍避免破版
@@ -554,7 +561,10 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                   : item.foamColor === "red"  ? s.itemFoamDanger
                   : s.itemFoamDefault;
 
-                const hasPerItemPhotos = (item.photos ?? []).length > 0;
+                const itemFlowPhotos = (item.photos ?? [])
+                  .slice(0, 4)
+                  .filter((u) => !layoutItemPhotoUrls.has(u));
+                const hasPerItemPhotos = itemFlowPhotos.length > 0;
 
                 return (
                   <View key={item.id} style={s.itemEntry}>
@@ -593,10 +603,10 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                       <Text style={s.itemSubNote}>{safeText(item.subNote)}</Text>
                     ) : null}
 
-                    {/* Per-item photos */}
+                    {/* Per-item photos（已排進自由版面的照片改由絕對層渲染） */}
                     {hasPerItemPhotos ? (
                       <View style={s.itemPhotoStrip}>
-                        {(item.photos ?? []).slice(0, 4).map((url, pi) => (
+                        {itemFlowPhotos.map((url, pi) => (
                           /* eslint-disable-next-line jsx-a11y/alt-text */
                           <Image key={pi} src={url} style={s.itemPhoto} />
                         ))}
@@ -647,7 +657,8 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
           </View>
         ) : null}
 
-        {/* ── 5b. Freeform-placed photos (absolute, page-1 coordinates) ── */}
+        {/* ── 5b. Freeform-placed photos (absolute, page-1 coordinates) ──
+            品項色票（itemPhoto）用 contain 完整顯示裁切結果；現場照片用 cover 填滿 */}
         {layoutItems.map((p, i) => (
           <View
             key={`layout-${i}`}
@@ -661,7 +672,14 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
             }}
           >
             {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <Image src={p.url} style={{ width: p.w, height: p.h, objectFit: "cover" }} />
+            <Image
+              src={p.url}
+              style={{
+                width: p.w,
+                height: p.h,
+                objectFit: p.kind === "itemPhoto" ? "contain" : "cover",
+              }}
+            />
           </View>
         ))}
         {/* 色票自由版面：contain 完整顯示（不重複裁切色票資訊） */}

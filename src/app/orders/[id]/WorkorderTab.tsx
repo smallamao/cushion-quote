@@ -116,7 +116,10 @@ export function WorkorderTab({
     try {
       const res = await fetch(draft.workOrderPdfUrl);
       if (!res.ok) throw new Error("讀取已存工單失敗");
-      setPdfBlob(await res.blob());
+      // Cloudinary raw 檔會回 octet-stream，iframe 無法預覽（會變成下載亂碼檔名的檔案）
+      // → 一律強制標回 application/pdf
+      const buf = await res.arrayBuffer();
+      setPdfBlob(new Blob([buf], { type: "application/pdf" }));
       setPdfOpen(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : "讀取已存工單失敗");
@@ -681,10 +684,16 @@ export function WorkorderTab({
           <Button
             variant="outline"
             onClick={() => setLayoutOpen(true)}
-            disabled={draft.photos.length === 0 && !draft.materialImageUrl}
+            disabled={
+              draft.photos.length === 0 &&
+              !draft.materialImageUrl &&
+              !draft.items.some((it) => (it.photos ?? []).length > 0)
+            }
             title={
-              draft.photos.length === 0 && !draft.materialImageUrl
-                ? "請先上傳現場照片或材料圖片"
+              draft.photos.length === 0 &&
+              !draft.materialImageUrl &&
+              !draft.items.some((it) => (it.photos ?? []).length > 0)
+                ? "請先上傳現場照片、材料圖片或品項色票照片"
                 : "拖拉調整照片/色票位置大小旋轉，並可調文字大小"
             }
           >
@@ -764,14 +773,24 @@ export function WorkorderTab({
         onReplaceImage={(target, newUrl) => {
           if (target.kind === "swatch") {
             updateDraft("materialImageUrl", newUrl);
+            return;
+          }
+          if (target.kind === "itemPhoto") {
+            updateDraft(
+              "items",
+              draft.items.map((it) => ({
+                ...it,
+                photos: (it.photos ?? []).map((u) => (u === target.url ? newUrl : u)),
+              })),
+            );
           } else {
             updateDraft("photos", draft.photos.map((u) => (u === target.url ? newUrl : u)));
-            // 已存版面若引用舊網址，一併換新，避免取消儲存版面時對不上
-            updateDraft(
-              "photoLayout",
-              (draft.photoLayout ?? []).map((p) => (p.url === target.url ? { ...p, url: newUrl } : p)),
-            );
           }
+          // 已存版面若引用舊網址，一併換新，避免取消儲存版面時對不上
+          updateDraft(
+            "photoLayout",
+            (draft.photoLayout ?? []).map((p) => (p.url === target.url ? { ...p, url: newUrl } : p)),
+          );
         }}
       />
     </div>

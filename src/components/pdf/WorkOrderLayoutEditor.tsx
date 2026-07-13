@@ -30,8 +30,11 @@ interface Props {
   onClose: () => void;
   /** layout 空陣列＝重設為自動排版；fontScale 一併儲存 */
   onSave: (layout: WorkOrderPhotoLayoutItem[], fontScale: number) => void;
-  /** 在編輯器內裁切後，新圖網址回寫給父層（swatch → materialImageUrl；photo → photos[]） */
-  onReplaceImage: (target: { kind: "photo" | "swatch"; url: string }, newUrl: string) => void;
+  /** 在編輯器內裁切後，新圖網址回寫給父層（swatch → materialImageUrl；photo → photos[]；itemPhoto → items[].photos） */
+  onReplaceImage: (
+    target: { kind: "photo" | "swatch" | "itemPhoto"; url: string },
+    newUrl: string,
+  ) => void;
 }
 
 // 把裁切輸出的 dataURL 上傳成正式網址（Sheets 儲存格放不下 base64）
@@ -79,6 +82,19 @@ function defaultSwatchItem(order: CustomOrder): WorkOrderPhotoLayoutItem {
   return { url: "swatch", x: A4_W - 28 - w, y: 39, w, h, rotation: 0, kind: "swatch" };
 }
 
+// 品項色票照片預設排在頁面中段一列（原本內嵌在品項下方，抽出後可自由拖拉）
+function defaultItemPhotoItem(url: string, idx: number): WorkOrderPhotoLayoutItem {
+  return {
+    url,
+    x: 28 + (idx % 4) * 130,
+    y: 330 + Math.floor(idx / 4) * 100,
+    w: 120,
+    h: 86,
+    rotation: 0,
+    kind: "itemPhoto",
+  };
+}
+
 export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceImage }: Props) {
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgLoading, setBgLoading] = useState(false);
@@ -106,6 +122,8 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
             photos: [],
             photoLayout: [],
             materialImageUrl: "",
+            // 品項色票照片也抽掉（由拖拉層呈現），底圖只剩純文字
+            items: order.items.map((it) => ({ ...it, photos: [] })),
             fontScale: scale,
           },
         },
@@ -129,12 +147,22 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
     const photos = order.photos.slice(0, 6);
     const photoItems = photos.map(
       (url, i) =>
-        existing.find((p) => p.kind !== "swatch" && p.url === url) ?? defaultPhotoItem(url, i),
+        existing.find((p) => (p.kind === "photo" || !p.kind) && p.url === url) ??
+        defaultPhotoItem(url, i),
+    );
+    // 品項色票照片：每個品項最多 4 張，全部納入自由排版（同網址出現在多個品項時只排一張）
+    const itemPhotoUrls = [
+      ...new Set(order.items.flatMap((it) => (it.photos ?? []).slice(0, 4))),
+    ];
+    const itemPhotoItems = itemPhotoUrls.map(
+      (url, i) =>
+        existing.find((p) => p.kind === "itemPhoto" && p.url === url) ??
+        defaultItemPhotoItem(url, i),
     );
     const swatchItems = order.materialImageUrl
       ? [existing.find((p) => p.kind === "swatch") ?? defaultSwatchItem(order)]
       : [];
-    setItems([...swatchItems, ...photoItems]);
+    setItems([...swatchItems, ...photoItems, ...itemPhotoItems]);
     // fontScale：1 = 預設（PDF 基準已含 130% 放大），拉桿範圍 0.7~1.2
     const initialScale = Math.min(Math.max(order.fontScale ?? 1, 0.7), 1.2);
     setFontScale(initialScale);
@@ -247,7 +275,7 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
     setCropSaving(true);
     try {
       const newUrl = await uploadDataUrl(result);
-      onReplaceImage({ kind: it.kind === "swatch" ? "swatch" : "photo", url: originalSrc }, newUrl);
+      onReplaceImage({ kind: it.kind ?? "photo", url: originalSrc }, newUrl);
       if (it.kind !== "swatch") {
         setItems((prev) => prev.map((p, i) => (i === cropIdx ? { ...p, url: newUrl } : p)));
       }
@@ -340,10 +368,11 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
             {items.map((it, i) => {
               const isSel = selected === i;
               const isSwatch = it.kind === "swatch";
+              const isItemPhoto = it.kind === "itemPhoto";
               const src = isSwatch ? order.materialImageUrl : it.url;
               return (
                 <div
-                  key={isSwatch ? "swatch" : it.url}
+                  key={isSwatch ? "swatch" : `${it.url}-${i}`}
                   className={`absolute cursor-move ${isSel ? "z-20" : "z-10"}`}
                   style={{
                     left: it.x * SCALE,
@@ -360,12 +389,17 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
                     alt=""
                     draggable={false}
                     className={`h-full w-full select-none ${
-                      isSwatch ? "object-contain bg-white" : "object-cover"
+                      isSwatch || isItemPhoto ? "object-contain bg-white" : "object-cover"
                     } ${isSel ? "ring-2 ring-[var(--accent)]" : "ring-1 ring-black/20"}`}
                   />
                   {isSwatch && (
                     <span className="pointer-events-none absolute left-0 top-0 rounded-br bg-black/60 px-1 text-[9px] text-white">
                       色票
+                    </span>
+                  )}
+                  {isItemPhoto && (
+                    <span className="pointer-events-none absolute left-0 top-0 rounded-br bg-black/60 px-1 text-[9px] text-white">
+                      品項
                     </span>
                   )}
                   {isSel && (

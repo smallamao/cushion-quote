@@ -1195,8 +1195,8 @@ export interface WorkOrderPhotoLayoutItem {
   w: number;
   h: number;
   rotation: number;
-  /** 預設 photo；swatch＝色票圖 */
-  kind?: "photo" | "swatch";
+  /** 預設 photo（全局附圖）；swatch＝主色票圖；itemPhoto＝品項色票照片 */
+  kind?: "photo" | "swatch" | "itemPhoto";
 }
 
 export interface CustomOrder {
