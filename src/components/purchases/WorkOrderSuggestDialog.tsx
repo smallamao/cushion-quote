@@ -103,10 +103,10 @@ export function WorkOrderSuggestDialog({
       const json = (await res.json()) as { ok: boolean; order?: CustomOrder };
       if (json.ok && json.order) {
         setSelectedOrder(json.order);
-        // auto-check all items that have colorCode + dimensions
+        // auto-check all items that have dimensions (色號非必要，有尺寸即可計算)
         const autoCheck = new Set<string>(
           json.order.items
-            .filter((it) => it.itemType !== "header" && it.colorCode && it.dimensions)
+            .filter((it) => it.itemType !== "header" && it.dimensions)
             .map((it) => it.id),
         );
         setCheckedIds(autoCheck);
@@ -129,7 +129,7 @@ export function WorkOrderSuggestDialog({
   function handleConfirm() {
     if (!selectedOrder) return;
     const result: SuggestedItem[] = selectedOrder.items
-      .filter((it) => checkedIds.has(it.id) && it.colorCode && it.dimensions)
+      .filter((it) => checkedIds.has(it.id) && it.dimensions)
       .map((it: OrderItem) => {
         const calc = calculateFabricNeeded({
           dimensions: it.dimensions,
@@ -251,7 +251,8 @@ export function WorkOrderSuggestDialog({
                 <div className="py-6 text-center text-sm text-[var(--text-tertiary)]">此工單無品項</div>
               )}
               {eligibleItems.map((it) => {
-                const hasCalc = !!(it.colorCode && it.dimensions);
+                // 只要有尺寸就能計算用量；色號僅為標記，不影響布料計算
+                const hasCalc = !!it.dimensions;
                 const calc = hasCalc
                   ? calculateFabricNeeded({ dimensions: it.dimensions, fabricWidthCm: width, unit: "碼" })
                   : null;
