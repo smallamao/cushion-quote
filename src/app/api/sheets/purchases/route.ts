@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 export const maxDuration = 60;
 
 import { getSheetsClient } from "@/lib/sheets-client";
+import { relatedOrderIncludes } from "@/lib/purchase-order-link";
 import type {
   PurchaseOrder,
   PurchaseOrderItem,
@@ -214,7 +215,7 @@ export async function GET(request: Request) {
       .map(rowToOrder)
       .filter((o) => o.orderId)
       .filter((o) => !filterCaseId || o.caseId === filterCaseId)
-      .filter((o) => !filterRelatedOrderId || o.relatedOrderId === filterRelatedOrderId);
+      .filter((o) => !filterRelatedOrderId || relatedOrderIncludes(o.relatedOrderId, filterRelatedOrderId));
 
     if (!needItems || !itemRes) {
       return NextResponse.json({ orders, source: "sheets" as const });

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { calculateFabricNeeded } from "@/lib/dimension-parser";
+import { joinRelatedOrderIds, parseRelatedOrderIds } from "@/lib/purchase-order-link";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -195,7 +196,8 @@ export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
 
   const [supplierId, setSupplierId] = useState("");
   const [customOrders, setCustomOrders] = useState<CustomOrder[]>([]);
-  const [linkedOrderId, setLinkedOrderId] = useState("none");
+  // 關聯訂製訂單（可多張，涵蓋一次叫貨供多單）。第一張為主單，決定 caseId 快照。
+  const [linkedOrderIds, setLinkedOrderIds] = useState<string[]>([]);
   // 舊採購單可能只綁過案件（無 relatedOrderId）。編輯時若未重新關聯訂單，
   // 保留原本的案件關聯，避免存檔把 caseId 清掉、破壞案件採購成本彙整。
   const [originalCaseId, setOriginalCaseId] = useState("");
@@ -277,7 +279,7 @@ export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
     const ord = customOrders.find((o) => o.orderId === fromOrderId);
     if (!ord) return; // 等訂單清單載入後再執行
     prefilledFromOrderRef.current = true;
-    setLinkedOrderId(ord.orderId);
+    setLinkedOrderIds([ord.orderId]);
     const suggested: SuggestedItem[] = ord.items
       .filter((it) => it.itemType !== "header" && it.dimensions)
       .map((it) => {
@@ -319,7 +321,7 @@ export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
         return;
       }
       setSupplierId(data.order.supplierId);
-      setLinkedOrderId(data.order.relatedOrderId || "none");
+      setLinkedOrderIds(parseRelatedOrderIds(data.order.relatedOrderId));
       setOriginalCaseId(data.order.caseId || "");
       setOriginalCaseName(data.order.caseNameSnapshot || "");
       setOrderDate(data.order.orderDate);
@@ -351,7 +353,12 @@ export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
   }, [orderId]);
 
   const supplier = suppliers.find((s) => s.supplierId === supplierId) || null;
-  const linkedOrder = customOrders.find((o) => o.orderId === linkedOrderId) || null;
+  // 主單（第一張關聯訂單）：決定存回的 caseId / caseNameSnapshot 快照
+  const primaryLinkedOrder =
+    customOrders.find((o) => o.orderId === linkedOrderIds[0]) || null;
+  const linkedOrders = linkedOrderIds
+    .map((id) => customOrders.find((o) => o.orderId === id))
+    .filter((o): o is CustomOrder => Boolean(o));
   const supplierProducts = useMemo(
     () => products.filter((p) => p.supplierId === supplierId),
     [products, supplierId]
@@ -491,14 +498,16 @@ export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
       setNotes(merged.join(", "));
     }
 
-    // Smart order detection: paste refs like "S896" are 工單號 → auto-select
-    // the matching 訂製訂單 (fall back to orderId match).
+    // Smart order detection: paste refs like "S896" are 工單號 → auto-add
+    // the matching 訂製訂單 (fall back to orderId match) if not already linked.
     const detectedRef = detectPrimaryCaseId(lines);
-    if (detectedRef && linkedOrderId === "none") {
+    if (detectedRef) {
       const match = customOrders.find(
         (o) => o.orderNumber === detectedRef || o.orderId === detectedRef,
       );
-      if (match) setLinkedOrderId(match.orderId);
+      if (match) {
+        setLinkedOrderIds((prev) => (prev.includes(match.orderId) ? prev : [...prev, match.orderId]));
+      }
     }
 
     setPasteText("");
@@ -674,9 +683,9 @@ export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
         orderId: orderId ?? "",
         orderDate,
         supplierId,
-        relatedOrderId: linkedOrderId === "none" ? "" : linkedOrderId,
-        caseId: linkedOrder ? linkedOrder.caseId : originalCaseId,
-        caseNameSnapshot: linkedOrder ? orderLabel(linkedOrder) : originalCaseName,
+        relatedOrderId: joinRelatedOrderIds(linkedOrderIds),
+        caseId: primaryLinkedOrder ? primaryLinkedOrder.caseId : originalCaseId,
+        caseNameSnapshot: primaryLinkedOrder ? orderLabel(primaryLinkedOrder) : originalCaseName,
         supplierSnapshot: buildSnapshot(supplier),
         subtotal,
         shippingFee,
@@ -815,9 +824,9 @@ export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
       orderId: orderId ?? previewNextOrderId,
       orderDate,
       supplierId,
-      relatedOrderId: linkedOrderId === "none" ? "" : linkedOrderId,
-      caseId: linkedOrder ? linkedOrder.caseId : originalCaseId,
-      caseNameSnapshot: linkedOrder ? orderLabel(linkedOrder) : originalCaseName,
+      relatedOrderId: joinRelatedOrderIds(linkedOrderIds),
+      caseId: primaryLinkedOrder ? primaryLinkedOrder.caseId : originalCaseId,
+      caseNameSnapshot: primaryLinkedOrder ? orderLabel(primaryLinkedOrder) : originalCaseName,
       supplierSnapshot: buildSnapshot(supplier),
       subtotal,
       shippingFee,
@@ -997,18 +1006,59 @@ export function PurchaseEditorClient({ orderId, fromOrderId }: Props) {
             />
           </div>
           <div>
-            <Label className="mb-1 block text-xs">關聯訂製訂單</Label>
-            <Select value={linkedOrderId} onValueChange={setLinkedOrderId}>
+            <Label className="mb-1 block text-xs">
+              關聯訂製訂單
+              {linkedOrderIds.length > 1 && (
+                <span className="ml-1 font-normal text-[var(--text-tertiary)]">
+                  （{linkedOrderIds.length} 張，第一張為主單）
+                </span>
+              )}
+            </Label>
+            {/* 已選訂單以晶片顯示，可移除；下拉再加更多（一次叫貨供多單） */}
+            {linkedOrders.length > 0 && (
+              <div className="mb-1.5 flex flex-wrap gap-1.5">
+                {linkedOrders.map((o, idx) => (
+                  <span
+                    key={o.orderId}
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-0.5 text-xs"
+                    title={idx === 0 ? "主單（決定案件歸屬）" : undefined}
+                  >
+                    {idx === 0 && <span className="text-[var(--accent)]">★</span>}
+                    {orderLabel(o)}
+                    <button
+                      type="button"
+                      className="text-[var(--text-tertiary)] hover:text-red-500"
+                      onClick={() =>
+                        setLinkedOrderIds((prev) => prev.filter((id) => id !== o.orderId))
+                      }
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <Select
+              value=""
+              onValueChange={(v) =>
+                setLinkedOrderIds((prev) => (prev.includes(v) ? prev : [...prev, v]))
+              }
+            >
               <SelectTrigger>
-                <SelectValue placeholder="選擇訂製訂單（可略過）" />
+                <SelectValue placeholder={linkedOrderIds.length ? "再加一張訂單…" : "選擇訂製訂單（可略過、可多選）"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">不綁定訂單</SelectItem>
-                {customOrders.map((o) => (
-                  <SelectItem key={o.orderId} value={o.orderId}>
-                    {orderLabel(o)}
-                  </SelectItem>
-                ))}
+                {customOrders.filter((o) => !linkedOrderIds.includes(o.orderId)).length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-[var(--text-tertiary)]">無更多可選訂單</div>
+                ) : (
+                  customOrders
+                    .filter((o) => !linkedOrderIds.includes(o.orderId))
+                    .map((o) => (
+                      <SelectItem key={o.orderId} value={o.orderId}>
+                        {orderLabel(o)}
+                      </SelectItem>
+                    ))
+                )}
               </SelectContent>
             </Select>
           </div>
