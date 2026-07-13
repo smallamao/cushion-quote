@@ -8,7 +8,8 @@ import {
   orderRowToRecord,
   orderRecordToRow,
 } from "@/lib/order-utils";
-import type { OrderStatus } from "@/lib/types";
+import { updateNotionPageIfExists } from "@/lib/notion-order";
+import type { CustomOrder, OrderStatus } from "@/lib/types";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -77,21 +78,29 @@ export async function PATCH(request: Request, context: RouteContext) {
         ? todayStr
         : existing.completedDate;
 
-    const updated = orderRecordToRow({
+    const updatedRecord: CustomOrder = {
       ...existing,
       status: body.status,
       completedDate,
       updatedAt: isoNow(),
-    });
+    };
 
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
       range: ORDER_ROW_RANGE(sheetRow),
       valueInputOption: "RAW",
-      requestBody: { values: [updated] },
+      requestBody: { values: [orderRecordToRow(updatedRecord)] },
     });
 
-    return NextResponse.json({ ok: true });
+    // best-effort：Notion 已有此單頁面時同步更新狀態（不建新頁；失敗不影響狀態變更）
+    let notionUpdated = false;
+    try {
+      notionUpdated = await updateNotionPageIfExists(updatedRecord);
+    } catch {
+      // Notion 同步失敗不阻斷主流程
+    }
+
+    return NextResponse.json({ ok: true, notionUpdated });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

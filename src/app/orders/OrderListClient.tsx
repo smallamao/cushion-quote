@@ -76,6 +76,7 @@ export function OrderListClient() {
   const [deleteTarget, setDeleteTarget] = useState<CustomOrder | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [copying, setCopying] = useState<string | null>(null);
+  const [statusChanging, setStatusChanging] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportMonth, setReportMonth] = useState(() => {
     const d = new Date();
@@ -139,6 +140,32 @@ export function OrderListClient() {
       setCopying(null);
     }
   }, [router]);
+
+  // 列表直接改狀態：樂觀更新，失敗回滾；後端會 best-effort 同步 Notion 既有頁面
+  const handleStatusChange = useCallback(async (order: CustomOrder, newStatus: OrderStatus) => {
+    if (newStatus === order.status) return;
+    const prevStatus = order.status;
+    setStatusChanging(order.orderId);
+    setOrders((cur) =>
+      cur.map((o) => (o.orderId === order.orderId ? { ...o, status: newStatus } : o)),
+    );
+    try {
+      const res = await fetch(`/api/sheets/orders/${order.orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "狀態更新失敗");
+    } catch (err) {
+      setOrders((cur) =>
+        cur.map((o) => (o.orderId === order.orderId ? { ...o, status: prevStatus } : o)),
+      );
+      alert(err instanceof Error ? err.message : "狀態更新失敗");
+    } finally {
+      setStatusChanging(null);
+    }
+  }, []);
 
   const months = useMemo(() => getLast12Months(), []);
 
@@ -353,8 +380,29 @@ export function OrderListClient() {
                     <span className="font-mono text-xs text-[var(--accent)]">
                       {order.orderNumber || order.orderId}
                     </span>
-                    <span className={`badge ${statusInfo.className}`}>
-                      {statusInfo.label}
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={order.status}
+                        onValueChange={(v) => void handleStatusChange(order, v as OrderStatus)}
+                        disabled={statusChanging === order.orderId}
+                      >
+                        <SelectTrigger className="h-7 w-auto gap-1 border-none bg-transparent px-1 shadow-none">
+                          {statusChanging === order.orderId ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--text-secondary)]" />
+                          ) : (
+                            <span className={`badge ${statusInfo.className}`}>
+                              {statusInfo.label}
+                            </span>
+                          )}
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(STATUS_MAP) as OrderStatus[]).map((st) => (
+                            <SelectItem key={st} value={st}>
+                              {STATUS_MAP[st].label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </span>
                   </div>
                   <div className="mt-1 text-sm font-medium">{order.clientName}</div>
@@ -461,10 +509,29 @@ export function OrderListClient() {
                           {order.internalNotes || "—"}
                         </div>
                       </td>
-                      <td className="px-3 py-2">
-                        <span className={`badge ${statusInfo.className}`}>
-                          {statusInfo.label}
-                        </span>
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <Select
+                          value={order.status}
+                          onValueChange={(v) => void handleStatusChange(order, v as OrderStatus)}
+                          disabled={statusChanging === order.orderId}
+                        >
+                          <SelectTrigger className="h-7 w-auto gap-1 border-none bg-transparent px-1 shadow-none hover:bg-[var(--bg-hover)]">
+                            {statusChanging === order.orderId ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--text-secondary)]" />
+                            ) : (
+                              <span className={`badge ${statusInfo.className}`}>
+                                {statusInfo.label}
+                              </span>
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(STATUS_MAP) as OrderStatus[]).map((st) => (
+                              <SelectItem key={st} value={st}>
+                                {STATUS_MAP[st].label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </td>
                       <td className="px-3 py-2 text-xs hidden lg:table-cell">
                         {order.orderDate || "—"}

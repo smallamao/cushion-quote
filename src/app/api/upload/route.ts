@@ -73,9 +73,10 @@ export async function POST(request: Request) {
 
     const data = Buffer.from(await entry.arrayBuffer());
     const prefix = isPdf ? "doc" : isVideo ? "vid" : "img";
-    // raw 資源（PDF）的 public_id 必須含副檔名，Cloudinary 才會以 application/pdf 供檔；
-    // 否則瀏覽器拿到 octet-stream，iframe 預覽會失敗、下載變成無副檔名的檔案
-    const publicId = `${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}${isPdf ? ".pdf" : ""}`;
+    // 注意：PDF 的 public_id 刻意「不」帶 .pdf 副檔名。
+    // Cloudinary 帳號預設封鎖 PDF 對外供檔，帶 .pdf 會被認出而回 401；
+    // 無副檔名則以 octet-stream 供檔（200），前端讀取時再強制標回 application/pdf。
+    const publicId = `${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     const result = await new Promise<{
       secure_url: string;
