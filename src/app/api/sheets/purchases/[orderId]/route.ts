@@ -403,6 +403,8 @@ export async function PUT(request: Request, context: RouteContext) {
 /**
  * DELETE = soft-delete by setting status = cancelled
  */
+// 硬刪除：把採購單那一列與其所有明細列從 Sheets 移除（不可復原）。
+// 「已取消」狀態仍保留在狀態下拉，供想留紀錄的情況使用。
 export async function DELETE(_request: Request, context: RouteContext) {
   const { orderId } = await context.params;
   const sheetsClient = await getSheetsClient();
@@ -411,29 +413,63 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   try {
-    const orderRes = await sheetsClient.sheets.spreadsheets.values.get({
+    // 1. 採購單列
+    const orderIdRes = await sheetsClient.sheets.spreadsheets.values.get({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: ORDER_RANGE_DATA,
+      range: ORDER_RANGE_IDS,
     });
-    const rows = orderRes.data.values ?? [];
-    const rowIndex = rows.findIndex((r) => r[0] === orderId);
-    if (rowIndex === -1) {
+    const orderIdRows = (orderIdRes.data.values ?? []) as string[][];
+    const orderRowIndex = orderIdRows.findIndex((r) => r[0] === orderId);
+    if (orderRowIndex === -1) {
       return NextResponse.json({ ok: false, error: "order not found" }, { status: 404 });
     }
 
-    const order = rowToOrder(rows[rowIndex]);
-    order.status = "cancelled";
-    order.updatedAt = new Date().toISOString();
-
-    const sheetRow = rowIndex + 2;
-    await sheetsClient.sheets.spreadsheets.values.update({
+    // 2. 明細列（採購單明細 row[1] === orderId）
+    const itemRes = await sheetsClient.sheets.spreadsheets.values.get({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `${ORDER_SHEET}!A${sheetRow}:Q${sheetRow}`,
-      valueInputOption: "RAW",
-      requestBody: { values: [orderToRow(order)] },
+      range: ITEM_RANGE_DATA,
+    });
+    const itemRows = (itemRes.data.values ?? []) as string[][];
+    const itemDataIndices = itemRows
+      .map((r, i) => (r[1] === orderId ? i : -1))
+      .filter((i) => i !== -1);
+
+    // 3. 取得兩張分頁的 sheetId
+    const meta = await sheetsClient.sheets.spreadsheets.get({
+      spreadsheetId: sheetsClient.spreadsheetId,
+      fields: "sheets.properties",
+    });
+    const orderSheetId = meta.data.sheets?.find((s) => s.properties?.title === ORDER_SHEET)?.properties?.sheetId;
+    const itemSheetId = meta.data.sheets?.find((s) => s.properties?.title === ITEM_SHEET)?.properties?.sheetId;
+    if (orderSheetId == null) {
+      return NextResponse.json({ ok: false, error: "sheet tab not found" }, { status: 500 });
+    }
+
+    // 4. 組 deleteDimension 請求；同一張分頁內由下往上刪，避免索引位移
+    const requests = [];
+    if (itemSheetId != null) {
+      for (const dataIdx of itemDataIndices.slice().sort((a, b) => b - a)) {
+        const gridRow = dataIdx + 1; // +1 表頭；0-based grid index
+        requests.push({
+          deleteDimension: {
+            range: { sheetId: itemSheetId, dimension: "ROWS", startIndex: gridRow, endIndex: gridRow + 1 },
+          },
+        });
+      }
+    }
+    const orderGridRow = orderRowIndex + 1; // +1 表頭；0-based grid index
+    requests.push({
+      deleteDimension: {
+        range: { sheetId: orderSheetId, dimension: "ROWS", startIndex: orderGridRow, endIndex: orderGridRow + 1 },
+      },
     });
 
-    return NextResponse.json({ ok: true, order });
+    await sheetsClient.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: sheetsClient.spreadsheetId,
+      requestBody: { requests },
+    });
+
+    return NextResponse.json({ ok: true, deletedItems: itemDataIndices.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

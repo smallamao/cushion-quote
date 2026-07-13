@@ -1,13 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2, Plus, Search, X } from "lucide-react";
+import { Loader2, Plus, Search, Trash2, X } from "lucide-react";
 
 import { PurchasePreviewDrawer } from "@/components/purchases/PurchasePreviewDrawer";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import {
@@ -70,6 +78,8 @@ export function PurchasesClient() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ orderId: string; items: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const supplierMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -120,6 +130,24 @@ export function PurchasesClient() {
       alert(err instanceof Error ? err.message : "更新狀態失敗");
     } finally {
       setBusyOrderId("");
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/sheets/purchases/${encodeURIComponent(deleteTarget.orderId)}`, {
+        method: "DELETE",
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "刪除失敗");
+      await reload();
+      setDeleteTarget(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "刪除失敗");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -314,19 +342,20 @@ export function PurchasesClient() {
                 <th className="px-3 py-2 text-center font-medium">項目</th>
                 <th className="w-28 px-3 py-2 text-left font-medium">狀態</th>
                 <th className="px-3 py-2 text-left font-medium">附註</th>
+                <th className="w-12 px-3 py-2 text-center font-medium"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
               {loading && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
+                  <td colSpan={9} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
                     載入中…
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
+                  <td colSpan={9} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
                     尚無採購單
                   </td>
                 </tr>
@@ -399,6 +428,18 @@ export function PurchasesClient() {
                     </td>
                     <td className="max-w-[200px] truncate px-3 py-2 text-xs text-[var(--text-secondary)]">
                       {o.notes}
+                    </td>
+                    <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-[var(--text-tertiary)] hover:bg-red-50 hover:text-red-500"
+                        title="刪除採購單"
+                        onClick={() =>
+                          setDeleteTarget({ orderId: o.orderId, items: itemCountByOrder[o.orderId] ?? 0 })
+                        }
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -484,6 +525,32 @@ export function PurchasesClient() {
         onClose={() => setPreviewOrderId(null)}
         onStatusChange={() => void reload()}
       />
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(o) => { if (!o && !deleting) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>刪除採購單</DialogTitle>
+            <DialogDescription>
+              確定要刪除採購單 <span className="font-mono font-semibold">{deleteTarget?.orderId}</span>
+              {deleteTarget && deleteTarget.items > 0 ? ` 及其 ${deleteTarget.items} 筆明細` : ""}
+              ？此動作無法復原。若只想保留紀錄，改用狀態「已取消」即可。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              取消
+            </Button>
+            <Button
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-4 w-4" />}
+              刪除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
