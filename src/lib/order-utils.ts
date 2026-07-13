@@ -1,11 +1,11 @@
 import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AM`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AM10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AN`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AN10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AM${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:AN${sheetRow}`;
 
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
@@ -71,6 +71,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     fontScale: migrateFontScale(toNumber(row[36])),
     workOrderPdfUrl: row[37] ?? "",
     workOrderPdfUpdatedAt: row[38] ?? "",
+    paidDate: row[39] ?? "",
     deadline: row[23] ?? "",
     items: parseJsonSafe<OrderItem[]>(row[24], []),
     notes: parseJsonSafe<OrderNote[]>(row[25], []),
@@ -136,6 +137,7 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     String(r.fontScale ?? 1),
     r.workOrderPdfUrl ?? "",
     r.workOrderPdfUpdatedAt ?? "",
+    r.paidDate ?? "",
   ];
 }
 

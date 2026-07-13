@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList, Copy, FileBarChart2, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ClipboardList, Copy, FileBarChart2, Loader2, Plus, ReceiptText, RefreshCw, Search, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,7 @@ import {
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { MonthlyReportModal } from "@/components/orders/MonthlyReportModal";
+import { StatementModal } from "@/components/orders/StatementModal";
 import type { CustomOrder, OrderItemCategory, OrderStatus } from "@/lib/types";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
@@ -78,6 +79,7 @@ export function OrderListClient() {
   const [copying, setCopying] = useState<string | null>(null);
   const [statusChanging, setStatusChanging] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [statementOpen, setStatementOpen] = useState(false);
   const [reportMonth, setReportMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -261,6 +263,15 @@ export function OrderListClient() {
           >
             <FileBarChart2 className="h-4 w-4" />
             <span className="ml-1 hidden sm:inline">月報</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setStatementOpen(true)}
+            title="按客戶產出應收帳款對帳單（未收款訂單滾存），並可標記收款"
+          >
+            <ReceiptText className="h-4 w-4" />
+            <span className="ml-1 hidden sm:inline">請款單</span>
           </Button>
           <Button onClick={() => router.push("/orders/new" as never)}>
             <Plus className="mr-1 h-4 w-4" />
@@ -595,6 +606,13 @@ export function OrderListClient() {
         selectedMonth={reportMonth}
         onMonthChange={setReportMonth}
         months={months}
+      />
+
+      <StatementModal
+        open={statementOpen}
+        onClose={() => setStatementOpen(false)}
+        orders={orders}
+        onOrdersChanged={() => void fetchOrders(showArchived)}
       />
 
       {/* Delete confirmation dialog */}

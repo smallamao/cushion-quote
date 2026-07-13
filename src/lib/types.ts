@@ -1239,6 +1239,8 @@ export interface CustomOrder {
   workOrderPdfUrl?: string;
   /** workOrderPdfUrl 的產生時間（ISO） */
   workOrderPdfUpdatedAt?: string;
+  /** 收款日（YYYY-MM-DD）。空＝未收款 → 會出現在該客戶的請款對帳單（滾存）；收款後填入即從下期消失 */
+  paidDate?: string;
   deadline: string;
   items: OrderItem[];
   notes: OrderNote[];
