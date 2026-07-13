@@ -130,7 +130,7 @@ export async function GET(
       getVersionRows(client),
       client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
-        range: `${PURCHASE_ORDER_SHEET}!A2:P`,
+        range: `${PURCHASE_ORDER_SHEET}!A2:Q`,
       }),
       client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,

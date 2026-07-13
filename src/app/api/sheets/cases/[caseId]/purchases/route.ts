@@ -28,7 +28,7 @@ export async function GET(
     // Fetch all purchase orders
     const response = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: `${PURCHASE_SHEET}!A2:P`,
+      range: `${PURCHASE_SHEET}!A2:Q`,
     });
 
     const rows = response.data.values ?? [];

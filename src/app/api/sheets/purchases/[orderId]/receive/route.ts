@@ -19,7 +19,7 @@ const INVENTORY_SHEET = "庫存主檔";
 const TRANSACTION_SHEET = "庫存異動";
 const PRODUCT_SHEET = "採購商品";
 
-const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:P`;
+const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:Q`;
 const ITEM_RANGE_DATA = `${ITEM_SHEET}!A2:J`;
 const INVENTORY_RANGE_DATA = `${INVENTORY_SHEET}!A2:K`;
 const TRANSACTION_ID_RANGE = `${TRANSACTION_SHEET}!A2:A`;
@@ -473,7 +473,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `${ORDER_SHEET}!A${orderRowIndex + 2}:P${orderRowIndex + 2}`,
+      range: `${ORDER_SHEET}!A${orderRowIndex + 2}:Q${orderRowIndex + 2}`,
       valueInputOption: "RAW",
       requestBody: { values: [orderToRow(nextOrder)] },
     });

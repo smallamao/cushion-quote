@@ -136,7 +136,7 @@ export async function GET(
       }),
       client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
-        range: `${PURCHASE_ORDER_SHEET}!A2:P`,
+        range: `${PURCHASE_ORDER_SHEET}!A2:Q`,
       }),
     ]);
 

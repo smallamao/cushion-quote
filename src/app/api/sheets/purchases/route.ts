@@ -15,8 +15,8 @@ import { sortSheetRows } from "../_v2-utils";
 
 const ORDER_SHEET = "採購單";
 const ITEM_SHEET = "採購單明細";
-const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:P`;
-const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:P`;
+const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:Q`;
+const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:Q`;
 const ITEM_RANGE_FULL = `${ITEM_SHEET}!A:J`;
 const ITEM_RANGE_DATA = `${ITEM_SHEET}!A2:J`;
 

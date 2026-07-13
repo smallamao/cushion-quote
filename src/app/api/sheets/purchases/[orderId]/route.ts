@@ -11,7 +11,7 @@ import type {
 const ORDER_SHEET = "採購單";
 const ITEM_SHEET = "採購單明細";
 const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A`;
-const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:P`;
+const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:Q`;
 const ITEM_RANGE_DATA = `${ITEM_SHEET}!A2:J`;
 const ITEM_RANGE_FULL = `${ITEM_SHEET}!A:J`;
 
@@ -324,7 +324,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `${ORDER_SHEET}!A${sheetRow}:P${sheetRow}`,
+      range: `${ORDER_SHEET}!A${sheetRow}:Q${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [orderToRow(body.order)] },
     });
@@ -428,7 +428,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
     const sheetRow = rowIndex + 2;
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `${ORDER_SHEET}!A${sheetRow}:P${sheetRow}`,
+      range: `${ORDER_SHEET}!A${sheetRow}:Q${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [orderToRow(order)] },
     });
