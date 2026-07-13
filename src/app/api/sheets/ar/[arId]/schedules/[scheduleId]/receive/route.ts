@@ -81,6 +81,9 @@ export async function POST(request: Request, context: RouteContext) {
       receivedAmount: existingSchedule.receivedAmount + payload.receivedAmount,
       receivedDate: payload.receivedDate,
       paymentMethod: payload.paymentMethod,
+      // 調整金額增量（例：銀行核對小差額自動當手續費沖銷，-30 讓該期以實收結清）
+      adjustmentAmount:
+        existingSchedule.adjustmentAmount + (payload.adjustmentAmount ?? 0),
       notes: payload.notes ?? existingSchedule.notes,
       updatedAt: now,
     };
@@ -93,12 +96,14 @@ export async function POST(request: Request, context: RouteContext) {
       .map((s) => (s.scheduleId === scheduleId ? updatedSchedule : s));
 
     const totalReceived = allSchedules.reduce((sum, s) => sum + s.receivedAmount, 0);
+    // 調整金額（負值＝沖銷）計入實際應收，未收不會殘留已沖銷的差額
+    const totalAdjustment = allSchedules.reduce((sum, s) => sum + s.adjustmentAmount, 0);
     const { arStatus, hasOverdue } = calcARStatusFromSchedules(allSchedules, today);
 
     const updatedAr: ARRecord = {
       ...ar,
       receivedAmount: totalReceived,
-      outstandingAmount: ar.totalAmount - totalReceived,
+      outstandingAmount: Math.max(0, ar.totalAmount + totalAdjustment - totalReceived),
       lastReceivedAt: payload.receivedDate,
       arStatus,
       hasOverdue,

@@ -181,6 +181,23 @@ export function BankReconciliationClient() {
 
     for (const entry of confirmable) {
       try {
+        // 小差額自動結清：實入比該期剩餘應收少 ≤50 元（例：客戶扣匯費 30），
+        // 差額掛「調整金額」沖銷，該期直接變已收款；差額 >50 則登實收、留部分收款
+        const schedule = arList
+          .find((a) => a.arId === entry.arId)
+          ?.schedules.find((s) => s.scheduleId === entry.scheduleId);
+        const credit = entry.tx.credit ?? 0;
+        let adjustmentAmount = 0;
+        let adjustmentNote = "";
+        if (schedule) {
+          const remaining =
+            schedule.amount + schedule.adjustmentAmount - schedule.receivedAmount;
+          const diff = remaining - credit;
+          if (diff > 0 && diff <= 50) {
+            adjustmentAmount = -diff;
+            adjustmentNote = `（差額 $${diff} 自動沖銷為手續費）`;
+          }
+        }
         const res = await fetch(
           `/api/sheets/ar/${entry.arId}/schedules/${entry.scheduleId}/receive`,
           {
@@ -191,7 +208,8 @@ export function BankReconciliationClient() {
               receivedAmount: entry.tx.credit,
               receivedDate: entry.tx.txDate,
               paymentMethod: "transfer",
-              notes: `銀行核對：${entry.tx.memo}`,
+              notes: `銀行核對：${entry.tx.memo}${adjustmentNote}`,
+              ...(adjustmentAmount !== 0 ? { adjustmentAmount } : {}),
             }),
           },
         );

@@ -504,6 +504,8 @@ export interface RecordARPaymentPayload {
   receivedDate: string;
   paymentMethod: ARPaymentMethod;
   notes?: string;
+  /** 調整金額增量（負值＝沖銷，例如匯費差額 -30，使該期以實收金額結清） */
+  adjustmentAmount?: number;
 }
 
 export type PendingMonthlyStatus = "pending" | "consolidated" | "cancelled";
