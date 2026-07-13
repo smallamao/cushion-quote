@@ -13,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ClientCombobox } from "@/components/quote-editor/ClientCombobox";
+import { useClients } from "@/hooks/useClients";
 import type { OrderItemCategory } from "@/lib/types";
 
 type Mode = "quote" | "direct";
@@ -32,6 +34,7 @@ const ORDER_ITEM_CATEGORIES: OrderItemCategory[] = [
 
 export function NewOrderClient() {
   const router = useRouter();
+  const { clients, loading: clientsLoading } = useClients();
   const [mode, setMode] = useState<Mode>("quote");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -40,14 +43,25 @@ export function NewOrderClient() {
   const [versionId, setVersionId] = useState("");
 
   // Mode B fields
+  const [clientId, setClientId] = useState(""); // "" = 未選；"__new__" = 散客手動輸入
   const [clientName, setClientName] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [itemCategory, setItemCategory] = useState<OrderItemCategory | "">("");
 
+  function handlePickClient(id: string) {
+    setClientId(id);
+    if (id === "__new__" || id === "") {
+      setClientName("");
+    } else {
+      const c = clients.find((x) => x.id === id);
+      if (c) setClientName(c.companyName);
+    }
+  }
+
   async function handleCreate(
     payload:
       | { sourceType: "quote"; versionId: string }
-      | { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string }
+      | { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string; clientId?: string }
   ) {
     setCreating(true);
     setError("");
@@ -95,6 +109,7 @@ export function NewOrderClient() {
       clientName: clientName.trim(),
       orderNumber: orderNumber.trim(),
       ...(itemCategory ? { itemCategory } : {}),
+      ...(clientId && clientId !== "__new__" ? { clientId } : {}),
     });
   }
 
@@ -181,16 +196,26 @@ export function NewOrderClient() {
       {mode === "direct" && (
         <form onSubmit={handleSubmitDirect} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="clientName">
-              客戶名稱 <span className="text-red-500">*</span>
+            <Label>
+              客戶 <span className="text-red-500">*</span>
             </Label>
-            <Input
-              id="clientName"
-              placeholder="客戶名稱"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              disabled={creating}
+            <ClientCombobox
+              value={clientId}
+              clients={clients}
+              loading={clientsLoading}
+              onChange={handlePickClient}
             />
+            <p className="text-xs text-[var(--text-tertiary)]">
+              從客戶資料庫選（名稱統一、可歸戶對帳）；一次性散客選「新客戶」手動輸入名稱。
+            </p>
+            {(clientId === "__new__" || (!clientId && clientName)) && (
+              <Input
+                placeholder="散客名稱"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                disabled={creating}
+              />
+            )}
           </div>
 
           <div className="space-y-2">

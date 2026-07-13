@@ -1241,6 +1241,8 @@ export interface CustomOrder {
   workOrderPdfUpdatedAt?: string;
   /** 收款日（YYYY-MM-DD）。空＝未收款 → 會出現在該客戶的請款對帳單（滾存）；收款後填入即從下期消失 */
   paidDate?: string;
+  /** 關聯客戶資料庫的 clientId。空＝散客/未關聯（clientName 為自由文字快照）。對帳單優先以此歸戶 */
+  clientId?: string;
   deadline: string;
   items: OrderItem[];
   notes: OrderNote[];

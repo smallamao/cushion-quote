@@ -27,6 +27,7 @@ import {
   generateStatementPdfBlob,
   type StatementData,
 } from "@/components/pdf/StatementPDF";
+import { useClients } from "@/hooks/useClients";
 import type { CustomOrder } from "@/lib/types";
 
 interface Props {
@@ -63,20 +64,12 @@ function lineDate(o: CustomOrder): string {
   return o.installDate || o.completedDate || o.orderDate || "";
 }
 
-// 對帳單範圍＝該客戶所有「未收款」訂單（滾存）：沒收款日就會一直出現，收款後消失
-function eligibleOrders(orders: CustomOrder[], clientName: string): CustomOrder[] {
-  return orders
-    .filter(
-      (o) =>
-        o.clientName === clientName &&
-        o.status !== "cancelled" &&
-        !o.paidDate &&
-        !o.isArchived,
-    )
-    .sort((a, b) => lineDate(a).localeCompare(lineDate(b)));
+function isUnpaid(o: CustomOrder): boolean {
+  return o.status !== "cancelled" && !o.paidDate && !o.isArchived;
 }
 
 export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props) {
+  const { clients } = useClients();
   const [clientName, setClientName] = useState("");
   const [taxId, setTaxId] = useState("");
   const [taxMode, setTaxMode] = useState<TaxMode>("add5");
@@ -94,6 +87,22 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
   const [markDate, setMarkDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [marking, setMarking] = useState(false);
 
+  // clientId → 客戶檔（用於把已關聯訂單收攏到正式公司名）
+  const clientById = useMemo(() => {
+    const m = new Map<string, (typeof clients)[number]>();
+    for (const c of clients) m.set(c.id, c);
+    return m;
+  }, [clients]);
+
+  // 正式歸戶名稱：有連客戶檔用公司名，否則用訂單上的文字名（散客）
+  const canonicalName = (o: CustomOrder): string => {
+    if (o.clientId) {
+      const c = clientById.get(o.clientId);
+      if (c) return c.companyName;
+    }
+    return o.clientName;
+  };
+
   // 名稱看起來像公司行號（訂單客戶名未進客戶庫時的後備判斷）
   const looksLikeBusiness = (name: string): boolean =>
     /(有限|股份|企業|公司|法人|工作室|設計|傢飾|家具|窗飾|實業|商行|行號|工程)/.test(name);
@@ -101,18 +110,26 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
   const isBusinessClient = (name: string): boolean =>
     businessNames.has(name) || Boolean(companyTaxIds.get(name)) || looksLikeBusiness(name);
 
+  // 對帳單範圍＝該客戶所有「未收款」訂單（依正式歸戶名稱；滾存）
+  const eligibleOrders = (name: string): CustomOrder[] =>
+    orders
+      .filter((o) => isUnpaid(o) && canonicalName(o) === name)
+      .sort((a, b) => lineDate(a).localeCompare(lineDate(b)));
+
   // 有未收款訂單的客戶清單（筆數多的排前面）；預設只列 B 端（公司行號）
   const clientOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const o of orders) {
-      if (!o.clientName || o.status === "cancelled" || o.paidDate || o.isArchived) continue;
-      counts.set(o.clientName, (counts.get(o.clientName) ?? 0) + 1);
+      if (!isUnpaid(o)) continue;
+      const name = canonicalName(o);
+      if (!name) continue;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
     }
     return [...counts.entries()]
       .filter(([name]) => showAllClients || isBusinessClient(name))
       .sort((a, b) => b[1] - a[1]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, showAllClients, businessNames, companyTaxIds]);
+  }, [orders, showAllClients, businessNames, companyTaxIds, clientById]);
 
   // 客戶資料庫：名稱 → 統編，以及公司行號名稱集合（用於過濾散客）
   useEffect(() => {
@@ -152,7 +169,7 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
       return;
     }
     setLines(
-      eligibleOrders(orders, clientName).map((o) => ({
+      eligibleOrders(clientName).map((o) => ({
         orderId: o.orderId,
         checked: true,
         date: lineDate(o),
@@ -162,14 +179,17 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
         unitPrice: o.quotedAmount || 0,
       })),
     );
-    setTaxId(companyTaxIds.get(clientName) ?? "");
+    // 統編：先查客戶檔（正式名），再退回名稱→統編 map
+    const dbTax = clients.find((c) => c.companyName === clientName)?.taxId;
+    setTaxId(dbTax || companyTaxIds.get(clientName) || "");
     try {
       const saved = localStorage.getItem(`statement-tax:${clientName}`);
       setTaxMode(saved === "none" ? "none" : "add5");
     } catch {
       setTaxMode("add5");
     }
-  }, [clientName, orders, companyTaxIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientName, orders, companyTaxIds, clients]);
 
   function updateLine(orderId: string, patch: Partial<LineDraft>) {
     setLines((prev) => prev.map((l) => (l.orderId === orderId ? { ...l, ...patch } : l)));

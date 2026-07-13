@@ -83,7 +83,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   type PostBody =
     | { sourceType: "quote"; versionId: string }
-    | { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string };
+    | { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string; clientId?: string };
 
   const body = (await request.json()) as PostBody;
 
@@ -136,6 +136,7 @@ export async function POST(request: Request) {
     let versionId = "";
     let quotedAmount = 0;
     let directItemCategory = "";
+    let clientId = "";
     let materialName = "";
     let materialCode = "";
     const materialImageUrl = "";
@@ -217,10 +218,11 @@ export async function POST(request: Request) {
       }
     } else {
       // sourceType === "direct"
-      const directBody = body as { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string };
+      const directBody = body as { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string; clientId?: string };
       clientName = directBody.clientName ?? "";
       orderNumber = directBody.orderNumber ?? "";
       directItemCategory = directBody.itemCategory ?? "";
+      clientId = directBody.clientId ?? "";
     }
 
     const newOrder: CustomOrder = {
@@ -258,6 +260,7 @@ export async function POST(request: Request) {
       updatedAt: now,
       createdBy: "",
       materialPurchases: [],
+      clientId,
     };
 
     await client.sheets.spreadsheets.values.append({

@@ -18,6 +18,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useClients } from "@/hooks/useClients";
+import { ClientCombobox } from "@/components/quote-editor/ClientCombobox";
 import type {
   CustomOrder,
   OrderDeliveryMethod,
@@ -72,6 +74,7 @@ const STATUS_QUICK_BUTTONS = STATUS_OPTIONS;
 export function OrderDetailClient({ orderId }: Props) {
   const router = useRouter();
   const { user } = useCurrentUser();
+  const { clients, loading: clientsLoading } = useClients();
   const isAdmin = user?.role === "admin";
 
   const [order, setOrder] = useState<CustomOrder | null>(null);
@@ -396,11 +399,30 @@ export function OrderDetailClient({ orderId }: Props) {
                 {/* 客戶 */}
                 <div>
                   <Label>客戶</Label>
+                  <ClientCombobox
+                    value={draft.clientId ?? ""}
+                    clients={clients}
+                    loading={clientsLoading}
+                    fallbackName={draft.clientName}
+                    onChange={(id) => {
+                      if (id === "__new__" || id === "") {
+                        updateDraft("clientId", "");
+                      } else {
+                        updateDraft("clientId", id);
+                        const c = clients.find((x) => x.id === id);
+                        if (c) updateDraft("clientName", c.companyName);
+                      }
+                    }}
+                  />
                   <Input
+                    className="mt-1.5"
                     value={draft.clientName}
                     onChange={(e) => updateDraft("clientName", e.target.value)}
-                    placeholder="客戶名稱"
+                    placeholder="客戶名稱（散客可直接打字）"
                   />
+                  <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                    從客戶資料庫選可統一名稱、歸戶對帳；散客直接在下方打字即可。
+                  </p>
                 </div>
 
                 {/* 訂製內容 */}
