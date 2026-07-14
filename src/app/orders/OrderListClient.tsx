@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList, Copy, FileBarChart2, Loader2, Plus, ReceiptText, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ClipboardList, Copy, FileBarChart2, FileText, Loader2, Pencil, Plus, ReceiptText, RefreshCw, Search, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { MonthlyReportModal } from "@/components/orders/MonthlyReportModal";
 import { StatementModal } from "@/components/orders/StatementModal";
+import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import type { CustomOrder, OrderItemCategory, OrderStatus } from "@/lib/types";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
@@ -78,6 +79,11 @@ export function OrderListClient() {
   const [deleting, setDeleting] = useState(false);
   const [copying, setCopying] = useState<string | null>(null);
   const [statusChanging, setStatusChanging] = useState<string | null>(null);
+  // 直接查看已存工單 PDF
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [pdfFileName, setPdfFileName] = useState("工單.pdf");
+  const [pdfLoadingId, setPdfLoadingId] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
   const [reportMonth, setReportMonth] = useState(() => {
@@ -100,6 +106,26 @@ export function OrderListClient() {
       setDeleting(false);
     }
   }, [deleteTarget]);
+
+  // 直接開啟該訂單已產生的工單 PDF（存在 Cloudinary raw，需強制標回 application/pdf）
+  const handleViewWorkOrder = useCallback(async (order: CustomOrder) => {
+    if (!order.workOrderPdfUrl) return;
+    setPdfLoadingId(order.orderId);
+    setPdfFileName(`工單-${order.orderNumber || order.orderId}.pdf`);
+    setPdfBlob(null);
+    setPdfOpen(true);
+    try {
+      const res = await fetch(order.workOrderPdfUrl);
+      if (!res.ok) throw new Error("讀取工單失敗");
+      const buf = await res.arrayBuffer();
+      setPdfBlob(new Blob([buf], { type: "application/pdf" }));
+    } catch (err) {
+      setPdfOpen(false);
+      alert(err instanceof Error ? err.message : "讀取工單失敗");
+    } finally {
+      setPdfLoadingId(null);
+    }
+  }, []);
 
   const handleCopy = useCallback(async (order: CustomOrder) => {
     setCopying(order.orderId);
@@ -427,6 +453,22 @@ export function OrderListClient() {
                     <span>下單：{order.orderDate || "—"}</span>
                   </div>
                   <div className="mt-2 flex items-center justify-end gap-1 border-t border-[var(--border)] pt-2">
+                    {order.workOrderPdfUrl && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-[var(--accent)]"
+                        title="查看已產生的工單 PDF"
+                        disabled={pdfLoadingId === order.orderId}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleViewWorkOrder(order);
+                        }}
+                      >
+                        {pdfLoadingId === order.orderId ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1 h-3.5 w-3.5" />}
+                        工單
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -556,12 +598,27 @@ export function OrderListClient() {
                             variant="ghost"
                             size="sm"
                             className="h-7 px-2 text-xs"
+                            title="查看訂單細節、編輯內容"
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(`/orders/${order.orderId}` as never);
                             }}
                           >
-                            查看
+                            <Pencil className="mr-1 h-3.5 w-3.5" />
+                            編輯
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-[var(--accent)] disabled:text-[var(--text-tertiary)]"
+                            title={order.workOrderPdfUrl ? "查看已產生的工單 PDF" : "尚未產生工單（進編輯頁產生）"}
+                            disabled={!order.workOrderPdfUrl || pdfLoadingId === order.orderId}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleViewWorkOrder(order);
+                            }}
+                          >
+                            {pdfLoadingId === order.orderId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
                           </Button>
                           <Button
                             variant="ghost"
@@ -613,6 +670,14 @@ export function OrderListClient() {
         onClose={() => setStatementOpen(false)}
         orders={orders}
         onOrdersChanged={() => void fetchOrders(showArchived)}
+      />
+
+      <PDFPreviewModal
+        open={pdfOpen}
+        onOpenChange={setPdfOpen}
+        pdfBlob={pdfBlob}
+        fileName={pdfFileName}
+        loading={pdfBlob === null}
       />
 
       {/* Delete confirmation dialog */}
