@@ -1,11 +1,11 @@
 import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AP`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AP10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AQ`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AQ10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AP${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:AQ${sheetRow}`;
 
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
@@ -74,6 +74,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     paidDate: row[39] ?? "",
     clientId: row[40] ?? "",
     shipDate: row[41] ?? "",
+    installEndDate: row[42] ?? "",
     deadline: row[23] ?? "",
     items: parseJsonSafe<OrderItem[]>(row[24], []),
     notes: parseJsonSafe<OrderNote[]>(row[25], []),
@@ -142,6 +143,7 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     r.paidDate ?? "",
     r.clientId ?? "",
     r.shipDate ?? "",
+    r.installEndDate ?? "",
   ];
 }
 

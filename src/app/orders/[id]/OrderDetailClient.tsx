@@ -550,6 +550,19 @@ export function OrderDetailClient({ orderId }: Props) {
                       onChange={(e) => updateDraft("installDate", e.target.value)}
                     />
                   </div>
+                  {/* 跨多天施工才填最後一天，行事曆會把整段期間都佔起來 */}
+                  <div>
+                    <Label>安裝結束日（選填）</Label>
+                    <Input
+                      type="date"
+                      value={draft.installEndDate ?? ""}
+                      min={draft.installDate || undefined}
+                      onChange={(e) => updateDraft("installEndDate", e.target.value)}
+                    />
+                    <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                      施工需跨多天才填最後一天（行事曆會佔滿整段檔期）。留空＝當天完工。
+                    </p>
+                  </div>
                   {/* 只有「料先進場、之後才安裝」才需要填，否則留空＝與上面同一天 */}
                   <div>
                     <Label>出貨日（選填）</Label>

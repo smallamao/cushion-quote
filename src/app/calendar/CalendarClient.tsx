@@ -44,6 +44,23 @@ function dateKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * 展開 start~end 之間的每一天（含頭尾）。
+ * end 空、早於 start、或超過 30 天（防呆）時，只回傳 start 當天。
+ */
+function expandDateRange(start: string, end?: string): string[] {
+  if (!start) return [];
+  if (!end || end <= start) return [start];
+  const s = new Date(`${start}T00:00:00`);
+  const e = new Date(`${end}T00:00:00`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return [start];
+  const days: string[] = [];
+  for (const cur = new Date(s); cur <= e && days.length < 30; cur.setDate(cur.getDate() + 1)) {
+    days.push(dateKey(cur));
+  }
+  return days.length > 0 ? days : [start];
+}
+
 function startOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
@@ -135,42 +152,45 @@ export function CalendarClient() {
         // 訂製訂單：安裝／出貨日
         // shipDate 留空（常態）→ 只出一個事件，依配送方式標「安裝」或「出貨」。
         // shipDate 有填（料先進場、之後才安裝）→ 出貨、安裝各出一個事件。
+        // installEndDate 有填（跨多天施工）→ 期間每一天都標上，佔滿師傅檔期。
         for (const o of ordersRes.orders ?? []) {
           if (o.status === "cancelled" || o.isArchived) continue;
           const label = `${o.orderNumber || o.orderId} ${o.clientName ?? ""}`.trim();
-          const sublabel = o.orderTitle || o.itemCategory || undefined;
+          const baseSub = o.orderTitle || o.itemCategory || undefined;
           const href = `/orders/${o.orderId}`;
           const done = o.status === "completed";
+          const hasSeparateShip = Boolean(o.shipDate && o.shipDate !== o.installDate);
 
-          if (o.shipDate && o.shipDate !== o.installDate) {
+          if (hasSeparateShip) {
             collected.push({
               date: o.shipDate,
               kind: "order_ship",
               label,
-              sublabel,
+              sublabel: baseSub,
               href,
               overdue: !done && o.shipDate < today,
             });
-            if (o.installDate) {
+          }
+
+          if (o.installDate) {
+            // 沒填出貨日、且不是到府施工 → 這天其實是出貨
+            const kind: EventKind =
+              hasSeparateShip || o.deliveryMethod === "到府施工"
+                ? "order_install"
+                : "order_ship";
+            const days = expandDateRange(o.installDate, o.installEndDate);
+            days.forEach((d, i) => {
               collected.push({
-                date: o.installDate,
-                kind: "order_install",
+                date: d,
+                kind,
                 label,
-                sublabel,
+                sublabel:
+                  days.length > 1
+                    ? `${baseSub ? `${baseSub}・` : ""}第 ${i + 1}/${days.length} 天`
+                    : baseSub,
                 href,
-                overdue: !done && o.installDate < today,
+                overdue: !done && d < today,
               });
-            }
-          } else if (o.installDate) {
-            // 到府施工＝安裝；自運／宅配＝出貨
-            const isInstall = o.deliveryMethod === "到府施工";
-            collected.push({
-              date: o.installDate,
-              kind: isInstall ? "order_install" : "order_ship",
-              label,
-              sublabel,
-              href,
-              overdue: !done && o.installDate < today,
             });
           }
         }
