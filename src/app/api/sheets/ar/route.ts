@@ -130,11 +130,20 @@ export async function POST(request: Request) {
       (ar) => ar.versionId === payload.versionId && ar.arStatus !== "cancelled",
     );
     if (existingForVersion) {
+      // 帶上既有應收的金額與狀態 —— 報價改版後系統會自動開新的應收，
+      // 使用者若不知道，會誤以為金額還是舊的而重複建立。
+      const amt = Math.round(existingForVersion.totalAmount).toLocaleString("zh-TW");
+      const received = Math.round(existingForVersion.receivedAmount).toLocaleString("zh-TW");
       return NextResponse.json(
         {
           ok: false,
-          error: `此版本已有應收帳款 ${existingForVersion.arId}`,
+          error:
+            `此版本已有應收帳款 ${existingForVersion.arId}` +
+            `（總額 NT$ ${amt}、已收 NT$ ${received}）。` +
+            `金額若與報價一致就不必重建；如需調整分期請到該筆應收按「編輯分期」。`,
           arId: existingForVersion.arId,
+          totalAmount: existingForVersion.totalAmount,
+          receivedAmount: existingForVersion.receivedAmount,
         },
         { status: 409 },
       );
