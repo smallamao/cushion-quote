@@ -59,6 +59,10 @@ export function RecordPaymentDialog({
   const [cardGrossAmount, setCardGrossAmount] = useState(0);
   const [cardFeeRate, setCardFeeRate] = useState(DEFAULT_CARD_FEE_RATE);
 
+  // 實收比應收少時，可把差額直接沖銷（客戶自扣匯費等），避免留下幽靈尾款
+  const [writeOffShortfall, setWriteOffShortfall] = useState(false);
+  const [writeOffReason, setWriteOffReason] = useState("匯費／手續費");
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -78,6 +82,8 @@ export function RecordPaymentDialog({
     setNotes("");
     setCardGrossAmount(grossFromNet(outstandingThisSchedule, DEFAULT_CARD_FEE_RATE));
     setCardFeeRate(DEFAULT_CARD_FEE_RATE);
+    setWriteOffShortfall(false);
+    setWriteOffReason("匯費／手續費");
   }, [open, schedule, outstandingThisSchedule]);
 
   const isCard = paymentMethod === "credit_card";
@@ -131,6 +137,9 @@ export function RecordPaymentDialog({
         ].join(" / ").replace(/ \/ $/, "")
       : notes;
 
+    const shortfallNow = outstandingThisSchedule - receivedAmount;
+    const doWriteOff = writeOffShortfall && shortfallNow > 0;
+
     setSaving(true);
     try {
       await onSubmit({
@@ -138,7 +147,13 @@ export function RecordPaymentDialog({
         receivedAmount,
         receivedDate,
         paymentMethod,
-        notes: finalNotes,
+        notes: doWriteOff
+          ? [finalNotes, `沖銷差額 $${fmt(shortfallNow)}：${writeOffReason}`]
+              .filter(Boolean)
+              .join("\n")
+          : finalNotes,
+        // 負值＝下修應收，使本期以實收金額結清（已收現金不變）
+        ...(doWriteOff ? { adjustmentAmount: -shortfallNow } : {}),
       });
       onOpenChange(false);
     } catch (err) {
@@ -294,6 +309,35 @@ export function RecordPaymentDialog({
                 value={receivedDate}
                 onChange={(e) => setReceivedDate(e.target.value)}
               />
+            </div>
+          )}
+
+          {/* 實收 < 應收 → 可一併沖銷差額，不留幽靈尾款 */}
+          {shortfall > 0 && (
+            <div className="space-y-2 rounded border border-blue-200 bg-blue-50/60 p-3">
+              <label className="flex cursor-pointer items-start gap-2 text-xs text-blue-900">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={writeOffShortfall}
+                  onChange={(e) => setWriteOffShortfall(e.target.checked)}
+                />
+                <span>
+                  將差額 <span className="font-semibold">NT$ {fmt(shortfall)}</span> 沖銷（此期直接結清）
+                  <br />
+                  <span className="text-[11px] text-blue-700">
+                    客戶自扣匯費／折讓時勾選。已收現金不變，只下修應收 —— 不會虛增現金。
+                  </span>
+                </span>
+              </label>
+              {writeOffShortfall && (
+                <Input
+                  className="h-8 text-xs"
+                  value={writeOffReason}
+                  onChange={(e) => setWriteOffReason(e.target.value)}
+                  placeholder="沖銷原因"
+                />
+              )}
             </div>
           )}
 

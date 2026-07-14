@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowLeft, Loader2, SplitSquareHorizontal, Trash2, Wallet } from "lucide-react";
+import { ArrowLeft, Loader2, Scissors, SplitSquareHorizontal, Trash2, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { EditSchedulesDialog } from "@/components/ar/EditSchedulesDialog";
+import { WriteOffDialog } from "@/components/ar/WriteOffDialog";
 import { RecordPaymentDialog } from "@/components/ar/RecordPaymentDialog";
 import {
   AR_SCHEDULE_STATUS_COLOR,
@@ -32,6 +33,7 @@ export function ReceivableDetailClient({ arId }: Props) {
     useReceivableDetail(arId);
   const [paymentTarget, setPaymentTarget] = useState<ARScheduleRecord | null>(null);
   const [editSchedulesOpen, setEditSchedulesOpen] = useState(false);
+  const [writeOffTarget, setWriteOffTarget] = useState<ARScheduleRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
@@ -226,18 +228,34 @@ export function ReceivableDetailClient({ arId }: Props) {
                         {AR_SCHEDULE_STATUS_LABEL[derivedStatus]}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-center">
-                      {canReceive && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setPaymentTarget(s)}
-                          className="h-7 gap-1 text-xs"
-                        >
-                          <Wallet className="h-3 w-3" />
-                          記錄收款
-                        </Button>
-                      )}
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-center gap-1">
+                        {canReceive && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setPaymentTarget(s)}
+                            className="h-7 gap-1 text-xs"
+                          >
+                            <Wallet className="h-3 w-3" />
+                            記錄收款
+                          </Button>
+                        )}
+                        {/* 未收剩零頭（客戶扣匯費等）→ 沖銷結清，不虛增現金 */}
+                        {canReceive &&
+                          s.amount + s.adjustmentAmount - s.receivedAmount > 0 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setWriteOffTarget(s)}
+                              className="h-7 gap-1 text-xs text-[var(--text-secondary)]"
+                              title="把收不到的差額（匯費／折讓）從應收沖銷，使此期結清"
+                            >
+                              <Scissors className="h-3 w-3" />
+                              沖銷差額
+                            </Button>
+                          )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -246,6 +264,14 @@ export function ReceivableDetailClient({ arId }: Props) {
           </table>
         </div>
       </div>
+
+      <WriteOffDialog
+        open={writeOffTarget !== null}
+        onOpenChange={(o) => { if (!o) setWriteOffTarget(null); }}
+        arId={ar.arId}
+        schedule={writeOffTarget}
+        onSaved={() => void reload()}
+      />
 
       <EditSchedulesDialog
         open={editSchedulesOpen}
