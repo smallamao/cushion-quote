@@ -71,6 +71,21 @@ const DELIVERY_OPTIONS: Array<{ value: OrderDeliveryMethod; label: string }> = [
 
 const STATUS_QUICK_BUTTONS = STATUS_OPTIONS;
 
+/** 從 start 起算 total 天的連續日期，回傳「第一天以外」的那幾天（＝extraInstallDates） */
+function consecutiveExtraDays(start: string, total: number): string[] {
+  if (!start || total < 2) return [];
+  const days: string[] = [];
+  const d = new Date(`${start}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return [];
+  for (let i = 1; i < total; i++) {
+    d.setDate(d.getDate() + 1);
+    days.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+    );
+  }
+  return days;
+}
+
 export function OrderDetailClient({ orderId }: Props) {
   const router = useRouter();
   const { user } = useCurrentUser();
@@ -597,10 +612,47 @@ export function OrderDetailClient({ orderId }: Props) {
                         <Plus className="mr-1 h-3.5 w-3.5" />
                         新增安裝日
                       </Button>
+
+                      {/* 連續天數快捷：最常見的情況一鍵補齊，補完仍可個別改/刪 */}
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        <span className="shrink-0 text-xs text-[var(--text-tertiary)]">
+                          連續施工
+                        </span>
+                        {[2, 3, 4, 5].map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            disabled={!draft.installDate}
+                            title={
+                              draft.installDate
+                                ? `從安裝日起連續 ${n} 天（自動補後面 ${n - 1} 天）`
+                                : "請先填安裝/出貨日"
+                            }
+                            onClick={() =>
+                              updateDraft(
+                                "extraInstallDates",
+                                consecutiveExtraDays(draft.installDate, n),
+                              )
+                            }
+                            className="rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                          >
+                            {n} 天
+                          </button>
+                        ))}
+                        {(draft.extraInstallDates?.length ?? 0) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => updateDraft("extraInstallDates", [])}
+                            className="ml-auto shrink-0 text-xs text-[var(--text-tertiary)] hover:text-red-500"
+                          >
+                            清除
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-                      施工要跨多天才加（可跳日，例：週三＋週五）。上面的安裝日是第一天，
-                      行事曆只會標實際施工的那幾天。
+                      連續施工按天數一鍵補齊；要跳日（例：週三＋週五）就用「新增安裝日」逐日選，
+                      或補完後刪掉中間那天。行事曆只會標實際施工的那幾天。
                     </p>
                   </div>
                   {/* 只有「料先進場、之後才安裝」才需要填，否則留空＝與上面同一天 */}
