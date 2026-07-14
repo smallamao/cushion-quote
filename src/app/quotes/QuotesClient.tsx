@@ -84,7 +84,7 @@ function arStatusTitle(ar: ARRecord): string {
   const outstanding = formatCurrency(ar.outstandingAmount);
   switch (ar.arStatus) {
     case "paid":
-      return `已完款 ${formatCurrency(ar.totalAmount)}（點擊查看應收帳款）`;
+      return `已完款 ${formatCurrency(ar.totalAmount)}（點擊查看）`;
     case "partial":
       return `部分收款｜已收 ${received}／未收 ${outstanding}（點擊查看）`;
     case "overdue":
@@ -487,9 +487,9 @@ export function QuotesClient() {
         )}
         {existingAr && (
           <button
-            onClick={(e) => { e.stopPropagation(); router.push("/receivables" as never); }}
+            onClick={(e) => { e.stopPropagation(); router.push(`/receivables/${existingAr.arId}` as never); }}
             className={`transition-colors ${AR_ICON_CLASS[existingAr.arStatus] ?? "text-sky-600 hover:text-sky-700"}`}
-            title={arStatusTitle(existingAr)}
+            title={`${existingAr.arId}｜${arStatusTitle(existingAr)}`}
             disabled={isBusy}
           >
             <Wallet className="h-4 w-4" />
@@ -566,16 +566,7 @@ export function QuotesClient() {
             <Slash className="h-4 w-4" />
           </button>
         )}
-        {existingAr && (
-          <button
-            onClick={(e) => { e.stopPropagation(); router.push(`/receivables/${existingAr.arId}`); }}
-            className="text-green-600 hover:text-green-700 transition-colors"
-            title={`已有應收帳款 ${existingAr.arId}（點擊檢視）`}
-            disabled={isBusy}
-          >
-            <Wallet className="h-4 w-4" />
-          </button>
-        )}
+        {/* 應收帳款只有一顆錢包 —— 見上方依收款狀態上色的按鈕（未建立／未收款／部分／逾期／完款）*/}
         <button
           onClick={(e) => { e.stopPropagation(); void handleDuplicate(version); }}
           className="text-[var(--text-tertiary)] hover:text-blue-500 transition-colors"
