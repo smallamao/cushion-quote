@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, Copy, Edit, E
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
-import type { QuoteVersionRecord, VersionStatus } from "@/lib/types";
+import type { ARRecord, QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import { formatCurrency } from "@/lib/utils";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -69,6 +69,30 @@ const STATUS_CHANGE_OPTIONS: VersionStatus[] = [
   "accepted",
   "rejected",
 ];
+
+// 應收帳款圖示配色：一眼分辨收款狀態（未建立＝琥珀，另在按鈕處理）
+const AR_ICON_CLASS: Record<string, string> = {
+  draft: "text-sky-600 hover:text-sky-700",
+  active: "text-sky-600 hover:text-sky-700",
+  partial: "text-violet-600 hover:text-violet-700",
+  overdue: "text-red-600 hover:text-red-700",
+  paid: "text-emerald-600 hover:text-emerald-700",
+};
+
+function arStatusTitle(ar: ARRecord): string {
+  const received = formatCurrency(ar.receivedAmount);
+  const outstanding = formatCurrency(ar.outstandingAmount);
+  switch (ar.arStatus) {
+    case "paid":
+      return `已完款 ${formatCurrency(ar.totalAmount)}（點擊查看應收帳款）`;
+    case "partial":
+      return `部分收款｜已收 ${received}／未收 ${outstanding}（點擊查看）`;
+    case "overdue":
+      return `⚠ 逾期未收 ${outstanding}（點擊查看）`;
+    default:
+      return `已建立·未收款 ${outstanding}（點擊查看）`;
+  }
+}
 
 function compareDateTextDesc(a: string, b: string): number {
   if (a === b) return 0;
@@ -450,11 +474,22 @@ export function QuotesClient() {
         >
           <FileCheck2 className="h-4 w-4" />
         </button>
+        {/* 應收帳款：一眼看出收款狀態（未建立／未收款／部分收款／逾期／完款）*/}
         {canCreateAR && (
           <button
             onClick={(e) => { e.stopPropagation(); setCreateARVersion(version); }}
             className="text-amber-600 hover:text-amber-700 transition-colors"
-            title="建立應收帳款"
+            title="尚未建立應收帳款（點擊建立）"
+            disabled={isBusy}
+          >
+            <Wallet className="h-4 w-4" />
+          </button>
+        )}
+        {existingAr && (
+          <button
+            onClick={(e) => { e.stopPropagation(); router.push("/receivables" as never); }}
+            className={`transition-colors ${AR_ICON_CLASS[existingAr.arStatus] ?? "text-sky-600 hover:text-sky-700"}`}
+            title={arStatusTitle(existingAr)}
             disabled={isBusy}
           >
             <Wallet className="h-4 w-4" />
