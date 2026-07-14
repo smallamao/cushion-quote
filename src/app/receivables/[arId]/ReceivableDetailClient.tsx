@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowLeft, Loader2, Trash2, Wallet } from "lucide-react";
+import { ArrowLeft, Loader2, SplitSquareHorizontal, Trash2, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { EditSchedulesDialog } from "@/components/ar/EditSchedulesDialog";
 import { RecordPaymentDialog } from "@/components/ar/RecordPaymentDialog";
 import {
   AR_SCHEDULE_STATUS_COLOR,
@@ -27,9 +28,10 @@ function fmt(n: number): string {
 }
 
 export function ReceivableDetailClient({ arId }: Props) {
-  const { ar, schedules, loading, error, recordPayment, deleteAR } =
+  const { ar, schedules, loading, error, recordPayment, deleteAR, reload } =
     useReceivableDetail(arId);
   const [paymentTarget, setPaymentTarget] = useState<ARScheduleRecord | null>(null);
+  const [editSchedulesOpen, setEditSchedulesOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
@@ -171,8 +173,18 @@ export function ReceivableDetailClient({ arId }: Props) {
 
       {/* Schedules */}
       <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)]">
-        <div className="border-b border-[var(--border)] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <h3 className="text-sm font-semibold">收款分期</h3>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            onClick={() => setEditSchedulesOpen(true)}
+            title="重新分配分期（例如把「全額」拆成訂金＋尾款），單號不變"
+          >
+            <SplitSquareHorizontal className="h-3.5 w-3.5" />
+            編輯分期
+          </Button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -234,6 +246,14 @@ export function ReceivableDetailClient({ arId }: Props) {
           </table>
         </div>
       </div>
+
+      <EditSchedulesDialog
+        open={editSchedulesOpen}
+        onOpenChange={setEditSchedulesOpen}
+        ar={ar}
+        schedules={schedules}
+        onSaved={() => void reload()}
+      />
 
       <RecordPaymentDialog
         open={paymentTarget !== null}
