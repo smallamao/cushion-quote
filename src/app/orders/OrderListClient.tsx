@@ -116,7 +116,7 @@ export function OrderListClient() {
     setPdfOpen(true);
     try {
       const res = await fetch(order.workOrderPdfUrl);
-      if (!res.ok) throw new Error("讀取工單失敗");
+      if (!res.ok) throw new Error("此工單網址已失效，請進「編輯」按『重新產生並取代』後再查看");
       const buf = await res.arrayBuffer();
       setPdfBlob(new Blob([buf], { type: "application/pdf" }));
     } catch (err) {

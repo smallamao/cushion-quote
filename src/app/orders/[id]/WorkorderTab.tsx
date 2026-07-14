@@ -115,7 +115,7 @@ export function WorkorderTab({
     setPdfLoading(true);
     try {
       const res = await fetch(draft.workOrderPdfUrl);
-      if (!res.ok) throw new Error("讀取已存工單失敗");
+      if (!res.ok) throw new Error("此工單網址已失效，請按『重新產生並取代』後再查看");
       // Cloudinary raw 檔會回 octet-stream，iframe 無法預覽（會變成下載亂碼檔名的檔案）
       // → 一律強制標回 application/pdf
       const buf = await res.arrayBuffer();
