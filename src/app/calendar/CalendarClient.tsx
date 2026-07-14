@@ -45,20 +45,12 @@ function dateKey(d: Date): string {
 }
 
 /**
- * 展開 start~end 之間的每一天（含頭尾）。
- * end 空、早於 start、或超過 30 天（防呆）時，只回傳 start 當天。
+ * 實際施工日清單＝第一天（installDate）＋額外安裝日（可跳日，例：週三＋週五）。
+ * 去重、排序；不會把中間沒排工的日子算進去。
  */
-function expandDateRange(start: string, end?: string): string[] {
-  if (!start) return [];
-  if (!end || end <= start) return [start];
-  const s = new Date(`${start}T00:00:00`);
-  const e = new Date(`${end}T00:00:00`);
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return [start];
-  const days: string[] = [];
-  for (const cur = new Date(s); cur <= e && days.length < 30; cur.setDate(cur.getDate() + 1)) {
-    days.push(dateKey(cur));
-  }
-  return days.length > 0 ? days : [start];
+function installDaysOf(installDate: string, extra?: string[]): string[] {
+  const all = [installDate, ...(extra ?? [])].filter(Boolean);
+  return [...new Set(all)].sort();
 }
 
 function startOfMonth(d: Date): Date {
@@ -152,7 +144,7 @@ export function CalendarClient() {
         // 訂製訂單：安裝／出貨日
         // shipDate 留空（常態）→ 只出一個事件，依配送方式標「安裝」或「出貨」。
         // shipDate 有填（料先進場、之後才安裝）→ 出貨、安裝各出一個事件。
-        // installEndDate 有填（跨多天施工）→ 期間每一天都標上，佔滿師傅檔期。
+        // extraInstallDates 有填（跨多天施工，可跳日）→ 只標實際施工的那幾天。
         for (const o of ordersRes.orders ?? []) {
           if (o.status === "cancelled" || o.isArchived) continue;
           const label = `${o.orderNumber || o.orderId} ${o.clientName ?? ""}`.trim();
@@ -178,7 +170,7 @@ export function CalendarClient() {
               hasSeparateShip || o.deliveryMethod === "到府施工"
                 ? "order_install"
                 : "order_ship";
-            const days = expandDateRange(o.installDate, o.installEndDate);
+            const days = installDaysOf(o.installDate, o.extraInstallDates);
             days.forEach((d, i) => {
               collected.push({
                 date: d,

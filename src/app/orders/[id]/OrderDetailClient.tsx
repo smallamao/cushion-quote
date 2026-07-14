@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Loader2, Save, ShoppingCart, Upload } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Save, ShoppingCart, Upload, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -550,17 +550,57 @@ export function OrderDetailClient({ orderId }: Props) {
                       onChange={(e) => updateDraft("installDate", e.target.value)}
                     />
                   </div>
-                  {/* 跨多天施工才填最後一天，行事曆會把整段期間都佔起來 */}
+                  {/* 跨多天施工：逐日列出（可跳日，例：週三＋週五），行事曆只標實際施工日 */}
                   <div>
-                    <Label>安裝結束日（選填）</Label>
-                    <Input
-                      type="date"
-                      value={draft.installEndDate ?? ""}
-                      min={draft.installDate || undefined}
-                      onChange={(e) => updateDraft("installEndDate", e.target.value)}
-                    />
+                    <Label>額外安裝日（選填）</Label>
+                    <div className="space-y-1.5">
+                      {(draft.extraInstallDates ?? []).map((d, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <Input
+                            type="date"
+                            value={d}
+                            onChange={(e) =>
+                              updateDraft(
+                                "extraInstallDates",
+                                (draft.extraInstallDates ?? []).map((x, j) =>
+                                  j === i ? e.target.value : x,
+                                ),
+                              )
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="shrink-0 rounded p-1.5 text-[var(--text-tertiary)] hover:bg-red-50 hover:text-red-500"
+                            title="移除這一天"
+                            onClick={() =>
+                              updateDraft(
+                                "extraInstallDates",
+                                (draft.extraInstallDates ?? []).filter((_, j) => j !== i),
+                              )
+                            }
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-full text-xs"
+                        onClick={() =>
+                          updateDraft("extraInstallDates", [
+                            ...(draft.extraInstallDates ?? []),
+                            draft.installDate || "",
+                          ])
+                        }
+                      >
+                        <Plus className="mr-1 h-3.5 w-3.5" />
+                        新增安裝日
+                      </Button>
+                    </div>
                     <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-                      施工需跨多天才填最後一天（行事曆會佔滿整段檔期）。留空＝當天完工。
+                      施工要跨多天才加（可跳日，例：週三＋週五）。上面的安裝日是第一天，
+                      行事曆只會標實際施工的那幾天。
                     </p>
                   </div>
                   {/* 只有「料先進場、之後才安裝」才需要填，否則留空＝與上面同一天 */}

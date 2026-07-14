@@ -1249,10 +1249,11 @@ export interface CustomOrder {
    */
   shipDate?: string;
   /**
-   * 安裝結束日（選填）。施工需跨多天時填最後一天。
-   * 空＝當天完工。行事曆會把 installDate ~ installEndDate 之間每一天都標上，佔滿師傅檔期。
+   * 額外安裝日（選填）。施工跨多天、且日期可能不連續（例：週三＋週五）時，
+   * 在此列出 installDate 以外的其他施工日。installDate 永遠是第一天。
+   * 行事曆只標這些實際施工日，不會誤佔中間沒排工的日子。
    */
-  installEndDate?: string;
+  extraInstallDates?: string[];
   deadline: string;
   items: OrderItem[];
   notes: OrderNote[];

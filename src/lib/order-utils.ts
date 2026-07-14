@@ -74,7 +74,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     paidDate: row[39] ?? "",
     clientId: row[40] ?? "",
     shipDate: row[41] ?? "",
-    installEndDate: row[42] ?? "",
+    extraInstallDates: parseJsonSafe<string[]>(row[42], []),
     deadline: row[23] ?? "",
     items: parseJsonSafe<OrderItem[]>(row[24], []),
     notes: parseJsonSafe<OrderNote[]>(row[25], []),
@@ -143,7 +143,7 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     r.paidDate ?? "",
     r.clientId ?? "",
     r.shipDate ?? "",
-    r.installEndDate ?? "",
+    JSON.stringify(r.extraInstallDates ?? []),
   ];
 }
 
