@@ -550,6 +550,18 @@ export function OrderDetailClient({ orderId }: Props) {
                       onChange={(e) => updateDraft("installDate", e.target.value)}
                     />
                   </div>
+                  {/* 只有「料先進場、之後才安裝」才需要填，否則留空＝與上面同一天 */}
+                  <div>
+                    <Label>出貨日（選填）</Label>
+                    <Input
+                      type="date"
+                      value={draft.shipDate ?? ""}
+                      onChange={(e) => updateDraft("shipDate", e.target.value)}
+                    />
+                    <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                      只有「物料先進場、之後才約安裝」才填。留空＝出貨當天即安裝。
+                    </p>
+                  </div>
                   <div>
                     <Label>完成日</Label>
                     <Input

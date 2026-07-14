@@ -6,7 +6,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
-type EventKind = "case_followup" | "quote_followup" | "dispatch" | "ar_due";
+type EventKind =
+  | "case_followup"
+  | "quote_followup"
+  | "dispatch"
+  | "order_install"
+  | "order_ship"
+  | "ar_due";
 
 interface CalendarEvent {
   date: string; // YYYY-MM-DD
@@ -21,6 +27,8 @@ const KIND_META: Record<EventKind, { label: string; color: string; dot: string }
   case_followup: { label: "案件追蹤", color: "bg-blue-100 text-blue-800", dot: "bg-blue-500" },
   quote_followup: { label: "報價追蹤", color: "bg-purple-100 text-purple-800", dot: "bg-purple-500" },
   dispatch: { label: "派工", color: "bg-amber-100 text-amber-800", dot: "bg-amber-500" },
+  order_install: { label: "安裝", color: "bg-rose-100 text-rose-800", dot: "bg-rose-500" },
+  order_ship: { label: "出貨", color: "bg-cyan-100 text-cyan-800", dot: "bg-cyan-500" },
   ar_due: { label: "收款", color: "bg-green-100 text-green-800", dot: "bg-green-500" },
 };
 
@@ -53,7 +61,14 @@ export function CalendarClient() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Set<EventKind>>(
-    new Set(["case_followup", "quote_followup", "dispatch", "ar_due"]),
+    new Set([
+      "case_followup",
+      "quote_followup",
+      "dispatch",
+      "order_install",
+      "order_ship",
+      "ar_due",
+    ]),
   );
 
   useEffect(() => {
@@ -62,11 +77,12 @@ export function CalendarClient() {
 
     async function load() {
       try {
-        const [casesRes, versionsRes, afterSalesRes, arRes] = await Promise.all([
+        const [casesRes, versionsRes, afterSalesRes, arRes, ordersRes] = await Promise.all([
           fetch("/api/sheets/cases", { cache: "no-store" }).then((r) => r.json()),
           fetch("/api/sheets/versions?includeLines=false", { cache: "no-store" }).then((r) => r.json()),
           fetch("/api/sheets/after-sales", { cache: "no-store" }).then((r) => r.json()),
           fetch("/api/sheets/ar?includeSchedules=true", { cache: "no-store" }).then((r) => r.json()),
+          fetch("/api/sheets/orders?archived=false", { cache: "no-store" }).then((r) => r.json()),
         ]);
 
         const today = todayStr();
@@ -114,6 +130,49 @@ export function CalendarClient() {
             href: `/after-sales/${s.serviceId}`,
             overdue: s.scheduledDate < today,
           });
+        }
+
+        // 訂製訂單：安裝／出貨日
+        // shipDate 留空（常態）→ 只出一個事件，依配送方式標「安裝」或「出貨」。
+        // shipDate 有填（料先進場、之後才安裝）→ 出貨、安裝各出一個事件。
+        for (const o of ordersRes.orders ?? []) {
+          if (o.status === "cancelled" || o.isArchived) continue;
+          const label = `${o.orderNumber || o.orderId} ${o.clientName ?? ""}`.trim();
+          const sublabel = o.orderTitle || o.itemCategory || undefined;
+          const href = `/orders/${o.orderId}`;
+          const done = o.status === "completed";
+
+          if (o.shipDate && o.shipDate !== o.installDate) {
+            collected.push({
+              date: o.shipDate,
+              kind: "order_ship",
+              label,
+              sublabel,
+              href,
+              overdue: !done && o.shipDate < today,
+            });
+            if (o.installDate) {
+              collected.push({
+                date: o.installDate,
+                kind: "order_install",
+                label,
+                sublabel,
+                href,
+                overdue: !done && o.installDate < today,
+              });
+            }
+          } else if (o.installDate) {
+            // 到府施工＝安裝；自運／宅配＝出貨
+            const isInstall = o.deliveryMethod === "到府施工";
+            collected.push({
+              date: o.installDate,
+              kind: isInstall ? "order_install" : "order_ship",
+              label,
+              sublabel,
+              href,
+              overdue: !done && o.installDate < today,
+            });
+          }
         }
 
         // AR schedule due dates
