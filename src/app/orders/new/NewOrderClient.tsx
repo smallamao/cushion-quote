@@ -48,13 +48,18 @@ export function NewOrderClient() {
   const [orderNumber, setOrderNumber] = useState("");
   const [itemCategory, setItemCategory] = useState<OrderItemCategory | "">("");
 
+  // 選了客戶檔 → 帶入正式名稱並關聯；選「新客戶／不關聯」→ 只解除關聯，
+  // 保留使用者已打的散客名稱（不清空）
   function handlePickClient(id: string) {
-    setClientId(id);
     if (id === "__new__" || id === "") {
-      setClientName("");
-    } else {
-      const c = clients.find((x) => x.id === id);
-      if (c) setClientName(c.companyName);
+      setClientId("");
+      return;
+    }
+    setClientId(id);
+    const c = clients.find((x) => x.id === id);
+    if (c) {
+      setClientName(c.companyName);
+      setError("");
     }
   }
 
@@ -109,7 +114,7 @@ export function NewOrderClient() {
       clientName: clientName.trim(),
       orderNumber: orderNumber.trim(),
       ...(itemCategory ? { itemCategory } : {}),
-      ...(clientId && clientId !== "__new__" ? { clientId } : {}),
+      ...(clientId ? { clientId } : {}),
     });
   }
 
@@ -195,10 +200,25 @@ export function NewOrderClient() {
       {/* Mode B: direct create (直客／B2B, no quote) */}
       {mode === "direct" && (
         <form onSubmit={handleSubmitDirect} className="space-y-4">
+          {/* 客戶名稱永遠可直接打字（散客不建檔）；要歸戶對帳的公司行號再從資料庫關聯 */}
           <div className="space-y-2">
-            <Label>
-              客戶 <span className="text-red-500">*</span>
+            <Label htmlFor="clientName">
+              客戶名稱 <span className="text-red-500">*</span>
             </Label>
+            <Input
+              id="clientName"
+              placeholder="例：P1648 王小姐（散客直接打名字即可）"
+              value={clientName}
+              onChange={(e) => {
+                setClientName(e.target.value);
+                if (error) setError("");
+              }}
+              disabled={creating}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>關聯客戶資料庫（選填）</Label>
             <ClientCombobox
               value={clientId}
               clients={clients}
@@ -206,16 +226,11 @@ export function NewOrderClient() {
               onChange={handlePickClient}
             />
             <p className="text-xs text-[var(--text-tertiary)]">
-              從客戶資料庫選（名稱統一、可歸戶對帳）；一次性散客選「新客戶」手動輸入名稱。
+              公司行號（榭琳、米羅…）建議從資料庫選 —— 名稱會統一、請款單才能歸戶。
+              <br />
+              一次性散客<span className="font-medium">不必選</span>，直接在上面打名字即可，
+              <span className="font-medium">不會建進客戶資料庫</span>。
             </p>
-            {(clientId === "__new__" || (!clientId && clientName)) && (
-              <Input
-                placeholder="散客名稱"
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                disabled={creating}
-              />
-            )}
           </div>
 
           <div className="space-y-2">
