@@ -38,6 +38,11 @@ export function ReceivableDetailClient({ arId }: Props) {
   const router = useRouter();
 
   const today = isoDateNow();
+  // 沖銷總額（負的 adjustmentAmount 取正值顯示）
+  const totalWrittenOff = schedules.reduce(
+    (sum, s) => sum + Math.max(0, -s.adjustmentAmount),
+    0,
+  );
 
   async function handleDelete() {
     if (!ar) return;
@@ -129,6 +134,12 @@ export function ReceivableDetailClient({ arId }: Props) {
           <div className="mt-1 text-lg font-semibold text-amber-600">
             NT$ {fmt(ar.outstandingAmount)}
           </div>
+          {/* 沖銷金額（匯費／折讓）— 解釋總額與已收之間的差 */}
+          {totalWrittenOff > 0 && (
+            <div className="mt-0.5 text-[11px] text-red-600">
+              已沖銷 NT$ {fmt(totalWrittenOff)}
+            </div>
+          )}
         </div>
         <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
           <div className="text-xs text-[var(--text-secondary)]">分期數</div>
@@ -213,8 +224,20 @@ export function ReceivableDetailClient({ arId }: Props) {
                   >
                     <td className="px-3 py-2 text-xs">{s.seq}</td>
                     <td className="px-3 py-2 text-sm font-medium">{s.label}</td>
+                    {/* 有沖銷時顯示「實際應收」並標出被沖掉的金額，避免帳面看起來兜不攏 */}
                     <td className="px-3 py-2 text-right font-mono text-xs">
-                      NT$ {fmt(s.amount)}
+                      NT$ {fmt(s.amount + s.adjustmentAmount)}
+                      {s.adjustmentAmount !== 0 && (
+                        <div
+                          className="mt-0.5 text-[11px] text-red-600"
+                          title={s.notes || undefined}
+                        >
+                          <span className="text-[var(--text-tertiary)] line-through">
+                            {fmt(s.amount)}
+                          </span>{" "}
+                          沖銷 {fmt(s.adjustmentAmount)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-xs">{s.dueDate || "—"}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-green-700">
