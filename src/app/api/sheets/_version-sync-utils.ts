@@ -23,6 +23,7 @@ import {
   arScheduleRecordToRow,
   arScheduleRowToRecord,
   calcARStatusFromSchedules,
+  calcScheduleDerivedStatus,
   generateArId,
   generateArScheduleId,
   generatePendingMonthlyId,
@@ -81,6 +82,87 @@ async function getCompanyBillingType(
   }
 }
 
+/**
+ * 報價金額被改動時，把「已接受版本」的有效應收帳款金額同步過來。
+ *
+ * 安全規則：只有在「尚未收到任何款項」時才自動改。一旦收過款，改動金額牽涉
+ * 退款／補收，屬於需要人工判斷的合約變更 —— 自動改會讓已入帳的收款失去依據，
+ * 因此保持不動，由使用者用「編輯分期」處理。
+ */
+async function syncARAmountToVersion(
+  client: SheetsClientHandle,
+  existing: ARRecord,
+  version: QuoteVersionRecord,
+  arRows: string[][],
+): Promise<void> {
+  const newTotal = Math.round(version.totalAmount);
+  const oldTotal = Math.round(existing.totalAmount);
+  if (!Number.isFinite(newTotal) || newTotal <= 0) return;
+  if (newTotal === oldTotal) return; // 金額沒變
+  if (existing.receivedAmount > 0) return; // 已收款 → 不自動改，交給人工
+
+  const now = isoNow();
+  const today = isoDateNow();
+
+  // 取出這張 AR 的分期，依新總額等比重算（保留期別標籤、比例、到期日）
+  const schedRes = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: AR_SCHEDULE_RANGE_DATA,
+  });
+  const schedRows = (schedRes.data.values ?? []) as string[][];
+  const mine = schedRows
+    .map((r, i) => ({ rec: arScheduleRowToRecord(r), i }))
+    .filter((x) => x.rec.arId === existing.arId)
+    .sort((a, b) => a.rec.seq - b.rec.seq);
+  if (mine.length === 0) return;
+
+  let allocated = 0;
+  const rescaled = mine.map((x, idx) => {
+    const isLast = idx === mine.length - 1;
+    const amount = isLast
+      ? newTotal - allocated
+      : Math.round((newTotal * x.rec.amount) / (oldTotal || newTotal));
+    allocated += amount;
+    const next: ARScheduleRecord = {
+      ...x.rec,
+      amount,
+      ratio: newTotal > 0 ? Math.round((amount / newTotal) * 100) : 0,
+      updatedAt: now,
+    };
+    next.scheduleStatus = calcScheduleDerivedStatus(next, today);
+    return { next, i: x.i };
+  });
+
+  const { arStatus, hasOverdue } = calcARStatusFromSchedules(
+    rescaled.map((r) => r.next),
+    today,
+  );
+  const arRowIndex = arRows.findIndex((r) => (r[0] ?? "") === existing.arId);
+  const updatedAr: ARRecord = {
+    ...existing,
+    totalAmount: newTotal,
+    outstandingAmount: newTotal,
+    arStatus,
+    hasOverdue,
+    notes: [existing.notes, `報價金額異動：${oldTotal} → ${newTotal}，應收已同步`]
+      .filter(Boolean)
+      .join("\n"),
+    updatedAt: now,
+  };
+
+  const data = rescaled.map((r) => ({
+    range: AR_SCHEDULE_ROW_RANGE(r.i + 2),
+    values: [arScheduleRecordToRow(r.next)],
+  }));
+  if (arRowIndex >= 0) {
+    data.push({ range: AR_ROW_RANGE(arRowIndex + 2), values: [arRecordToRow(updatedAr)] });
+  }
+  await client.sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: client.spreadsheetId,
+    requestBody: { valueInputOption: "RAW", data },
+  });
+}
+
 async function syncARFromVersion(
   client: SheetsClientHandle,
   version: QuoteVersionRecord,
@@ -100,8 +182,12 @@ async function syncARFromVersion(
   );
 
   if (version.versionStatus === "accepted") {
-    // Cancel path never applies here; only create if nothing active exists.
-    if (existing && existing.arStatus !== "cancelled") return; // already there
+    // 已有有效應收：若報價金額被改動，把應收金額同步過來，
+    // 否則應收會停在舊金額（帳與報價對不起來）。
+    if (existing && existing.arStatus !== "cancelled") {
+      await syncARAmountToVersion(client, existing, version, arRows);
+      return;
+    }
     if (
       ars.some(
         (ar) =>
