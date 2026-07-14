@@ -87,12 +87,18 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
   const [markDate, setMarkDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [marking, setMarking] = useState(false);
 
+  // useClients() 每次 render 回傳新陣列參考；以內容簽章穩定化，
+  // 避免下方 memo/effect 每次 render 都變動 → 無限重繪。
+  const clientsSig = clients.map((c) => `${c.id}:${c.taxId}:${c.companyName}`).join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableClients = useMemo(() => clients, [clientsSig]);
+
   // clientId → 客戶檔（用於把已關聯訂單收攏到正式公司名）
   const clientById = useMemo(() => {
-    const m = new Map<string, (typeof clients)[number]>();
-    for (const c of clients) m.set(c.id, c);
+    const m = new Map<string, (typeof stableClients)[number]>();
+    for (const c of stableClients) m.set(c.id, c);
     return m;
-  }, [clients]);
+  }, [stableClients]);
 
   // 正式歸戶名稱：有連客戶檔用公司名，否則用訂單上的文字名（散客）
   const canonicalName = (o: CustomOrder): string => {
@@ -180,7 +186,7 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
       })),
     );
     // 統編：先查客戶檔（正式名），再退回名稱→統編 map
-    const dbTax = clients.find((c) => c.companyName === clientName)?.taxId;
+    const dbTax = stableClients.find((c) => c.companyName === clientName)?.taxId;
     setTaxId(dbTax || companyTaxIds.get(clientName) || "");
     try {
       const saved = localStorage.getItem(`statement-tax:${clientName}`);
@@ -189,7 +195,7 @@ export function StatementModal({ open, onClose, orders, onOrdersChanged }: Props
       setTaxMode("add5");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientName, orders, companyTaxIds, clients]);
+  }, [clientName, orders, companyTaxIds, stableClients]);
 
   function updateLine(orderId: string, patch: Partial<LineDraft>) {
     setLines((prev) => prev.map((l) => (l.orderId === orderId ? { ...l, ...patch } : l)));
