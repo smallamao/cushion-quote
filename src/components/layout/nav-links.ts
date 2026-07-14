@@ -33,20 +33,23 @@ export type NavLinkDef = {
   group: NavGroup;
 };
 
+// 注意：技師（非 admin）可見項目必須與 lib/permissions.ts 的白名單一致，
+// 否則選單會顯示點了會被踢回售後服務的假選項。
 export const navLinks: NavLinkDef[] = [
   // ── 業務 ──
-  { href: "/sofa-quote", label: "報價", icon: Ruler, roles: ["admin", "technician"], group: "business" },
+  { href: "/sofa-quote", label: "報價", icon: Ruler, roles: ["admin"], group: "business" },
   { href: "/", label: "報價工作台", icon: Calculator, roles: ["admin"], group: "business" },
   { href: "/quotes", label: "報價紀錄", icon: FileText, roles: ["admin"], group: "business" },
   { href: "/cases", label: "案件紀錄", icon: Briefcase, roles: ["admin"], group: "business" },
   { href: "/referrals", label: "轉介紹", icon: Users, roles: ["admin"], group: "business" },
-  { href: "/templates", label: "快速回覆", icon: MessageSquareText, roles: ["admin", "technician"], group: "business" },
+  { href: "/templates", label: "快速回覆", icon: MessageSquareText, roles: ["admin"], group: "business" },
   // ── 作業 ──
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
-  { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin", "technician"], group: "operations" },
+  { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin"], group: "operations" },
   { href: "/orders", label: "訂製訂單", icon: ClipboardList, roles: ["admin"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"], group: "operations" },
-  { href: "/calendar", label: "行事曆", icon: Calendar, roles: ["admin", "technician"], group: "operations" },
+  { href: "/my-schedule", label: "我的行程", icon: Calendar, roles: ["technician"], group: "operations" },
+  { href: "/calendar", label: "行事曆", icon: Calendar, roles: ["admin"], group: "operations" },
   // ── 財務 ──
   { href: "/remittance", label: "匯款資訊", icon: Wallet, roles: ["admin"], group: "finance" },
   { href: "/receivables", label: "應收帳款", icon: Wallet, roles: ["admin"], group: "finance" },
@@ -55,7 +58,7 @@ export const navLinks: NavLinkDef[] = [
   { href: "/einvoices", label: "電子發票", icon: ReceiptText, roles: ["admin"], group: "finance" },
   // ── 倉儲 ──
   { href: "/purchase-products", label: "採購商品", icon: Package, roles: ["admin"], group: "inventory" },
-  { href: "/inventory", label: "庫存管理", icon: Archive, roles: ["admin", "technician"], group: "inventory" },
+  { href: "/inventory", label: "庫存管理", icon: Archive, roles: ["admin"], group: "inventory" },
   { href: "/reports", label: "採購報表", icon: BarChart3, roles: ["admin"], group: "inventory" },
   // ── 系統 ──
   { href: "/settings", label: "系統設定", icon: Settings, roles: ["admin"], group: "system" },

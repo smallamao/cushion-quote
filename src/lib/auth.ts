@@ -2,6 +2,7 @@ import "server-only";
 
 import crypto from "crypto";
 
+import { canTechnicianAccess } from "@/lib/permissions";
 import type { Session, UserRole } from "@/lib/types";
 
 const AUTH_SECRET = process.env.AUTH_SECRET ?? "";
@@ -209,45 +210,9 @@ export function getBootstrapAdminEmail(): string {
 }
 
 /**
- * 路由 whitelist — technician 可以訪問的路徑 prefix
- * (其餘 admin 才能看)
- */
-export const TECHNICIAN_ALLOWED_PREFIXES = [
-  "/after-sales",
-  "/api/auth",
-  "/api/sheets/after-sales",
-  "/api/sheets/equipment",
-  "/api/upload",
-  "/login",
-  "/_next",
-  "/logo.png",
-  "/favicon.ico",
-  "/my-schedule",
-];
-
-/**
- * 判斷某個路徑 technician 可不可以訪問
- */
-export function canTechnicianAccess(pathname: string): boolean {
-  return TECHNICIAN_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
-}
-
-/**
- * 判斷某個路徑是不是 admin 才能看
- */
-export function isAdminOnly(pathname: string): boolean {
-  return (
-    pathname.startsWith("/admin") ||
-    pathname.startsWith("/api/sheets/users") ||
-    pathname.startsWith("/api/sheets/_debug") ||
-    pathname.startsWith("/api/sheets/debug-")
-  );
-}
-
-/**
- * 依 role 過濾 sidebar 項目 (前端用)
+ * 依 role 判斷路徑存取權（白名單定義於 lib/permissions.ts，與 middleware 共用）
  */
 export function canRoleAccess(pathname: string, role: UserRole): boolean {
   if (role === "admin") return true;
-  return canTechnicianAccess(pathname) && !isAdminOnly(pathname);
+  return canTechnicianAccess(pathname);
 }

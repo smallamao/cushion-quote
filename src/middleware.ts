@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { canTechnicianAccess } from "@/lib/permissions";
+
 // 注意:middleware 在 Edge runtime 跑,所以不能 import server-only 模組
 // 這邊需要自己做簡化版的 session 驗證 (不動用 crypto from "node:crypto")
 
 const SESSION_COOKIE_NAME = "cq_session";
 
 interface MiniSession {
-  role: "admin" | "technician";
+  // 任何非 admin 角色（technician / sales / 未來新增）一律套用白名單，預設拒絕
+  role: string;
   exp: number;
 }
 
@@ -31,28 +34,7 @@ function quickParseSession(token: string | undefined): MiniSession | null {
   }
 }
 
-const TECHNICIAN_ALLOWED_PREFIXES = [
-  "/after-sales",
-  "/api/auth",
-  "/api/sheets/after-sales",
-  "/api/sheets/equipment",
-  "/api/sheets/cases",
-  "/api/sheets/versions",
-  "/api/sheets/inventory",
-  "/api/sheets/products",
-  "/api/sheets/suppliers",
-  "/api/upload",
-  "/login",
-  "/calendar",
-  "/inventory",
-  "/my-schedule",
-];
-
-const TECHNICIAN_BLOCKED_API = [
-  "/api/sheets/ar",
-  "/api/sheets/commissions",
-  "/api/sheets/receivables",
-];
+// 白名單來自 lib/permissions.ts（單一事實來源，與 auth.ts 共用）
 
 function isPublicPath(pathname: string): boolean {
   return (
@@ -76,14 +58,6 @@ function isPublicPath(pathname: string): boolean {
 
 function isApiPath(pathname: string): boolean {
   return pathname.startsWith("/api/");
-}
-
-function isTechnicianAllowed(pathname: string): boolean {
-  return TECHNICIAN_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
-}
-
-function isTechnicianBlockedApi(pathname: string): boolean {
-  return TECHNICIAN_BLOCKED_API.some((p) => pathname.startsWith(p));
 }
 
 export function middleware(request: NextRequest) {
@@ -116,28 +90,13 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 技師權限控制
-  if (session.role === "technician") {
-    // 封鎖特定財務 API
-    if (isTechnicianBlockedApi(pathname)) {
-      if (isApiPath(pathname)) {
-        return NextResponse.json(
-          { ok: false, error: "forbidden" },
-          { status: 403 },
-        );
-      }
+  // 非 admin 一律套白名單（預設拒絕）。
+  // 過去只擋 role === "technician"，導致 sales 等其他角色直接拿到 admin 全權限。
+  if (session.role !== "admin" && !canTechnicianAccess(pathname)) {
+    if (isApiPath(pathname)) {
+      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
     }
-    // 封鎖未允許的頁面
-    if (!isTechnicianAllowed(pathname)) {
-      if (isApiPath(pathname)) {
-        return NextResponse.json(
-          { ok: false, error: "forbidden" },
-          { status: 403 },
-        );
-      }
-      const url = new URL("/after-sales", request.url);
-      return NextResponse.redirect(url);
-    }
+    return NextResponse.redirect(new URL("/after-sales", request.url));
   }
 
   return NextResponse.next({ request: { headers: requestHeaders } });
