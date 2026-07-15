@@ -18,6 +18,7 @@ export const TECHNICIAN_ALLOWED_PREFIXES = [
   "/api/auth",
   "/api/sheets/after-sales",
   "/api/sheets/equipment", // 售後單選設備型號
+  "/api/sheets/orders/my-installs", // 師傅的「我的安裝」（安全投影，無金額）
   "/api/upload", // 現場照片／簽名上傳
 ] as const;
 

@@ -1,13 +1,35 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Loader2, MapPin, Phone } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, FileText, Hammer, Loader2, MapPin, Phone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAfterSales } from "@/hooks/useAfterSales";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import type { AfterSalesService } from "@/lib/types";
+import type { AfterSalesService, OrderItem } from "@/lib/types";
+
+// 我的安裝：/api/sheets/orders/my-installs 的安全投影（無金額欄位）
+interface MyInstall {
+  orderId: string;
+  orderNumber: string;
+  clientName: string;
+  orderTitle: string;
+  itemCategory: string;
+  deliveryMethod: string;
+  status: string;
+  installDate: string;
+  extraInstallDates: string[];
+  shipDate: string;
+  installAssignedTo: string;
+  materialName: string;
+  materialCode: string;
+  materialImageUrl: string;
+  workOrderPdfUrl: string;
+  items: OrderItem[];
+  notes: unknown[];
+  internalNotes: string;
+}
 import { buildMapsUrl, groupByDate, sortDateGroups } from "@/lib/schedule-utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -205,6 +227,53 @@ export function MyScheduleClient() {
   const myName = user?.displayName ?? "";
   const isAdmin = user?.role === "admin";
 
+  // ── 我的安裝（訂製訂單指派給我的施工）──────────────────────────────────────
+  const [installs, setInstalls] = useState<MyInstall[]>([]);
+  const [viewingPdfId, setViewingPdfId] = useState<string | null>(null);
+  useEffect(() => {
+    if (userLoading) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const url = isAdmin
+          ? "/api/sheets/orders/my-installs"
+          : `/api/sheets/orders/my-installs?assignee=${encodeURIComponent(myName)}`;
+        const res = await fetch(url, { cache: "no-store" });
+        const json = (await res.json()) as { ok: boolean; installs?: MyInstall[] };
+        if (!cancelled && json.ok) setInstalls(json.installs ?? []);
+      } catch {
+        /* 拿不到安裝清單不影響售後派工 */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userLoading, isAdmin, myName]);
+
+  async function openWorkOrderPdf(inst: MyInstall) {
+    if (!inst.workOrderPdfUrl) return;
+    setViewingPdfId(inst.orderId);
+    try {
+      const res = await fetch(inst.workOrderPdfUrl);
+      if (!res.ok) throw new Error("讀取工單失敗");
+      const buf = await res.arrayBuffer();
+      const url = URL.createObjectURL(new Blob([buf], { type: "application/pdf" }));
+      window.open(url, "_blank");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "讀取工單失敗");
+    } finally {
+      setViewingPdfId(null);
+    }
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  // 每一個施工日展開成一筆(含跨天)，只留今天以後
+  const myInstallDays = installs
+    .flatMap((inst) => {
+      const days = [...new Set([inst.installDate, ...(inst.extraInstallDates ?? [])].filter(Boolean))];
+      return days.map((d) => ({ inst, date: d }));
+    })
+    .filter((x) => x.date >= todayStr)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   // ── Derived data ──────────────────────────────────────────────────────────
   const today = new Date().toISOString().slice(0, 10);
 
@@ -362,9 +431,69 @@ export function MyScheduleClient() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
-      {dateGroups.length === 0 ? (
+      {/* 我的安裝（訂製訂單施工）*/}
+      {myInstallDays.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Hammer className="h-4 w-4 text-rose-500" />
+            <span className="font-semibold text-[var(--text-primary)]">我的安裝</span>
+            <span className="text-xs text-[var(--text-secondary)]">
+              {myInstallDays.length} 個施工日
+            </span>
+          </div>
+          {myInstallDays.map(({ inst, date }) => {
+            const allDays = [...new Set([inst.installDate, ...(inst.extraInstallDates ?? [])].filter(Boolean))].sort();
+            const dayIdx = allDays.indexOf(date);
+            return (
+              <div
+                key={`${inst.orderId}-${date}`}
+                className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-800">
+                    {formatDateLabel(date)}
+                    {allDays.length > 1 && ` · 第 ${dayIdx + 1}/${allDays.length} 天`}
+                  </span>
+                  <span className="font-mono text-xs text-[var(--accent)]">
+                    {inst.orderNumber || inst.orderId}
+                  </span>
+                </div>
+                <div className="mt-1 text-sm font-medium">{inst.clientName || "—"}</div>
+                {inst.orderTitle && (
+                  <div className="text-xs text-[var(--text-secondary)]">{inst.orderTitle}</div>
+                )}
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--text-tertiary)]">
+                  {inst.itemCategory && <span>{inst.itemCategory}</span>}
+                  {inst.materialName && <span>{inst.materialName} {inst.materialCode}</span>}
+                  {inst.deliveryMethod && <span>{inst.deliveryMethod}</span>}
+                </div>
+                {inst.workOrderPdfUrl && (
+                  <div className="mt-2 border-t border-[var(--border)] pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      disabled={viewingPdfId === inst.orderId}
+                      onClick={() => void openWorkOrderPdf(inst)}
+                    >
+                      {viewingPdfId === inst.orderId ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FileText className="h-3.5 w-3.5" />
+                      )}
+                      看施工工單
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {dateGroups.length === 0 && myInstallDays.length === 0 ? (
         <p className="text-[var(--text-secondary)] text-sm">目前沒有派工給您的行程</p>
-      ) : (
+      ) : dateGroups.length === 0 ? null : (
         dateGroups.map((group) => {
           // Sort by dispatchOrder ascending; items with no order go last
           const sortedItems = [...group.items].sort((a, b) => {

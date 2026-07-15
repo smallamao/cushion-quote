@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useUsers } from "@/hooks/useUsers";
 import { useClients } from "@/hooks/useClients";
 import { ClientCombobox } from "@/components/quote-editor/ClientCombobox";
 import type {
@@ -90,6 +91,7 @@ export function OrderDetailClient({ orderId }: Props) {
   const router = useRouter();
   const { user } = useCurrentUser();
   const { clients, loading: clientsLoading } = useClients();
+  const { users } = useUsers();
   const isAdmin = user?.role === "admin";
 
   const [order, setOrder] = useState<CustomOrder | null>(null);
@@ -564,6 +566,39 @@ export function OrderDetailClient({ orderId }: Props) {
                       value={draft.installDate}
                       onChange={(e) => updateDraft("installDate", e.target.value)}
                     />
+                  </div>
+                  {/* 安裝負責師傅：指派後該師傅在「我的行程」看得到這張安裝 */}
+                  <div>
+                    <Label>安裝師傅</Label>
+                    <Select
+                      value={draft.installAssignedTo || "__unassigned__"}
+                      onValueChange={(v) =>
+                        updateDraft("installAssignedTo", v === "__unassigned__" ? "" : v)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="選擇師傅" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__unassigned__">— 未指派 —</SelectItem>
+                        {users
+                          .filter((u) => u.isActive)
+                          .map((u) => (
+                            <SelectItem key={u.userId} value={u.displayName}>
+                              {u.displayName}
+                            </SelectItem>
+                          ))}
+                        {draft.installAssignedTo &&
+                          !users.some((u) => u.displayName === draft.installAssignedTo) && (
+                            <SelectItem value={draft.installAssignedTo}>
+                              {draft.installAssignedTo}（舊資料）
+                            </SelectItem>
+                          )}
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                      指派後,該師傅在「我的行程」就能看到這張安裝(含地址/品項/工單)。
+                    </p>
                   </div>
                   {/* 跨多天施工：逐日列出（可跳日，例：週三＋週五），行事曆只標實際施工日 */}
                   <div>

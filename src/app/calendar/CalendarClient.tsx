@@ -171,15 +171,18 @@ export function CalendarClient() {
                 ? "order_install"
                 : "order_ship";
             const days = installDaysOf(o.installDate, o.extraInstallDates);
+            const who = kind === "order_install" && o.installAssignedTo ? `師傅:${o.installAssignedTo}` : "";
             days.forEach((d, i) => {
+              const parts = [
+                baseSub,
+                days.length > 1 ? `第 ${i + 1}/${days.length} 天` : "",
+                who,
+              ].filter(Boolean);
               collected.push({
                 date: d,
                 kind,
                 label,
-                sublabel:
-                  days.length > 1
-                    ? `${baseSub ? `${baseSub}・` : ""}第 ${i + 1}/${days.length} 天`
-                    : baseSub,
+                sublabel: parts.length > 0 ? parts.join("・") : undefined,
                 href,
                 overdue: !done && d < today,
               });

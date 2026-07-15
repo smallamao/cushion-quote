@@ -1254,6 +1254,8 @@ export interface CustomOrder {
    * 行事曆只標這些實際施工日，不會誤佔中間沒排工的日子。
    */
   extraInstallDates?: string[];
+  /** 安裝負責師傅（存 user displayName，比照售後服務 assignedTo）。空＝未指派 */
+  installAssignedTo?: string;
   deadline: string;
   items: OrderItem[];
   notes: OrderNote[];
