@@ -137,6 +137,9 @@ export async function POST(request: Request) {
     let quotedAmount = 0;
     let directItemCategory = "";
     let clientId = "";
+    let installAddress = "";
+    let installContactName = "";
+    let installContactPhone = "";
     let materialName = "";
     let materialCode = "";
     const materialImageUrl = "";
@@ -189,6 +192,12 @@ export async function POST(request: Request) {
       const caseRow = caseRows.find((r) => r[0] === caseId);
       orderNumber = caseId;
       orderTitle = caseRow ? (caseRow[1] ?? "") : "";
+      // 案場現場資訊帶入（案件：col4 聯絡人、col5 電話、col6 地址）→ 給師傅派工用
+      if (caseRow) {
+        installContactName = caseRow[4] ?? "";
+        installContactPhone = caseRow[5] ?? "";
+        installAddress = caseRow[6] ?? "";
+      }
 
       // 3. Find first version line item to get materialId
       const lineRes = await client.sheets.spreadsheets.values.get({
@@ -261,6 +270,9 @@ export async function POST(request: Request) {
       createdBy: "",
       materialPurchases: [],
       clientId,
+      installAddress,
+      installContactName,
+      installContactPhone,
     };
 
     await client.sheets.spreadsheets.values.append({

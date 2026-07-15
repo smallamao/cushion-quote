@@ -22,6 +22,9 @@ interface MyInstall {
   extraInstallDates: string[];
   shipDate: string;
   installAssignedTo: string;
+  installAddress: string;
+  installContactName: string;
+  installContactPhone: string;
   materialName: string;
   materialCode: string;
   materialImageUrl: string;
@@ -467,6 +470,34 @@ export function MyScheduleClient() {
                   {inst.materialName && <span>{inst.materialName} {inst.materialCode}</span>}
                   {inst.deliveryMethod && <span>{inst.deliveryMethod}</span>}
                 </div>
+                {/* 案場資訊：地址一鍵導航、電話一鍵撥號 */}
+                {(inst.installAddress || inst.installContactPhone) && (
+                  <div className="mt-1.5 space-y-1">
+                    {inst.installAddress && (
+                      <a
+                        href={buildMapsUrl([inst.installAddress])}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-start gap-1.5 text-xs text-[var(--accent)]"
+                      >
+                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span className="underline">{inst.installAddress}</span>
+                      </a>
+                    )}
+                    {inst.installContactPhone && (
+                      <a
+                        href={`tel:${inst.installContactPhone}`}
+                        className="flex items-center gap-1.5 text-xs text-[var(--accent)]"
+                      >
+                        <Phone className="h-3.5 w-3.5 shrink-0" />
+                        <span className="underline">
+                          {inst.installContactName ? `${inst.installContactName} ` : ""}
+                          {inst.installContactPhone}
+                        </span>
+                      </a>
+                    )}
+                  </div>
+                )}
                 {inst.workOrderPdfUrl && (
                   <div className="mt-2 border-t border-[var(--border)] pt-2">
                     <Button

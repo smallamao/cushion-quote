@@ -1256,6 +1256,12 @@ export interface CustomOrder {
   extraInstallDates?: string[];
   /** 安裝負責師傅（存 user displayName，比照售後服務 assignedTo）。空＝未指派 */
   installAssignedTo?: string;
+  /** 案場/安裝地址（給師傅導航用）。關聯案件時自動帶入，可覆寫 */
+  installAddress?: string;
+  /** 現場聯絡人 */
+  installContactName?: string;
+  /** 現場聯絡電話（給師傅撥號用）*/
+  installContactPhone?: string;
   deadline: string;
   items: OrderItem[];
   notes: OrderNote[];

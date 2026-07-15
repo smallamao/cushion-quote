@@ -1,11 +1,11 @@
 import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AR`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AR10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AU`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AU10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AR${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:AU${sheetRow}`;
 
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
@@ -76,6 +76,9 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     shipDate: row[41] ?? "",
     extraInstallDates: parseJsonSafe<string[]>(row[42], []),
     installAssignedTo: row[43] ?? "",
+    installAddress: row[44] ?? "",
+    installContactName: row[45] ?? "",
+    installContactPhone: row[46] ?? "",
     deadline: row[23] ?? "",
     items: parseJsonSafe<OrderItem[]>(row[24], []),
     notes: parseJsonSafe<OrderNote[]>(row[25], []),
@@ -146,6 +149,9 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     r.shipDate ?? "",
     JSON.stringify(r.extraInstallDates ?? []),
     r.installAssignedTo ?? "",
+    r.installAddress ?? "",
+    r.installContactName ?? "",
+    r.installContactPhone ?? "",
   ];
 }
 

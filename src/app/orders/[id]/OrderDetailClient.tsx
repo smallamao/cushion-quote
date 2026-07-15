@@ -600,6 +600,31 @@ export function OrderDetailClient({ orderId }: Props) {
                       指派後,該師傅在「我的行程」就能看到這張安裝(含地址/品項/工單)。
                     </p>
                   </div>
+                  {/* 案場現場資訊：只給師傅派工用（不會印在施工工單上）*/}
+                  <div className="md:col-span-2">
+                    <Label>案場地址</Label>
+                    <Input
+                      value={draft.installAddress ?? ""}
+                      onChange={(e) => updateDraft("installAddress", e.target.value)}
+                      placeholder="師傅導航用（關聯案件會自動帶入）"
+                    />
+                  </div>
+                  <div>
+                    <Label>現場聯絡人</Label>
+                    <Input
+                      value={draft.installContactName ?? ""}
+                      onChange={(e) => updateDraft("installContactName", e.target.value)}
+                      placeholder="例：王先生"
+                    />
+                  </div>
+                  <div>
+                    <Label>聯絡電話</Label>
+                    <Input
+                      value={draft.installContactPhone ?? ""}
+                      onChange={(e) => updateDraft("installContactPhone", e.target.value)}
+                      placeholder="師傅一鍵撥號用"
+                    />
+                  </div>
                   {/* 跨多天施工：逐日列出（可跳日，例：週三＋週五），行事曆只標實際施工日 */}
                   <div>
                     <Label>額外安裝日（選填）</Label>
