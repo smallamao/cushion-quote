@@ -147,7 +147,14 @@ async function updateCustomField(
   fieldId: string,
   value: { text?: string; number?: string; date?: string },
 ): Promise<void> {
-  await trelloPutQ(`cards/${cardId}/customField/${fieldId}/item`, {}, { value });
+  // 清空自訂欄位時 value 會是空物件 {}；Trello 需要收到 { value: "" }
+  // 才會清掉，送 { value: {} } 會被回 400 → 前端顯示「儲存失敗」。
+  const isEmpty = !value || Object.keys(value).length === 0;
+  await trelloPutQ(
+    `cards/${cardId}/customField/${fieldId}/item`,
+    {},
+    { value: isEmpty ? "" : value },
+  );
 }
 
 /**
