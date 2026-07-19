@@ -203,7 +203,7 @@ export function buildRepairOrderText(card: TrelloCard, customFields: CustomField
   const primaryPhone = normalizePhone(primaryPhoneRaw);
   if (!primaryPhone) return null;
 
-  const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
+  const styleLabel = card.labels.find((l) => l.name?.startsWith("成交/"));
   const style = styleLabel?.name.replace("成交/", "") ?? null;
 
   const secondaryPhoneRaw = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE);
@@ -584,7 +584,7 @@ function buildDriverConfirmMsg(
   if (hasStairs) finalAddress += "【室內梯】";
 
   const orderNumber = card.name.match(/P\d{4,6}/)?.[0] ?? "";
-  const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
+  const styleLabel = card.labels.find((l) => l.name?.startsWith("成交/"));
   const styleCode = styleLabel?.name.replace("成交/", "") ?? "";
   const product = PRODUCTS.find((p) => p.displayName === styleCode);
   const styleLine = `#${orderNumber}  ${styleCode} ${product?.moduleName ?? ""}`;

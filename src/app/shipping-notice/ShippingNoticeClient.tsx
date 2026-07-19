@@ -168,7 +168,7 @@ async function applyDefaultChairLeg(
 ): Promise<{ fieldId: string; value: { text: string } } | null> {
   const existing = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
   if (existing) return null;
-  const productCode = card.labels.find((l) => l.name.startsWith("成交/"))?.name.replace("成交/", "");
+  const productCode = card.labels.find((l) => l.name?.startsWith("成交/"))?.name.replace("成交/", "");
   const defaultValue = PRODUCTS.find((p) => p.displayName === productCode)?.defaultFoot ?? "";
   if (!defaultValue) return null;
   const fieldId = card.idBoard !== TRELLO.BOARD_ID
@@ -452,7 +452,7 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
         if (cancelled) return;
         const balanceItem = lists
           .flatMap((l) => l.checkItems)
-          .find((it) => it.name.includes("尾款") && it.state !== "complete");
+          .find((it) => it.name?.includes("尾款") && it.state !== "complete");
         if (!balanceItem) return;
         const nums = balanceItem.name.match(/\d[\d,]*/g);
         if (!nums) return;
@@ -783,7 +783,7 @@ function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: Pro
   function resolveChairLeg(): string {
     const fromTrello = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.CHAIR_LEG, S_ORDER_CUSTOM_FIELDS.CHAIR_LEG);
     if (fromTrello) return fromTrello;
-    const productCode = card.labels.find((l) => l.name.startsWith("成交/"))?.name.replace("成交/", "");
+    const productCode = card.labels.find((l) => l.name?.startsWith("成交/"))?.name.replace("成交/", "");
     return PRODUCTS.find((p) => p.displayName === productCode)?.defaultFoot ?? "";
   }
 
@@ -888,7 +888,7 @@ function ProductionView({ card, customFields, onBack, onCustomFieldUpdate }: Pro
 
       {/* 生產資訊摘要 */}
       {(() => {
-        const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
+        const styleLabel = card.labels.find((l) => l.name?.startsWith("成交/"));
         const color = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.COLOR, S_ORDER_CUSTOM_FIELDS.COLOR);
         const scheduleText = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.SCHEDULE_TEXT, S_ORDER_CUSTOM_FIELDS.SCHEDULE_TEXT);
         const seatMaterials = getCustomFieldTextAny(customFields, TRELLO.CUSTOM_FIELDS.SEAT_MATERIALS, S_ORDER_CUSTOM_FIELDS.SEAT_MATERIALS);
@@ -1742,7 +1742,7 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
     : null;
   const driverLabel = drivers.find((d) => card.labels.some((l) => l.id === d.labelId));
   const driverTrelloLabel = card.labels.find((l) => l.id === driverLabel?.labelId);
-  const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
+  const styleLabel = card.labels.find((l) => l.name?.startsWith("成交/"));
   const isWaitShipping = card.idList === TRELLO.LISTS.WAIT_SHIPPING;
   const isShipped = card.idList === TRELLO.LISTS.SHIPPED;
   const checkTotal = card.badges?.checkItems ?? 0;
@@ -1819,7 +1819,7 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
     try {
       const checklists = await fetchChecklists(card.id);
       const allItems = checklists.flatMap((cl) => cl.checkItems);
-      const lastDollarItem = [...allItems].reverse().find((item) => item.name.includes("$"));
+      const lastDollarItem = [...allItems].reverse().find((item) => item.name?.includes("$"));
       const dollarIndex = lastDollarItem?.name.indexOf("$") ?? -1;
       const rawAmount = dollarIndex >= 0 ? lastDollarItem!.name.slice(dollarIndex) : "";
       const cleanAmount = rawAmount.replace("$", "").replace(/,/g, "");
@@ -1894,7 +1894,7 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
             {card.labels
               .filter(
                 (l) =>
-                  !l.name.startsWith("成交/") && !drivers.some((d) => d.labelId === l.id),
+                  !l.name?.startsWith("成交/") && !drivers.some((d) => d.labelId === l.id),
               )
               .map((l) => (
                 <LabelBadge key={l.id} label={l} text={l.name} />
@@ -2518,7 +2518,7 @@ export function ShippingNoticeClient() {
             })();
             const addressDisplay = card.desc.split("\n")[0]?.trim() || null;
             const isDone = card.dueComplete;
-            const styleLabel = card.labels.find((l) => l.name.startsWith("成交/"));
+            const styleLabel = card.labels.find((l) => l.name?.startsWith("成交/"));
             const styleText = styleLabel?.name.replace("成交/", "") ?? null;
             const driverLabel = drivers.find((d) => card.labels.some((l) => l.id === d.labelId));
             const driverTrelloLabel = card.labels.find((l) => l.id === driverLabel?.labelId);
