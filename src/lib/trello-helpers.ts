@@ -38,7 +38,8 @@ export interface TrelloAttachment {
   name: string;
   url: string;
   downloadUrl?: string;
-  mimeType: string;
+  /** 連結型附件（貼網址）為 null */
+  mimeType: string | null;
   bytes: number;
   date: string;
   isUpload: boolean;
@@ -132,7 +133,8 @@ function dedupeUrls(urls: Array<string | undefined>): string[] {
 }
 
 function isImageAttachment(attachment: TrelloAttachment): boolean {
-  return attachment.mimeType.startsWith("image/") || attachment.previews.length > 0;
+  // 連結型附件（貼網址）的 mimeType 為 null、previews 可能缺欄位
+  return (attachment.mimeType ?? "").startsWith("image/") || (attachment.previews ?? []).length > 0;
 }
 
 function getAttachmentImageUrls(
