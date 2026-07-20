@@ -297,7 +297,7 @@ export function FinanceTab({
               <span>${linkedPurchaseCost.toLocaleString("zh-TW")}</span>
             </div>
             <p className="pt-1 text-[11px] text-[var(--text-tertiary)]">
-              總成本已包含關聯採購單金額；已取消的採購單不計入。
+              總成本已包含關聯採購單金額；已取消的採購單不計入。同一張採購單若混採多張訂單的料，僅計入備註屬於本單的品項。
             </p>
           </div>
         )}

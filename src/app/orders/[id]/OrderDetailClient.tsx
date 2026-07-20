@@ -28,7 +28,9 @@ import type {
   OrderItemCategory,
   OrderStatus,
   PurchaseOrder,
+  PurchaseOrderItem,
 } from "@/lib/types";
+import { attributedPurchaseAmount } from "@/lib/purchase-order-link";
 import { FinanceTab } from "./FinanceTab";
 import { LinkedPurchasesSection } from "./LinkedPurchasesSection";
 import { generateWorkOrderJpgBlob } from "@/components/pdf/WorkOrderPDF";
@@ -106,6 +108,7 @@ export function OrderDetailClient({ orderId }: Props) {
   const [notionResult, setNotionResult] = useState<{ ok: boolean; message: string } | null>(null);
   // 關聯採購單（供財務頁計入成本 + 反查區塊顯示）；一次抓、兩處共用
   const [linkedPurchases, setLinkedPurchases] = useState<PurchaseOrder[]>([]);
+  const [linkedPurchaseItems, setLinkedPurchaseItems] = useState<Record<string, PurchaseOrderItem[]>>({});
   const [linkedPurchasesLoading, setLinkedPurchasesLoading] = useState(true);
 
   // Load order on mount
@@ -147,13 +150,22 @@ export function OrderDetailClient({ orderId }: Props) {
       setLinkedPurchasesLoading(true);
       try {
         const res = await fetch(
-          `/api/sheets/purchases?relatedOrderId=${encodeURIComponent(orderId)}`,
+          `/api/sheets/purchases?relatedOrderId=${encodeURIComponent(orderId)}&includeItems=true`,
           { cache: "no-store" },
         );
-        const json = (await res.json()) as { orders?: PurchaseOrder[] };
-        if (!cancelled) setLinkedPurchases(json.orders ?? []);
+        const json = (await res.json()) as {
+          orders?: PurchaseOrder[];
+          itemsByOrder?: Record<string, PurchaseOrderItem[]>;
+        };
+        if (!cancelled) {
+          setLinkedPurchases(json.orders ?? []);
+          setLinkedPurchaseItems(json.itemsByOrder ?? {});
+        }
       } catch {
-        if (!cancelled) setLinkedPurchases([]);
+        if (!cancelled) {
+          setLinkedPurchases([]);
+          setLinkedPurchaseItems({});
+        }
       } finally {
         if (!cancelled) setLinkedPurchasesLoading(false);
       }
@@ -163,10 +175,12 @@ export function OrderDetailClient({ orderId }: Props) {
     };
   }, [orderId]);
 
-  // 關聯採購單成本：排除已取消，計入訂單總成本
+  // 關聯採購單成本：排除已取消，且「只計入備註歸屬於本單的品項」。
+  // 一張採購單常混採多張訂單的料，整張金額計入會虛增本單成本（詳見 purchase-order-link）。
+  const orderRef = { orderNumber: order?.orderNumber, caseId: order?.caseId };
   const linkedPurchaseCost = linkedPurchases
     .filter((p) => p.status !== "cancelled")
-    .reduce((s, p) => s + (p.totalAmount || 0), 0);
+    .reduce((s, p) => s + attributedPurchaseAmount(p, linkedPurchaseItems[p.orderId], orderRef), 0);
 
   const updateDraft = useCallback(<K extends keyof CustomOrder>(
     key: K,
@@ -876,6 +890,8 @@ export function OrderDetailClient({ orderId }: Props) {
             <LinkedPurchasesSection
               orderId={orderId}
               purchases={linkedPurchases}
+              itemsByOrder={linkedPurchaseItems}
+              orderRef={orderRef}
               loading={linkedPurchasesLoading}
             />
           </div>

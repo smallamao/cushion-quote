@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { ExternalLink, Loader2, ShoppingCart } from "lucide-react";
 
-import type { PurchaseOrder, PurchaseOrderStatus } from "@/lib/types";
+import type { PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus } from "@/lib/types";
+import { attributedPurchaseAmount, type OrderRef } from "@/lib/purchase-order-link";
 
 const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
   draft: "草稿",
@@ -28,15 +29,20 @@ function fmtMoney(n: number | null | undefined): string {
 interface Props {
   orderId: string;
   purchases: PurchaseOrder[];
+  itemsByOrder: Record<string, PurchaseOrderItem[]>;
+  orderRef: OrderRef;
   loading: boolean;
 }
 
 // 訂單頁反查：列出關聯到此訂製訂單的採購單（relatedOrderId 相符）。
 // 資料由父層 OrderDetailClient 一次抓取後傳入（財務頁計成本亦共用同一份）。
-export function LinkedPurchasesSection({ orderId, purchases, loading }: Props) {
+// 金額顯示「歸屬本單」的部分（一張採購單可混採多張訂單的料），與財務頁成本一致。
+export function LinkedPurchasesSection({ orderId, purchases, itemsByOrder, orderRef, loading }: Props) {
+  const attributedOf = (p: PurchaseOrder): number =>
+    attributedPurchaseAmount(p, itemsByOrder[p.orderId], orderRef);
   const total = purchases
     .filter((p) => p.status !== "cancelled")
-    .reduce((s, p) => s + (p.totalAmount || 0), 0);
+    .reduce((s, p) => s + attributedOf(p), 0);
 
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
@@ -101,7 +107,14 @@ export function LinkedPurchasesSection({ orderId, purchases, loading }: Props) {
                       {p.supplierSnapshot?.shortName || p.supplierSnapshot?.name || "—"}
                     </td>
                     <td className="py-2 pr-3 text-xs">{p.orderDate || "—"}</td>
-                    <td className="py-2 pr-3 text-right text-xs">${fmtMoney(p.totalAmount)}</td>
+                    <td className="py-2 pr-3 text-right text-xs">
+                      ${fmtMoney(attributedOf(p))}
+                      {attributedOf(p) !== (p.totalAmount || 0) && (
+                        <span className="ml-1 text-[11px] text-[var(--text-tertiary)]">
+                          / 全單 ${fmtMoney(p.totalAmount)}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 pr-3">
                       <span className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[p.status] ?? STATUS_COLOR.draft}`}>
                         {STATUS_LABEL[p.status] ?? p.status}
