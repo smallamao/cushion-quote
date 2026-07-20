@@ -27,12 +27,16 @@ export const NOTION_CATEGORY_MAP: Record<string, string> = {
   "大和樂活": "大和樂活",
 };
 
-// System status → Notion 狀態 select name
-export function mapNotionStatus(status: string): string {
+// System status → Notion 狀態 select name。
+// 系統 OrderStatus = production | waiting | completed | cancelled。
+// Notion「狀態」select 只有三個選項（排程/待出貨/完成），無「取消」；
+// 因此 cancelled（或未知）回 null → 呼叫端不覆寫 Notion 狀態，避免推錯值或誤建新選項。
+export function mapNotionStatus(status: string): string | null {
   switch (status) {
-    case "completed": return "待出貨 | Wait For Shipping";
-    case "delivered": return "完成 | Completed";
-    default: return "排程 | Production";
+    case "production": return "排程 | Production";
+    case "waiting": return "待出貨 | Wait For Shipping";
+    case "completed": return "完成 | Completed";
+    default: return null; // cancelled 等：Notion 無對應選項
   }
 }
 
@@ -58,8 +62,13 @@ export function buildNotionProperties(order: CustomOrder) {
     Name: { title: [{ text: { content: name } }] },
     報價: { number: order.quotedAmount || 0 },
     成本: { number: totalCost || 0 },
-    狀態: { select: { name: mapNotionStatus(order.status) } },
   };
+
+  // 狀態：僅在有對應的 Notion 選項時才寫入（cancelled 無對應 → 不覆寫，維持原值）
+  const notionStatus = mapNotionStatus(order.status);
+  if (notionStatus) {
+    props["狀態"] = { select: { name: notionStatus } };
+  }
 
   if (order.shippingCost > 0) {
     props["運費"] = { number: order.shippingCost };
