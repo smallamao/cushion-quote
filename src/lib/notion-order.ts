@@ -17,7 +17,7 @@ export function notionHeaders() {
 export const NOTION_CATEGORY_MAP: Record<string, string> = {
   "坐/背墊": "坐/背墊",
   "臥榻墊": "臥榻墊",
-  "縫布裱板": "繃布裱板工程",
+  "繃布裱板": "繃布裱板工程",
   "到府清潔": "到府清潔",
   "到府施工": "到府施工",
   "訂製沙發": "訂製款沙發",

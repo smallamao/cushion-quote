@@ -38,7 +38,7 @@ const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
 const CATEGORY_OPTIONS: OrderItemCategory[] = [
   "坐/背墊",
   "臥榻墊",
-  "縫布裱板",
+  "繃布裱板",
   "到府清潔",
   "到府施工",
   "訂製沙發",

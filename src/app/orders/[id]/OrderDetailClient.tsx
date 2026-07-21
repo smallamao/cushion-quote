@@ -56,7 +56,7 @@ const INVOICE_OPTIONS: Array<{ value: OrderInvoiceStatus; label: string }> = [
 const CATEGORY_OPTIONS: Array<{ value: OrderItemCategory; label: string }> = [
   { value: "坐/背墊", label: "坐/背墊" },
   { value: "臥榻墊", label: "臥榻墊" },
-  { value: "縫布裱板", label: "縫布裱板" },
+  { value: "繃布裱板", label: "繃布裱板" },
   { value: "到府清潔", label: "到府清潔" },
   { value: "到府施工", label: "到府施工" },
   { value: "訂製沙發", label: "訂製沙發" },

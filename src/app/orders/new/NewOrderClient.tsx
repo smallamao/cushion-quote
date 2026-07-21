@@ -22,7 +22,7 @@ type Mode = "quote" | "direct";
 const ORDER_ITEM_CATEGORIES: OrderItemCategory[] = [
   "坐/背墊",
   "臥榻墊",
-  "縫布裱板",
+  "繃布裱板",
   "到府清潔",
   "到府施工",
   "訂製沙發",
