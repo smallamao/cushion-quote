@@ -683,7 +683,7 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
 
       {/* 輸出按鈕 */}
       <div className="space-y-2 pt-1">
-        <Button size="sm" variant="outline" className="w-full" onClick={() => handleOutput("driver")}>
+        <Button size="sm" variant="outline" className="w-full" onClick={() => handleOutput("driver", 1)}>
           司機確認
         </Button>
         <div className="grid grid-cols-2 gap-2">

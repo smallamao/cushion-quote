@@ -569,9 +569,22 @@ function buildDriverConfirmMsg(
   _dateStr: string,
   timeRange: string,
 ): string {
-  const greeting = opts.driverGreeting; // e.g. "阿信哥～", used as first line
+  // 對齊手機 App 的司機通知格式：
+  //   {稱呼}
+  //   {民國年/月/日 星期X}
+  //   {時段}
+  //   #{工單號}
+  //   {地址}
+  //   {電話 聯絡人 客戶註記}
+  //   （空行）
+  //   {品項}
+  const greeting = opts.driverGreeting; // e.g. "阿信哥～"
   const date = new Date(card.due!);
-  const dateMMDD = `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
+  const rocYear = date.getFullYear() - 1911;
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+  const dateLine = `${rocYear}/${mm}/${dd} 星期${weekday}`;
 
   const descLines = card.desc.split("\n").map((l) => l.trim()).filter(Boolean);
   const address = descLines[0] ?? "";
@@ -586,14 +599,24 @@ function buildDriverConfirmMsg(
   if (hasStairs) finalAddress += "【室內梯】";
 
   const orderNumber = card.name.match(/P\d{4,6}/)?.[0] ?? "";
-  const styleLabel = card.labels.find((l) => l.name?.startsWith("成交/"));
-  const styleCode = styleLabel?.name.replace("成交/", "") ?? "";
-  const product = PRODUCTS.find((p) => p.displayName === styleCode);
-  const styleLine = `#${orderNumber}  ${styleCode} ${product?.moduleName ?? ""}`;
+  const refLine = `#${orderNumber}`; // 只放工單號，不帶分類
 
-  const primaryName = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME) || card.name.replace(orderNumber, "").trim();
-  const primaryPhoneRaw = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE) || descLines[1] || "";
-  const primaryPhone = normalizePhone(primaryPhoneRaw) ?? primaryPhoneRaw;
+  // desc 第一行以外：用「像手機號碼的那一行」判定聯絡資訊，其餘視為品項。
+  const restLines = descLines.slice(1);
+  const phoneRegex = /09\d{2}[-\s]?\d{3}[-\s]?\d{3}/;
+  const phoneIdx = restLines.findIndex((l) => phoneRegex.test(l));
+
+  const primaryPhoneField = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE);
+  const primaryNameField = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME);
+  let contactCore = "";
+  if (primaryPhoneField) {
+    const p = normalizePhone(primaryPhoneField) ?? primaryPhoneField;
+    contactCore = [p, primaryNameField].filter(Boolean).join(" ");
+  } else if (phoneIdx >= 0) {
+    contactCore = restLines[phoneIdx]; // e.g. "0937365190 梁蘭芬"
+  }
+  const clientNote = card.name.replace(orderNumber, "").trim(); // 卡名尾段：客戶名/註記
+  const contactLine = [contactCore, clientNote].filter(Boolean).join(" ");
 
   const secondaryPhoneRaw = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE);
   const secondaryName = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME);
@@ -603,20 +626,21 @@ function buildDriverConfirmMsg(
     if (p) secondaryLine = `${p} ${secondaryName}`;
   }
 
-  const descLine2 = descLines[1] ?? "";
-
-  // 簡師傅用 tab 格式 + ＊管傢俱出貨
-  if (opts.driverKey === "jian") {
-    const lines = [...(greeting ? [greeting, ""] : []), `${dateMMDD}\t${timeRange}`, "", styleLine, finalAddress, `${primaryPhone} ${primaryName}`];
-    if (secondaryLine) lines.push(secondaryLine);
-    if (descLine2) lines.push(descLine2);
-    lines.push("", "＊管傢俱出貨");
-    return lines.join("\n");
+  // 品項：desc 中非地址、非電話的行；沒有時退回沙發款式（成交/ 標籤）。
+  let product = restLines.filter((_, i) => i !== phoneIdx).join("\n");
+  if (!product) {
+    const styleCode = card.labels.find((l) => l.name?.startsWith("成交/"))?.name.replace("成交/", "") ?? "";
+    const moduleName = PRODUCTS.find((p) => p.displayName === styleCode)?.moduleName ?? "";
+    product = [styleCode, moduleName].filter(Boolean).join(" ");
   }
 
-  const lines = [...(greeting ? [greeting] : []), `${dateMMDD}  ${timeRange}`, "", styleLine, finalAddress, `${primaryPhone} ${primaryName}`];
+  const lines: string[] = [];
+  if (greeting) lines.push(greeting);
+  lines.push(dateLine, timeRange, refLine, finalAddress);
+  if (contactLine) lines.push(contactLine);
   if (secondaryLine) lines.push(secondaryLine);
-  if (descLine2) lines.push(descLine2);
+  if (product) lines.push("", product);
+  if (opts.driverKey === "jian") lines.push("", "＊管傢俱出貨");
   return lines.join("\n");
 }
 
