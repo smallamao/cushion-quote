@@ -27,6 +27,7 @@ import { MonthlyReportModal } from "@/components/orders/MonthlyReportModal";
 import { StatementModal } from "@/components/orders/StatementModal";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import type { CustomOrder, OrderItemCategory, OrderStatus } from "@/lib/types";
+import { compareOrders } from "@/lib/order-sort";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
   production: { label: "排程/生產中", className: "badge-sent" },
@@ -228,7 +229,7 @@ export function OrderListClient() {
     const q = debouncedSearch.trim().toLowerCase();
     // Defensive dedup by orderId (in case of race-condition duplicates in Sheets)
     const seen = new Set<string>();
-    return orders.filter((o) => {
+    const filteredOrders = orders.filter((o) => {
       if (seen.has(o.orderId)) return false;
       seen.add(o.orderId);
       if (q) {
@@ -257,6 +258,8 @@ export function OrderListClient() {
       }
       return true;
     });
+    filteredOrders.sort(compareOrders);
+    return filteredOrders;
   }, [orders, debouncedSearch, categoryFilter, statusFilter, monthFilter]);
 
   return (
