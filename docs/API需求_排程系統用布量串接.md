@@ -117,7 +117,7 @@ BG114 1y #P6178
 BG115 1y #P6178
 BG102 1y #P6178
 ```
-**預期**：建 5 張採購單（米盧/尚慶/谷懋/LY蘭陽/布穀），各回一張 JPG；`谷PVC806`、`BG116` 等若商品目錄沒有 → 進 unmatched。
+**預期**：建 5 張採購單（米盧/尚慶/谷懋/LY蘭陽/布谷），各回一張 JPG；`谷PVC806`、`BG116` 等若商品目錄沒有 → 進 unmatched。
 
 ---
 
@@ -175,7 +175,7 @@ Body: { pasteText, returnJpg: true }
 | BBL / BBL5 | 尚慶 |
 | 谷 / 谷PVC / S(牛皮) | 谷懋 |
 | LY | 蘭陽 |
-| BG | 布穀 |
+| BG | 布谷 |
 
 ### 驗收
 同第五節那批 16 行，加 `autoCreateMissing:true` → 應該 0 unmatched（BBL5-17 複製 BBL5-12、BG114 複製既有BG…），建 5 張採購單。

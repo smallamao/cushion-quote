@@ -62,7 +62,7 @@ const MILU = "PS-MILU"; // 米盧
 const SC = "PS-SC"; // 尚慶
 const GM = "PS-GM"; // 谷懋
 const LY = "PS-LY"; // 蘭陽
-const BG = "PS-BG"; // 布穀
+const BG = "PS-BG"; // 布谷
 
 // 目錄刻意「不」放入 谷PVC806、BG116：
 //   - BG116 → 無任何比對 → 進 unmatched
@@ -89,7 +89,7 @@ const suppliers: Supplier[] = [
   supplier(SC, "尚慶"),
   supplier(GM, "谷懋"),
   supplier(LY, "蘭陽"),
-  supplier(BG, "布穀"),
+  supplier(BG, "布谷"),
 ];
 
 // 規格書第五節的 16 行驗收案例
@@ -133,7 +133,7 @@ describe("buildPurchaseGroupsFromPaste — 驗收案例", () => {
       "尚慶",
       "谷懋",
       "蘭陽",
-      "布穀",
+      "布谷",
     ]);
   });
 
