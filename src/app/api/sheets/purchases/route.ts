@@ -345,7 +345,9 @@ export async function POST(request: Request) {
     await sortSheetRows(sheetsClient, {
       sheetName: ORDER_SHEET,
       dataRange: ORDER_RANGE_DATA,
-      totalColumnCount: 16,
+      // 採購單為 17 欄（A:Q，含 relatedOrderId）；排序範圍須涵蓋全部欄，
+      // 否則第 17 欄不隨列移動會與其他欄錯位（widen P→Q 時漏改的舊值）。
+      totalColumnCount: 17,
       primarySortColumnIndex: 14,
       secondarySortColumnIndex: 0,
     });

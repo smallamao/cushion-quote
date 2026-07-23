@@ -60,6 +60,17 @@ function isApiPath(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
 
+// 排程系統（server-to-server，無瀏覽器 cookie）呼叫的採購貼上端點。
+// middleware 只確認帶有 x-api-key header 才放行；真正的金鑰比對（timing-safe）
+// 由該 route 在 node runtime 執行。範圍刻意收得極窄：僅此路徑、僅在帶 header 時。
+const SCHEDULER_PASTE_PATH = "/api/sheets/purchases/from-paste";
+
+function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean {
+  if (pathname !== SCHEDULER_PASTE_PATH) return false;
+  const apiKey = request.headers.get("x-api-key");
+  return Boolean(apiKey && apiKey.trim().length > 0);
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -69,6 +80,11 @@ export function middleware(request: NextRequest) {
 
   // 公開路徑直接通過
   if (isPublicPath(pathname)) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  // 排程系統 API：帶 x-api-key 時放行到 route（route 再做真正的金鑰驗證）
+  if (isSchedulerApiRequest(request, pathname)) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
