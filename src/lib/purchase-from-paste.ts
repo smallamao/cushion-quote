@@ -61,8 +61,13 @@ export function findBestTemplate(
 }
 
 /**
- * 將範本整列複製，只改 productCode / colorCode 為 newCode，
- * 並在 notes 標記來源供審計。
+ * 將範本整列複製，把所有「識別代碼」欄位都改成 newCode，
+ * 並在 notes 標記來源供審計。供應商/單價/單位/分類/品名等沿用範本。
+ *
+ * 識別欄位＝productCode / colorCode / specification / supplierProductCode。
+ * 因為不同系列把色號存在不同欄（例如 BBL5 系列 productCode 是內部碼 GABBL5XX、
+ * 真正色號存在 specification），若只換 productCode/colorCode，規格與廠商產品編號
+ * 會殘留範本的值（BBL5-17 的規格顯示成範本的 BBL5-04）。全部同步為 newCode 才乾淨。
  *
  * @param template 範本商品（從同前綴取得）
  * @param newCode  缺少的色號（即自動建立的 productCode）
@@ -80,6 +85,8 @@ export function cloneProductAsNew(
     id: newId,
     productCode: newCode,
     colorCode: newCode,
+    specification: newCode,
+    supplierProductCode: newCode,
     notes: `自動由 ${template.productCode} 複製建立`,
     createdAt: now,
     updatedAt: now,

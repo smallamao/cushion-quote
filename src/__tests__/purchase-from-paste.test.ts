@@ -403,7 +403,7 @@ describe("autoCreateMissing 流程（模擬 route 行為，不連網）", () => 
     expect(ac116?.copiedFrom).toMatch(/^BG/);
   });
 
-  it("cloneProductAsNew 繼承供應商/價格，只改 productCode/colorCode 並加 notes", () => {
+  it("cloneProductAsNew 繼承供應商/價格，所有識別代碼欄改新碼並加 notes", () => {
     const template = product("BBL5-12", SC, 250);
     const cloned = cloneProductAsNew(template, "BBL5-17", "2026-07-23", "new-id");
 
@@ -415,6 +415,22 @@ describe("autoCreateMissing 流程（模擬 route 行為，不連網）", () => 
     expect(cloned.notes).toContain("BBL5-12");   // 審計備註
     expect(cloned.createdAt).toBe("2026-07-23");
     expect(cloned.updatedAt).toBe("2026-07-23");
+  });
+
+  it("cloneProductAsNew 不殘留範本的規格/廠商產品編號（線上 BBL5 情形）", () => {
+    // 真實情形：BBL5 系列 productCode 是內部碼、真正色號存在 specification。
+    const template: PurchaseProduct = {
+      ...product("GABBL504", SC, 300),
+      specification: "BBL5-04",       // 範本色號在規格欄
+      supplierProductCode: "GABBL502", // 範本殘留的廠商產品編號
+      productName: "BBL5 北歐輕絨貓抓布",
+    };
+    const cloned = cloneProductAsNew(template, "BBL5-17", "2026-07-23", "new-id");
+
+    expect(cloned.specification).toBe("BBL5-17");       // 規格＝新碼，不殘留 BBL5-04
+    expect(cloned.supplierProductCode).toBe("BBL5-17"); // 廠商產品編號＝新碼，不殘留 GABBL502
+    expect(cloned.productName).toBe("BBL5 北歐輕絨貓抓布"); // 系列品名沿用
+    expect(cloned.supplierId).toBe(SC);
   });
 
   it("無同前綴範本 → 維持 unmatched，不自動建立", () => {
