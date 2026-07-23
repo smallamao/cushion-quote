@@ -145,3 +145,39 @@ Body: { pasteText, returnJpg: true }
 | 建採購單 | `src/app/api/sheets/purchases/route.ts`（POST，含 supplierSnapshot） |
 | 採購單版型 | `src/components/pdf/PurchaseOrderPDF.tsx` |
 | PDF→JPG | `src/components/pdf/QuotePDF.tsx`(~629)、`WorkOrderPDF.tsx`(~736) |
+
+---
+
+## 八、增強需求：自動補建對不到的商品（copy from similar）
+
+**問題**：`unmatched` 的色號（如 BBL5-17、谷806、BG114）是因為「採購商品」目錄還沒建，每批都要人工補很煩。
+
+**希望**：`from-paste` 端點多一個選項，對 unmatched 的色號**自動複製最相近的既有品項建檔**。
+
+### Request 加欄位
+```jsonc
+{ "autoCreateMissing": true }   // 預設 false；true 時對 unmatched 嘗試自動建檔
+```
+
+### 自動建檔規則（比照 BulkCreateProductDialog / QuickCreateProductDialog）
+1. 對每個 unmatched 色號 `X`，找**同前綴的最相近既有商品**當範本：
+   - 前綴切法：字母+開頭數字群（`BBL5-17`→前綴 `BBL5`；`谷806`→`谷`；`BG114`→`BG`；`谷PVC806`→`谷PVC`）
+   - 範本 = 該前綴下任一既有 active 商品（取最近更新）
+2. **複製範本整列**（供應商 supplierId/supplierName、單位、價格、規格、廠商產品編號…全沿用），只把 `productCode`/`colorCode` 換成 `X`。
+3. 找不到同前綴範本 → 該色號**維持 unmatched**（回報，不亂建）。
+4. 建好的商品，該行改判 `matched`，正常進採購單。
+5. Response 加 `autoCreated: [{productCode, copiedFrom, supplier}]` 讓排程端知道自動建了哪些。
+
+### 供應商前綴對照（可當 fallback，當同前綴無範本可複製時至少能指定供應商）
+| 前綴 | 供應商 |
+|---|---|
+| 2200/1800/3200 以色列 | 米盧 |
+| BBL / BBL5 | 尚慶 |
+| 谷 / 谷PVC / S(牛皮) | 谷懋 |
+| LY | 蘭陽 |
+| BG | 布穀 |
+
+### 驗收
+同第五節那批 16 行，加 `autoCreateMissing:true` → 應該 0 unmatched（BBL5-17 複製 BBL5-12、BG114 複製既有BG…），建 5 張採購單。
+
+> 若不想在 from-paste 自動建（怕誤建），可改成獨立端點 `POST /api/sheets/purchase-products/from-similar`，排程端先呼叫補建、再呼叫 from-paste。兩種都可，看你們架構偏好。

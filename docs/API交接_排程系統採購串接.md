@@ -47,6 +47,7 @@ x-api-key: <SCHEDULER_API_KEY>
 | `source` | | 來源標記，寫進採購單備註，例：`"排程系統-用布量"` |
 | `dryRun` | | `true` = 只解析對帳、**不真的建單**（建議先用這個測） |
 | `groupBySupplier` | | 預設 `true`，每供應商一張採購單 |
+| `autoCreateMissing` | | 預設 `false`。`true` 時對 `unmatched` 色號**自動複製最相近的既有商品建檔**（見第 8 節），讓對不到的色號也能進採購單、趨近 0 unmatched |
 
 ```jsonc
 {
@@ -80,11 +81,15 @@ x-api-key: <SCHEDULER_API_KEY>
   "unmatched": [
     { "line": "谷PVC806 12y #P6180", "productCode": "谷PVC806", "reason": "商品目錄查無此色號" }
   ],
+  "autoCreated": [                                    // 僅 autoCreateMissing:true 時有內容
+    { "productCode": "BBL5-17", "copiedFrom": "BBL5-12", "supplier": "尚慶" }
+  ],
   "warnings": ["…"]
 }
 ```
 
-- **`unmatched` 一定要看**：對不到商品目錄的行會列在這，不會靜默丟棄。老闆看到就知道要去補建商品。
+- **`unmatched` 一定要看**：對不到商品目錄、且無法自動補建的行會列在這，不會靜默丟棄。老闆看到就知道要去補建商品。
+- **`autoCreated`**：`autoCreateMissing:true` 時，這裡列出「自動複製哪個既有商品建了新色號」，供老闆事後稽核（複製品的供應商/單價沿用來源商品）。
 - **建單是即時寫入 Google Sheets** 的（除非 `dryRun`）。
 
 ---
@@ -127,7 +132,20 @@ curl -X POST https://cushion-quote.vercel.app/api/sheets/purchases/from-paste \
 
 ---
 
-## 7. 已知行為 / 注意事項
+## 8. 自動補建商品（autoCreateMissing）
+
+開 `autoCreateMissing:true` 後，對每個 `unmatched` 色號：
+
+- 找**同前綴、最近更新**的既有 active 商品當範本，**整列複製**（供應商、單價、單位、規格全沿用），只換色號 → 該色號變 `matched` 進採購單。
+- 前綴規則：有連字號取前段（`BBL5-17`→`BBL5`）；否則取開頭字母/中文（`谷806`→`谷`、`BG114`→`BG`、`谷PVC806`→`谷PVC`）。
+- **找不到同前綴範本 → 維持 unmatched，不會亂建**（不會造出沒單價的空商品）。
+- 每個自動建的商品在「採購商品」的備註標記「自動由 X 複製建立」，並回在 `autoCreated`。
+- `dryRun:true` 時**不會真的建商品**，只在 `autoCreated` 預覽會建哪些。
+
+> ⚠️ **限制**：純數字開頭的色號（例如以色列系列 `2200A71`、`3200A22`）取不到字母前綴 → **不會自動補建**（會維持 unmatched）。這類常用色號多半已在目錄裡；若有新號請先手動建一筆該系列商品當「範本」，之後同前綴就能自動複製。
+> ⚠️ 複製品的**品名/規格會沿用範本**（只換色號），所以新色號的品名會顯示範本的品名 —— `autoCreated` 已標明來源，需要精修可事後在商品頁改。
+
+## 9. 已知行為 / 注意事項
 
 - **分組是按「每個色號的商品供應商」拆**，不是按訂單。同一張 `#P6177` 的主色/副色若屬不同供應商，會落在不同採購單。
 - **`unmatched` 內容取決於線上商品目錄**：色號要先建在「採購商品」裡才對得到；模糊比對可能把相近碼（例 `谷PVC806`↔`谷806`）視為同一商品，實測請以線上目錄為準。
