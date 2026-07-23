@@ -301,6 +301,25 @@ describe("findBestTemplate", () => {
   it("前綴為空（純數字開頭）→ 回傳 null", () => {
     expect(findBestTemplate("3200A99", templateCatalog)).toBeNull();
   });
+
+  it("欄位不對稱：BBL5 前綴只在 colorCode、productCode 是內部碼 → 仍找得到（線上 bug 修正）", () => {
+    // 線上真實情形：BBL5-12 的 productCode 是內部碼(SC…)，BBL5 前綴在 colorCode。
+    // 修正前 findBestTemplate 只看 productCode → 前綴 SC≠BBL5 → 回 null（對得到卻複製不出來）。
+    const internalCoded: PurchaseProduct = {
+      ...product("SC59885", SC),
+      colorCode: "BBL5-12",
+    };
+    const result = findBestTemplate("BBL5-17", [internalCoded]);
+    expect(result?.productCode).toBe("SC59885");
+    expect(result?.supplierId).toBe(SC); // 供應商正確沿用範本
+  });
+
+  it("欄位不對稱：前綴在 specification / supplierProductCode 亦可命中", () => {
+    const bySpec: PurchaseProduct = { ...product("X001", BG), specification: "BG115 布料" };
+    const bySupCode: PurchaseProduct = { ...product("X002", BG), supplierProductCode: "BG114" };
+    expect(findBestTemplate("BG116", [bySpec])?.productCode).toBe("X001");
+    expect(findBestTemplate("BG116", [bySupCode])?.productCode).toBe("X002");
+  });
 });
 
 // ---------------------------------------------------------------------------

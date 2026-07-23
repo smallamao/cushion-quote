@@ -29,6 +29,18 @@ export function extractProductPrefix(code: string): string {
  * 在目錄中找「同前綴且啟用中」的範本商品，優先取最近更新者。
  * 找不到同前綴 → 回傳 null（不應自動建立）。
  */
+// 一筆商品的所有識別欄位各自的前綴。
+// 必須與 resolveParsedLines 比對貼上色號時所用的欄位一致（productCode /
+// colorCode / supplierProductCode / specification），否則會「對得到卻複製不出來」：
+// 例如 BBL5 系列的 productCode 其實是內部碼（SC…），BBL5-12 是靠 colorCode 對到的，
+// 只看 productCode 抽前綴會得到 SC ≠ BBL5 → 找不到範本。
+function productPrefixes(p: PurchaseProduct): string[] {
+  return [p.productCode, p.colorCode, p.supplierProductCode, p.specification]
+    .filter(Boolean)
+    .map((s) => extractProductPrefix(String(s)))
+    .filter(Boolean);
+}
+
 export function findBestTemplate(
   code: string,
   catalog: PurchaseProduct[],
@@ -37,7 +49,7 @@ export function findBestTemplate(
   if (!prefix) return null;
 
   const candidates = catalog.filter(
-    (p) => p.isActive && extractProductPrefix(p.productCode) === prefix,
+    (p) => p.isActive && productPrefixes(p).includes(prefix),
   );
   if (candidates.length === 0) return null;
 
