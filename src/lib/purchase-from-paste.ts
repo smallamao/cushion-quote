@@ -4,6 +4,83 @@ import {
 } from "@/lib/purchase-paste-parser";
 import type { PurchaseProduct, PurchaseUnit, Supplier } from "@/lib/types";
 
+// ---------------------------------------------------------------------------
+// 前綴提取與範本選取（純函式，供 route 呼叫和單元測試）
+// ---------------------------------------------------------------------------
+
+/**
+ * 從色號萃取「前綴」，規則：
+ * - 有連字號（-）：取第一個 `-` 之前的部分（含前面的字母+數字群）
+ *   e.g. BBL5-17 → BBL5
+ * - 無連字號：取開頭的 字母/中文字 序列，遇數字即停
+ *   e.g. 谷806 → 谷、BG114 → BG、谷PVC806 → 谷PVC
+ */
+export function extractProductPrefix(code: string): string {
+  const hyphenIdx = code.indexOf("-");
+  if (hyphenIdx > 0) {
+    return code.slice(0, hyphenIdx);
+  }
+  // No hyphen: take leading letter/CJK sequence (stop at first digit)
+  const m = code.match(/^[一-龥a-zA-Z]+/u);
+  return m ? m[0] : "";
+}
+
+/**
+ * 在目錄中找「同前綴且啟用中」的範本商品，優先取最近更新者。
+ * 找不到同前綴 → 回傳 null（不應自動建立）。
+ */
+export function findBestTemplate(
+  code: string,
+  catalog: PurchaseProduct[],
+): PurchaseProduct | null {
+  const prefix = extractProductPrefix(code);
+  if (!prefix) return null;
+
+  const candidates = catalog.filter(
+    (p) => p.isActive && extractProductPrefix(p.productCode) === prefix,
+  );
+  if (candidates.length === 0) return null;
+
+  // Sort by updatedAt descending; stable fallback to productCode lexicographic
+  return candidates.slice().sort((a, b) => {
+    const cmp = b.updatedAt.localeCompare(a.updatedAt);
+    return cmp !== 0 ? cmp : a.productCode.localeCompare(b.productCode);
+  })[0];
+}
+
+/**
+ * 將範本整列複製，只改 productCode / colorCode 為 newCode，
+ * 並在 notes 標記來源供審計。
+ *
+ * @param template 範本商品（從同前綴取得）
+ * @param newCode  缺少的色號（即自動建立的 productCode）
+ * @param now      ISO date string (YYYY-MM-DD)，用於 createdAt/updatedAt
+ * @param newId    已在外部產生的唯一 ID
+ */
+export function cloneProductAsNew(
+  template: PurchaseProduct,
+  newCode: string,
+  now: string,
+  newId: string,
+): PurchaseProduct {
+  return {
+    ...template,
+    id: newId,
+    productCode: newCode,
+    colorCode: newCode,
+    notes: `自動由 ${template.productCode} 複製建立`,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** 自動建立商品的審計記錄（回傳給呼叫端）。 */
+export interface AutoCreatedEntry {
+  productCode: string;
+  copiedFrom: string;
+  supplier: string;
+}
+
 /**
  * 「排程系統用布量 → 採購單」串接的純運算層。
  *

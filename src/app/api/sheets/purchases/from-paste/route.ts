@@ -3,8 +3,12 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { DEFAULT_SETTINGS } from "@/lib/constants";
-import { buildPurchaseGroupsFromPaste } from "@/lib/purchase-from-paste";
-import type { FromPasteGroup } from "@/lib/purchase-from-paste";
+import {
+  buildPurchaseGroupsFromPaste,
+  cloneProductAsNew,
+  findBestTemplate,
+} from "@/lib/purchase-from-paste";
+import type { AutoCreatedEntry, FromPasteGroup } from "@/lib/purchase-from-paste";
 import { renderPurchaseOrderPdfBuffer } from "@/lib/purchase-order-pdf-server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type {
@@ -30,6 +34,7 @@ const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:Q`;
 const ORDER_ID_RANGE = `${ORDER_SHEET}!A2:A`;
 const ITEM_RANGE_FULL = `${ITEM_SHEET}!A:J`;
 const PRODUCT_RANGE = "採購商品!A2:Y";
+const PRODUCT_RANGE_FULL = "採購商品!A:Y"; // append 用（25 欄，與 /api/sheets/purchase-products 一致）
 const SUPPLIER_RANGE = "廠商!A2:P";
 
 type SheetsClient = NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>;
@@ -41,6 +46,7 @@ interface FromPasteBody {
   returnJpg?: unknown;
   source?: unknown;
   dryRun?: unknown;
+  autoCreateMissing?: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,8 +64,14 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 // Sheet 讀取（欄位對照鏡射自 /api/sheets/purchase-products 與 /api/sheets/suppliers）
 // ---------------------------------------------------------------------------
 
+function safeNumber(v: string | undefined): number | undefined {
+  if (v == null || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function rowToProduct(row: string[]): PurchaseProduct {
-  const unitPrice = Number(row[10] ?? 0);
+  const unitPrice = safeNumber(row[10]) ?? 0;
   return {
     id: row[0] ?? "",
     productCode: row[1] ?? "",
@@ -70,7 +82,11 @@ function rowToProduct(row: string[]): PurchaseProduct {
     unit: (row[6] as PurchaseUnit) ?? "碼",
     supplierId: row[7] ?? "",
     supplierName: row[8] ?? "",
-    unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+    widthCm: safeNumber(row[9]),
+    unitPrice,
+    listPricePerCai: safeNumber(row[11]),
+    brand: row[12] ?? "",
+    series: row[13] ?? "",
     colorCode: row[14] ?? "",
     colorName: row[15] ?? "",
     imageUrl: row[16] ?? "",
@@ -79,6 +95,40 @@ function rowToProduct(row: string[]): PurchaseProduct {
     createdAt: row[22] ?? "",
     updatedAt: row[23] ?? "",
   };
+}
+
+/**
+ * 商品 → Sheet 列（25 欄，A:Y）。
+ * 鏡射自 /api/sheets/purchase-products 的 productToRow，切勿擅自改欄數。
+ */
+function productToRow(p: PurchaseProduct): string[] {
+  return [
+    p.id,                                                        // A
+    p.productCode,                                               // B
+    p.supplierProductCode || p.productCode,                      // C — fallback
+    p.productName,                                               // D
+    p.specification,                                             // E
+    p.category,                                                  // F
+    p.unit,                                                      // G
+    p.supplierId,                                                // H
+    p.supplierName ?? "",                                        // I
+    p.widthCm != null ? String(p.widthCm) : "",                  // J
+    String(p.unitPrice ?? 0),                                    // K (進價)
+    p.listPricePerCai != null ? String(p.listPricePerCai) : "",  // L (牌價)
+    p.brand ?? "",                                               // M
+    p.series ?? "",                                              // N
+    p.colorCode ?? "",                                           // O
+    p.colorName ?? "",                                           // P
+    p.imageUrl ?? "",                                            // Q
+    p.notes ?? "",                                               // R
+    "",                                                          // S 最小訂量
+    "",                                                          // T 交期
+    "",                                                          // U 庫存狀態
+    p.isActive ? "TRUE" : "FALSE",                               // V
+    p.createdAt,                                                 // W
+    p.updatedAt,                                                 // X
+    p.updatedAt,                                                 // Y (mirror)
+  ];
 }
 
 function rowToSupplier(row: string[]): Supplier {
@@ -321,6 +371,7 @@ export async function POST(request: Request) {
   const source = typeof body.source === "string" ? body.source.trim() : "";
   const returnJpg = body.returnJpg === true;
   const dryRun = body.dryRun === true;
+  const autoCreateMissing = body.autoCreateMissing === true;
   // groupBySupplier 預設 true；目前僅支援依供應商分組（=false 亦視同分組）。
   // 保留欄位以符合規格；未來若要「單張採購單」可在此擴充。
 
@@ -337,14 +388,70 @@ export async function POST(request: Request) {
     const { catalog, suppliers } = await loadCatalogAndSuppliers(client);
     const supplierById = new Map(suppliers.map((s) => [s.supplierId, s]));
 
-    // 4) 解析 → 比對 → 依供應商分組。
-    const { groups, unmatched, warnings } = buildPurchaseGroupsFromPaste(
-      pasteText,
-      catalog,
-      suppliers,
-    );
+    // 4) 解析 → 比對 → 依供應商分組（初次）。
+    const initial = buildPurchaseGroupsFromPaste(pasteText, catalog, suppliers);
+    let groups = initial.groups;
+    let unmatched = initial.unmatched;
+    const warnings = initial.warnings;
 
-    // 5) dryRun：只回傳解析結果，不寫任何資料、不產 PDF。
+    // 5) 自動補建缺漏商品（autoCreateMissing=true）。
+    //    找同前綴範本 → 複製 → 更新 in-memory 目錄 → 重新分組。
+    //    dryRun=true 時只預覽（不寫 Sheet）。
+    const autoCreated: AutoCreatedEntry[] = [];
+    if (autoCreateMissing && unmatched.length > 0) {
+      const nowDay = purchaseDate; // YYYY-MM-DD
+      const seenCodes = new Set<string>();
+      const toCreate: PurchaseProduct[] = [];
+
+      for (const um of unmatched) {
+        if (seenCodes.has(um.productCode)) continue; // (b) 同批同碼只建一次
+        seenCodes.add(um.productCode);
+
+        const template = findBestTemplate(um.productCode, catalog);
+        if (!template) continue; // (3) 無同前綴範本 → 維持 unmatched
+
+        const newProduct = cloneProductAsNew(
+          template,
+          um.productCode,
+          nowDay,
+          crypto.randomUUID(),
+        );
+        toCreate.push(newProduct);
+        autoCreated.push({
+          productCode: um.productCode,
+          copiedFrom: template.productCode,
+          supplier: template.supplierName || template.supplierId,
+        });
+      }
+
+      if (toCreate.length > 0) {
+        if (!dryRun) {
+          // 實際寫入採購商品 Sheet（A:Y / 25 欄），沿用 productToRow。
+          await client.sheets.spreadsheets.values.append({
+            spreadsheetId: client.spreadsheetId,
+            range: PRODUCT_RANGE_FULL,
+            valueInputOption: "RAW",
+            requestBody: { values: toCreate.map(productToRow) },
+          });
+        }
+
+        // (c) 加進 in-memory 目錄後重新分組（dryRun 也需要，以預覽正確分組）。
+        const extendedCatalog = [...catalog, ...toCreate];
+        const reResolved = buildPurchaseGroupsFromPaste(
+          pasteText,
+          extendedCatalog,
+          suppliers,
+        );
+        groups = reResolved.groups;
+        unmatched = reResolved.unmatched;
+        // 合併 warnings，避免重複
+        for (const w of reResolved.warnings) {
+          if (!warnings.includes(w)) warnings.push(w);
+        }
+      }
+    }
+
+    // 6) dryRun：只回傳解析結果，不寫任何資料、不產 PDF。
     if (dryRun) {
       return NextResponse.json({
         success: true,
@@ -358,11 +465,12 @@ export async function POST(request: Request) {
           jpgUrl: null,
         })),
         unmatched,
+        autoCreated,
         warnings,
       });
     }
 
-    // 6) 建單：跨供應商連續編號 PS-YYYYMMDD-NN。
+    // 8) 建單：跨供應商連續編號 PS-YYYYMMDD-NN。
     const nowIso = new Date().toISOString();
     const dateStr = purchaseDate.replace(/-/g, "").slice(0, 8);
     const prefix = `PS-${dateStr}-`;
@@ -408,7 +516,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // 7) JPG / PDF：伺服器端無法產生 JPG（需瀏覽器 canvas / node-canvas，
+    // 9) JPG / PDF：伺服器端無法產生 JPG（需瀏覽器 canvas / node-canvas，
     // 非現有相依）。因此改以 renderToBuffer 產生 PDF base64，jpgBase64 固定為
     // null 並附上 warning，讓核心建單流程不被 JPG 阻擋。
     const pdfWarnings: string[] = [];
@@ -451,6 +559,7 @@ export async function POST(request: Request) {
       success: true,
       purchaseOrders,
       unmatched,
+      autoCreated,
       warnings: responseWarnings,
     });
   } catch (err) {
