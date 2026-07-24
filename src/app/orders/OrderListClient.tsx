@@ -170,6 +170,29 @@ export function OrderListClient() {
     }
   }, [router]);
 
+  // 列表直接改安裝/出貨日：樂觀更新，失敗回滾（PUT 為部分更新，只送 installDate）
+  const handleInstallDateChange = useCallback(async (order: CustomOrder, newDate: string) => {
+    if (newDate === order.installDate) return;
+    const prevDate = order.installDate;
+    setOrders((cur) =>
+      cur.map((o) => (o.orderId === order.orderId ? { ...o, installDate: newDate } : o)),
+    );
+    try {
+      const res = await fetch(`/api/sheets/orders/${order.orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ installDate: newDate }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "出貨日更新失敗");
+    } catch (err) {
+      setOrders((cur) =>
+        cur.map((o) => (o.orderId === order.orderId ? { ...o, installDate: prevDate } : o)),
+      );
+      alert(err instanceof Error ? err.message : "出貨日更新失敗");
+    }
+  }, []);
+
   // 列表直接改狀態：樂觀更新，失敗回滾；後端會 best-effort 同步 Notion 既有頁面
   const handleStatusChange = useCallback(async (order: CustomOrder, newStatus: OrderStatus) => {
     if (newStatus === order.status) return;
@@ -592,8 +615,16 @@ export function OrderListClient() {
                       <td className="px-3 py-2 text-xs hidden lg:table-cell">
                         {order.orderDate || "—"}
                       </td>
-                      <td className="px-3 py-2 text-xs hidden lg:table-cell">
-                        {order.installDate || "—"}
+                      <td
+                        className="px-3 py-2 text-xs hidden lg:table-cell"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="date"
+                          value={order.installDate || ""}
+                          onChange={(e) => void handleInstallDateChange(order, e.target.value)}
+                          className="w-32 cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-[var(--border)] focus:border-[var(--accent)] focus:outline-none"
+                        />
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
