@@ -416,7 +416,7 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
   const [driverKey, setDriverKey] = useState<string>("");
   const [finalPayment, setFinalPayment] = useState("");
   const [receiveAccount, setReceiveAccount] = useState<"jinshuei" | "potato" | "custom">(
-    isCustomRepair ? "custom" : "jinshuei",
+    isCustomRepair ? "custom" : "potato",
   );
   const [sofaRecycle, setSofaRecycle] = useState(false);
   const [sofaRecycleFree, setSofaRecycleFree] = useState(false);
