@@ -26,7 +26,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { MonthlyReportModal } from "@/components/orders/MonthlyReportModal";
 import { StatementModal } from "@/components/orders/StatementModal";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
-import type { CustomOrder, OrderItemCategory, OrderStatus } from "@/lib/types";
+import type { ARRecord, CustomOrder, OrderInvoiceStatus, OrderItemCategory, OrderStatus } from "@/lib/types";
 import { compareOrders } from "@/lib/order-sort";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
@@ -34,6 +34,21 @@ const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
   waiting: { label: "待出貨", className: "badge-deleted" },
   completed: { label: "完成", className: "badge-accepted" },
   cancelled: { label: "取消", className: "badge-draft" },
+};
+
+const INVOICE_STATUS_MAP: Record<OrderInvoiceStatus, { label: string; className: string }> = {
+  pending: { label: "待開票", className: "bg-amber-100 text-amber-800" },
+  issued: { label: "已開票", className: "bg-green-100 text-green-800" },
+  exempt: { label: "免開票", className: "bg-gray-100 text-gray-600" },
+};
+
+// AR 收款狀態徽章（依 arStatus；訂單無關聯 AR 時顯示「未建」）
+const AR_BADGE: Record<string, { label: string; className: string }> = {
+  active: { label: "待收款", className: "bg-amber-100 text-amber-800" },
+  partial: { label: "部分收款", className: "bg-orange-100 text-orange-800" },
+  paid: { label: "已收清", className: "bg-green-100 text-green-800" },
+  overdue: { label: "逾期", className: "bg-red-100 text-red-700" },
+  draft: { label: "草稿", className: "bg-gray-100 text-gray-600" },
 };
 
 const CATEGORY_OPTIONS: OrderItemCategory[] = [
@@ -192,6 +207,47 @@ export function OrderListClient() {
       alert(err instanceof Error ? err.message : "出貨日更新失敗");
     }
   }, []);
+
+  // 應收帳款對照（versionId → AR）：顯示每張訂單的收款狀態
+  const [arByVersionId, setArByVersionId] = useState<Map<string, ARRecord>>(new Map());
+  useEffect(() => {
+    fetch("/api/sheets/ar", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json: { ars?: ARRecord[] }) => {
+        const map = new Map<string, ARRecord>();
+        for (const ar of json.ars ?? []) {
+          if (ar.versionId && ar.arStatus !== "cancelled") map.set(ar.versionId, ar);
+        }
+        setArByVersionId(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  // 列表直接改開票狀態：樂觀更新，失敗回滾（PUT 部分更新，只送 invoiceStatus）
+  const handleInvoiceStatusChange = useCallback(
+    async (order: CustomOrder, newStatus: OrderInvoiceStatus) => {
+      if (newStatus === order.invoiceStatus) return;
+      const prev = order.invoiceStatus;
+      setOrders((cur) =>
+        cur.map((o) => (o.orderId === order.orderId ? { ...o, invoiceStatus: newStatus } : o)),
+      );
+      try {
+        const res = await fetch(`/api/sheets/orders/${order.orderId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invoiceStatus: newStatus }),
+        });
+        const json = (await res.json()) as { ok: boolean; error?: string };
+        if (!json.ok) throw new Error(json.error ?? "開票狀態更新失敗");
+      } catch (err) {
+        setOrders((cur) =>
+          cur.map((o) => (o.orderId === order.orderId ? { ...o, invoiceStatus: prev } : o)),
+        );
+        alert(err instanceof Error ? err.message : "開票狀態更新失敗");
+      }
+    },
+    [],
+  );
 
   // 列表直接改狀態：樂觀更新，失敗回滾；後端會 best-effort 同步 Notion 既有頁面
   const handleStatusChange = useCallback(async (order: CustomOrder, newStatus: OrderStatus) => {
@@ -537,6 +593,8 @@ export function OrderListClient() {
                 <th className="px-3 py-2 text-left">訂製內容</th>
                 <th className="px-3 py-2 text-left hidden xl:table-cell">備注</th>
                 <th className="w-px whitespace-nowrap px-3 py-2 text-left">狀態</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left hidden md:table-cell">開票</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left hidden md:table-cell">收款</th>
                 <th className="w-px whitespace-nowrap px-3 py-2 text-left hidden lg:table-cell">下單日</th>
                 <th className="w-px whitespace-nowrap px-3 py-2 text-left hidden lg:table-cell">安裝/出貨日</th>
                 <th className="w-px whitespace-nowrap px-3 py-2 text-left">操作</th>
@@ -545,7 +603,7 @@ export function OrderListClient() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-12 text-center">
+                  <td colSpan={11} className="px-3 py-12 text-center">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-[var(--text-secondary)]" />
                   </td>
                 </tr>
@@ -553,7 +611,7 @@ export function OrderListClient() {
               {!loading && filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={11}
                     className="px-3 py-12 text-center text-sm text-[var(--text-tertiary)]"
                   >
                     尚無符合的訂單
@@ -574,7 +632,22 @@ export function OrderListClient() {
                           {order.orderNumber || order.orderId}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-sm">{order.clientName || "—"}</td>
+                      <td className="px-3 py-2 text-sm">
+                        {order.clientName ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSearch(order.clientName);
+                            }}
+                            title={`篩選 ${order.clientName} 的全部訂單`}
+                            className="text-left hover:text-[var(--accent)] hover:underline"
+                          >
+                            {order.clientName}
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="whitespace-nowrap px-3 py-2 text-xs text-[var(--text-secondary)] hidden md:table-cell">
                         {order.itemCategory || "—"}
                       </td>
@@ -611,6 +684,53 @@ export function OrderListClient() {
                             ))}
                           </SelectContent>
                         </Select>
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-2 hidden md:table-cell"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Select
+                          value={order.invoiceStatus}
+                          onValueChange={(v) =>
+                            void handleInvoiceStatusChange(order, v as OrderInvoiceStatus)
+                          }
+                        >
+                          <SelectTrigger className="h-7 w-auto gap-1 whitespace-nowrap border-none bg-transparent px-1 shadow-none hover:bg-[var(--bg-hover)]">
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${INVOICE_STATUS_MAP[order.invoiceStatus]?.className ?? INVOICE_STATUS_MAP.pending.className}`}
+                            >
+                              {INVOICE_STATUS_MAP[order.invoiceStatus]?.label ?? "待開票"}
+                            </span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(INVOICE_STATUS_MAP) as OrderInvoiceStatus[]).map((st) => (
+                              <SelectItem key={st} value={st}>
+                                {INVOICE_STATUS_MAP[st].label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-2 hidden md:table-cell"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {(() => {
+                          const ar = order.versionId ? arByVersionId.get(order.versionId) : undefined;
+                          if (!ar) {
+                            return <span className="text-xs text-[var(--text-tertiary)]">未建</span>;
+                          }
+                          const badge = AR_BADGE[ar.arStatus] ?? AR_BADGE.active;
+                          return (
+                            <button
+                              onClick={() => router.push(`/receivables/${ar.arId}`)}
+                              title={`檢視應收帳款 ${ar.arId}`}
+                              className={`inline-block rounded-full px-2 py-0.5 text-[11px] transition-opacity hover:opacity-75 ${badge.className}`}
+                            >
+                              {badge.label}
+                            </button>
+                          );
+                        })()}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-xs hidden lg:table-cell">
                         {order.orderDate || "—"}
