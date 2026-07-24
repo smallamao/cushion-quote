@@ -77,6 +77,56 @@ describe("司機確認訊息（對齊手機 App 格式）", () => {
     expect(msg).not.toContain("沙發2000cm一只 測試卡");
   });
 
+  it("卡名＝客戶姓名時，聯絡人行不重複（0963024376 許惠婷 許惠婷 → 一次）", () => {
+    const card2: TrelloCard = {
+      ...CARD,
+      name: "P6163 許惠婷",
+      desc: "新北市土城區青和街61號9F\n0963024376 許惠婷\n沙發210cm二件式一字型一只",
+    };
+    const m = buildShippingMsg(card2, [], mkOpts());
+    expect(m).toContain("\n0963024376 許惠婷\n");
+    expect(m).not.toContain("許惠婷 許惠婷");
+  });
+
+  it("desc 第二組電話行（斜線格式/市話）：升級為次要聯絡人、不混入品項", () => {
+    const card2: TrelloCard = {
+      ...CARD,
+      name: "P6159 彭智榮",
+      desc: [
+        "新北市土城區延和路76巷10號4F",
+        "0928130034 彭智榮",
+        "沙發286cm二件式一字型+主人椅",
+        "0222610253/彭德添",
+      ].join("\n"),
+    };
+    const m = buildShippingMsg(card2, [], mkOpts());
+    // 斜線轉空白、緊接主要聯絡人之後
+    expect(m).toContain("\n0928130034 彭智榮\n0222610253 彭德添\n");
+    // 品項乾淨，不再拖著電話行
+    expect(m.trimEnd().endsWith("沙發286cm二件式一字型+主人椅")).toBe(true);
+    expect(m).not.toContain("0222610253/彭德添");
+  });
+
+  it("custom field 已有次要聯絡人時，desc 的電話行不重複出現", () => {
+    const card2: TrelloCard = {
+      ...CARD,
+      name: "P6163 許惠婷",
+      desc: [
+        "新北市土城區青和街61號9F",
+        "0963024376 許惠婷",
+        "沙發210cm二件式一字型一只",
+        "0958575724/許惠婷",
+      ].join("\n"),
+    };
+    const cfs = [
+      { id: "a", idCustomField: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE, value: { text: "0958575724" } },
+      { id: "b", idCustomField: TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME, value: { text: "許惠婷" } },
+    ];
+    const m = buildShippingMsg(card2, cfs, mkOpts());
+    expect(m.match(/0958575724/g)?.length).toBe(1);
+    expect(m.trimEnd().endsWith("沙發210cm二件式一字型一只")).toBe(true);
+  });
+
   it("desc 無品項時，退回沙發款式（成交/ 標籤）", () => {
     const card2: TrelloCard = {
       ...CARD,

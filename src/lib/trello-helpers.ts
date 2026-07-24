@@ -612,10 +612,18 @@ export function buildDriverConfirmBlock(
   const orderNumber = card.name.match(/P\d{4,6}/)?.[0] ?? "";
   const refLine = `#${orderNumber}`; // 只放工單號，不帶分類
 
-  // desc 第一行以外：用「像手機號碼的那一行」判定聯絡資訊，其餘視為品項。
+  // desc 第一行以外：凡是「開頭像電話號碼」的行都視為聯絡資訊（含市話、
+  // 0958575724/許惠婷 這種斜線格式），其餘視為品項。
   const restLines = descLines.slice(1);
-  const phoneRegex = /09\d{2}[-\s]?\d{3}[-\s]?\d{3}/;
-  const phoneIdx = restLines.findIndex((l) => phoneRegex.test(l));
+  const isContactLikeLine = (l: string): boolean => {
+    const firstToken = l.split(/[\/\s]/)[0] ?? "";
+    const digits = firstToken.replace(/-/g, "");
+    return /^0\d{8,9}$/.test(digits);
+  };
+  const contactIdxs = restLines
+    .map((l, i) => (isContactLikeLine(l) ? i : -1))
+    .filter((i) => i >= 0);
+  const phoneIdx = contactIdxs[0] ?? -1;
 
   const primaryPhoneField = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_PHONE);
   const primaryNameField = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME);
@@ -626,8 +634,12 @@ export function buildDriverConfirmBlock(
   } else if (phoneIdx >= 0) {
     contactCore = restLines[phoneIdx]; // e.g. "0937365190 梁蘭芬"
   }
-  const clientNote = card.name.replace(orderNumber, "").trim(); // 卡名尾段：客戶名/註記
-  const contactLine = [contactCore, clientNote].filter(Boolean).join(" ");
+  // 卡名尾段（客戶名/註記）：已出現在聯絡資訊時不重複拼接（真實卡名多為客戶姓名）
+  const clientNote = card.name.replace(orderNumber, "").trim();
+  const contactLine =
+    clientNote && !contactCore.includes(clientNote)
+      ? [contactCore, clientNote].filter(Boolean).join(" ")
+      : contactCore;
 
   const secondaryPhoneRaw = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_PHONE);
   const secondaryName = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.SECONDARY_CONTACT_NAME);
@@ -636,9 +648,14 @@ export function buildDriverConfirmBlock(
     const p = normalizePhone(secondaryPhoneRaw);
     if (p) secondaryLine = `${p} ${secondaryName}`;
   }
+  // custom field 沒有次要聯絡人時，退回 desc 的第二組電話行（斜線格式轉空白）
+  if (!secondaryLine && contactIdxs.length > 1) {
+    secondaryLine = restLines[contactIdxs[1]].replace(/\//g, " ").trim();
+  }
 
   // 品項：desc 中非地址、非電話的行；沒有時退回沙發款式（成交/ 標籤）。
-  let product = restLines.filter((_, i) => i !== phoneIdx).join("\n");
+  const contactIdxSet = new Set(contactIdxs);
+  let product = restLines.filter((_, i) => !contactIdxSet.has(i)).join("\n");
   if (!product) {
     const styleCode = card.labels.find((l) => l.name?.startsWith("成交/"))?.name.replace("成交/", "") ?? "";
     const moduleName = PRODUCTS.find((p) => p.displayName === styleCode)?.moduleName ?? "";
