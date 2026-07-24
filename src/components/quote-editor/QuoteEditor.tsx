@@ -1941,7 +1941,39 @@ export function QuoteEditor() {
         setCaseId(payload.version.caseId);
         setIsEditMode(true);
         clearAutoDraft();
-        alert(`版本 ${versionId} 已更新`);
+
+        // 此版本若已建立訂製訂單且含稅總額改變，詢問是否同步訂單金額。
+        // 只同步金額——訂單的品項/備註可能已為生產人工調整，不可覆蓋。
+        let orderSyncNote = "";
+        try {
+          const ordersRes = await fetch("/api/sheets/orders?archived=false", { cache: "no-store" });
+          const ordersJson = (await ordersRes.json()) as {
+            orders?: Array<{ orderId: string; versionId: string; quotedAmount: number }>;
+          };
+          const linkedOrder = (ordersJson.orders ?? []).find((o) => o.versionId === versionId);
+          if (linkedOrder && linkedOrder.quotedAmount !== payload.version.totalAmount) {
+            const doSync = confirm(
+              `此版本已建立訂製訂單 ${linkedOrder.orderId}，\n` +
+              `訂單金額 $${linkedOrder.quotedAmount.toLocaleString()} → $${payload.version.totalAmount.toLocaleString()}，是否同步？`,
+            );
+            if (doSync) {
+              const syncRes = await fetch(
+                `/api/sheets/orders/${encodeURIComponent(linkedOrder.orderId)}`,
+                {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ quotedAmount: payload.version.totalAmount }),
+                },
+              );
+              orderSyncNote = syncRes.ok
+                ? `\n訂單 ${linkedOrder.orderId} 金額已同步`
+                : `\n⚠ 訂單金額同步失敗，請至訂單財務頁手動同步`;
+            }
+          }
+        } catch {
+          // 查詢訂單失敗不影響版本儲存
+        }
+        alert(`版本 ${versionId} 已更新${orderSyncNote}`);
         return;
       }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ImagePlus, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,26 @@ export function FinanceTab({
 }: FinanceTabProps) {
   const uid = useId();
   const [receiptUploading, setReceiptUploading] = useState<string | null>(null);
+  // 關聯報價版本的目前含稅總額（報價單事後編輯時偵測不一致用）
+  const [versionTotal, setVersionTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!draft.versionId) return;
+    let cancelled = false;
+    fetch(`/api/sheets/versions/${encodeURIComponent(draft.versionId)}`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json: { version?: { totalAmount?: number } }) => {
+        if (!cancelled && typeof json.version?.totalAmount === "number") {
+          setVersionTotal(json.version.totalAmount);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.versionId]);
+
+  const versionMismatch = versionTotal !== null && versionTotal !== draft.quotedAmount;
 
   const purchases: MaterialPurchase[] = draft.materialPurchases ?? [];
 
@@ -107,6 +127,20 @@ export function FinanceTab({
             value={draft.quotedAmount || ""}
             onChange={(e) => updateDraft("quotedAmount", Number(e.target.value) || 0)}
           />
+          {versionMismatch && (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+              <span>
+                ⚠ 關聯報價單目前為 ${versionTotal.toLocaleString()}
+              </span>
+              <button
+                type="button"
+                onClick={() => updateDraft("quotedAmount", versionTotal)}
+                className="shrink-0 font-medium underline underline-offset-2 hover:opacity-80"
+              >
+                同步
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
