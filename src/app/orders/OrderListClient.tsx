@@ -697,7 +697,7 @@ export function OrderListClient() {
                         >
                           <SelectTrigger className="h-7 w-auto gap-1 whitespace-nowrap border-none bg-transparent px-1 shadow-none hover:bg-[var(--bg-hover)]">
                             <span
-                              className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${INVOICE_STATUS_MAP[order.invoiceStatus]?.className ?? INVOICE_STATUS_MAP.pending.className}`}
+                              className={`badge ${INVOICE_STATUS_MAP[order.invoiceStatus]?.className ?? INVOICE_STATUS_MAP.pending.className}`}
                             >
                               {INVOICE_STATUS_MAP[order.invoiceStatus]?.label ?? "待開票"}
                             </span>
@@ -725,7 +725,7 @@ export function OrderListClient() {
                             <button
                               onClick={() => router.push(`/receivables/${ar.arId}`)}
                               title={`檢視應收帳款 ${ar.arId}`}
-                              className={`inline-block rounded-full px-2 py-0.5 text-[11px] transition-opacity hover:opacity-75 ${badge.className}`}
+                              className={`badge transition-opacity hover:opacity-75 ${badge.className}`}
                             >
                               {badge.label}
                             </button>
