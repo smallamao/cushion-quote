@@ -234,6 +234,21 @@ export async function POST(request: Request) {
       clientId = directBody.clientId ?? "";
     }
 
+    // 報價端已設「不開發票」的版本（電子發票不開清單），建單直接標記免開票
+    let invoiceStatus: CustomOrder["invoiceStatus"] = "pending";
+    if (versionId) {
+      try {
+        const optOutRes = await client.sheets.spreadsheets.values.get({
+          spreadsheetId: client.spreadsheetId,
+          range: "電子發票不開清單!A:A",
+        });
+        const optOutIds = ((optOutRes.data.values ?? []) as string[][]).map((r) => r[0]);
+        if (optOutIds.includes(versionId)) invoiceStatus = "exempt";
+      } catch {
+        // 清單讀取失敗時維持 pending，不擋建單
+      }
+    }
+
     const newOrder: CustomOrder = {
       orderId,
       caseId,
@@ -262,7 +277,7 @@ export async function POST(request: Request) {
       items: [],
       notes: initialNotes,
       photos: [],
-      invoiceStatus: "pending",
+      invoiceStatus,
       isArchived: false,
       internalNotes: "",
       createdAt: now,

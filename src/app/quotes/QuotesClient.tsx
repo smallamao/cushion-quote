@@ -558,6 +558,15 @@ export function QuotesClient() {
               const data = (await res.json()) as { ok: boolean };
               if (data.ok) {
                 setOptOutSet((prev) => new Set(prev).add(version.versionId));
+                // 此版本若已建立訂製訂單，同步把訂單標為免開票
+                const linkedOrderId = orderByVersionId.get(version.versionId);
+                if (linkedOrderId) {
+                  void fetch(`/api/sheets/orders/${encodeURIComponent(linkedOrderId)}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ invoiceStatus: "exempt" }),
+                  }).catch(() => {});
+                }
               }
             }}
             className="text-red-400 hover:text-red-600 transition-colors"
