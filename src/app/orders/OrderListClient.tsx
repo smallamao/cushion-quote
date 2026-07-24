@@ -531,15 +531,15 @@ export function OrderListClient() {
           <table className="w-full text-sm">
             <thead className="bg-[var(--surface-2)] text-xs uppercase text-[var(--text-secondary)]">
               <tr>
-                <th className="px-3 py-2 text-left">工單編號</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left">工單編號</th>
                 <th className="px-3 py-2 text-left">客戶</th>
-                <th className="px-3 py-2 text-left hidden md:table-cell">品項分類</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left hidden md:table-cell">品項分類</th>
                 <th className="px-3 py-2 text-left">訂製內容</th>
                 <th className="px-3 py-2 text-left hidden xl:table-cell">備注</th>
-                <th className="px-3 py-2 text-left">狀態</th>
-                <th className="px-3 py-2 text-left hidden lg:table-cell">下單日</th>
-                <th className="px-3 py-2 text-left hidden lg:table-cell">安裝/出貨日</th>
-                <th className="px-3 py-2 text-left">操作</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left">狀態</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left hidden lg:table-cell">下單日</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left hidden lg:table-cell">安裝/出貨日</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -569,13 +569,13 @@ export function OrderListClient() {
                       className="cursor-pointer border-t border-[var(--border)] hover:bg-[var(--bg-hover)]"
                       onClick={() => router.push(`/orders/${order.orderId}` as never)}
                     >
-                      <td className="px-3 py-2">
+                      <td className="whitespace-nowrap px-3 py-2">
                         <span className="font-mono text-xs text-[var(--accent)]">
                           {order.orderNumber || order.orderId}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-sm">{order.clientName || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-[var(--text-secondary)] hidden md:table-cell">
+                      <td className="whitespace-nowrap px-3 py-2 text-xs text-[var(--text-secondary)] hidden md:table-cell">
                         {order.itemCategory || "—"}
                       </td>
                       <td className="px-3 py-2">
@@ -588,13 +588,13 @@ export function OrderListClient() {
                           {order.internalNotes || "—"}
                         </div>
                       </td>
-                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                      <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <Select
                           value={order.status}
                           onValueChange={(v) => void handleStatusChange(order, v as OrderStatus)}
                           disabled={statusChanging === order.orderId}
                         >
-                          <SelectTrigger className="h-7 w-auto gap-1 border-none bg-transparent px-1 shadow-none hover:bg-[var(--bg-hover)]">
+                          <SelectTrigger className="h-7 w-auto gap-1 whitespace-nowrap border-none bg-transparent px-1 shadow-none hover:bg-[var(--bg-hover)]">
                             {statusChanging === order.orderId ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--text-secondary)]" />
                             ) : (
@@ -612,11 +612,11 @@ export function OrderListClient() {
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className="px-3 py-2 text-xs hidden lg:table-cell">
+                      <td className="whitespace-nowrap px-3 py-2 text-xs hidden lg:table-cell">
                         {order.orderDate || "—"}
                       </td>
                       <td
-                        className="px-3 py-2 text-xs hidden lg:table-cell"
+                        className="whitespace-nowrap px-3 py-2 text-xs hidden lg:table-cell"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <input
@@ -626,7 +626,7 @@ export function OrderListClient() {
                           className="w-32 cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-[var(--border)] focus:border-[var(--accent)] focus:outline-none"
                         />
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="whitespace-nowrap px-3 py-2">
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
