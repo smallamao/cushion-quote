@@ -23,13 +23,22 @@ async function trelloGet<T>(path: string, params: Record<string, string> = {}): 
   return res.json() as Promise<T>;
 }
 
+// 候選卡片與 custom fields 的短期快取：切日期時整包候選卡其實沒變，
+// 60 秒內重用讓日期切換近乎即時。（serverless 熱 instance 內有效）
+const CACHE_TTL_MS = 60_000;
+let candidateCache: { at: number; cards: TrelloCard[] } | null = null;
+const cfCache = new Map<string, { at: number; items: CustomFieldItem[] }>();
+
 /**
  * 撈出候選卡片（策略封裝於此，之後可換）。
  * 用 boards/{id}/cards/open 而非 search due: 運算子——search 的 due:month
  * 只涵蓋「未來 30 天」，當天已過時段的卡算 overdue、已標記完成的卡兩者皆漏，
  * 對「單日彙整」都是致命洞。板卡片端點回傳全部未封存卡，語意精確。
  */
-async function fetchCandidateCards(): Promise<TrelloCard[]> {
+async function fetchCandidateCards(force: boolean): Promise<TrelloCard[]> {
+  if (!force && candidateCache && Date.now() - candidateCache.at < CACHE_TTL_MS) {
+    return candidateCache.cards;
+  }
   const boards = await trelloGet<{ id: string }[]>("members/me/boards", {
     filter: "open",
     fields: "id",
@@ -41,7 +50,9 @@ async function fetchCandidateCards(): Promise<TrelloCard[]> {
       ),
     ),
   );
-  return perBoard.flat();
+  const cards = perBoard.flat();
+  candidateCache = { at: Date.now(), cards };
+  return cards;
 }
 
 /** due 是否落在台北時區的指定日（date 格式 YYYY-MM-DD）。伺服器時區無關。 */
@@ -53,15 +64,30 @@ function isDueOnDate(due: string | null, date: string): boolean {
   return Number.isFinite(t) && t >= start && t < end;
 }
 
-/** 以 Trello batch API 抓多卡 custom fields（每批 10 個 GET）。 */
-async function fetchCustomFieldsBatch(cardIds: string[]): Promise<Map<string, CustomFieldItem[]>> {
+/** 以 Trello batch API 抓多卡 custom fields（每批 10 個 GET），帶 60 秒快取。 */
+async function fetchCustomFieldsBatch(
+  cardIds: string[],
+  force: boolean,
+): Promise<Map<string, CustomFieldItem[]>> {
+  const now = Date.now();
   const result = new Map<string, CustomFieldItem[]>();
-  for (let i = 0; i < cardIds.length; i += 10) {
-    const chunk = cardIds.slice(i, i + 10);
+  const missing: string[] = [];
+  for (const id of cardIds) {
+    const hit = cfCache.get(id);
+    if (!force && hit && now - hit.at < CACHE_TTL_MS) {
+      result.set(id, hit.items);
+    } else {
+      missing.push(id);
+    }
+  }
+  for (let i = 0; i < missing.length; i += 10) {
+    const chunk = missing.slice(i, i + 10);
     const urls = chunk.map((id) => `/cards/${id}/customFieldItems`).join(",");
     const batch = await trelloGet<Array<Record<string, CustomFieldItem[]>>>("batch", { urls });
     batch.forEach((entry, idx) => {
-      result.set(chunk[idx], entry["200"] ?? []);
+      const items = entry["200"] ?? [];
+      result.set(chunk[idx], items);
+      cfCache.set(chunk[idx], { at: now, items });
     });
   }
   return result;
@@ -79,13 +105,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "date 格式須為 YYYY-MM-DD" }, { status: 400 });
   }
 
+  const force = req.nextUrl.searchParams.get("refresh") === "1";
+
   try {
-    const candidates = await fetchCandidateCards();
+    const candidates = await fetchCandidateCards(force);
     const matched = candidates
       .filter((c) => isDueOnDate(c.due, date))
       .sort((a, b) => (a.due ?? "").localeCompare(b.due ?? ""));
 
-    const fieldsByCard = await fetchCustomFieldsBatch(matched.map((c) => c.id));
+    const fieldsByCard = await fetchCustomFieldsBatch(matched.map((c) => c.id), force);
     const cards = matched.map((card) => ({
       card,
       customFields: fieldsByCard.get(card.id) ?? [],

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation, Scissors, MessageSquare, User, CalendarDays, CalendarClock } from "lucide-react";
+import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation, RefreshCw, Scissors, MessageSquare, User, CalendarDays, CalendarClock } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -2248,33 +2248,50 @@ function DayManifestView({
 }) {
   const [date, setDate] = useState(() => new Date().toLocaleDateString("sv-SE"));
   const [entries, setEntries] = useState<DayShipmentEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState("");
   const [copyTarget, setCopyTarget] = useState<{ title: string; text: string } | null>(null);
+  // 每日結果快取（SWR：切回看過的日期先秒出快取，背景再刷新）
+  const dayCacheRef = useRef<Map<string, DayShipmentEntry[]>>(new Map());
+  const forceRef = useRef(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const hasCached = dayCacheRef.current.has(date);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+    const force = forceRef.current;
+    forceRef.current = false;
+    const cached = dayCacheRef.current.get(date);
+    // 有快取先立即顯示；沒快取清空避免殘留前一天的資料
+    setEntries(cached ?? []);
     setError("");
-    fetch(`/api/trello/day-shipments?date=${date}`, { cache: "no-store" })
+    setFetching(true);
+    let cancelled = false;
+    fetch(`/api/trello/day-shipments?date=${date}${force ? "&refresh=1" : ""}`, { cache: "no-store" })
       .then(async (res) => {
         const json = (await res.json()) as { ok: boolean; cards?: DayShipmentEntry[]; error?: string };
         if (cancelled) return;
         if (!json.ok) throw new Error(json.error ?? "載入失敗");
-        setEntries(json.cards ?? []);
+        const cards = json.cards ?? [];
+        dayCacheRef.current.set(date, cards);
+        setEntries(cards);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "載入失敗");
-        setEntries([]);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setFetching(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [date]);
+  }, [date, refreshTick]);
+
+  function handleRefresh() {
+    forceRef.current = true;
+    dayCacheRef.current.delete(date);
+    setRefreshTick((t) => t + 1);
+  }
 
   function shiftDate(days: number) {
     const d = new Date(`${date}T12:00:00`);
@@ -2332,11 +2349,23 @@ function DayManifestView({
         >
           今天
         </Button>
+        <Button
+          size="icon"
+          variant="outline"
+          aria-label="重新整理"
+          title="重新整理（略過快取）"
+          onClick={handleRefresh}
+          disabled={fetching}
+        >
+          <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+        </Button>
       </div>
 
-      {loading && <p className="text-xs text-[var(--text-tertiary)]">載入中…</p>}
+      {fetching && !hasCached && entries.length === 0 && (
+        <p className="text-xs text-[var(--text-tertiary)]">載入中…</p>
+      )}
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {!loading && !error && entries.length === 0 && (
+      {!fetching && !error && entries.length === 0 && (
         <p className="text-xs text-[var(--text-tertiary)]">當日沒有排定出貨的卡片</p>
       )}
 
