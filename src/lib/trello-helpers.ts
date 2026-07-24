@@ -562,30 +562,41 @@ function buildBankLine(account: "jinshuei" | "potato" | "custom", month: number,
   return "銀行戶名：陳金水\n代號：807 永豐商業銀行\n分行代碼：1664 海山分行\n帳號：16600400697189";
 }
 
-function buildDriverConfirmMsg(
+/**
+ * 司機訊息開頭：稱呼＋日期行。
+ * style "roc"＝單筆確認單（115/07/25 星期六）；"short"＝日總表（07/25 星期六）。
+ */
+export function formatDriverConfirmHeader(
+  greeting: string,
+  due: Date,
+  style: "roc" | "short" = "roc",
+): string[] {
+  const mm = String(due.getMonth() + 1).padStart(2, "0");
+  const dd = String(due.getDate()).padStart(2, "0");
+  const weekday = ["日", "一", "二", "三", "四", "五", "六"][due.getDay()];
+  const dateLine =
+    style === "roc"
+      ? `${due.getFullYear() - 1911}/${mm}/${dd} 星期${weekday}`
+      : `${mm}/${dd} 星期${weekday}`;
+  return greeting ? [greeting, dateLine] : [dateLine];
+}
+
+/**
+ * 司機確認訊息的單卡區塊（時段行以下）。單筆確認單與日總表共用：
+ *   {時段}
+ *   #{工單號}
+ *   {地址〔社區〕【標籤註記】}
+ *   {電話 聯絡人 客戶註記}
+ *   {次要電話 聯絡人}
+ *   （空行）
+ *   {品項}
+ */
+export function buildDriverConfirmBlock(
   card: TrelloCard,
   customFields: CustomFieldItem[],
-  opts: ShippingMsgOptions,
-  _dateStr: string,
+  driverKey: string,
   timeRange: string,
 ): string {
-  // 對齊手機 App 的司機通知格式：
-  //   {稱呼}
-  //   {民國年/月/日 星期X}
-  //   {時段}
-  //   #{工單號}
-  //   {地址}
-  //   {電話 聯絡人 客戶註記}
-  //   （空行）
-  //   {品項}
-  const greeting = opts.driverGreeting; // e.g. "阿信哥～"
-  const date = new Date(card.due!);
-  const rocYear = date.getFullYear() - 1911;
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
-  const dateLine = `${rocYear}/${mm}/${dd} 星期${weekday}`;
-
   const descLines = card.desc.split("\n").map((l) => l.trim()).filter(Boolean);
   const address = descLines[0] ?? "";
   const communityName = getCustomFieldText(customFields, TRELLO.CUSTOM_FIELDS.COMMUNITY_NAME);
@@ -634,14 +645,24 @@ function buildDriverConfirmMsg(
     product = [styleCode, moduleName].filter(Boolean).join(" ");
   }
 
-  const lines: string[] = [];
-  if (greeting) lines.push(greeting);
-  lines.push(dateLine, timeRange, refLine, finalAddress);
+  const lines: string[] = [timeRange, refLine, finalAddress];
   if (contactLine) lines.push(contactLine);
   if (secondaryLine) lines.push(secondaryLine);
   if (product) lines.push("", product);
-  if (opts.driverKey === "jian") lines.push("", "＊管傢俱出貨");
+  if (driverKey === "jian") lines.push("", "＊管傢俱出貨");
   return lines.join("\n");
+}
+
+function buildDriverConfirmMsg(
+  card: TrelloCard,
+  customFields: CustomFieldItem[],
+  opts: ShippingMsgOptions,
+  _dateStr: string,
+  timeRange: string,
+): string {
+  const header = formatDriverConfirmHeader(opts.driverGreeting, new Date(card.due!), "roc");
+  const block = buildDriverConfirmBlock(card, customFields, opts.driverKey, timeRange);
+  return [...header, block].join("\n");
 }
 
 function buildBackShippingMsg(
