@@ -1,0 +1,99 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import type { CustomFieldItem, TrelloCard } from "@/lib/trello-helpers";
+
+const TRELLO_KEY = process.env.TRELLO_KEY?.trim();
+const TRELLO_TOKEN = process.env.TRELLO_TOKEN?.trim();
+const TRELLO_BASE = "https://api.trello.com/1";
+
+const CARD_FIELDS = "name,desc,due,dueComplete,idList,idBoard,labels,badges";
+
+function trelloUrl(path: string, params: Record<string, string> = {}): string {
+  const qs = new URLSearchParams(params);
+  if (TRELLO_KEY) qs.set("key", TRELLO_KEY);
+  if (TRELLO_TOKEN) qs.set("token", TRELLO_TOKEN);
+  return `${TRELLO_BASE}/${path}?${qs.toString()}`;
+}
+
+async function trelloGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+  const res = await fetch(trelloUrl(path, params), { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Trello ${path} 回應 ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+/**
+ * 撈出候選卡片（策略封裝於此，之後可換）。
+ * 用 boards/{id}/cards/open 而非 search due: 運算子——search 的 due:month
+ * 只涵蓋「未來 30 天」，當天已過時段的卡算 overdue、已標記完成的卡兩者皆漏，
+ * 對「單日彙整」都是致命洞。板卡片端點回傳全部未封存卡，語意精確。
+ */
+async function fetchCandidateCards(): Promise<TrelloCard[]> {
+  const boards = await trelloGet<{ id: string }[]>("members/me/boards", {
+    filter: "open",
+    fields: "id",
+  });
+  const perBoard = await Promise.all(
+    boards.map((b) =>
+      trelloGet<TrelloCard[]>(`boards/${b.id}/cards/open`, { fields: CARD_FIELDS }).catch(
+        () => [] as TrelloCard[],
+      ),
+    ),
+  );
+  return perBoard.flat();
+}
+
+/** due 是否落在台北時區的指定日（date 格式 YYYY-MM-DD）。伺服器時區無關。 */
+function isDueOnDate(due: string | null, date: string): boolean {
+  if (!due) return false;
+  const start = new Date(`${date}T00:00:00+08:00`).getTime();
+  const end = start + 24 * 3600 * 1000;
+  const t = new Date(due).getTime();
+  return Number.isFinite(t) && t >= start && t < end;
+}
+
+/** 以 Trello batch API 抓多卡 custom fields（每批 10 個 GET）。 */
+async function fetchCustomFieldsBatch(cardIds: string[]): Promise<Map<string, CustomFieldItem[]>> {
+  const result = new Map<string, CustomFieldItem[]>();
+  for (let i = 0; i < cardIds.length; i += 10) {
+    const chunk = cardIds.slice(i, i + 10);
+    const urls = chunk.map((id) => `/cards/${id}/customFieldItems`).join(",");
+    const batch = await trelloGet<Array<Record<string, CustomFieldItem[]>>>("batch", { urls });
+    batch.forEach((entry, idx) => {
+      result.set(chunk[idx], entry["200"] ?? []);
+    });
+  }
+  return result;
+}
+
+// GET /api/trello/day-shipments?date=YYYY-MM-DD
+// 回傳指定日（台北時區）due 到期的全部卡片＋各卡 custom fields。
+// 分組、訊息組裝都在前端做（重用 trello-helpers 的既有解析）。
+export async function GET(req: NextRequest) {
+  if (!TRELLO_KEY || !TRELLO_TOKEN) {
+    return NextResponse.json({ ok: false, error: "Trello 未設定" }, { status: 503 });
+  }
+  const date = req.nextUrl.searchParams.get("date") ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return NextResponse.json({ ok: false, error: "date 格式須為 YYYY-MM-DD" }, { status: 400 });
+  }
+
+  try {
+    const candidates = await fetchCandidateCards();
+    const matched = candidates
+      .filter((c) => isDueOnDate(c.due, date))
+      .sort((a, b) => (a.due ?? "").localeCompare(b.due ?? ""));
+
+    const fieldsByCard = await fetchCustomFieldsBatch(matched.map((c) => c.id));
+    const cards = matched.map((card) => ({
+      card,
+      customFields: fieldsByCard.get(card.id) ?? [],
+    }));
+
+    return NextResponse.json({ ok: true, date, cards });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
