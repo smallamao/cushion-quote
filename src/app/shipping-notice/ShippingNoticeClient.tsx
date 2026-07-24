@@ -10,11 +10,15 @@ import { useActiveDrivers } from "@/hooks/useDrivers";
 import { LIST_NAMES, PRODUCTS, S_ORDER_CUSTOM_FIELDS, TRELLO } from "@/lib/trello-constants";
 import type { DriverRecord } from "@/lib/drivers-sheet";
 import {
+  addHours,
+  buildDriverConfirmBlock,
   buildRepairOrderText,
   buildScheduleSMS,
   buildCuttingWorkOrder,
   buildShippingMsg,
   buildCustomerInfoText,
+  formatDriverConfirmHeader,
+  formatHHmm,
   getCustomFieldText,
   getCustomFieldTextAny,
   getCustomFieldDateAny,
@@ -2144,8 +2148,281 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
 
 // ─── Main client ──────────────────────────────────────────────
 
+// ─── 日總表（單日出貨彙整） ─────────────────────────────────
+
+interface DayShipmentEntry {
+  card: TrelloCard;
+  customFields: CustomFieldItem[];
+}
+
+const MANIFEST_TIME_HOURS = 2; // 時段固定 2 小時；特殊時段複製前手動改
+
+function hasOldSofaLabel(card: TrelloCard): boolean {
+  return card.labels.some((l) => l.name?.includes("舊沙發"));
+}
+
+function manifestTimeRange(due: string): string {
+  const d = new Date(due);
+  return `${formatHHmm(d)} - ${formatHHmm(addHours(d, MANIFEST_TIME_HOURS))}`;
+}
+
+/** 組單一司機的全日路線訊息：header + 各卡 block（依時間排序、空行相接） */
+function buildManifestMsg(
+  driver: DriverRecord | null,
+  date: Date,
+  entries: DayShipmentEntry[],
+): string {
+  const header = formatDriverConfirmHeader(driver?.confirmTitle ?? "", date, "short");
+  const blocks = entries.map(({ card, customFields }) => {
+    let block = buildDriverConfirmBlock(
+      card,
+      customFields,
+      driver?.key ?? "",
+      manifestTimeRange(card.due!),
+    );
+    if (hasOldSofaLabel(card)) block += "\n@舊沙發抬下";
+    return block;
+  });
+  return [...header, blocks.join("\n\n")].join("\n");
+}
+
+/** 可編輯的複製視窗：複製前可微調時段、補臨場附註 */
+function ManifestCopyModal({
+  title,
+  initialText,
+  onClose,
+}: {
+  title: string;
+  initialText: string;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState(initialText);
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
+      <div className="w-full max-w-lg rounded-t-2xl bg-[var(--bg-elevated)] p-5 shadow-2xl sm:rounded-2xl">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-semibold">{title}</span>
+          <button onClick={onClose} className="text-[var(--text-tertiary)]">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={16}
+          className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 font-mono text-xs leading-relaxed text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+        />
+        <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+          可直接編輯：調整非 2 小時的時段、補充臨場附註（如「客人6:00後才方便收貨」）
+        </p>
+        <div className="mt-3 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            關閉
+          </Button>
+          <CopyButton text={text} label="複製全文" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayManifestView({
+  drivers,
+  selectedCardId,
+  onOpenCard,
+}: {
+  drivers: DriverRecord[];
+  selectedCardId: string | null;
+  onOpenCard: (card: TrelloCard) => void;
+}) {
+  const [date, setDate] = useState(() => new Date().toLocaleDateString("sv-SE"));
+  const [entries, setEntries] = useState<DayShipmentEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [copyTarget, setCopyTarget] = useState<{ title: string; text: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    fetch(`/api/trello/day-shipments?date=${date}`, { cache: "no-store" })
+      .then(async (res) => {
+        const json = (await res.json()) as { ok: boolean; cards?: DayShipmentEntry[]; error?: string };
+        if (cancelled) return;
+        if (!json.ok) throw new Error(json.error ?? "載入失敗");
+        setEntries(json.cards ?? []);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "載入失敗");
+        setEntries([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [date]);
+
+  function shiftDate(days: number) {
+    const d = new Date(`${date}T12:00:00`);
+    d.setDate(d.getDate() + days);
+    setDate(d.toLocaleDateString("sv-SE"));
+  }
+
+  // 依司機分組：drivers 順序在前，未指派司機殿後（防漏排檢查）
+  const groups = useMemo(() => {
+    const byDriver = new Map<string, DayShipmentEntry[]>();
+    const unassigned: DayShipmentEntry[] = [];
+    for (const entry of entries) {
+      const driver = drivers.find((d) => entry.card.labels.some((l) => l.id === d.labelId));
+      if (driver) {
+        const list = byDriver.get(driver.key) ?? [];
+        list.push(entry);
+        byDriver.set(driver.key, list);
+      } else {
+        unassigned.push(entry);
+      }
+    }
+    const result: Array<{ driver: DriverRecord | null; entries: DayShipmentEntry[] }> = [];
+    for (const d of drivers) {
+      const list = byDriver.get(d.key);
+      if (list && list.length > 0) result.push({ driver: d, entries: list });
+    }
+    if (unassigned.length > 0) result.push({ driver: null, entries: unassigned });
+    return result;
+  }, [entries, drivers]);
+
+  const dateObj = new Date(`${date}T12:00:00`);
+  const weekday = ["日", "一", "二", "三", "四", "五", "六"][dateObj.getDay()];
+
+  return (
+    <div className="space-y-3">
+      {/* 日期選擇 */}
+      <div className="flex items-center gap-1.5">
+        <Button size="icon" variant="outline" aria-label="前一天" onClick={() => shiftDate(-1)}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Input
+          type="date"
+          value={date}
+          onChange={(e) => { if (e.target.value) setDate(e.target.value); }}
+          className="w-40"
+        />
+        <span className="text-sm text-[var(--text-secondary)]">({weekday})</span>
+        <Button size="icon" variant="outline" aria-label="後一天" onClick={() => shiftDate(1)}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setDate(new Date().toLocaleDateString("sv-SE"))}
+        >
+          今天
+        </Button>
+      </div>
+
+      {loading && <p className="text-xs text-[var(--text-tertiary)]">載入中…</p>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {!loading && !error && entries.length === 0 && (
+        <p className="text-xs text-[var(--text-tertiary)]">當日沒有排定出貨的卡片</p>
+      )}
+
+      {groups.map(({ driver, entries: groupEntries }) => (
+        <div
+          key={driver?.key ?? "unassigned"}
+          className={[
+            "rounded-lg border bg-[var(--bg-elevated)]",
+            driver ? "border-[var(--border)]" : "border-amber-300",
+          ].join(" ")}
+        >
+          <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
+            <span className="text-sm font-semibold">
+              {driver ? driver.title : "⚠ 未指派司機"}
+              <span className="ml-2 font-normal text-[var(--text-secondary)]">
+                {groupEntries.length} 趟
+              </span>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() =>
+                setCopyTarget({
+                  title: `${driver ? driver.title : "未指派"} · ${date} 路線單`,
+                  text: buildManifestMsg(driver, dateObj, groupEntries),
+                })
+              }
+            >
+              📋 複製路線單
+            </Button>
+          </div>
+          <div className="divide-y divide-[var(--border)]">
+            {groupEntries.map(({ card }) => {
+              const styleLabel = card.labels.find((l) => l.name?.startsWith("成交/"));
+              const address = card.desc.split("\n")[0]?.trim() ?? "";
+              return (
+                <div
+                  key={card.id}
+                  onClick={() => onOpenCard(card)}
+                  className={[
+                    "cursor-pointer px-3 py-2 transition-colors hover:bg-[var(--bg-hover)]",
+                    selectedCardId === card.id ? "bg-[var(--bg-hover)]" : "",
+                  ].join(" ")}
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-sm font-semibold">
+                      {card.due ? manifestTimeRange(card.due) : "—"}
+                    </span>
+                    <span className="font-mono text-sm">
+                      {card.dueComplete && <span className="mr-1">✅</span>}
+                      {card.name}
+                    </span>
+                    {styleLabel && (
+                      <span className="text-xs text-[var(--text-secondary)]">
+                        {styleLabel.name?.replace("成交/", "")}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                    <span className="truncate">📍 {address}</span>
+                    {hasOldSofaLabel(card) && (
+                      <span className="rounded bg-amber-100 px-1 text-amber-800">舊沙發</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {copyTarget && (
+        <ManifestCopyModal
+          title={copyTarget.title}
+          initialText={copyTarget.text}
+          onClose={() => setCopyTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 export function ShippingNoticeClient() {
   const { drivers } = useActiveDrivers();
+  const [mode, setMode] = useState<"search" | "manifest">("search");
   const [listNames, setListNames] = useState<Record<string, string>>(LIST_NAMES);
   const [query, setQuery] = useState<string>(() =>
     typeof window === "undefined" ? "P" : (sessionStorage.getItem("shipping_notice_query") || "P"),
@@ -2465,34 +2742,61 @@ export function ShippingNoticeClient() {
         </div>
       </div>
 
-      <div className="flex max-w-sm gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-tertiary)]" />
-          <Input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
-            onFocus={(e) => {
-              // Move cursor to end so user types after "P"
-              const len = e.target.value.length;
-              e.target.setSelectionRange(len, len);
-            }}
-            placeholder="P1234"
-            // 空欄位時用文字鍵盤（可打開頭英文，如 P/S/L），有字之後切數字鍵盤輸入號碼
-            inputMode={query.length === 0 ? "text" : "decimal"}
-            className="pl-9"
-          />
-        </div>
-        <Button onClick={handleSearch} disabled={searching || !query.trim()}>
-          查詢
-        </Button>
+      {/* 模式切換：單筆查詢 / 日總表 */}
+      <div className="flex items-center gap-1 rounded-lg bg-[var(--surface-2)] p-1 w-fit">
+        {([["search", "單筆查詢"], ["manifest", "日總表"]] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setMode(key)}
+            className={[
+              "rounded-md px-3 py-1 text-sm transition-colors",
+              mode === key
+                ? "bg-[var(--bg-elevated)] font-medium shadow-sm"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+            ].join(" ")}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {searchError && <p className="text-xs text-red-600">{searchError}</p>}
+      {mode === "search" && (
+        <div className="flex max-w-sm gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-tertiary)]" />
+            <Input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
+              onFocus={(e) => {
+                // Move cursor to end so user types after "P"
+                const len = e.target.value.length;
+                e.target.setSelectionRange(len, len);
+              }}
+              placeholder="P1234"
+              // 空欄位時用文字鍵盤（可打開頭英文，如 P/S/L），有字之後切數字鍵盤輸入號碼
+              inputMode={query.length === 0 ? "text" : "decimal"}
+              className="pl-9"
+            />
+          </div>
+          <Button onClick={handleSearch} disabled={searching || !query.trim()}>
+            查詢
+          </Button>
+        </div>
+      )}
+
+      {mode === "search" && searchError && <p className="text-xs text-red-600">{searchError}</p>}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* 搜尋結果 */}
+        {/* 左欄：搜尋結果 或 日總表 */}
+        {mode === "manifest" ? (
+          <DayManifestView
+            drivers={drivers}
+            selectedCardId={selectedCardId}
+            onOpenCard={(card) => setSelectedCard(card)}
+          />
+        ) : (
         <div className="space-y-2">
           {searching && <p className="text-xs text-[var(--text-tertiary)]">搜尋中…</p>}
           {!searching && submittedQuery && cards.length === 0 && !searchError && (
@@ -2610,6 +2914,7 @@ export function ShippingNoticeClient() {
             );
           })}
         </div>
+        )}
 
         {/* 卡片詳情 */}
         {selectedCard && (
