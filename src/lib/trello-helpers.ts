@@ -610,7 +610,13 @@ export function buildDriverConfirmBlock(
   if (hasStairs) finalAddress += "【室內梯】";
 
   const orderNumber = card.name.match(/P\d{4,6}/)?.[0] ?? "";
-  const refLine = `#${orderNumber}`; // 只放工單號，不帶分類
+  // 成交/ 標籤：查得到 PRODUCTS 的才是款式（如 MULE 沐樂），帶在單號後；
+  // 訂製維修等分類查不到，維持只放工單號。
+  const styleCode = card.labels.find((l) => l.name?.startsWith("成交/"))?.name.replace("成交/", "") ?? "";
+  const styleProduct = PRODUCTS.find((p) => p.displayName === styleCode);
+  const refLine = styleProduct
+    ? `#${orderNumber}  ${[styleCode, styleProduct.moduleName].filter(Boolean).join(" ")}`
+    : `#${orderNumber}`;
 
   // desc 第一行以外：凡是「開頭像電話號碼」的行都視為聯絡資訊（含市話、
   // 0958575724/許惠婷 這種斜線格式），其餘視為品項。
@@ -657,9 +663,7 @@ export function buildDriverConfirmBlock(
   const contactIdxSet = new Set(contactIdxs);
   let product = restLines.filter((_, i) => !contactIdxSet.has(i)).join("\n");
   if (!product) {
-    const styleCode = card.labels.find((l) => l.name?.startsWith("成交/"))?.name.replace("成交/", "") ?? "";
-    const moduleName = PRODUCTS.find((p) => p.displayName === styleCode)?.moduleName ?? "";
-    product = [styleCode, moduleName].filter(Boolean).join(" ");
+    product = [styleCode, styleProduct?.moduleName ?? ""].filter(Boolean).join(" ");
   }
 
   const lines: string[] = [timeRange, refLine, finalAddress];

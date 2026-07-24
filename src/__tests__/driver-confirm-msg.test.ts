@@ -77,6 +77,24 @@ describe("司機確認訊息（對齊手機 App 格式）", () => {
     expect(msg).not.toContain("沙發2000cm一只 測試卡");
   });
 
+  it("有款式標籤（PRODUCTS 查得到）時，單號行帶款式名：#P6166  MULE 沐樂", () => {
+    const card2: TrelloCard = {
+      ...CARD,
+      name: "P6166 蘇家涵",
+      desc: "新北市中和區員山路387巷14號9F\n0939828391 蘇家涵\n沙發344cm一字型一只",
+      labels: [{ id: "a", name: "成交/MULE", color: "" }],
+    };
+    const m = buildShippingMsg(card2, [], mkOpts());
+    expect(m).toContain("\n#P6166  MULE 沐樂\n");
+  });
+
+  it("分類標籤（訂製維修，PRODUCTS 查不到）維持只放單號", () => {
+    // CARD 本身帶 成交/訂製維修 標籤
+    const m = buildShippingMsg(CARD, [], mkOpts());
+    expect(m).toMatch(/\n#P9999\n/);
+    expect(m).not.toContain("訂製維修");
+  });
+
   it("卡名＝客戶姓名時，聯絡人行不重複（0963024376 許惠婷 許惠婷 → 一次）", () => {
     const card2: TrelloCard = {
       ...CARD,
