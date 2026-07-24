@@ -36,19 +36,20 @@ const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
   cancelled: { label: "取消", className: "badge-draft" },
 };
 
-const INVOICE_STATUS_MAP: Record<OrderInvoiceStatus, { label: string; className: string }> = {
-  pending: { label: "待開票", className: "bg-amber-100 text-amber-800" },
-  issued: { label: "已開票", className: "bg-green-100 text-green-800" },
-  exempt: { label: "免開票", className: "bg-gray-100 text-gray-600" },
+// 開票狀態燈號（dot：列表精簡顯示，label 進 tooltip 與下拉選項）
+const INVOICE_STATUS_MAP: Record<OrderInvoiceStatus, { label: string; dot: string }> = {
+  pending: { label: "待開票", dot: "bg-amber-500" },
+  issued: { label: "已開票", dot: "bg-green-500" },
+  exempt: { label: "免開票", dot: "bg-gray-300" },
 };
 
-// AR 收款狀態徽章（依 arStatus；訂單無關聯 AR 時顯示「未建」）
-const AR_BADGE: Record<string, { label: string; className: string }> = {
-  active: { label: "待收款", className: "bg-amber-100 text-amber-800" },
-  partial: { label: "部分收款", className: "bg-orange-100 text-orange-800" },
-  paid: { label: "已收清", className: "bg-green-100 text-green-800" },
-  overdue: { label: "逾期", className: "bg-red-100 text-red-700" },
-  draft: { label: "草稿", className: "bg-gray-100 text-gray-600" },
+// AR 收款狀態燈號（依 arStatus；訂單無關聯 AR 時顯示空心灰圈）
+const AR_BADGE: Record<string, { label: string; dot: string }> = {
+  active: { label: "待收款", dot: "bg-amber-500" },
+  partial: { label: "部分收款", dot: "bg-orange-500" },
+  paid: { label: "已收清", dot: "bg-green-500" },
+  overdue: { label: "逾期", dot: "bg-red-500" },
+  draft: { label: "草稿", dot: "bg-gray-300" },
 };
 
 const CATEGORY_OPTIONS: OrderItemCategory[] = [
@@ -208,6 +209,9 @@ export function OrderListClient() {
     }
   }, []);
 
+  // 客戶彙總視窗：點客戶名開啟，彙整該客戶全部訂單＋總額/未收合計
+  const [summaryClient, setSummaryClient] = useState<string | null>(null);
+
   // 應收帳款對照（versionId → AR）：顯示每張訂單的收款狀態
   const [arByVersionId, setArByVersionId] = useState<Map<string, ARRecord>>(new Map());
   useEffect(() => {
@@ -303,6 +307,18 @@ export function OrderListClient() {
   useEffect(() => {
     void fetchOrders(showArchived);
   }, [showArchived, fetchOrders]);
+
+  // 客戶彙總：該客戶全部訂單（目前載入範圍）＋總額/未收合計，全部由已載入資料計算
+  const clientSummary = useMemo(() => {
+    if (!summaryClient) return null;
+    const list = orders.filter((o) => o.clientName === summaryClient && o.status !== "cancelled");
+    const totalQuoted = list.reduce((s, o) => s + (o.quotedAmount || 0), 0);
+    const outstanding = list.reduce((s, o) => {
+      const ar = o.versionId ? arByVersionId.get(o.versionId) : undefined;
+      return s + (ar?.outstandingAmount ?? 0);
+    }, 0);
+    return { list, totalQuoted, outstanding };
+  }, [summaryClient, orders, arByVersionId]);
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
@@ -637,10 +653,10 @@ export function OrderListClient() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSearch(order.clientName);
+                              setSummaryClient(order.clientName);
                             }}
-                            title={`篩選 ${order.clientName} 的全部訂單`}
-                            className="text-left hover:text-[var(--accent)] hover:underline"
+                            title={`${order.clientName} — 檢視此客戶訂單彙總`}
+                            className="block max-w-[10rem] truncate text-left hover:text-[var(--accent)] hover:underline"
                           >
                             {order.clientName}
                           </button>
@@ -695,17 +711,21 @@ export function OrderListClient() {
                             void handleInvoiceStatusChange(order, v as OrderInvoiceStatus)
                           }
                         >
-                          <SelectTrigger className="h-7 w-auto gap-1 whitespace-nowrap border-none bg-transparent px-1 shadow-none hover:bg-[var(--bg-hover)]">
+                          <SelectTrigger
+                            className="h-7 w-auto gap-1 border-none bg-transparent px-1.5 shadow-none hover:bg-[var(--bg-hover)]"
+                            title={INVOICE_STATUS_MAP[order.invoiceStatus]?.label ?? "待開票"}
+                          >
                             <span
-                              className={`badge ${INVOICE_STATUS_MAP[order.invoiceStatus]?.className ?? INVOICE_STATUS_MAP.pending.className}`}
-                            >
-                              {INVOICE_STATUS_MAP[order.invoiceStatus]?.label ?? "待開票"}
-                            </span>
+                              className={`inline-block h-2.5 w-2.5 rounded-full ${INVOICE_STATUS_MAP[order.invoiceStatus]?.dot ?? INVOICE_STATUS_MAP.pending.dot}`}
+                            />
                           </SelectTrigger>
                           <SelectContent>
                             {(Object.keys(INVOICE_STATUS_MAP) as OrderInvoiceStatus[]).map((st) => (
                               <SelectItem key={st} value={st}>
-                                {INVOICE_STATUS_MAP[st].label}
+                                <span className="flex items-center gap-2">
+                                  <span className={`inline-block h-2.5 w-2.5 rounded-full ${INVOICE_STATUS_MAP[st].dot}`} />
+                                  {INVOICE_STATUS_MAP[st].label}
+                                </span>
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -718,16 +738,21 @@ export function OrderListClient() {
                         {(() => {
                           const ar = order.versionId ? arByVersionId.get(order.versionId) : undefined;
                           if (!ar) {
-                            return <span className="text-xs text-[var(--text-tertiary)]">未建</span>;
+                            return (
+                              <span
+                                title="未建應收帳款"
+                                className="inline-block h-2.5 w-2.5 rounded-full border-2 border-gray-300"
+                              />
+                            );
                           }
                           const badge = AR_BADGE[ar.arStatus] ?? AR_BADGE.active;
                           return (
                             <button
                               onClick={() => router.push(`/receivables/${ar.arId}`)}
-                              title={`檢視應收帳款 ${ar.arId}`}
-                              className={`badge transition-opacity hover:opacity-75 ${badge.className}`}
+                              title={`${badge.label} · 檢視應收帳款 ${ar.arId}`}
+                              className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-[var(--bg-hover)]"
                             >
-                              {badge.label}
+                              <span className={`inline-block h-2.5 w-2.5 rounded-full ${badge.dot}`} />
                             </button>
                           );
                         })()}
@@ -833,6 +858,86 @@ export function OrderListClient() {
         fileName={pdfFileName}
         loading={pdfBlob === null}
       />
+
+      {/* 客戶訂單彙總視窗 */}
+      <Dialog open={!!summaryClient} onOpenChange={(o) => { if (!o) setSummaryClient(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{summaryClient} · 訂單彙總</DialogTitle>
+            <DialogDescription>
+              共 {clientSummary?.list.length ?? 0} 筆（不含已取消）· 總額 NT$ {(clientSummary?.totalQuoted ?? 0).toLocaleString()} ·{" "}
+              <span className={clientSummary && clientSummary.outstanding > 0 ? "font-medium text-amber-600" : ""}>
+                未收 NT$ {(clientSummary?.outstanding ?? 0).toLocaleString()}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto rounded-md border border-[var(--border)]">
+            <table className="w-full text-sm">
+              <thead className="bg-[var(--surface-2)] text-xs text-[var(--text-secondary)]">
+                <tr>
+                  <th className="px-3 py-1.5 text-left">工單編號</th>
+                  <th className="px-3 py-1.5 text-left">訂製內容</th>
+                  <th className="px-3 py-1.5 text-left">下單日</th>
+                  <th className="px-3 py-1.5 text-right">金額</th>
+                  <th className="px-3 py-1.5 text-center">開票</th>
+                  <th className="px-3 py-1.5 text-center">收款</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(clientSummary?.list ?? []).map((o) => {
+                  const ar = o.versionId ? arByVersionId.get(o.versionId) : undefined;
+                  const arBadge = ar ? (AR_BADGE[ar.arStatus] ?? AR_BADGE.active) : null;
+                  const inv = INVOICE_STATUS_MAP[o.invoiceStatus] ?? INVOICE_STATUS_MAP.pending;
+                  return (
+                    <tr
+                      key={o.orderId}
+                      className="cursor-pointer border-t border-[var(--border)] hover:bg-[var(--bg-hover)]"
+                      onClick={() => router.push(`/orders/${o.orderId}` as never)}
+                    >
+                      <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-[var(--accent)]">
+                        {o.orderNumber || o.orderId}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <div className="max-w-[14rem] truncate text-xs text-[var(--text-secondary)]">
+                          {o.orderTitle || o.itemCategory || "—"}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-xs">{o.orderDate || "—"}</td>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-right font-mono text-xs">
+                        {o.quotedAmount ? `$${o.quotedAmount.toLocaleString()}` : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-center" title={inv.label}>
+                        <span className={`inline-block h-2.5 w-2.5 rounded-full ${inv.dot}`} />
+                      </td>
+                      <td className="px-3 py-1.5 text-center" title={arBadge ? arBadge.label : "未建應收帳款"}>
+                        {arBadge ? (
+                          <span className={`inline-block h-2.5 w-2.5 rounded-full ${arBadge.dot}`} />
+                        ) : (
+                          <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-gray-300" />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (summaryClient) setSearch(summaryClient);
+                setSummaryClient(null);
+              }}
+            >
+              在列表中篩選此客戶
+            </Button>
+            <Button variant="outline" onClick={() => setSummaryClient(null)}>
+              關閉
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
