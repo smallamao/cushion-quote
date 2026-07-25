@@ -27,7 +27,6 @@ export const QUOTE_NOTE_TEMPLATES: QuoteNoteTemplate[] = [
       "如未主動告知沙發功能，載到廠時將追加衍生費用",
       "若維修完成後超過一週未收件，將酌收衍生寄倉費用",
       "若無法拆卸將以回收處理，客戶需自行負擔運費",
-      "報價有限期限為一個月",
     ],
   },
   {
@@ -36,7 +35,6 @@ export const QUOTE_NOTE_TEMPLATES: QuoteNoteTemplate[] = [
       "報價不含營業稅",
       "需提供外布套合版",
       "報價不含到府收送費用",
-      "報價有限期限為一個月",
     ],
   },
 ];
