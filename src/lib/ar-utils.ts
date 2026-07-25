@@ -14,11 +14,11 @@ export const PENDING_MONTHLY_SHEET = "月結待出";
 
 // Column ranges — use full column notation ("A:V") + skip header row in code
 // to avoid "Unable to parse range" errors on newly-created empty sheets.
-export const AR_RANGE_FULL = `${AR_SHEET}!A:V`;
-export const AR_RANGE_DATA = `${AR_SHEET}!A2:V1000`;
+export const AR_RANGE_FULL = `${AR_SHEET}!A:W`;
+export const AR_RANGE_DATA = `${AR_SHEET}!A2:W1000`;
 export const AR_RANGE_IDS = `${AR_SHEET}!A2:A1000`;
 export const AR_ROW_RANGE = (sheetRow: number) =>
-  `${AR_SHEET}!A${sheetRow}:V${sheetRow}`;
+  `${AR_SHEET}!A${sheetRow}:W${sheetRow}`;
 
 export const AR_SCHEDULE_RANGE_FULL = `${AR_SCHEDULE_SHEET}!A:O`;
 export const AR_SCHEDULE_RANGE_DATA = `${AR_SCHEDULE_SHEET}!A2:O10000`;
@@ -76,6 +76,8 @@ export function arRowToRecord(row: string[]): ARRecord {
     createdAt: row[19] ?? "",
     updatedAt: row[20] ?? "",
     createdBy: row[21] ?? "",
+    // 無報價 B2B 合併請款：此 AR 涵蓋的訂製訂單（逗號分隔 orderId）
+    relatedOrderIds: (row[22] ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   };
 }
 
@@ -103,6 +105,7 @@ export function arRecordToRow(r: ARRecord): string[] {
     r.createdAt,
     r.updatedAt,
     r.createdBy,
+    (r.relatedOrderIds ?? []).join(","),
   ];
 }
 

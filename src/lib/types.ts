@@ -483,6 +483,8 @@ export interface ARRecord {
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+  /** 無報價 B2B 合併請款：此 AR 涵蓋的訂製訂單 orderId 清單 */
+  relatedOrderIds?: string[];
 }
 
 export interface ARScheduleDraft {

@@ -211,21 +211,95 @@ export function OrderListClient() {
 
   // 客戶彙總視窗：點客戶名開啟，彙整該客戶全部訂單＋總額/未收合計
   const [summaryClient, setSummaryClient] = useState<string | null>(null);
+  // 合併請款（無報價 B2B）：勾選未建 AR 的訂單 → 一張 AR
+  const [billingSelection, setBillingSelection] = useState<Set<string>>(new Set());
+  const [billingDueDate, setBillingDueDate] = useState("");
+  const [creatingBilling, setCreatingBilling] = useState(false);
 
-  // 應收帳款對照（versionId → AR）：顯示每張訂單的收款狀態
-  const [arByVersionId, setArByVersionId] = useState<Map<string, ARRecord>>(new Map());
   useEffect(() => {
-    fetch("/api/sheets/ar", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((json: { ars?: ARRecord[] }) => {
-        const map = new Map<string, ARRecord>();
-        for (const ar of json.ars ?? []) {
-          if (ar.versionId && ar.arStatus !== "cancelled") map.set(ar.versionId, ar);
+    // 開啟彙總視窗時重置勾選；到期日預設次月月底（月結常態）
+    setBillingSelection(new Set());
+    const now = new Date();
+    setBillingDueDate(new Date(now.getFullYear(), now.getMonth() + 2, 0).toLocaleDateString("sv-SE"));
+  }, [summaryClient]);
+
+  const handleCreateBilling = useCallback(async () => {
+    if (billingSelection.size === 0 || !billingDueDate) return;
+    setCreatingBilling(true);
+    try {
+      const res = await fetch("/api/sheets/ar/from-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: Array.from(billingSelection), dueDate: billingDueDate }),
+      });
+      const json = (await res.json()) as { ok: boolean; ar?: { arId: string }; error?: string };
+      if (!json.ok || !json.ar) throw new Error(json.error ?? "建立合併請款失敗");
+      alert(`已建立合併請款 ${json.ar.arId}（${billingSelection.size} 筆訂單）`);
+      setBillingSelection(new Set());
+      setArReloadTick((t) => t + 1);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "建立合併請款失敗");
+    } finally {
+      setCreatingBilling(false);
+    }
+  }, [billingSelection, billingDueDate]);
+
+  // 應收帳款對照：三層 join 用的索引
+  //   1. versionId 直連（單筆報價 AR）
+  //   2. versionId → 月結待出(已合併) → consolidatedArId（有報價的合併請款）
+  //   3. relatedOrderIds 含 orderId（無報價 B2B 合併請款）
+  const [arMaps, setArMaps] = useState<{
+    byVersion: Map<string, ARRecord>;
+    byId: Map<string, ARRecord>;
+    byOrder: Map<string, ARRecord>;
+    versionToConsolidated: Map<string, string>;
+  }>({ byVersion: new Map(), byId: new Map(), byOrder: new Map(), versionToConsolidated: new Map() });
+  const [arReloadTick, setArReloadTick] = useState(0);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/sheets/ar", { cache: "no-store" }).then((r) => r.json()) as Promise<{ ars?: ARRecord[] }>,
+      fetch("/api/sheets/ar/pending-monthly", { cache: "no-store" })
+        .then((r) => r.json())
+        .catch(() => ({}))as Promise<{ pending?: Array<{ versionId: string; consolidatedArId: string; status: string }> }>,
+    ])
+      .then(([arJson, pendingJson]) => {
+        const byVersion = new Map<string, ARRecord>();
+        const byId = new Map<string, ARRecord>();
+        const byOrder = new Map<string, ARRecord>();
+        for (const ar of arJson.ars ?? []) {
+          if (ar.arStatus === "cancelled") continue;
+          byId.set(ar.arId, ar);
+          if (ar.versionId) byVersion.set(ar.versionId, ar);
+          for (const oid of ar.relatedOrderIds ?? []) byOrder.set(oid, ar);
         }
-        setArByVersionId(map);
+        const versionToConsolidated = new Map<string, string>();
+        for (const p of pendingJson.pending ?? []) {
+          if (p.status === "consolidated" && p.versionId && p.consolidatedArId) {
+            versionToConsolidated.set(p.versionId, p.consolidatedArId);
+          }
+        }
+        setArMaps({ byVersion, byId, byOrder, versionToConsolidated });
       })
       .catch(() => {});
-  }, []);
+  }, [arReloadTick]);
+
+  // 訂單 → AR 解析（merged=true 表示合併請款，一張 AR 涵蓋多單）
+  const resolveOrderAr = useCallback(
+    (order: CustomOrder): { ar: ARRecord; merged: boolean } | null => {
+      if (order.versionId) {
+        const direct = arMaps.byVersion.get(order.versionId);
+        if (direct) return { ar: direct, merged: false };
+        const consolidatedId = arMaps.versionToConsolidated.get(order.versionId);
+        const viaMonthly = consolidatedId ? arMaps.byId.get(consolidatedId) : undefined;
+        if (viaMonthly) return { ar: viaMonthly, merged: true };
+      }
+      const viaOrders = arMaps.byOrder.get(order.orderId);
+      if (viaOrders) return { ar: viaOrders, merged: true };
+      return null;
+    },
+    [arMaps],
+  );
 
   // 列表直接改開票狀態：樂觀更新，失敗回滾（PUT 部分更新，只送 invoiceStatus）
   const handleInvoiceStatusChange = useCallback(
@@ -308,17 +382,23 @@ export function OrderListClient() {
     void fetchOrders(showArchived);
   }, [showArchived, fetchOrders]);
 
-  // 客戶彙總：該客戶全部訂單（目前載入範圍）＋總額/未收合計，全部由已載入資料計算
+  // 客戶彙總：該客戶全部訂單（目前載入範圍）＋總額/未收合計，全部由已載入資料計算。
+  // 合併請款 AR 涵蓋多單，未收合計以「不重複的 AR」加總避免重複計算。
   const clientSummary = useMemo(() => {
     if (!summaryClient) return null;
     const list = orders.filter((o) => o.clientName === summaryClient && o.status !== "cancelled");
     const totalQuoted = list.reduce((s, o) => s + (o.quotedAmount || 0), 0);
-    const outstanding = list.reduce((s, o) => {
-      const ar = o.versionId ? arByVersionId.get(o.versionId) : undefined;
-      return s + (ar?.outstandingAmount ?? 0);
-    }, 0);
+    const seenArIds = new Set<string>();
+    let outstanding = 0;
+    for (const o of list) {
+      const resolved = resolveOrderAr(o);
+      if (resolved && !seenArIds.has(resolved.ar.arId)) {
+        seenArIds.add(resolved.ar.arId);
+        outstanding += resolved.ar.outstandingAmount;
+      }
+    }
     return { list, totalQuoted, outstanding };
-  }, [summaryClient, orders, arByVersionId]);
+  }, [summaryClient, orders, resolveOrderAr]);
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
@@ -736,8 +816,8 @@ export function OrderListClient() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         {(() => {
-                          const ar = order.versionId ? arByVersionId.get(order.versionId) : undefined;
-                          if (!ar) {
+                          const resolved = resolveOrderAr(order);
+                          if (!resolved) {
                             return (
                               <span
                                 title="未建應收帳款"
@@ -745,14 +825,19 @@ export function OrderListClient() {
                               />
                             );
                           }
+                          const { ar, merged } = resolved;
                           const badge = AR_BADGE[ar.arStatus] ?? AR_BADGE.active;
                           return (
                             <button
                               onClick={() => router.push(`/receivables/${ar.arId}`)}
-                              title={`${badge.label} · 檢視應收帳款 ${ar.arId}`}
+                              title={`${badge.label}${merged ? "（合併請款）" : ""} · 檢視應收帳款 ${ar.arId}`}
                               className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-[var(--bg-hover)]"
                             >
-                              <span className={`inline-block h-2.5 w-2.5 rounded-full ${badge.dot}`} />
+                              <span className={`relative inline-block h-2.5 w-2.5 rounded-full ${badge.dot}`}>
+                                {merged && (
+                                  <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full border border-white bg-blue-500" />
+                                )}
+                              </span>
                             </button>
                           );
                         })()}
@@ -875,6 +960,7 @@ export function OrderListClient() {
             <table className="w-full text-sm">
               <thead className="bg-[var(--surface-2)] text-xs text-[var(--text-secondary)]">
                 <tr>
+                  <th className="w-px px-2 py-1.5" title="勾選未建 AR 的訂單以合併請款" />
                   <th className="px-3 py-1.5 text-left">工單編號</th>
                   <th className="px-3 py-1.5 text-left">訂製內容</th>
                   <th className="px-3 py-1.5 text-left">下單日</th>
@@ -885,15 +971,32 @@ export function OrderListClient() {
               </thead>
               <tbody>
                 {(clientSummary?.list ?? []).map((o) => {
-                  const ar = o.versionId ? arByVersionId.get(o.versionId) : undefined;
-                  const arBadge = ar ? (AR_BADGE[ar.arStatus] ?? AR_BADGE.active) : null;
+                  const resolved = resolveOrderAr(o);
+                  const arBadge = resolved ? (AR_BADGE[resolved.ar.arStatus] ?? AR_BADGE.active) : null;
                   const inv = INVOICE_STATUS_MAP[o.invoiceStatus] ?? INVOICE_STATUS_MAP.pending;
+                  const eligible = !resolved;
                   return (
                     <tr
                       key={o.orderId}
                       className="cursor-pointer border-t border-[var(--border)] hover:bg-[var(--bg-hover)]"
                       onClick={() => router.push(`/orders/${o.orderId}` as never)}
                     >
+                      <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          disabled={!eligible}
+                          checked={billingSelection.has(o.orderId)}
+                          title={eligible ? "納入合併請款" : "已有關聯應收帳款"}
+                          onChange={(e) => {
+                            setBillingSelection((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(o.orderId);
+                              else next.delete(o.orderId);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
                       <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-[var(--accent)]">
                         {o.orderNumber || o.orderId}
                       </td>
@@ -909,7 +1012,14 @@ export function OrderListClient() {
                       <td className="px-3 py-1.5 text-center" title={inv.label}>
                         <span className={`inline-block h-2.5 w-2.5 rounded-full ${inv.dot}`} />
                       </td>
-                      <td className="px-3 py-1.5 text-center" title={arBadge ? arBadge.label : "未建應收帳款"}>
+                      <td
+                        className="px-3 py-1.5 text-center"
+                        title={
+                          arBadge
+                            ? `${arBadge.label}${resolved?.merged ? "（合併請款）" : ""}`
+                            : "未建應收帳款"
+                        }
+                      >
                         {arBadge ? (
                           <span className={`inline-block h-2.5 w-2.5 rounded-full ${arBadge.dot}`} />
                         ) : (
@@ -922,6 +1032,32 @@ export function OrderListClient() {
               </tbody>
             </table>
           </div>
+          {billingSelection.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md bg-[var(--surface-2)] px-3 py-2 text-sm">
+              <span className="text-xs text-[var(--text-secondary)]">收款到期日</span>
+              <Input
+                type="date"
+                value={billingDueDate}
+                onChange={(e) => setBillingDueDate(e.target.value)}
+                className="h-8 w-36"
+              />
+              <Button
+                size="sm"
+                onClick={() => void handleCreateBilling()}
+                disabled={creatingBilling || !billingDueDate}
+                className="ml-auto"
+              >
+                {creatingBilling ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  `建立合併請款（${billingSelection.size} 筆 · $${(clientSummary?.list ?? [])
+                    .filter((o) => billingSelection.has(o.orderId))
+                    .reduce((s, o) => s + (o.quotedAmount || 0), 0)
+                    .toLocaleString()}）`
+                )}
+              </Button>
+            </div>
+          )}
           <DialogFooter>
             <Button
               variant="outline"
