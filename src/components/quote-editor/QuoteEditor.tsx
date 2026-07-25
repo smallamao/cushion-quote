@@ -80,6 +80,7 @@ import type {
   VersionStatus,
 } from "@/lib/types";
 import { buildSplitItemFields, buildSplitLineFields } from "@/lib/split-panel-metadata";
+import { QUOTE_NOTE_TEMPLATES } from "@/lib/quote-note-templates";
 import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPriceToTens, slugDate } from "@/lib/utils";
 import {
   buildPdfFileName,
@@ -3048,6 +3049,27 @@ export function QuoteEditor() {
 
       <div className="card-surface rounded-[var(--radius-lg)] px-6 py-4">
         <Label>補充說明</Label>
+        {/* 底稿：整組帶入後再刪減（沿用 Notion 底稿習慣）；已存在的行不重複帶入 */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-[var(--text-tertiary)]">帶入底稿：</span>
+          {QUOTE_NOTE_TEMPLATES.map((t) => (
+            <button
+              key={t.name}
+              type="button"
+              onClick={() =>
+                setDescription((prev) => {
+                  const existing = new Set(prev.split("\n").map((l) => l.trim()).filter(Boolean));
+                  const add = t.lines.filter((l) => !existing.has(l));
+                  if (add.length === 0) return prev;
+                  return [prev.trimEnd(), ...add].filter(Boolean).join("\n");
+                })
+              }
+              className="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              {t.name}
+            </button>
+          ))}
+        </div>
         <div className="mt-2 flex gap-4">
           <div className="flex-1">
             <Textarea
