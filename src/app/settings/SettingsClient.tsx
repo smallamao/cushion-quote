@@ -28,6 +28,7 @@ import { EquipmentCatalogPanel } from "@/components/equipment/EquipmentCatalogPa
 import { SuppliersManagementPanel } from "@/components/suppliers/SuppliersManagementPanel";
 import { UsersManagementPanel } from "@/components/users/UsersManagementPanel";
 import { DriversManagementPanel } from "@/components/settings/DriversManagementPanel";
+import { QuoteNoteTemplatesPanel } from "@/components/settings/QuoteNoteTemplatesPanel";
 import { MonthlyReportExportPanel } from "@/components/settings/MonthlyReportExportPanel";
 import { NotionOrdersExportPanel } from "@/components/settings/NotionOrdersExportPanel";
 
@@ -418,6 +419,15 @@ export function SettingsClient() {
               </div>
               <div className="px-6 py-4">
                 <TemplateManager />
+              </div>
+            </div>
+
+            <div className="card-surface rounded-[var(--radius-lg)] lg:col-span-2">
+              <div className="border-b border-[var(--border)] px-6 py-3">
+                <span className="text-sm font-medium">補充說明底稿</span>
+              </div>
+              <div className="px-6 py-4">
+                <QuoteNoteTemplatesPanel />
               </div>
             </div>
           </div>

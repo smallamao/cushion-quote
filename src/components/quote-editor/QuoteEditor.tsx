@@ -80,7 +80,7 @@ import type {
   VersionStatus,
 } from "@/lib/types";
 import { buildSplitItemFields, buildSplitLineFields } from "@/lib/split-panel-metadata";
-import { QUOTE_NOTE_TEMPLATES } from "@/lib/quote-note-templates";
+import { QUOTE_NOTE_TEMPLATES, type QuoteNoteTemplate } from "@/lib/quote-note-templates";
 import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPriceToTens, slugDate } from "@/lib/utils";
 import {
   buildPdfFileName,
@@ -644,6 +644,18 @@ export function QuoteEditor() {
   const [historyInitialItems, setHistoryInitialItems] = useState<FlexQuoteItem[]>(() => [createEmptyItem()]);
   const { state: items, setState: setItems, undo, redo, canUndo, canRedo } = useHistory<FlexQuoteItem[]>(historyInitialItems);
   const [description, setDescription] = useState("");
+  // 補充說明底稿：設定頁自助管理（Sheets），載入失敗時退回內建預設
+  const [noteTemplates, setNoteTemplates] = useState<QuoteNoteTemplate[]>(QUOTE_NOTE_TEMPLATES);
+  useEffect(() => {
+    fetch("/api/sheets/quote-note-templates", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json: { ok: boolean; templates?: QuoteNoteTemplate[] }) => {
+        if (json.ok && json.templates && json.templates.length > 0) {
+          setNoteTemplates(json.templates);
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [descriptionImageUrl, setDescriptionImageUrl] = useState("");
   const [descriptionImageUploading, setDescriptionImageUploading] = useState(false);
   const [descriptionImageError, setDescriptionImageError] = useState("");
@@ -3052,7 +3064,7 @@ export function QuoteEditor() {
         {/* 底稿：整組帶入後再刪減（沿用 Notion 底稿習慣）；已存在的行不重複帶入 */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-[var(--text-tertiary)]">帶入底稿：</span>
-          {QUOTE_NOTE_TEMPLATES.map((t) => (
+          {noteTemplates.map((t) => (
             <button
               key={t.name}
               type="button"
