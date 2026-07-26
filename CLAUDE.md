@@ -16,3 +16,17 @@
 ## 核心設計原則
 - **歷史不可變性**: 已儲存的歷史報價版本，單價不應受全域設定變動而自動重算。
 - **自動化優先**: 透過計算器輸入的品項應盡可能自動推算成本與售價。
+
+## Agent skills
+
+### Issue tracker
+
+Issues 與 PRD 存在 GitHub Issues（`smallamao/cushion-quote`），透過 `gh` CLI 操作。詳見 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用五個標準分流角色，標籤字串等於角色名稱。詳見 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+單一 context — root `CONTEXT.md` + `docs/adr/`。詳見 `docs/agents/domain.md`。
