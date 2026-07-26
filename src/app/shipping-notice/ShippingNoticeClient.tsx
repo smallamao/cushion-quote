@@ -494,21 +494,17 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
   }
 
   async function handleSaveDriver() {
-    if (!driverKey) {
-      alert("請先選擇司機");
-      return;
-    }
+    // 允許只改時間（不選司機也能更改）；未選司機 = 清除卡上的司機標籤
     setIsSaving(true);
     setSaveMsg("");
     try {
-      // Remove all active driver labels from card
-      for (const d of drivers) {
-        if (d.labelId && card.labels.some((l) => l.id === d.labelId)) {
-          await removeCardLabel(card.id, d.labelId);
-        }
-      }
-      // Add selected driver label
       const selected = drivers.find((d) => d.key === driverKey);
+      // 強制去重：無條件移除所有司機 label（不依賴可能過時的 card.labels），
+      // 避免連按「更改」殘留多個司機標籤；label 不在卡上時的 404 視為已移除。
+      for (const d of drivers) {
+        if (d.labelId) await removeCardLabel(card.id, d.labelId).catch(() => {});
+      }
+      // 加上目前選取的司機（未選則不加）
       if (selected?.labelId) await addCardLabel(card.id, selected.labelId);
       // Update due date if set
       if (shippingDatetime) {
@@ -536,25 +532,29 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
 
   function handleOutput(type: "shipping" | "driver" | "back" | "cleaning", timeRangeHours: 1 | 2 = 2) {
     const opts = getOpts(timeRangeHours);
+    // 用日期選擇器的即時值覆蓋 card.due，讓「更改」後不必重新「查詢」也能吐出最新出貨時間
+    const effectiveCard = shippingDatetime
+      ? { ...card, due: new Date(shippingDatetime).toISOString() }
+      : card;
     let content: string;
     let title: string;
     switch (type) {
       case "shipping":
         title = `排程出貨簡訊 (${timeRangeHours}hr)`;
-        content = buildShippingMsg(card, customFields, opts);
+        content = buildShippingMsg(effectiveCard, customFields, opts);
         setResult({ title, content, onCopied: onShippingCopied });
         return;
       case "driver":
         title = "司機確認單";
-        content = buildShippingMsg(card, customFields, { ...opts, isDriverConfirm: true });
+        content = buildShippingMsg(effectiveCard, customFields, { ...opts, isDriverConfirm: true });
         break;
       case "back":
         title = "載回貨趟通知";
-        content = buildShippingMsg(card, customFields, { ...opts, isBackShipping: true });
+        content = buildShippingMsg(effectiveCard, customFields, { ...opts, isBackShipping: true });
         break;
       case "cleaning":
         title = "到府清潔通知";
-        content = buildShippingMsg(card, customFields, { ...opts, isCleaning: true });
+        content = buildShippingMsg(effectiveCard, customFields, { ...opts, isCleaning: true });
         break;
     }
     setResult({ title, content });
@@ -577,7 +577,7 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
           {drivers.map((d) => (
             <button
               key={d.key}
-              onClick={() => setDriverKey(d.key)}
+              onClick={() => setDriverKey((prev) => (prev === d.key ? "" : d.key))}
               className={[
                 "rounded-full px-3 py-1 text-xs transition-colors",
                 driverKey === d.key
