@@ -8,7 +8,6 @@ const DEFAULT_DRIVERS: DriverRecord[] = [
   { key: "shin", title: "阿信 (兩人）[BXH-6828]", confirmTitle: "阿信哥～",  phoneNumber: "0958640520",              labelId: "5ccbe7e691d0c2ddc5263071", active: true },
   { key: "ya",   title: "葉先生 (回頭車)",         confirmTitle: "葉先生",    phoneNumber: "0933468058 / 0928338272", labelId: "5d959bab4e385d7900fe6ac2", active: true },
   { key: "fu",   title: "阿富",                   confirmTitle: "阿富～",    phoneNumber: "0953123527",              labelId: "5f6aa9adc159722ed25e4708", active: true },
-  { key: "hang", title: "志航",                   confirmTitle: "",          phoneNumber: "0922898816",              labelId: "5f7a80fb0496ea8a2d92b045", active: true },
   { key: "jian", title: "簡先生",                 confirmTitle: "簡大哥～",  phoneNumber: "0910347260",              labelId: "5fac0898ecc96e14517bbf8e", active: true },
 ];
 const RANGE_FULL = `${SHEET}!A:F`;

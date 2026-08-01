@@ -112,6 +112,5 @@ export const DRIVER_LIST: DriverInfo[] = [
   { key: "fan",  title: "范先生 [BFR-7003]",        confirmTitle: "范大哥～",  phoneNumber: "0925616827", labelId: TRELLO.LABELS.DRIVER_FAN },
   { key: "ya",   title: "葉先生 (回頭車)",          confirmTitle: "葉先生",    phoneNumber: "0933468058 / 0928338272", labelId: TRELLO.LABELS.DRIVER_YA },
   { key: "fu",   title: "阿富",                    confirmTitle: "阿富～",    phoneNumber: "0953123527", labelId: TRELLO.LABELS.DRIVER_FU },
-  { key: "hang", title: "志航",                    confirmTitle: "",          phoneNumber: "0922898816", labelId: TRELLO.LABELS.DRIVER_HANG },
   { key: "jian", title: "簡先生",                  confirmTitle: "簡大哥～",  phoneNumber: "0910347260", labelId: TRELLO.LABELS.DRIVER_JIAN },
 ];
