@@ -228,6 +228,10 @@ const LS_PRODUCTION_DATE = "cq-production-date";
 
 const QUICK_TIMES = ["10:00", "12:00", "14:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
 
+// 卡片尚未指定司機時，司機選單預設選取的司機 key（對應「司機資料」表 A 欄）。
+// "shin" = 阿信（兩人車，最常派）。要換預設司機只改這個值即可。此預設仍可點擊取消。
+const DEFAULT_DRIVER_KEY = "shin";
+
 const TRELLO_LABEL_COLOR_STYLES: Record<string, { backgroundColor: string; color: string }> = {
   green: { backgroundColor: "#dcfff1", color: "#216e4e" },
   yellow: { backgroundColor: "#fef7c0", color: "#7f5f01" },
@@ -436,13 +440,23 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
     return "";
   });
 
-  // Pre-select driver from card labels
+  // 每張卡「只初始化一次」司機選取：優先用卡上既有的司機 label，沒有則預設阿信。
+  // 用 card.id 當守衛，避免之後 drivers 陣列重新產生導致 effect 重跑、把使用者
+  // 手動「點擊取消」的狀態又重設回預設（取消後就維持不設司機）。
+  const initializedDriverForCard = useRef<string | null>(null);
   useEffect(() => {
-    for (const driver of drivers) {
-      if (card.labels.some((l) => l.id === driver.labelId)) {
-        setDriverKey(driver.key);
-        break;
-      }
+    if (drivers.length === 0) return; // 等司機名冊載入完成再初始化
+    if (initializedDriverForCard.current === card.id) return;
+    initializedDriverForCard.current = card.id;
+    const fromCard = drivers.find(
+      (d) => d.labelId && card.labels.some((l) => l.id === d.labelId),
+    );
+    if (fromCard) {
+      setDriverKey(fromCard.key);
+    } else if (drivers.some((d) => d.key === DEFAULT_DRIVER_KEY)) {
+      setDriverKey(DEFAULT_DRIVER_KEY); // 卡片無司機 → 預設阿信（仍可點擊取消）
+    } else {
+      setDriverKey("");
     }
   }, [card, drivers]);
 
