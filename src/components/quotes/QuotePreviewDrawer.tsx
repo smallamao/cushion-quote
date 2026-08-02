@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, X } from "lucide-react";
+import { ExternalLink, Loader2, Maximize2, X } from "lucide-react";
 
 import type { PurchaseOrder, QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
+import { generatePDFBlob, buildPdfFileName, type QuotePDFProps } from "@/components/pdf/QuotePDF";
+import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
+import { toFlexItemsFromVersion } from "@/lib/quote-mappers";
+import { useSettings } from "@/hooks/useSettings";
+import { DEFAULT_TERMS } from "@/lib/constants";
 
 interface Props {
   versionId: string | null;
@@ -39,10 +44,17 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
   const [tab, setTab] = useState<"quote" | "purchases">("quote");
   const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
+  const { settings, loading: settingsLoading } = useSettings();
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(false);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
 
   useEffect(() => {
     setTab("quote");
     setPurchases([]);
+    setPdfModalOpen(false);
   }, [versionId]);
 
   useEffect(() => {
@@ -85,6 +97,55 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       });
     return () => { cancelled = true; };
   }, [versionId]);
+
+  // 產生報價單 PDF（用 version + lines + settings 組 QuotePDFProps），供底部內嵌預覽
+  useEffect(() => {
+    if (!version || settingsLoading) return;
+    let cancelled = false;
+    setPdfLoading(true);
+    setPdfError(false);
+    setPdfBlob(null);
+    const props: QuotePDFProps = {
+      quoteId: version.quoteId,
+      quoteDate: version.quoteDate || new Date().toISOString().slice(0, 10),
+      validityDays: settings.quoteValidityDays,
+      validUntil: version.validUntil || undefined,
+      pdfMode: "a4",
+      client: {
+        companyName: version.clientNameSnapshot || "",
+        contactName: version.contactNameSnapshot || "",
+        phone: version.clientPhoneSnapshot || "",
+        email: "",
+        address: version.projectAddressSnapshot || "",
+        taxId: "",
+      },
+      projectName: version.projectNameSnapshot || "",
+      quoteName: version.quoteNameSnapshot || undefined,
+      channel: version.channel || "retail",
+      items: toFlexItemsFromVersion(lines),
+      description: version.publicDescription || "",
+      descriptionImageUrl: version.descriptionImageUrl || undefined,
+      includeTax: (version.taxRate ?? 0) > 0,
+      subtotal: version.subtotalBeforeTax,
+      tax: version.taxAmount,
+      total: version.totalAmount,
+      termsTemplate: (version.termsTemplate || DEFAULT_TERMS).replace(/(\d+\.)\s/g, "$1 "),
+      settings,
+    };
+    void generatePDFBlob(props)
+      .then((blob) => { if (!cancelled) setPdfBlob(blob); })
+      .catch(() => { if (!cancelled) setPdfError(true); })
+      .finally(() => { if (!cancelled) setPdfLoading(false); });
+    return () => { cancelled = true; };
+  }, [version, lines, settings, settingsLoading]);
+
+  // 內嵌預覽用的 object URL
+  useEffect(() => {
+    if (!pdfBlob) { setPdfUrl(null); return; }
+    const url = URL.createObjectURL(pdfBlob);
+    setPdfUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pdfBlob]);
 
   const open = Boolean(versionId);
   const status = version ? (STATUS_MAP[version.versionStatus] ?? STATUS_MAP.draft) : null;
@@ -315,12 +376,65 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
                   含稅合計 <span className="font-mono">{formatCurrency(version.totalAmount)}</span>
                 </div>
               </div>
+
+              {/* 報價單 PDF 預覽（底部）*/}
+              <div className="space-y-2 border-t border-[var(--border)] pt-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-[var(--text-secondary)]">報價單</div>
+                  {pdfBlob && (
+                    <button
+                      type="button"
+                      onClick={() => setPdfModalOpen(true)}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" />
+                      放大 / 下載
+                    </button>
+                  )}
+                </div>
+                {pdfLoading && (
+                  <div className="flex items-center justify-center gap-2 rounded-lg border border-[var(--border)] py-10 text-xs text-[var(--text-tertiary)]">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    產生報價單中…
+                  </div>
+                )}
+                {!pdfLoading && pdfError && (
+                  <p className="rounded-lg border border-[var(--border)] py-6 text-center text-xs text-[var(--text-tertiary)]">
+                    報價單產生失敗
+                  </p>
+                )}
+                {!pdfLoading && pdfUrl && (
+                  <div
+                    onClick={() => setPdfModalOpen(true)}
+                    title="點擊放大"
+                    className="w-full cursor-pointer overflow-hidden rounded-lg border border-[var(--border)]"
+                  >
+                    <iframe
+                      src={`${pdfUrl}#toolbar=0&view=FitH`}
+                      title="報價單預覽"
+                      className="pointer-events-none h-[560px] w-full bg-white"
+                    />
+                  </div>
+                )}
+              </div>
             </>
           )}
             </>
           )}
         </div>
       </div>
+
+      <PDFPreviewModal
+        open={pdfModalOpen}
+        onOpenChange={setPdfModalOpen}
+        pdfBlob={pdfBlob}
+        fileName={buildPdfFileName({
+          quoteId: version?.quoteId ?? "",
+          projectName: version?.projectNameSnapshot ?? "",
+          quoteName: version?.quoteNameSnapshot ?? "",
+        })}
+        loading={pdfLoading}
+      />
     </>
   );
 }

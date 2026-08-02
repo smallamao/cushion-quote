@@ -79,7 +79,8 @@ import type {
   VersionLineRecord,
   VersionStatus,
 } from "@/lib/types";
-import { buildSplitItemFields, buildSplitLineFields } from "@/lib/split-panel-metadata";
+import { buildSplitLineFields } from "@/lib/split-panel-metadata";
+import { toFlexItemsFromVersion } from "@/lib/quote-mappers";
 import { QUOTE_NOTE_TEMPLATES, type QuoteNoteTemplate } from "@/lib/quote-note-templates";
 import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPriceToTens, slugDate } from "@/lib/utils";
 import {
@@ -264,26 +265,6 @@ function parseCommissionPartners(raw: string): CommissionPartnerSplit[] {
   } catch {
     return [];
   }
-}
-
-function toFlexItemsFromVersion(lines: VersionLineRecord[]): FlexQuoteItem[] {
-  return lines.map((line) => ({
-    id: crypto.randomUUID(),
-    name: line.itemName,
-    spec: line.spec,
-    qty: line.qty || 1,
-    unit: line.unit,
-    unitPrice: line.unitPrice,
-    amount: line.lineAmount,
-    isCostItem: line.isCostItem,
-    notes: line.notes,
-    imageUrl: line.imageUrl,
-    specImageUrl: line.specImageUrl,
-    materialId: line.materialId,
-    autoPriced: false,
-    costPerUnit: line.estimatedUnitCost,
-    ...buildSplitItemFields(line),
-  }));
 }
 
 interface SortableQuoteItemRowProps {
