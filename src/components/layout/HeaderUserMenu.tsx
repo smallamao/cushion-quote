@@ -93,7 +93,7 @@ function NotificationPanel({
 export function HeaderUserMenu() {
   const { user } = useCurrentUser();
   const { unreadCount: replyUnread, items: replyItems, markAsRead: markReplyRead } = useUnreadReplies();
-  const { unread: notifUnread, markAsRead: markNotifRead } = useAppNotifications();
+  const { unread: notifUnread, markAsRead: markNotifRead } = useAppNotifications(user?.role === "admin");
   const totalUnread = replyUnread + notifUnread.length;
   const entries: PanelEntry[] = [
     ...notifUnread.map((n) => ({ id: `n-${n.id}`, title: n.title, body: n.body, link: n.link, time: n.createdAt })),

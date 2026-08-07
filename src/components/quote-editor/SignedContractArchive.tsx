@@ -208,7 +208,7 @@ export function SignedContractArchive({
                   className="group relative rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-2"
                 >
                   <a
-                    href={url}
+                    href={isPdf ? `/api/pdf-proxy?u=${encodeURIComponent(url)}` : url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block"

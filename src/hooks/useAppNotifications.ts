@@ -18,7 +18,7 @@ export interface AppNotifItem {
  * 後台通用通知（目前：報價單線上簽署）。已讀狀態存 localStorage（per device），
  * 未讀＝ createdAt 晚於上次已讀時間。首次無紀錄時以「現在」為基準，避免歷史全被標未讀。
  */
-export function useAppNotifications() {
+export function useAppNotifications(enabled = true) {
   const [items, setItems] = useState<AppNotifItem[]>([]);
   const [lastRead, setLastRead] = useState<string>("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -42,6 +42,7 @@ export function useAppNotifications() {
   }, []);
 
   const fetchItems = useCallback(async () => {
+    if (!enabled) return;
     try {
       const res = await fetch("/api/sheets/notifications", { cache: "no-store" });
       const json = (await res.json()) as { ok: boolean; items?: AppNotifItem[] };
@@ -49,7 +50,7 @@ export function useAppNotifications() {
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [enabled]);
 
   const markAsRead = useCallback(() => {
     const now = new Date().toISOString();
@@ -62,6 +63,7 @@ export function useAppNotifications() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     void fetchItems();
     function startPolling() {
       if (intervalRef.current) return;
@@ -87,7 +89,7 @@ export function useAppNotifications() {
         intervalRef.current = null;
       }
     };
-  }, [fetchItems]);
+  }, [fetchItems, enabled]);
 
   const unread = items.filter((i) => i.createdAt > lastRead);
   return { items, unread, unreadCount: unread.length, markAsRead };
