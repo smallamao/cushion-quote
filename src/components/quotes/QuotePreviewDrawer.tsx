@@ -50,11 +50,16 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [signLink, setSignLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     setTab("quote");
     setPurchases([]);
     setPdfModalOpen(false);
+    setSignLink(null);
+    setLinkCopied(false);
   }, [versionId]);
 
   useEffect(() => {
@@ -146,6 +151,46 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
     setPdfUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [pdfBlob]);
+
+  // 產生客戶線上簽署連結：把已產生的報價單 PDF 當「待簽 PDF」上傳，再建立 token 連結
+  async function handleGenerateSignLink() {
+    if (!version || !pdfBlob || linkBusy) return;
+    setLinkBusy(true);
+    try {
+      const fileName = buildPdfFileName({
+        quoteId: version.quoteId,
+        projectName: version.projectNameSnapshot,
+        quoteName: version.quoteNameSnapshot,
+      });
+      const fd = new FormData();
+      fd.append("file", new File([pdfBlob], fileName, { type: "application/pdf" }));
+      fd.append("folder", "signing-unsigned");
+      const up = await fetch("/api/upload", { method: "POST", body: fd });
+      const upJson = (await up.json()) as { ok: boolean; url?: string; error?: string };
+      if (!upJson.ok || !upJson.url) throw new Error(upJson.error ?? "待簽 PDF 上傳失敗");
+
+      const res = await fetch("/api/sheets/signing-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionId: version.versionId, unsignedPdfUrl: upJson.url }),
+      });
+      const json = (await res.json()) as { ok: boolean; token?: string; error?: string };
+      if (!json.ok || !json.token) throw new Error(json.error ?? "建立簽署連結失敗");
+
+      const url = `${window.location.origin}/sign/${json.token}`;
+      setSignLink(url);
+      try {
+        await navigator.clipboard.writeText(url);
+        setLinkCopied(true);
+      } catch {
+        setLinkCopied(false);
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "產生簽署連結失敗");
+    } finally {
+      setLinkBusy(false);
+    }
+  }
 
   const open = Boolean(versionId);
   const status = version ? (STATUS_MAP[version.versionStatus] ?? STATUS_MAP.draft) : null;
@@ -414,6 +459,41 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
                       title="報價單預覽"
                       className="pointer-events-none h-[560px] w-full bg-white"
                     />
+                  </div>
+                )}
+
+                {/* 產生客戶線上簽署連結 */}
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateSignLink()}
+                  disabled={!pdfBlob || linkBusy}
+                  className="w-full rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
+                >
+                  {linkBusy ? "產生中…" : "產生線上簽署連結"}
+                </button>
+                {signLink && (
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-2 text-[11px]">
+                    <div className="mb-1 text-[var(--text-secondary)]">
+                      {linkCopied ? "✓ 已複製，貼給客戶即可簽署：" : "簽署連結（複製給客戶）："}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        readOnly
+                        value={signLink}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--bg-input)] px-2 py-1 font-mono text-[10px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(signLink);
+                          setLinkCopied(true);
+                        }}
+                        className="shrink-0 rounded bg-[var(--bg-hover)] px-2 py-1 text-[var(--text-secondary)]"
+                      >
+                        複製
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

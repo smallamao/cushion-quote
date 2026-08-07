@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 
 import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
@@ -41,35 +42,45 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
+  // 客戶簽署頁（/sign）不需登入、不套營運後台的側邊欄/頁首，直接裸版呈現。
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const bare = pathname === "/sign" || pathname.startsWith("/sign/");
+
   return (
     <html lang="zh-Hant" className={dmSans.variable} suppressHydrationWarning>
       <body>
-        {/* Runs before React hydrates to avoid sidebar-width flash */}
-        <script
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var c=localStorage.getItem('cq-sidebar-collapsed');document.documentElement.style.setProperty('--sidebar-width',c==='true'?'56px':'220px')}catch(e){}})()`,
-          }}
-        />
-        <div className="app-shell">
-          <Sidebar />
-          <div className="main-area">
-            <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 md:px-8">
-              <div className="flex items-center">
-                <MobileDrawer />
-                <div className="text-sm font-semibold text-[var(--text-primary)]">
-                  馬鈴薯沙發
-                </div>
+        {bare ? (
+          children
+        ) : (
+          <>
+            {/* Runs before React hydrates to avoid sidebar-width flash */}
+            <script
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{
+                __html: `(function(){try{var c=localStorage.getItem('cq-sidebar-collapsed');document.documentElement.style.setProperty('--sidebar-width',c==='true'?'56px':'220px')}catch(e){}})()`,
+              }}
+            />
+            <div className="app-shell">
+              <Sidebar />
+              <div className="main-area">
+                <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 md:px-8">
+                  <div className="flex items-center">
+                    <MobileDrawer />
+                    <div className="text-sm font-semibold text-[var(--text-primary)]">
+                      馬鈴薯沙發
+                    </div>
+                  </div>
+                  <HeaderUserMenu />
+                </header>
+                <main className="page-container">{children}</main>
               </div>
-              <HeaderUserMenu />
-            </header>
-            <main className="page-container">{children}</main>
-          </div>
-        </div>
-        <PWAUpdateBanner />
+            </div>
+            <PWAUpdateBanner />
+          </>
+        )}
       </body>
     </html>
   );

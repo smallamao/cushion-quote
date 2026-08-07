@@ -41,6 +41,10 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/login" ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/linebot") ||
+    // 客戶線上簽署頁與其公開 API（token 為唯一憑證，免登入）
+    pathname === "/sign" ||
+    pathname.startsWith("/sign/") ||
+    pathname.startsWith("/api/public/") ||
     // init & migrate 改由 x-init-secret header 保護，不列為公開路徑
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
