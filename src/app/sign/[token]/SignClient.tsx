@@ -122,7 +122,7 @@ export function SignClient({ token }: { token: string }) {
             href={doneUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-5 inline-block rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-700"
+            className="mt-5 inline-block rounded-lg bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
           >
             下載已簽署合約 PDF
           </a>
@@ -172,7 +172,14 @@ export function SignClient({ token }: { token: string }) {
           <div className="border-b border-gray-100 px-4 py-2 text-xs font-medium text-gray-500">
             報價單內容（請確認後於下方簽名）
           </div>
-          <iframe src={view.unsignedPdfUrl} title="報價單" className="h-[60vh] w-full bg-white" />
+          <div className="max-h-[70vh] overflow-y-auto bg-gray-100">
+            {view.unsignedImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={view.unsignedImageUrl} alt="報價單" className="block w-full" />
+            ) : (
+              <iframe src={view.unsignedPdfUrl} title="報價單" className="h-[60vh] w-full bg-white" />
+            )}
+          </div>
           <div className="border-t border-gray-100 px-4 py-2 text-center">
             <a
               href={view.unsignedPdfUrl}
@@ -180,7 +187,7 @@ export function SignClient({ token }: { token: string }) {
               rel="noopener noreferrer"
               className="text-xs text-gray-500 underline"
             >
-              看不到報價單？點此另開
+              另開完整報價單 PDF
             </a>
           </div>
         </div>

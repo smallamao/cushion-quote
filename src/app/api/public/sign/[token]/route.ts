@@ -61,6 +61,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   const view: PublicSigningView = {
     status,
     unsignedPdfUrl: link.unsignedPdfUrl,
+    unsignedImageUrl: link.unsignedImageUrl,
     quoteId: link.quoteId,
     clientName,
     total,
@@ -81,7 +82,8 @@ async function uploadSignedPdf(bytes: Uint8Array, quoteId: string): Promise<stri
       {
         resource_type: "raw",
         folder: "signed-contracts",
-        public_id: `signed_${quoteId}_${Date.now()}`,
+        // 帶 .pdf 副檔名，Cloudinary raw 才會以 application/pdf 遞送，瀏覽器點開才不會空白
+        public_id: `signed_${quoteId}_${Date.now()}.pdf`,
       },
       (err, result) => {
         if (err || !result) reject(err ?? new Error("上傳失敗"));

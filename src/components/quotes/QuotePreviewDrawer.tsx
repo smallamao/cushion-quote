@@ -7,7 +7,7 @@ import { ExternalLink, Loader2, Maximize2, X } from "lucide-react";
 import type { PurchaseOrder, QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
-import { generatePDFBlob, buildPdfFileName, type QuotePDFProps } from "@/components/pdf/QuotePDF";
+import { generatePDFBlob, generateJpgBlob, buildPdfFileName, type QuotePDFProps } from "@/components/pdf/QuotePDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { toFlexItemsFromVersion } from "@/lib/quote-mappers";
 import { useSettings } from "@/hooks/useSettings";
@@ -53,6 +53,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
   const [linkBusy, setLinkBusy] = useState(false);
   const [signLink, setSignLink] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [pdfPropsForLink, setPdfPropsForLink] = useState<QuotePDFProps | null>(null);
 
   useEffect(() => {
     setTab("quote");
@@ -60,6 +61,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
     setPdfModalOpen(false);
     setSignLink(null);
     setLinkCopied(false);
+    setPdfPropsForLink(null);
   }, [versionId]);
 
   useEffect(() => {
@@ -137,6 +139,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       termsTemplate: (version.termsTemplate || DEFAULT_TERMS).replace(/(\d+\.)\s/g, "$1 "),
       settings,
     };
+    setPdfPropsForLink(props);
     void generatePDFBlob(props)
       .then((blob) => { if (!cancelled) setPdfBlob(blob); })
       .catch(() => { if (!cancelled) setPdfError(true); })
@@ -169,10 +172,26 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       const upJson = (await up.json()) as { ok: boolean; url?: string; error?: string };
       if (!upJson.ok || !upJson.url) throw new Error(upJson.error ?? "待簽 PDF 上傳失敗");
 
+      // 另產一張長圖給客戶頁顯示（iOS Safari 的 iframe 不吃 PDF）；失敗則客戶頁回退用 PDF
+      let unsignedImageUrl = "";
+      if (pdfPropsForLink) {
+        try {
+          const jpg = await generateJpgBlob(pdfPropsForLink);
+          const fdImg = new FormData();
+          fdImg.append("file", new File([jpg], fileName.replace(/\.pdf$/i, ".jpg"), { type: "image/jpeg" }));
+          fdImg.append("folder", "signing-unsigned");
+          const upImg = await fetch("/api/upload", { method: "POST", body: fdImg });
+          const upImgJson = (await upImg.json()) as { ok: boolean; url?: string };
+          if (upImgJson.ok && upImgJson.url) unsignedImageUrl = upImgJson.url;
+        } catch {
+          /* 回退 PDF 顯示 */
+        }
+      }
+
       const res = await fetch("/api/sheets/signing-links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ versionId: version.versionId, unsignedPdfUrl: upJson.url }),
+        body: JSON.stringify({ versionId: version.versionId, unsignedPdfUrl: upJson.url, unsignedImageUrl }),
       });
       const json = (await res.json()) as { ok: boolean; token?: string; error?: string };
       if (!json.ok || !json.token) throw new Error(json.error ?? "建立簽署連結失敗");

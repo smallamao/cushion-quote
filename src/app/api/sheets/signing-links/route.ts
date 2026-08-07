@@ -11,6 +11,7 @@ import { getVersionRows, isoNow, versionRowToRecord } from "../_v2-utils";
 interface CreateBody {
   versionId: string;
   unsignedPdfUrl: string;
+  unsignedImageUrl?: string;
   expiresInDays?: number;
 }
 
@@ -48,6 +49,7 @@ export async function POST(request: Request) {
       caseId: version.caseId,
       status: "pending",
       unsignedPdfUrl: body.unsignedPdfUrl,
+      unsignedImageUrl: body.unsignedImageUrl ?? "",
       createdAt: now,
       createdBy: "",
       expiresAt,

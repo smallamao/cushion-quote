@@ -10,6 +10,8 @@ export interface SigningLink {
   status: SigningLinkStatus;
   /** 待簽的報價單 PDF（Cloudinary 網址） */
   unsignedPdfUrl: string;
+  /** 待簽報價單的長圖（給客戶頁 <img> 顯示，iOS iframe 不吃 PDF）；空＝回退 PDF */
+  unsignedImageUrl: string;
   createdAt: string;
   createdBy: string;
   /** ISO 到期時間；空字串＝不過期 */
@@ -33,6 +35,7 @@ export function isSigningLinkExpired(link: Pick<SigningLink, "expiresAt">, nowMs
 export interface PublicSigningView {
   status: SigningLinkStatus;
   unsignedPdfUrl: string;
+  unsignedImageUrl: string;
   quoteId: string;
   clientName: string;
   total: number;

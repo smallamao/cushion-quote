@@ -4,14 +4,14 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import type { SigningLink, SigningLinkStatus } from "@/lib/signing-types";
 
 const SHEET = "簽署連結";
-const RANGE_FULL = `${SHEET}!A:N`;
-const RANGE_DATA = `${SHEET}!A2:N`;
+const RANGE_FULL = `${SHEET}!A:O`;
+const RANGE_DATA = `${SHEET}!A2:O`;
 const RANGE_TOKENS = `${SHEET}!A2:A`;
 
 const SHEET_HEADERS = [
   "token", "versionId", "quoteId", "caseId", "status", "unsignedPdfUrl",
   "createdAt", "createdBy", "expiresAt", "signedAt", "signerName", "signerIp",
-  "signerUserAgent", "signedPdfUrl",
+  "signerUserAgent", "signedPdfUrl", "unsignedImageUrl",
 ];
 
 function rowToLink(row: string[]): SigningLink {
@@ -30,6 +30,7 @@ function rowToLink(row: string[]): SigningLink {
     signerIp:        row[11] ?? "",
     signerUserAgent: row[12] ?? "",
     signedPdfUrl:    row[13] ?? "",
+    unsignedImageUrl: row[14] ?? "",
   };
 }
 
@@ -38,7 +39,7 @@ function linkToRow(link: SigningLink): string[] {
     link.token, link.versionId, link.quoteId, link.caseId, link.status,
     link.unsignedPdfUrl, link.createdAt, link.createdBy, link.expiresAt,
     link.signedAt, link.signerName, link.signerIp, link.signerUserAgent,
-    link.signedPdfUrl,
+    link.signedPdfUrl, link.unsignedImageUrl,
   ];
 }
 
@@ -116,7 +117,7 @@ export async function updateSigningLink(
   const updated: SigningLink = { ...current, ...patch };
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${SHEET}!A${rowNumber}:N${rowNumber}`,
+    range: `${SHEET}!A${rowNumber}:O${rowNumber}`,
     valueInputOption: "RAW",
     requestBody: { values: [linkToRow(updated)] },
   });
