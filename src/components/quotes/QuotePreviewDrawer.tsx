@@ -196,7 +196,8 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       const json = (await res.json()) as { ok: boolean; token?: string; error?: string };
       if (!json.ok || !json.token) throw new Error(json.error ?? "建立簽署連結失敗");
 
-      const url = `${window.location.origin}/sign/${json.token}`;
+      // openExternalBrowser=1：讓客戶在 LINE 內點連結時改用手機原生瀏覽器開啟
+      const url = `${window.location.origin}/sign/${json.token}?openExternalBrowser=1`;
       setSignLink(url);
       try {
         await navigator.clipboard.writeText(url);

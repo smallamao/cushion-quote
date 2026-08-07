@@ -51,6 +51,7 @@ export function SignClient({ token }: { token: string }) {
   const [submitError, setSubmitError] = useState("");
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [signModalOpen, setSignModalOpen] = useState(false);
+  const [inAppBrowser, setInAppBrowser] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +76,10 @@ export function SignClient({ token }: { token: string }) {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    setInAppBrowser(/Line|FBAN|FBAV|FB_IAB|Instagram/i.test(navigator.userAgent));
+  }, []);
 
   async function submit() {
     if (!signatureData || !agreed || submitting) return;
@@ -151,6 +156,11 @@ export function SignClient({ token }: { token: string }) {
   return (
     <Shell>
       <div className="space-y-4">
+        {inAppBrowser && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            ⚠️ 目前用 App 內建瀏覽器開啟，簽名可能不順。請點右上角「⋯」選「用預設瀏覽器開啟」，或改用 Safari／Chrome 開此連結。
+          </div>
+        )}
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="text-sm text-gray-500">

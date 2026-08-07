@@ -2247,7 +2247,8 @@ export function QuoteEditor() {
       });
       const json = (await res.json()) as { ok: boolean; token?: string; error?: string };
       if (!json.ok || !json.token) throw new Error(json.error ?? "\u5EFA\u7ACB\u7C3D\u7F72\u9023\u7D50\u5931\u6557");
-      const url = `${window.location.origin}/sign/${json.token}`;
+      // openExternalBrowser=1：讓客戶在 LINE 內點連結時改用手機原生瀏覽器開啟
+      const url = `${window.location.origin}/sign/${json.token}?openExternalBrowser=1`;
       await navigator.clipboard.writeText(url).catch(() => {});
       setSignLinkUrl(url);
     } catch (e) {
