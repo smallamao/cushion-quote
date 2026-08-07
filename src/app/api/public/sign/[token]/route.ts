@@ -118,8 +118,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (!client) return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
 
   try {
-    const signaturePng = new Uint8Array(Buffer.from(body.signatureDataUrl.split(",")[1] ?? "", "base64"));
-
     const pdfRes = await fetch(link.unsignedPdfUrl);
     if (!pdfRes.ok) throw new Error("待簽 PDF 讀取失敗");
     const unsignedPdf = new Uint8Array(await pdfRes.arrayBuffer());
@@ -130,7 +128,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const signedAtDisplay = formatTaipei(nowIso);
     const signerName = (body.signerName ?? "").trim();
 
-    const signedPdf = await bakeSignedPdf(unsignedPdf, signaturePng, {
+    const signedPdf = await bakeSignedPdf(unsignedPdf, {
+      signatureDataUrl: body.signatureDataUrl,
       signerName,
       signedAtDisplay,
       ip,
