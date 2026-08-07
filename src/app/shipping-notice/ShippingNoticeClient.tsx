@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation, RefreshCw, Scissors, MessageSquare, User, CalendarDays, CalendarClock } from "lucide-react";
+import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation, RefreshCw, Scissors, MessageSquare, User, CalendarDays, CalendarClock, CalendarRange } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -2507,6 +2507,9 @@ export function ShippingNoticeClient() {
   // 頂部快速鍵：更改排程日期／出貨日期
   const [dateEditor, setDateEditor] = useState<{ type: "schedule" | "due"; cardId: string; value: string } | null>(null);
   const [savingDate, setSavingDate] = useState(false);
+  // 頂部快速鍵：同時更改排程日與出貨日（避免改完排程日又要另外開視窗改出貨日）
+  const [comboEditor, setComboEditor] = useState<{ cardId: string; scheduleValue: string; dueValue: string } | null>(null);
+  const [savingCombo, setSavingCombo] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Skip the first search effect trigger if state was restored from sessionStorage
   const skipSearchRef = useRef<boolean>(
@@ -2726,6 +2729,67 @@ export function ShippingNoticeClient() {
     }
   }
 
+  // 開啟「同時更改排程日與出貨日」小視窗，帶入兩者現有值
+  async function openComboEditor() {
+    const card = targetCard;
+    if (!card || quickBusy) return;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    // 出貨日 (card.due) — 有值才帶入，datetime
+    let dueValue = "";
+    if (card.due) {
+      const d = new Date(card.due);
+      dueValue = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    // 排程日 (自訂欄位) — 有值帶入，空值預設今日
+    let fields = cardCustomFieldsMap[card.id];
+    if (!fields) {
+      const fetched = await fetchCustomFields(card.id).catch(() => [] as CustomFieldItem[]);
+      fields = fetched;
+      setCardCustomFieldsMap((prev) => ({ ...prev, [card.id]: fetched }));
+    }
+    const sd = getCustomFieldDateAny(fields, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY, S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY) ?? new Date();
+    const scheduleValue = `${sd.getFullYear()}-${pad(sd.getMonth() + 1)}-${pad(sd.getDate())}`;
+    setComboEditor({ cardId: card.id, scheduleValue, dueValue });
+  }
+
+  // 一次寫回排程日與出貨日（各自有值才寫），並同步本地畫面
+  async function saveComboEditor() {
+    if (!comboEditor) return;
+    const { cardId, scheduleValue, dueValue } = comboEditor;
+    if (!scheduleValue && !dueValue) return;
+    setSavingCombo(true);
+    try {
+      if (dueValue) {
+        const iso = new Date(dueValue).toISOString();
+        const card = cards.find((c) => c.id === cardId) ?? selectedCard;
+        await updateCardDue(cardId, iso, card?.dueComplete ?? false);
+        setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, due: iso } : c)));
+        setSelectedCard((prev) => (prev && prev.id === cardId ? { ...prev, due: iso } : prev));
+      }
+      if (scheduleValue) {
+        const iso = new Date(scheduleValue).toISOString();
+        const editCard = cards.find((c) => c.id === cardId) ?? selectedCard;
+        const fieldId = editCard?.idBoard !== TRELLO.BOARD_ID
+          ? S_ORDER_CUSTOM_FIELDS.SCHEDULE_DAY
+          : TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY;
+        await updateCardScheduleDay(cardId, iso, fieldId);
+        setCardCustomFieldsMap((prev) => {
+          const cur = prev[cardId] ?? [];
+          const exists = cur.some((cf) => cf.idCustomField === fieldId);
+          const next = exists
+            ? cur.map((cf) => (cf.idCustomField === fieldId ? { ...cf, value: { date: iso } } : cf))
+            : [...cur, { id: fieldId, idCustomField: fieldId, value: { date: iso } }];
+          return { ...prev, [cardId]: next };
+        });
+      }
+      setComboEditor(null);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "更新失敗");
+    } finally {
+      setSavingCombo(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -2781,6 +2845,16 @@ export function ShippingNoticeClient() {
             onClick={() => void openDateEditor("due")}
           >
             <CalendarClock className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            disabled={!targetCard || quickBusy}
+            title={targetCard ? "同時更改排程日與出貨日" : "請先搜尋並點選一張案件"}
+            aria-label="同時更改排程日與出貨日"
+            onClick={() => void openComboEditor()}
+          >
+            <CalendarRange className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -3009,6 +3083,50 @@ export function ShippingNoticeClient() {
               <button
                 onClick={() => setDateEditor(null)}
                 disabled={savingDate}
+                className="rounded px-3 py-1.5 text-sm text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {comboEditor && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!savingCombo) setComboEditor(null); }}
+        >
+          <div
+            className="w-full max-w-xs rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-3 text-sm font-medium text-[var(--text-primary)]">同時更改排程日與出貨日</p>
+            <label className="mb-1 block text-xs text-[var(--text-secondary)]">排程日</label>
+            <input
+              type="date"
+              value={comboEditor.scheduleValue}
+              onChange={(e) => setComboEditor((prev) => (prev ? { ...prev, scheduleValue: e.target.value } : prev))}
+              className="mb-3 w-full rounded border border-[var(--border)] bg-[var(--bg-input)] px-2 py-1.5 text-sm"
+            />
+            <label className="mb-1 block text-xs text-[var(--text-secondary)]">出貨日（Due）</label>
+            <input
+              type="datetime-local"
+              value={comboEditor.dueValue}
+              onChange={(e) => setComboEditor((prev) => (prev ? { ...prev, dueValue: e.target.value } : prev))}
+              className="w-full rounded border border-[var(--border)] bg-[var(--bg-input)] px-2 py-1.5 text-sm"
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => void saveComboEditor()}
+                disabled={savingCombo || (!comboEditor.scheduleValue && !comboEditor.dueValue)}
+                className="flex-1 rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {savingCombo ? "儲存中…" : "更改"}
+              </button>
+              <button
+                onClick={() => setComboEditor(null)}
+                disabled={savingCombo}
                 className="rounded px-3 py-1.5 text-sm text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
               >
                 取消
