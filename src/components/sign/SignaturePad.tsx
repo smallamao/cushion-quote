@@ -5,9 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface SignaturePadProps {
   /** 每筆結束時回傳簽名 PNG dataURL；清除或空白時回傳 null。 */
   onChange: (dataUrl: string | null) => void;
+  /** 畫布高度的 Tailwind class（預設 h-44）；全螢幕簽名可傳 h-[65vh]。 */
+  heightClass?: string;
 }
 
-export function SignaturePad({ onChange }: SignaturePadProps) {
+export function SignaturePad({ onChange, heightClass = "h-44" }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const hasDrawn = useRef(false);
@@ -91,7 +93,7 @@ export function SignaturePad({ onChange }: SignaturePadProps) {
       <div className="relative">
         <canvas
           ref={canvasRef}
-          className="h-44 w-full touch-none rounded-lg border border-gray-300 bg-white"
+          className={`${heightClass} w-full touch-none rounded-lg border border-gray-300 bg-white`}
           onPointerDown={handleDown}
           onPointerMove={handleMove}
           onPointerUp={handleUp}

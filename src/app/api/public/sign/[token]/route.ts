@@ -82,8 +82,9 @@ async function uploadSignedPdf(bytes: Uint8Array, quoteId: string): Promise<stri
       {
         resource_type: "raw",
         folder: "signed-contracts",
-        // 帶 .pdf 副檔名，Cloudinary raw 才會以 application/pdf 遞送，瀏覽器點開才不會空白
-        public_id: `signed_${quoteId}_${Date.now()}.pdf`,
+        // 不帶 .pdf 副檔名：Cloudinary 預設封鎖 .pdf raw 遞送（回 401）。
+        // 下載改走本站 /download 代理，補上正確檔名與 application/pdf。
+        public_id: `signed_${quoteId}_${Date.now()}`,
       },
       (err, result) => {
         if (err || !result) reject(err ?? new Error("上傳失敗"));

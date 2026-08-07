@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { SignaturePad } from "@/components/sign/SignaturePad";
+import { SignatureModal } from "@/components/sign/SignatureModal";
 import type { PublicSigningView } from "@/lib/signing-types";
 
 function mapError(code: string): string {
@@ -50,6 +50,7 @@ export function SignClient({ token }: { token: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [signModalOpen, setSignModalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,9 +120,8 @@ export function SignClient({ token }: { token: string }) {
           <p className="text-lg font-semibold text-green-600">✓ 簽署完成，感謝您！</p>
           <p className="mt-2 text-sm text-gray-500">您已完成報價單 {view.quoteId} 的線上簽署。</p>
           <a
-            href={doneUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={`/api/public/sign/${token}/download`}
+            download
             className="mt-5 inline-block rounded-lg bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
           >
             下載已簽署合約 PDF
@@ -202,7 +202,31 @@ export function SignClient({ token }: { token: string }) {
           />
 
           <label className="mb-1 block text-xs font-medium text-gray-500">手寫簽名</label>
-          <SignaturePad onChange={setSignatureData} />
+          {signatureData ? (
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={signatureData}
+                alt="簽名"
+                className="h-20 w-auto rounded-lg border border-gray-300 bg-white"
+              />
+              <button
+                type="button"
+                onClick={() => setSignModalOpen(true)}
+                className="text-xs text-gray-500 underline"
+              >
+                重新簽名
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSignModalOpen(true)}
+              className="flex h-24 w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500"
+            >
+              ✍️ 點此開啟簽名板
+            </button>
+          )}
 
           <label className="mt-4 flex items-start gap-2 text-sm text-gray-700">
             <input
@@ -229,6 +253,15 @@ export function SignClient({ token }: { token: string }) {
           </p>
         </div>
       </div>
+      {signModalOpen && (
+        <SignatureModal
+          onDone={(d) => {
+            setSignatureData(d);
+            setSignModalOpen(false);
+          }}
+          onClose={() => setSignModalOpen(false)}
+        />
+      )}
     </Shell>
   );
 }
