@@ -88,6 +88,7 @@ import {
   generateAndDownloadJpg,
   generateJpgBlob,
   generatePDFBlob,
+  type QuotePDFProps,
 } from "@/components/pdf/QuotePDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { CalculatorModal } from "@/components/quote-editor/CalculatorModal";
@@ -651,6 +652,8 @@ export function QuoteEditor() {
   const [pdfPageMode, setPdfPageMode] = useState<"a4" | "long">("a4");
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [signLinkBusy, setSignLinkBusy] = useState(false);
+  const [signLinkUrl, setSignLinkUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
   const [notionMsg, setNotionMsg] = useState<{ ok: boolean; text: string; url?: string } | null>(null);
@@ -2171,42 +2174,86 @@ export function QuoteEditor() {
     }
   }
 
+  function buildQuotePdfProps(mode: "a4" | "long"): QuotePDFProps {
+    return {
+      quoteId,
+      quoteDate: new Date().toISOString().slice(0, 10),
+      validityDays: settings.quoteValidityDays,
+      validUntil: validUntil || undefined,
+      pdfMode: mode,
+      client: { companyName, contactName, phone, email, address, taxId },
+      projectName,
+      quoteName,
+      channel,
+      items,
+      description,
+      descriptionImageUrl: descriptionImageUrl || undefined,
+      includeTax,
+      subtotal,
+      tax,
+      total,
+      termsTemplate: termsTemplate.replace(/(\d+\.)\s/g, "$1\u00A0"),
+      settings,
+    };
+  }
+
   async function handlePreviewPDF() {
     setPdfLoading(true);
     setPdfPreviewOpen(true);
     setPdfBlob(null);
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const blob = await generatePDFBlob({
-        quoteId,
-        quoteDate: today,
-        validityDays: settings.quoteValidityDays,
-        validUntil: validUntil || undefined,
-        pdfMode: pdfPageMode,
-        client: {
-          companyName,
-          contactName,
-          phone,
-          email,
-          address,
-          taxId,
-        },
-        projectName,
-        quoteName,
-        channel,
-        items,
-        description,
-        descriptionImageUrl: descriptionImageUrl || undefined,
-        includeTax,
-        subtotal,
-        tax,
-        total,
-        termsTemplate: termsTemplate.replace(/(\d+\.)\s/g, "$1\u00A0"),
-        settings,
-      });
+      const blob = await generatePDFBlob(buildQuotePdfProps(pdfPageMode));
       setPdfBlob(blob);
     } finally {
       setPdfLoading(false);
+    }
+  }
+
+  // \u7522\u751F\u5BA2\u6236\u7DDA\u4E0A\u7C3D\u7F72\u9023\u7D50\uFF08\u9700\u5148\u5132\u5B58\u7248\u672C\uFF09\uFF1A\u7522\u5F85\u7C3D PDF + \u986F\u793A\u7528\u9577\u5716\uFF0C\u5EFA\u7ACB token \u9023\u7D50
+  async function handleGenerateSignLink() {
+    if (!versionId) {
+      alert("\u8ACB\u5148\u5132\u5B58\u5831\u50F9\u7248\u672C\uFF0C\u624D\u80FD\u7522\u751F\u7C3D\u7F72\u9023\u7D50");
+      return;
+    }
+    setSignLinkBusy(true);
+    try {
+      const fileName = buildPdfFileName({ quoteId, projectName, quoteName });
+      const props = buildQuotePdfProps("a4");
+      const pdf = await generatePDFBlob(props);
+      const fd = new FormData();
+      fd.append("file", new File([pdf], fileName, { type: "application/pdf" }));
+      fd.append("folder", "signing-unsigned");
+      const up = await fetch("/api/upload", { method: "POST", body: fd });
+      const upJson = (await up.json()) as { ok: boolean; url?: string; error?: string };
+      if (!upJson.ok || !upJson.url) throw new Error(upJson.error ?? "\u5F85\u7C3D PDF \u4E0A\u50B3\u5931\u6557");
+
+      let unsignedImageUrl = "";
+      try {
+        const jpg = await generateJpgBlob(props);
+        const fdImg = new FormData();
+        fdImg.append("file", new File([jpg], fileName.replace(/\.pdf$/i, ".jpg"), { type: "image/jpeg" }));
+        fdImg.append("folder", "signing-unsigned");
+        const upImg = await fetch("/api/upload", { method: "POST", body: fdImg });
+        const upImgJson = (await upImg.json()) as { ok: boolean; url?: string };
+        if (upImgJson.ok && upImgJson.url) unsignedImageUrl = upImgJson.url;
+      } catch {
+        /* \u56DE\u9000 PDF \u986F\u793A */
+      }
+
+      const res = await fetch("/api/sheets/signing-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionId, unsignedPdfUrl: upJson.url, unsignedImageUrl }),
+      });
+      const json = (await res.json()) as { ok: boolean; token?: string; error?: string };
+      if (!json.ok || !json.token) throw new Error(json.error ?? "\u5EFA\u7ACB\u7C3D\u7F72\u9023\u7D50\u5931\u6557");
+      const url = `${window.location.origin}/sign/${json.token}`;
+      await navigator.clipboard.writeText(url).catch(() => {});
+      setSignLinkUrl(url);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "\u7522\u751F\u7C3D\u7F72\u9023\u7D50\u5931\u6557");
+    } finally {
+      setSignLinkBusy(false);
     }
   }
 
@@ -2486,9 +2533,38 @@ export function QuoteEditor() {
                 {pdfPageMode === "a4" ? "A4" : "長版"}
               </Button>
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={signLinkBusy || !versionId}
+              title={versionId ? "產生客戶線上簽署連結" : "請先儲存版本"}
+              onClick={handleGenerateSignLink}
+            >
+              {signLinkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              {signLinkBusy ? "產生中..." : "簽署連結"}
+            </Button>
           </div>
         )}
       </div>
+
+      {signLinkUrl && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <span className="shrink-0 font-medium">✓ 已複製簽署連結：</span>
+          <input
+            readOnly
+            value={signLinkUrl}
+            onFocus={(e) => e.currentTarget.select()}
+            className="min-w-0 flex-1 rounded border border-emerald-200 bg-white px-2 py-1 font-mono text-xs"
+          />
+          <button
+            onClick={() => { void navigator.clipboard.writeText(signLinkUrl); }}
+            className="shrink-0 rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700"
+          >
+            複製
+          </button>
+          <button onClick={() => setSignLinkUrl(null)} className="shrink-0 opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
 
       {notionMsg && (
         <div className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm ${notionMsg.ok ? "bg-violet-50 text-violet-700" : "bg-red-50 text-red-700"}`}>
