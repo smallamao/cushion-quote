@@ -2,7 +2,8 @@ const WEIGHTS = [1, 2, 1, 2, 1, 2, 4, 1] as const;
 
 /**
  * 台灣統一編號 checksum 驗證（加權數 [1,2,1,2,1,2,4,1]）。
- * 第 7 位為 7 時，有 +0 或 +1 兩種合法計算。
+ * 2023/4 起財政部改制：加權總和需可被 5 整除（舊制為 10；為擴充號碼容量而放寬，
+ * 舊制合法者新制必然合法）。第 7 位為 7 時，有 +0 或 +1 兩種合法計算。
  */
 export function isValidTaiwanTaxId(taxId: string): boolean {
   if (!/^\d{8}$/.test(taxId)) return false;
@@ -14,9 +15,9 @@ export function isValidTaiwanTaxId(taxId: string): boolean {
       return sum + Math.floor(product / 10) + (product % 10);
     }, 0);
   if (digits[6] === 7) {
-    return productSum(0) % 10 === 0 || productSum(1) % 10 === 0;
+    return productSum(0) % 5 === 0 || productSum(1) % 5 === 0;
   }
-  return productSum(0) % 10 === 0;
+  return productSum(0) % 5 === 0;
 }
 
 export function validateTaiwanTaxId(taxId: string): string | null {
