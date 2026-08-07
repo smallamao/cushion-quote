@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { bakeSignedPdf } from "@/lib/signing-pdf";
 import { getSigningLinkByToken, updateSigningLink } from "@/lib/signing-links-sheet";
+import { appendNotification } from "@/lib/notifications-sheet";
 import { isSigningLinkExpired, type PublicSigningView } from "@/lib/signing-types";
 import type { QuoteVersionRecord } from "@/lib/types";
 
@@ -171,6 +172,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       signerIp: ip,
       signerUserAgent: userAgent,
       signedPdfUrl,
+    });
+
+    // 後台通知鈴鐺（best-effort，不影響簽署結果）
+    await appendNotification({
+      type: "quote_signed",
+      title: "報價單已線上簽署",
+      body: `${signerName || "客戶"} 已簽署 ${link.quoteId}（NT$ ${(existing.totalAmount ?? 0).toLocaleString()}）`,
+      link: "/quotes",
     });
 
     return NextResponse.json({ ok: true, signedPdfUrl });
