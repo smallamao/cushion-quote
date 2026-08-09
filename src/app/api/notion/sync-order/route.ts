@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
-import { ORDER_RANGE_DATA, orderRowToRecord } from "@/lib/order-utils";
+import { ORDER_RANGE_DATA, ORDER_SHEET, orderRowToRecord } from "@/lib/order-utils";
 import {
   NOTION_API,
   buildNotionProperties,
-  findNotionPage,
+  findNotionPageForOrder,
   notionHeaders,
-  notionPageName,
 } from "@/lib/notion-order";
 
 async function upsertImageBlock(pageId: string, imageUrl: string): Promise<void> {
@@ -49,9 +48,8 @@ export async function POST(req: NextRequest) {
 
   const order = orderRowToRecord(row);
   const properties = buildNotionProperties(order);
-  const pageName = notionPageName(order);
 
-  const existingId = await findNotionPage(pageName, dbId);
+  const existingId = order.notionPageId || (await findNotionPageForOrder(order, dbId));
 
   let notionPageId: string;
   let action: "created" | "updated";
@@ -81,6 +79,19 @@ export async function POST(req: NextRequest) {
     const page = (await crRes.json()) as { id: string };
     notionPageId = page.id;
     action = "created";
+  }
+
+  // 首次同步把 pageId 存回訂單（唯一鍵綁定）；之後狀態變更直接用 ID 更新，不再靠名稱比對
+  if (order.notionPageId !== notionPageId) {
+    const rowIndex = rows.findIndex((r) => r[0] === orderId);
+    if (rowIndex !== -1) {
+      await client.sheets.spreadsheets.values.update({
+        spreadsheetId: client.spreadsheetId,
+        range: `${ORDER_SHEET}!AV${rowIndex + 2}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [[notionPageId]] },
+      });
+    }
   }
 
   if (jpgUrl) {

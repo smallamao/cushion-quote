@@ -1275,6 +1275,8 @@ export interface CustomOrder {
   updatedAt: string;
   createdBy: string;
   materialPurchases: MaterialPurchase[];
+  /** 對應的 Notion 頁面 ID（首次整單同步時寫回）；同步時優先用它，避免靠名稱比對 */
+  notionPageId?: string;
 }
 
 export type MaterialCostType = "material" | "labor" | "outsourcing" | "other";

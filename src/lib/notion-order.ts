@@ -94,29 +94,41 @@ export function buildNotionProperties(order: CustomOrder) {
   return props;
 }
 
-export async function findNotionPage(name: string, dbId: string): Promise<string | null> {
+async function queryPageIdByTitle(
+  dbId: string,
+  title: { equals: string } | { starts_with: string },
+): Promise<string | null> {
   const res = await fetch(`${NOTION_API}/databases/${dbId}/query`, {
     method: "POST",
     headers: notionHeaders(),
-    body: JSON.stringify({
-      filter: { property: "Name", title: { equals: name } },
-      page_size: 1,
-    }),
+    body: JSON.stringify({ filter: { property: "Name", title }, page_size: 1 }),
   });
   const data = (await res.json()) as { results?: { id: string }[] };
   return data.results?.[0]?.id ?? null;
 }
 
 /**
- * Notion 已有此訂單的頁面時，更新其屬性（含狀態）；沒有頁面則不動作、不建新頁。
- * 回傳是否有更新。供改狀態等輕量操作 best-effort 呼叫。
+ * 以「工單號」為唯一鍵找 Notion 頁面：命名慣例＝「工單號 客戶名」，故用工單號＋空格
+ * 前綴比對（容忍客戶名不一致，這正是狀態同步失敗的主因）；找不到再退回名稱完全比對。
+ */
+export async function findNotionPageForOrder(order: CustomOrder, dbId: string): Promise<string | null> {
+  if (order.orderNumber) {
+    const byNo = await queryPageIdByTitle(dbId, { starts_with: `${order.orderNumber} ` });
+    if (byNo) return byNo;
+  }
+  return queryPageIdByTitle(dbId, { equals: notionPageName(order) });
+}
+
+/**
+ * Notion 已有此訂單頁面時更新其屬性（含狀態）；沒有頁面則不動作、不建新頁。
+ * 優先用訂單已存的 notionPageId（唯一鍵），否則以工單號比對。回傳是否有更新。
  */
 export async function updateNotionPageIfExists(order: CustomOrder): Promise<boolean> {
   const token = process.env.NOTION_TOKEN;
   const dbId = process.env.NOTION_ORDER_DB_ID;
   if (!token || !dbId) return false;
 
-  const pageId = await findNotionPage(notionPageName(order), dbId);
+  const pageId = order.notionPageId || (await findNotionPageForOrder(order, dbId));
   if (!pageId) return false;
 
   const res = await fetch(`${NOTION_API}/pages/${pageId}`, {
