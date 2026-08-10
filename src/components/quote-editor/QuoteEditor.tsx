@@ -91,6 +91,7 @@ import {
   type QuotePDFProps,
 } from "@/components/pdf/QuotePDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
+import { ImageDropLabel } from "@/components/ui/ImageDropLabel";
 import { CalculatorModal } from "@/components/quote-editor/CalculatorModal";
 import { MobileQuoteItemCard } from "@/components/quote-editor/MobileQuoteItemCard";
 import { Button } from "@/components/ui/button";
@@ -502,24 +503,12 @@ function SortableQuoteItemRow({
                     </button>
                   </div>
                 ) : (
-                  <label className="flex h-16 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-muted)]">
-                    {isImageUploading ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-[var(--text-tertiary)]" />
-                    ) : (
-                      <ImagePlus className="h-4 w-4 text-[var(--text-tertiary)]" />
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={isImageUploading}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) onHandleImageUpload(item.id, file);
-                        e.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
+                  <ImageDropLabel
+                    heightClass="h-16"
+                    uploading={isImageUploading}
+                    disabled={isImageUploading}
+                    onFile={(f) => onHandleImageUpload(item.id, f)}
+                  />
                 )}
                 {imageUploadError && (
                   <div className="mt-1 text-[10px] text-[var(--error)]">{imageUploadError}</div>
@@ -549,24 +538,12 @@ function SortableQuoteItemRow({
                     </button>
                   </div>
                 ) : (
-                  <label className="flex h-16 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-muted)]">
-                    {isSpecImageUploading ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-[var(--text-tertiary)]" />
-                    ) : (
-                      <ImagePlus className="h-4 w-4 text-[var(--text-tertiary)]" />
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={isSpecImageUploading}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) onHandleImageUpload(item.id, file, "specImageUrl");
-                        e.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
+                  <ImageDropLabel
+                    heightClass="h-16"
+                    uploading={isSpecImageUploading}
+                    disabled={isSpecImageUploading}
+                    onFile={(f) => onHandleImageUpload(item.id, f, "specImageUrl")}
+                  />
                 )}
                 {specImageUploadError && (
                   <div className="mt-1 text-[10px] text-[var(--error)]">{specImageUploadError}</div>
@@ -3176,24 +3153,12 @@ export function QuoteEditor() {
                 </button>
               </div>
             ) : (
-              <label className="flex h-20 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-muted)]">
-                {descriptionImageUploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-[var(--text-tertiary)]" />
-                ) : (
-                  <ImagePlus className="h-4 w-4 text-[var(--text-tertiary)]" />
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  disabled={descriptionImageUploading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleDescriptionImageUpload(file);
-                    e.currentTarget.value = "";
-                  }}
-                />
-              </label>
+              <ImageDropLabel
+                heightClass="h-20"
+                uploading={descriptionImageUploading}
+                disabled={descriptionImageUploading}
+                onFile={(f) => void handleDescriptionImageUpload(f)}
+              />
             )}
             {descriptionImageError && (
               <div className="mt-1 text-[10px] text-[var(--error)]">{descriptionImageError}</div>
