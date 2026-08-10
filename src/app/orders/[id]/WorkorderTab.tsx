@@ -67,6 +67,21 @@ export function WorkorderTab({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
+  const [photosDragOver, setPhotosDragOver] = useState(false);
+
+  async function uploadOrderPhotos(files: FileList | File[] | null) {
+    const list = Array.from(files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (list.length === 0) return;
+    setPhotosUploading(true);
+    try {
+      const urls = await Promise.all(list.map(uploadFile));
+      updateDraft("photos", [...draft.photos, ...urls]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "圖片上傳失敗");
+    } finally {
+      setPhotosUploading(false);
+    }
+  }
 
   // 產生後在背景上傳＋存回訂單記錄，取代舊工單；失敗不影響已顯示的預覽
   async function persistPdf(blob: Blob) {
@@ -614,9 +629,14 @@ export function WorkorderTab({
       </div>
 
       {/* 附圖 */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
+      <div
+        className={`rounded-lg border bg-[var(--bg-elevated)] p-5 transition-colors ${photosDragOver ? "border-[var(--accent)] ring-2 ring-[var(--accent)]" : "border-[var(--border)]"}`}
+        onDragOver={(e) => { e.preventDefault(); setPhotosDragOver(true); }}
+        onDragLeave={(e) => { e.preventDefault(); setPhotosDragOver(false); }}
+        onDrop={(e) => { e.preventDefault(); setPhotosDragOver(false); void uploadOrderPhotos(e.dataTransfer.files); }}
+      >
         <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
-          附圖
+          附圖 <span className="ml-1 text-[10px] font-normal normal-case">（可將圖片拖曳到此區塊）</span>
         </h3>
         {draft.photos.length > 0 && (
           <div className="mb-3 grid grid-cols-3 gap-2">
@@ -655,18 +675,8 @@ export function WorkorderTab({
             className="sr-only"
             disabled={photosUploading}
             onChange={async (e) => {
-              const files = Array.from(e.target.files ?? []);
-              if (files.length === 0) return;
-              setPhotosUploading(true);
-              try {
-                const urls = await Promise.all(files.map(uploadFile));
-                updateDraft("photos", [...draft.photos, ...urls]);
-              } catch (err) {
-                alert(err instanceof Error ? err.message : "圖片上傳失敗");
-              } finally {
-                setPhotosUploading(false);
-                e.target.value = "";
-              }
+              await uploadOrderPhotos(e.target.files);
+              e.target.value = "";
             }}
           />
         </label>
