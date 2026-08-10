@@ -326,6 +326,8 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
     }));
   }
 
+  const [dragTarget, setDragTarget] = useState<"issue" | "completion" | null>(null);
+
   async function handleUploadPhoto(
     file: File,
     target: "issue" | "completion",
@@ -340,6 +342,15 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
       }));
     } catch (err) {
       alert(err instanceof Error ? err.message : "上傳失敗");
+    }
+  }
+
+  // 拖曳或點選可一次多檔上傳（只收圖片/影片）
+  async function handleUploadFiles(files: FileList | File[] | null, target: "issue" | "completion") {
+    if (!files) return;
+    const list = Array.from(files).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+    for (const f of list) {
+      await handleUploadPhoto(f, target);
     }
   }
 
@@ -928,7 +939,12 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
           <p className="text-[11px] text-[var(--text-tertiary)]">
             客戶可拍短片說明問題(例:吱吱聲、皮革裂開)。影片上限 50 MB。
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div
+            className={`mt-2 flex flex-wrap gap-2 rounded-md transition-colors ${dragTarget === "issue" ? "bg-[var(--bg-subtle)] ring-2 ring-[var(--accent)]" : ""}`}
+            onDragOver={(e) => { if (readOnly) return; e.preventDefault(); setDragTarget("issue"); }}
+            onDragLeave={(e) => { e.preventDefault(); setDragTarget((t) => (t === "issue" ? null : t)); }}
+            onDrop={(e) => { e.preventDefault(); setDragTarget(null); if (!readOnly) void handleUploadFiles(e.dataTransfer.files, "issue"); }}
+          >
             {draft.issuePhotos.map((url, idx) => (
               <div
                 key={idx}
@@ -962,15 +978,16 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
             >
               <ImagePlus className="h-5 w-5" />
               <span className="text-[10px]">加照片/影片</span>
+              <span className="text-[9px] leading-tight text-[var(--text-tertiary)]">或拖曳到此</span>
             </button>
             <input
               ref={issuePhotoInputRef}
               type="file"
               accept="image/*,video/*"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleUploadPhoto(f, "issue");
+                void handleUploadFiles(e.target.files, "issue");
                 e.target.value = "";
               }}
             />
@@ -1069,7 +1086,12 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
         {/* 完工照片 / 影片 */}
         <div className="mt-4">
           <Label>完工照片 / 影片</Label>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div
+            className={`mt-2 flex flex-wrap gap-2 rounded-md transition-colors ${dragTarget === "completion" ? "bg-[var(--bg-subtle)] ring-2 ring-[var(--accent)]" : ""}`}
+            onDragOver={(e) => { if (readOnly) return; e.preventDefault(); setDragTarget("completion"); }}
+            onDragLeave={(e) => { e.preventDefault(); setDragTarget((t) => (t === "completion" ? null : t)); }}
+            onDrop={(e) => { e.preventDefault(); setDragTarget(null); if (!readOnly) void handleUploadFiles(e.dataTransfer.files, "completion"); }}
+          >
             {draft.completionPhotos.map((url, idx) => (
               <div
                 key={idx}
@@ -1102,15 +1124,16 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
             >
               <ImagePlus className="h-5 w-5" />
               <span className="text-[10px]">加照片/影片</span>
+              <span className="text-[9px] leading-tight text-[var(--text-tertiary)]">或拖曳到此</span>
             </button>
             <input
               ref={completionPhotoInputRef}
               type="file"
               accept="image/*,video/*"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleUploadPhoto(f, "completion");
+                void handleUploadFiles(e.target.files, "completion");
                 e.target.value = "";
               }}
             />
