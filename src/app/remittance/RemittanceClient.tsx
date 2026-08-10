@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { MessageResultModal } from "@/components/sofa/MessageResultModal";
+import { ReceiptConfirmModal } from "@/components/sofa/ReceiptConfirmModal";
 
 // ─── Types & Constants ────────────────────────────────────────────────────────
 
@@ -222,7 +223,7 @@ export function RemittanceClient() {
   const [lastFive, setLastFive] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [paymentType, setPaymentType] = useState<PaymentType>("匯款");
-  const [msgType, setMsgType] = useState<MessageType>("客戶回覆聯");
+  const [receiptModal, setReceiptModal] = useState<{ customer: string; full: string } | null>(null);
   const [isBalance, setIsBalance] = useState(false);
   const [linepayCode, setLinepayCode] = useState("");
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
@@ -263,21 +264,25 @@ export function RemittanceClient() {
     setModal({ title: `匯款訊息 - ${account.buttonLabel}`, message: msg });
   }
 
+  function showBothReceipts(isPotatoAccount: boolean) {
+    const customer = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, "客戶回覆聯", isBalance, linepayCode, isPotatoAccount, cardInfo ?? undefined);
+    const full = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, "完整記錄", isBalance, linepayCode, isPotatoAccount, cardInfo ?? undefined);
+    setReceiptModal({ customer, full });
+  }
+
   function handleReceiptClick() {
     if (!amount) return;
-    // 完整記錄 + 匯款 → 先選收款帳戶
-    if (msgType === "完整記錄" && paymentType === "匯款") {
+    // 匯款需先選收款帳戶（供「完整記錄」使用）；其餘直接同時輸出兩段
+    if (paymentType === "匯款") {
       setShowAccountPicker(true);
       return;
     }
-    const msg = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, msgType, isBalance, linepayCode, true, cardInfo ?? undefined);
-    setModal({ title: "收款確認", message: msg });
+    showBothReceipts(true);
   }
 
   function handleAccountPick(isPotatoAccount: boolean) {
     setShowAccountPicker(false);
-    const msg = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, msgType, isBalance, linepayCode, isPotatoAccount, cardInfo ?? undefined);
-    setModal({ title: "收款確認", message: msg });
+    showBothReceipts(isPotatoAccount);
   }
 
   const segmentBase =
@@ -369,19 +374,6 @@ export function RemittanceClient() {
           ))}
         </div>
 
-        {/* Message type */}
-        <div className="flex rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] p-0.5">
-          {(["客戶回覆聯", "完整記錄"] as MessageType[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setMsgType(t)}
-              className={`${segmentBase} ${msgType === t ? segmentActive : segmentInactive}`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
         {/* Order number */}
         <input
           type="text"
@@ -460,6 +452,18 @@ export function RemittanceClient() {
           title={modal.title}
           message={modal.message}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {receiptModal && (
+        <ReceiptConfirmModal
+          open
+          title="收款確認"
+          segments={[
+            { label: "客戶回覆聯（傳給客戶）", text: receiptModal.customer },
+            { label: "完整記錄（內部存查）", text: receiptModal.full },
+          ]}
+          onClose={() => setReceiptModal(null)}
         />
       )}
     </div>
