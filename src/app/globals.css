@@ -113,7 +113,9 @@ textarea {
 
 .page-container {
   padding: var(--space-8);
-  max-width: 1200px;
+  /* 依螢幕大小縮放：一般螢幕幾乎填滿（右側不再留白、寬表格不橫捲），
+     超寬螢幕在 2000px 收住，避免表單一行字拉太長 */
+  max-width: min(95vw, 2000px);
 }
 
 /* ===== Reusable Surface ===== */
