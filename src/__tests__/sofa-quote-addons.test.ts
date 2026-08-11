@@ -179,6 +179,20 @@ describe("扣除平台 (removePlatform)", () => {
     });
     expect(copyText).toContain("扣除平台 - $9,000");
   });
+
+  it("寬度縮減 30cm：第一行維持標準價、寬度調整另列、總金額為扣除後（回歸 75,600→73,200 bug）", () => {
+    const product = SOFA_PRODUCTS.find((p) => p.displayName === "ELEC")!;
+    const grade = MATERIAL_GRADES.find((g) => g.id === "TW_LV1")!;
+    const basePrice = getBasePrice("ELEC", "TW_LV1");
+    // 寬度較標準少 30cm → 寬度調整 -2,400（floor(30/10)*10*80）
+    const { copyText } = buildQuoteOutput(product, grade, product.width - 30, 3, basePrice);
+    // 第一行必須是原始標準本體價，不可被寬度調整扣成 40,200
+    expect(copyText).toContain("(經濟型)貓抓皮(TJ79)／貓抓布 $42,600");
+    expect(copyText).not.toContain("貓抓布 $40,200");
+    // 寬度調整另列、總金額才是扣除後
+    expect(copyText).toContain("寬度調整 -$2,400");
+    expect(copyText).toContain("總金額 $40,200");
+  });
 });
 
 describe("平台無置物 (noStorage 模式)", () => {

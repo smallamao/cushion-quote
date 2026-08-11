@@ -410,7 +410,6 @@ export function buildQuoteOutput(
   const addonTotal = addons ? calcAddons(addons, seatCount, armCost, platformAdjFee, getPlatformRemovalDiscount(grade.id)) : 0
 
   const isEdsonBj = ['EDSON', 'BJ'].includes(product.displayName)
-  const reductionText = getReductionDiscount(product, inputWidth)
 
   const detailLines: string[] = []
 
@@ -457,9 +456,12 @@ export function buildQuoteOutput(
   const copyLines: string[] = []
   copyLines.push(`${product.displayName} ${product.moduleName} ${inputWidth}cm 三件式L型`)
   const grandTotal = sofaTotal + addonTotal
-  // 「正常報價」顯示沙發本體原始價，加減項在下方逐條列出，最後以「總金額」呈現扣除後金額
-  copyLines.push(`${grade.materialDescription} $${fmtAmount(sofaTotal)}`)
-  if (reductionText) copyLines.push(reductionText)
+  // 「正常報價」第一行固定顯示沙發本體「原始標準價」(basePrice)；寬度調整與加減項一律在下方逐條列出，最後以「總金額」呈現扣除後金額。
+  // 註：先前此處誤用 sofaTotal(= basePrice + 寬度調整)，導致寬度縮減時第一行變成已扣減的價（如 75,600 顯示成 73,200）。
+  copyLines.push(`${grade.materialDescription} $${fmtAmount(basePrice)}`)
+  if (wc.adjustPrice !== 0) {
+    copyLines.push(`寬度調整 ${wc.adjustPrice > 0 ? "+" : "-"}$${fmtAmount(Math.abs(wc.adjustPrice))}`)
+  }
   if (addons?.platformMode !== "removePlatform"
     && (addons?.platformMode !== "changeStorage" || !addons.storagePlatformStyle)) {
     copyLines.push(`平台尺寸w${product.footSeatSize}cm`)
@@ -571,6 +573,10 @@ export function buildQuoteOutput(
       }
     }
 
+  }
+
+  // 只要有任何加減項（寬度調整或進階選項）使總額不等於標準價，就顯示扣除後總金額，避免第一行標準價被誤讀為最終價
+  if (grandTotal !== basePrice) {
     copyLines.push('')
     copyLines.push(`總金額 $${fmtAmount(grandTotal)}`)
   }
