@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { DEFAULT_SETTINGS } from "@/lib/constants";
 import {
   buildPurchaseGroupsFromPaste,
   cloneProductAsNew,
@@ -10,6 +9,7 @@ import {
 } from "@/lib/purchase-from-paste";
 import type { AutoCreatedEntry, FromPasteGroup } from "@/lib/purchase-from-paste";
 import { renderPurchaseOrderPdfBuffer } from "@/lib/purchase-order-pdf-server";
+import { loadSystemSettings } from "@/lib/settings-sheet";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type {
   PurchaseOrder,
@@ -231,6 +231,7 @@ function buildOrder(
   source: string,
   supplierById: Map<string, Supplier>,
   nowIso: string,
+  deliveryAddress: string,
 ): BuiltOrder {
   const subtotal =
     Math.round(group.items.reduce((sum, it) => sum + it.amount, 0) * 100) / 100;
@@ -249,7 +250,7 @@ function buildOrder(
     totalAmount: subtotal,
     notes: buildOrderNotes(group.caseRefs, source),
     status: "draft",
-    deliveryAddress: DEFAULT_SETTINGS.factoryAddress,
+    deliveryAddress,
     expectedDeliveryDate: "",
     createdAt: nowIso,
     updatedAt: nowIso,
@@ -387,6 +388,9 @@ export async function POST(request: Request) {
   try {
     const { catalog, suppliers } = await loadCatalogAndSuppliers(client);
     const supplierById = new Map(suppliers.map((s) => [s.supplierId, s]));
+    // 讀取實際系統設定（公司電話 / 統編 / 工廠交貨地址）。先前此流程對 PDF footer 與交貨地址
+    // 都硬塞 DEFAULT_SETTINGS，導致採購單電話永遠印預設值、改設定不跟（統編恰等於預設值故看似正常）。
+    const { settings } = await loadSystemSettings();
 
     // 4) 解析 → 比對 → 依供應商分組（初次）。
     const initial = buildPurchaseGroupsFromPaste(pasteText, catalog, suppliers);
@@ -484,6 +488,7 @@ export async function POST(request: Request) {
         source,
         supplierById,
         nowIso,
+        settings.factoryAddress,
       ),
     );
 
@@ -528,7 +533,7 @@ export async function POST(request: Request) {
           const buffer = await renderPurchaseOrderPdfBuffer({
             order: b.order,
             items: b.items,
-            settings: DEFAULT_SETTINGS,
+            settings,
           });
           pdfBase64 = `data:application/pdf;base64,${buffer.toString("base64")}`;
         } catch (err) {
