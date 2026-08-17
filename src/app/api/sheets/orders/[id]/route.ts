@@ -9,6 +9,7 @@ import {
   orderRecordToRow,
   orderRowToRecord,
 } from "@/lib/order-utils";
+import { updateNotionPageIfExists } from "@/lib/notion-order";
 import type { CustomOrder } from "@/lib/types";
 
 interface RouteContext {
@@ -107,7 +108,15 @@ export async function PUT(request: Request, context: RouteContext) {
       requestBody: { values: [orderRecordToRow(updated)] },
     });
 
-    return NextResponse.json({ ok: true });
+    // best-effort：Notion 已有此單頁面時同步更新屬性（含出貨日=installDate）；失敗不阻斷存檔、不建新頁
+    let notionUpdated = false;
+    try {
+      notionUpdated = await updateNotionPageIfExists(updated);
+    } catch {
+      // Notion 同步失敗不影響主流程
+    }
+
+    return NextResponse.json({ ok: true, notionUpdated });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
