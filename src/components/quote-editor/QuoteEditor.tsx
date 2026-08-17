@@ -81,6 +81,7 @@ import type {
 } from "@/lib/types";
 import { buildSplitLineFields } from "@/lib/split-panel-metadata";
 import { toFlexItemsFromVersion } from "@/lib/quote-mappers";
+import { applyTaxModeToTerms } from "@/lib/quote-terms";
 import { QUOTE_NOTE_TEMPLATES, type QuoteNoteTemplate } from "@/lib/quote-note-templates";
 import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPriceToTens, slugDate } from "@/lib/utils";
 import {
@@ -3256,7 +3257,13 @@ export function QuoteEditor() {
             <label className="flex items-center gap-2 text-[var(--text-secondary)]">
               <Checkbox
                 checked={includeTax}
-                onCheckedChange={(v) => setIncludeTax(v === true)}
+                onCheckedChange={(v) => {
+                  const next = v === true;
+                  setIncludeTax(next);
+                  // 未稅：移除逾期罰則（機關版才需要）+ 稅金行改未含 + 重新編號；
+                  // 含稅：只把稅金行改回已含。只動標準行，不碰手動編輯的付款方式/履約期限等。
+                  setTermsTemplate((prev) => applyTaxModeToTerms(prev, next));
+                }}
               />
               營業稅 {settings.taxRate}%
             </label>
