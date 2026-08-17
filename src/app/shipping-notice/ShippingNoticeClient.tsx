@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, Printer, Navigation, RefreshCw, Scissors, MessageSquare, User, CalendarDays, CalendarClock, CalendarRange } from "lucide-react";
+import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, ExternalLink, Printer, Navigation, RefreshCw, Scissors, MessageSquare, User, CalendarDays, CalendarClock, CalendarRange } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -223,10 +223,17 @@ const CUSTOM_FIELD_DEFS: FieldDef[] = [
 
 // ─── localStorage keys ────────────────────────────────────────
 
-const LS_SHIPPING_DATE = "cq-shipping-date";
 const LS_PRODUCTION_DATE = "cq-production-date";
 
 const QUICK_TIMES = ["10:00", "12:00", "14:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
+
+/** Trello card.due（UTC ISO）轉成 <input type="datetime-local"> 用的本地時間字串 YYYY-MM-DDTHH:mm；無 due 回空字串。 */
+function cardDueToLocalInput(due: string | null): string {
+  if (!due) return "";
+  const d = new Date(due);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 // 卡片尚未指定司機時，司機選單預設選取的司機 key（對應「司機資料」表 A 欄）。
 // "shin" = 阿信（兩人車，最常派）。要換預設司機只改這個值即可。此預設仍可點擊取消。
@@ -432,13 +439,15 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
   const [isSaving, setIsSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
-  // Date picker loads from localStorage (not card.due per spec)
-  const [shippingDatetime, setShippingDatetime] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(LS_SHIPPING_DATE) ?? "";
-    }
-    return "";
-  });
+  // 出貨日期選擇器一律以「這張卡自己的 Trello 出貨日(due)」為準，換卡即重讀（見下方 effect）。
+  // 不再沿用全域 localStorage —— 那會讓別張卡殘留的日期被寫回本卡 due、並把錯日期發給客戶。
+  const [shippingDatetime, setShippingDatetime] = useState(() => cardDueToLocalInput(card.due));
+  const syncedDatetimeForCard = useRef<string | null>(null);
+  useEffect(() => {
+    if (syncedDatetimeForCard.current === card.id) return;
+    syncedDatetimeForCard.current = card.id;
+    setShippingDatetime(cardDueToLocalInput(card.due));
+  }, [card.id, card.due]);
 
   // 每張卡「只初始化一次」司機選取：優先用卡上既有的司機 label，沒有則預設阿信。
   // 用 card.id 當守衛，避免之後 drivers 陣列重新產生導致 effect 重跑、把使用者
@@ -524,7 +533,6 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
       if (shippingDatetime) {
         const iso = new Date(shippingDatetime).toISOString();
         await updateCardDue(card.id, iso, false);
-        localStorage.setItem(LS_SHIPPING_DATE, shippingDatetime);
       }
       setSaveMsg("✓ 已更新");
       setTimeout(() => setSaveMsg(""), 3000);
@@ -1056,14 +1064,66 @@ function AttachmentImage({
   );
 }
 
+/**
+ * 把訂單照片另開成獨立分頁：使用者常在看到訂單照片後切去別的功能（如輸入售後服務單），
+ * 站內彈窗一切頁就消失；獨立分頁可拖到旁邊並排對照。圖片經同源 proxy 載入，
+ * 新分頁自動帶登入 cookie。
+ */
+function openImagesInNewTab(images: string[][], title: string, startIndex = 0) {
+  const win = window.open("", "_blank");
+  if (!win) {
+    alert("瀏覽器封鎖了彈出視窗，請允許此網站的彈出視窗");
+    return;
+  }
+  const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
+  const groupsJson = JSON.stringify(
+    images.map((urls) => urls.map((u) => `/api/trello/attachment-proxy?url=${encodeURIComponent(u)}`)),
+  );
+  win.document.write(`<!doctype html><html lang="zh-TW"><head><meta charset="utf-8">
+<title>${esc(title)} · 訂單照片</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:#111;color:#eee;font-family:system-ui,sans-serif}
+  .bar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(0,0,0,.6);font-size:13px;z-index:2}
+  .bar b{font-weight:600}
+  .bar button{background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:6px;padding:4px 10px;cursor:pointer}
+  .bar button:hover{background:rgba(255,255,255,.22)}
+  .bar .sp{flex:1}
+  main{height:100%;display:flex;align-items:center;justify-content:center;padding:44px 12px 12px;box-sizing:border-box}
+  img{max-width:100%;max-height:calc(100vh - 56px);object-fit:contain;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+  .thumbs{position:fixed;bottom:0;left:0;right:0;display:flex;gap:6px;padding:8px;overflow-x:auto;background:rgba(0,0,0,.6)}
+  .thumbs img{height:56px;max-height:56px;cursor:pointer;opacity:.55;border-radius:4px}
+  .thumbs img.on{opacity:1;outline:2px solid #60a5fa}
+</style></head><body>
+<div class="bar"><b>${esc(title)}</b><span id="pos"></span><span class="sp"></span>
+<button id="prev">◀ 上一張</button><button id="next">下一張 ▶</button></div>
+<main><img id="big" alt="訂單照片"></main>
+<div class="thumbs" id="thumbs"></div>
+<script>
+const groups=${groupsJson};let i=${startIndex};
+const big=document.getElementById('big'),pos=document.getElementById('pos'),thumbs=document.getElementById('thumbs');
+function setSrc(img,urls,k){k=k||0;if(!urls[k])return;img.src=urls[k];img.onerror=()=>setSrc(img,urls,k+1);}
+function show(n){i=(n+groups.length)%groups.length;setSrc(big,groups[i]);pos.textContent=groups.length>1?(' '+(i+1)+' / '+groups.length):'';
+  [...thumbs.children].forEach((t,k)=>t.classList.toggle('on',k===i));}
+groups.forEach((urls,k)=>{const t=document.createElement('img');setSrc(t,urls);t.onclick=()=>show(k);thumbs.appendChild(t);});
+document.getElementById('prev').onclick=()=>show(i-1);document.getElementById('next').onclick=()=>show(i+1);
+document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')show(i-1);else if(e.key==='ArrowRight')show(i+1);});
+if(groups.length<2){document.getElementById('prev').style.display='none';document.getElementById('next').style.display='none';thumbs.style.display='none';}
+show(i);
+</script></body></html>`);
+  win.document.close();
+}
+
 function ImageModal({
   images,
   initialIndex,
   onClose,
+  title = "訂單照片",
 }: {
   images: string[][];
   initialIndex?: number;
   onClose: () => void;
+  title?: string;
 }) {
   const [index, setIndex] = useState(initialIndex ?? images.length - 1);
   const total = images.length;
@@ -1087,12 +1147,19 @@ function ImageModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
       onClick={onClose}
     >
-      <button
-        onClick={onClose}
-        className="absolute right-4 top-4 text-white/80 hover:text-white"
-      >
-        <X className="h-6 w-6" />
-      </button>
+      <div className="absolute right-4 top-4 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={() => openImagesInNewTab(images, title, index)}
+          className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+          title="在新分頁開啟，切換其他功能時仍可對照"
+        >
+          <ExternalLink className="h-4 w-4" />
+          另開視窗
+        </button>
+        <button onClick={onClose} className="text-white/80 hover:text-white">
+          <X className="h-6 w-6" />
+        </button>
+      </div>
 
       <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
         {total > 1 && (
@@ -1615,7 +1682,7 @@ function CustomerView({ card, customFields, attachments, onBack }: CustomerViewP
         <ResultModal title={result.title} content={result.content} onClose={() => setResult(null)} onCopied={result.onCopied} />
       )}
       {snapshotOpen && (
-        <ImageModal images={snapshotImageGroups} onClose={() => setSnapshotOpen(false)} />
+        <ImageModal images={snapshotImageGroups} title={card.name} onClose={() => setSnapshotOpen(false)} />
       )}
     </div>
   );
@@ -3018,11 +3085,34 @@ export function ShippingNoticeClient() {
                       />
                       <div className="flex items-center justify-between border-t border-[var(--border)] px-2 py-1">
                         <span className="text-[11px] text-[var(--text-secondary)]">點擊放大查看</span>
-                        {allCardImageGroups.length > 1 && (
-                          <span className="flex items-center gap-0.5 text-[11px] text-[var(--text-tertiary)]">
-                            📷 {allCardImageGroups.length}
+                        <span className="flex items-center gap-2">
+                          {allCardImageGroups.length > 1 && (
+                            <span className="flex items-center gap-0.5 text-[11px] text-[var(--text-tertiary)]">
+                              📷 {allCardImageGroups.length}
+                            </span>
+                          )}
+                          {/* 另開分頁：切到售後服務等其他功能時照片仍可並排對照 */}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openImagesInNewTab(allCardImageGroups, card.name);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openImagesInNewTab(allCardImageGroups, card.name);
+                              }
+                            }}
+                            className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-[var(--accent)] hover:bg-[var(--bg-hover)]"
+                            title="在新分頁開啟訂單照片（切換其他功能時仍可對照）"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            另開視窗
                           </span>
-                        )}
+                        </span>
                       </div>
                     </button>
                   </div>
@@ -3050,7 +3140,7 @@ export function ShippingNoticeClient() {
         )}
       </div>
 
-      {previewImages && <ImageModal images={previewImages} onClose={() => setPreviewImages(null)} />}
+      {previewImages && <ImageModal images={previewImages} title={selectedCard?.name ?? cards[0]?.name ?? "訂單照片"} onClose={() => setPreviewImages(null)} />}
       {quickResult && (
         <ResultModal title={quickResult.title} content={quickResult.content} onClose={() => setQuickResult(null)} />
       )}
