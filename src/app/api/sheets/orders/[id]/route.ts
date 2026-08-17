@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import {
+  ORDER_RANGE_DATA,
   ORDER_RANGE_IDS,
   ORDER_ROW_RANGE,
   ORDER_SHEET,
@@ -71,34 +72,22 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   try {
-    // Find the row by ID using the ID-only range for efficiency
-    const idRes = await client.sheets.spreadsheets.values.get({
+    // 一次讀完全部資料列，同時完成「找列」與「取既有值」——省掉一次 Sheets 往返，
+    // 降低 Vercel 函式逾時（回空 body → 前端 JSON 解析失敗）的機率。
+    const dataRes = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
-      range: ORDER_RANGE_IDS,
+      range: ORDER_RANGE_DATA,
     });
-    const idRows = (idRes.data.values ?? []) as string[][];
-    const rowIndex = idRows.findIndex((r) => r[0] === orderId);
+    const dataRows = (dataRes.data.values ?? []) as string[][];
+    const rowIndex = dataRows.findIndex((r) => r[0] === orderId);
     if (rowIndex === -1) {
       return NextResponse.json(
         { ok: false, error: "order not found" },
         { status: 404 },
       );
     }
-
-    // Read the full existing row
     const sheetRow = rowIndex + 2; // +1 for header, +1 for 1-indexed sheets
-    const existingRes = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: ORDER_ROW_RANGE(sheetRow),
-    });
-    const existingRows = (existingRes.data.values ?? []) as string[][];
-    if (existingRows.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "order row missing" },
-        { status: 404 },
-      );
-    }
-    const existing = orderRowToRecord(existingRows[0]);
+    const existing = orderRowToRecord(dataRows[rowIndex]);
 
     // Merge patch, preserving immutable fields
     const updated: CustomOrder = {

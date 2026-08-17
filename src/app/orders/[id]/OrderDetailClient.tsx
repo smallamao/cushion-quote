@@ -31,6 +31,7 @@ import type {
   PurchaseOrderItem,
 } from "@/lib/types";
 import { attributedPurchaseAmount } from "@/lib/purchase-order-link";
+import { readJson } from "@/lib/read-json";
 import { FinanceTab } from "./FinanceTab";
 import { LinkedPurchasesSection } from "./LinkedPurchasesSection";
 import { generateWorkOrderJpgBlob } from "@/components/pdf/WorkOrderPDF";
@@ -120,11 +121,11 @@ export function OrderDetailClient({ orderId }: Props) {
         const res = await fetch(`/api/sheets/orders/${orderId}`, {
           cache: "no-store",
         });
-        const json = (await res.json()) as {
+        const json = (await readJson<{
           ok: boolean;
           order?: CustomOrder;
           error?: string;
-        };
+        }>(res));
         if (cancelled) return;
         if (!json.ok || !json.order) {
           setError(json.error ?? "載入失敗");
@@ -153,10 +154,10 @@ export function OrderDetailClient({ orderId }: Props) {
           `/api/sheets/purchases?relatedOrderId=${encodeURIComponent(orderId)}&includeItems=true`,
           { cache: "no-store" },
         );
-        const json = (await res.json()) as {
+        const json = (await readJson<{ ok?: boolean;
           orders?: PurchaseOrder[];
           itemsByOrder?: Record<string, PurchaseOrderItem[]>;
-        };
+        }>(res));
         if (!cancelled) {
           setLinkedPurchases(json.orders ?? []);
           setLinkedPurchaseItems(json.itemsByOrder ?? {});
@@ -204,11 +205,11 @@ export function OrderDetailClient({ orderId }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
-      const json = (await res.json()) as {
+      const json = (await readJson<{
         ok: boolean;
         order?: CustomOrder;
         error?: string;
-      };
+      }>(res));
       if (!json.ok) {
         setSaveResult({ ok: false, message: json.error ?? "儲存失敗" });
         return;
@@ -237,7 +238,7 @@ export function OrderDetailClient({ orderId }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      const json = (await res.json()) as { ok: boolean; order?: CustomOrder; error?: string };
+      const json = (await readJson<{ ok: boolean; order?: CustomOrder; error?: string }>(res));
       if (!json.ok) {
         setSaveResult({ ok: false, message: json.error ?? "狀態更新失敗" });
         return;
@@ -268,7 +269,7 @@ export function OrderDetailClient({ orderId }: Props) {
         fd.append("file", new File([jpgBlob], "workorder.jpg", { type: "image/jpeg" }));
         fd.append("folder", "notion-workorders");
         const upRes = await fetch("/api/upload", { method: "POST", body: fd });
-        const upJson = (await upRes.json()) as { url?: string };
+        const upJson = (await readJson<{ ok?: boolean; url?: string }>(upRes));
         jpgUrl = upJson.url;
       } catch {
         // Non-fatal: sync without image if JPG generation fails
@@ -279,7 +280,7 @@ export function OrderDetailClient({ orderId }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, jpgUrl }),
       });
-      const json = (await res.json()) as { ok: boolean; action?: string; notionUrl?: string; error?: string };
+      const json = (await readJson<{ ok: boolean; action?: string; notionUrl?: string; error?: string }>(res));
       if (!json.ok) {
         setNotionResult({ ok: false, message: json.error ?? "同步失敗" });
         return;
