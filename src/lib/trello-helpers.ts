@@ -55,6 +55,9 @@ export type TrelloAttachmentImagePreference = "thumbnail" | "full";
 
 // ─────────────── helpers ───────────────
 
+/** 中文星期（getDay() 0=日 … 6=六） */
+export const WEEKDAY_ZH = ["日", "一", "二", "三", "四", "五", "六"] as const;
+
 export function getCustomFieldText(items: CustomFieldItem[], fieldId: string): string {
   return items.find((i) => i.idCustomField === fieldId)?.value?.text ?? "";
 }
@@ -449,7 +452,7 @@ export function buildShippingMsg(
   const timeStr = formatHHmm(date);
   const timeEnd = formatHHmm(addHours(date, opts.timeRangeHours));
   const timeRange = `${timeStr} - ${timeEnd}`;
-  const dateStr = `${date.getFullYear()}年${month}月${day}日(${["日","一","二","三","四","五","六"][date.getDay()]}) ${timeStr}`;
+  const dateStr = `${date.getFullYear()}年${month}月${day}日(${WEEKDAY_ZH[date.getDay()]}) ${timeStr}`;
   const paymentStr = `$${opts.finalPayment.toLocaleString("zh-TW")}`;
 
   // 司機確認單模式
@@ -475,7 +478,7 @@ export function buildShippingMsg(
 
 您好，已為您安排好配送車趟資訊如下
 
-日期：${date.getFullYear()}年${month}月${day}日
+日期：${date.getFullYear()}年${month}月${day}日（${WEEKDAY_ZH[date.getDay()]}）
 時間：${timeRange}
 (確切時間依司機當日出車狀況而定！)
 
@@ -573,7 +576,7 @@ export function formatDriverConfirmHeader(
 ): string[] {
   const mm = String(due.getMonth() + 1).padStart(2, "0");
   const dd = String(due.getDate()).padStart(2, "0");
-  const weekday = ["日", "一", "二", "三", "四", "五", "六"][due.getDay()];
+  const weekday = WEEKDAY_ZH[due.getDay()];
   const dateLine =
     style === "roc"
       ? `${due.getFullYear() - 1911}/${mm}/${dd} 星期${weekday}`
@@ -697,7 +700,7 @@ function buildBackShippingMsg(
 
 您好，已為您安排好配送車趟資訊如下
 
-日期：${date.getFullYear()}年${month}月${day}日
+日期：${date.getFullYear()}年${month}月${day}日（${WEEKDAY_ZH[date.getDay()]}）
 時間：${timeRange}
 (確切時間依司機當日出車狀況而定！)
 
@@ -721,7 +724,7 @@ function buildCleaningMsg(date: Date, month: number, day: number, timeStr: strin
 
 您好，已為您安排好資訊如下
 
-日期：${date.getFullYear()}年${month}月${day}日
+日期：${date.getFullYear()}年${month}月${day}日（${WEEKDAY_ZH[date.getDay()]}）
 時間：${timeStr}
 
 沙發醫護師：Barry 佳莉
