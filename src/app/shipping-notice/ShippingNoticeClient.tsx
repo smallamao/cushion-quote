@@ -7,6 +7,7 @@ import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, ExternalLink,
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useActiveDrivers } from "@/hooks/useDrivers";
+import { openFloatingImages } from "@/components/layout/FloatingImageViewer";
 import { LIST_NAMES, PRODUCTS, S_ORDER_CUSTOM_FIELDS, TRELLO } from "@/lib/trello-constants";
 import type { DriverRecord } from "@/lib/drivers-sheet";
 import {
@@ -1064,6 +1065,11 @@ function AttachmentImage({
   );
 }
 
+/** 把 Trello 附件 URL 群組轉成走同源 proxy 的可載入 src（給浮動視窗用） */
+function toProxiedGroups(images: string[][]): string[][] {
+  return images.map((urls) => urls.map((u) => `/api/trello/attachment-proxy?url=${encodeURIComponent(u)}`));
+}
+
 /**
  * 把訂單照片另開成獨立分頁：使用者常在看到訂單照片後切去別的功能（如輸入售後服務單），
  * 站內彈窗一切頁就消失；獨立分頁可拖到旁邊並排對照。圖片經同源 proxy 載入，
@@ -1149,12 +1155,22 @@ function ImageModal({
     >
       <div className="absolute right-4 top-4 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={() => openImagesInNewTab(images, title, index)}
+          onClick={() => {
+            openFloatingImages({ title, groups: toProxiedGroups(images), startIndex: index });
+            onClose();
+          }}
           className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
-          title="在新分頁開啟，切換其他功能時仍可對照"
+          title="釘選為浮動視窗：留在系統內，切換其他功能時仍在畫面上"
         >
           <ExternalLink className="h-4 w-4" />
-          另開視窗
+          釘選浮窗
+        </button>
+        <button
+          onClick={() => openImagesInNewTab(images, title, index)}
+          className="rounded-full bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+          title="在新的瀏覽器分頁開啟"
+        >
+          新分頁
         </button>
         <button onClick={onClose} className="text-white/80 hover:text-white">
           <X className="h-6 w-6" />
@@ -3097,20 +3113,20 @@ export function ShippingNoticeClient() {
                             tabIndex={0}
                             onClick={(e) => {
                               e.stopPropagation();
-                              openImagesInNewTab(allCardImageGroups, card.name);
+                              openFloatingImages({ title: card.name, groups: toProxiedGroups(allCardImageGroups) });
                             }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                openImagesInNewTab(allCardImageGroups, card.name);
+                                openFloatingImages({ title: card.name, groups: toProxiedGroups(allCardImageGroups) });
                               }
                             }}
                             className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-[var(--accent)] hover:bg-[var(--bg-hover)]"
-                            title="在新分頁開啟訂單照片（切換其他功能時仍可對照）"
+                            title="釘選為浮動視窗（切換其他功能時仍留在畫面上）"
                           >
                             <ExternalLink className="h-3 w-3" />
-                            另開視窗
+                            釘選浮窗
                           </span>
                         </span>
                       </div>
