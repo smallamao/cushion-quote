@@ -430,6 +430,15 @@ const makeStyles = (k: number) => StyleSheet.create({
     color: T.inkFaint,
     letterSpacing: 0.3,
   },
+  // 品牌抬頭：固定在每頁左上角（頁面上緣邊界內，位於卡片頂端黑線之上）
+  brandTopLeft: {
+    position: "absolute",
+    top: 16,
+    left: T.pgH,
+    fontSize: Math.round(7 * k),
+    color: T.inkFaint,
+    letterSpacing: 0.3,
+  },
 });
 
 function safeText(text: string): string {
@@ -484,6 +493,9 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
   return (
     <Document title={`施工工單 ${order.orderNumber || order.orderId}`}>
       <Page size="A4" style={s.page}>
+
+        {/* 品牌抬頭固定於每頁左上角 */}
+        <Text style={s.brandTopLeft} fixed>馬鈴薯沙發 施工工單</Text>
 
         {/* ── Outer card ─────────────────────────────────────────────── */}
         <View style={s.card}>
@@ -708,7 +720,7 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
 
         {/* ── Footer ─────────────────────────────────────────────────── */}
         <View style={s.footer} fixed>
-          <Text style={s.footerText}>馬鈴薯沙發 施工工單 · 出單日期 {issueDate}</Text>
+          <Text style={s.footerText}>出單日期 {issueDate}</Text>
           <Text style={s.footerText}>
             {order.orderNumber || order.orderId}
           </Text>
