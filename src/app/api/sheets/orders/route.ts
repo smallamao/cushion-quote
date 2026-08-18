@@ -135,6 +135,7 @@ export async function POST(request: Request) {
     let caseId = "";
     let versionId = "";
     let quotedAmount = 0;
+    let versionTaxRate = 0;
     let directItemCategory = "";
     let clientId = "";
     let installAddress = "";
@@ -167,9 +168,10 @@ export async function POST(request: Request) {
           { status: 404 },
         );
       }
-      // col[2]=caseId, col[18]=含稅總額, col[24]=對外說明, col[29]=clientNameSnapshot
+      // col[2]=caseId, col[16]=稅率, col[18]=含稅總額, col[24]=對外說明, col[29]=clientNameSnapshot
       caseId = versionRow[2] ?? "";
       quotedAmount = parseFloat(versionRow[18] ?? "0") || 0;
+      versionTaxRate = parseFloat(versionRow[16] ?? "0") || 0;
       const scopeDescription = versionRow[24] ?? "";
       initialNotes = scopeDescription
         .split("\n")
@@ -234,9 +236,10 @@ export async function POST(request: Request) {
       clientId = directBody.clientId ?? "";
     }
 
-    // 報價端已設「不開發票」的版本（電子發票不開清單），建單直接標記免開票
+    // 免開票判定：未稅報價（稅率 0）本身即代表不開發票；或已列入電子發票不開清單
     let invoiceStatus: CustomOrder["invoiceStatus"] = "pending";
-    if (versionId) {
+    if (versionId && versionTaxRate === 0) invoiceStatus = "exempt";
+    if (versionId && invoiceStatus === "pending") {
       try {
         const optOutRes = await client.sheets.spreadsheets.values.get({
           spreadsheetId: client.spreadsheetId,

@@ -442,6 +442,9 @@ export function QuotesClient() {
     const existingAr = arByVersionId.get(version.versionId);
     const canCreateAR = version.versionStatus === "accepted" && !existingAr;
     const existingOrderId = orderByVersionId.get(version.versionId);
+    // 未稅報價（taxRate 0）本身就代表不開發票——與手動加入不開清單等價，免再點一次
+    const isUntaxed = (version.taxRate ?? 0) === 0;
+    const noInvoice = isUntaxed || optOutSet.has(version.versionId);
     const canCreateOrder = version.versionStatus === "accepted" && !existingOrderId;
     return (
       <div className="flex items-center justify-center gap-1">
@@ -495,7 +498,7 @@ export function QuotesClient() {
             <Wallet className="h-4 w-4" />
           </button>
         )}
-        {version.versionStatus === "accepted" && !optOutSet.has(version.versionId) && (
+        {version.versionStatus === "accepted" && !noInvoice && (
           <button
             onClick={(e) => { e.stopPropagation(); router.push(`/einvoices?versionId=${encodeURIComponent(version.versionId)}`); }}
             className="text-sky-600 hover:text-sky-700 transition-colors"
@@ -541,8 +544,11 @@ export function QuotesClient() {
             <ClipboardCheck className="h-4 w-4" />
           </button>
         )}
-        {optOutSet.has(version.versionId) ? (
-          <span className="text-[var(--text-tertiary)] cursor-default" title="已設定不開發票">
+        {noInvoice ? (
+          <span
+            className="text-[var(--text-tertiary)] cursor-default"
+            title={isUntaxed ? "未稅報價，視同不開發票" : "已設定不開發票"}
+          >
             <Slash className="h-4 w-4" />
           </span>
         ) : (
