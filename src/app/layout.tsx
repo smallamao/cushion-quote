@@ -48,7 +48,7 @@ export default async function RootLayout({
 }: Readonly<{ children: ReactNode }>) {
   // 客戶簽署頁（/sign）不需登入、不套營運後台的側邊欄/頁首，直接裸版呈現。
   const pathname = (await headers()).get("x-pathname") ?? "";
-  const bare = pathname === "/sign" || pathname.startsWith("/sign/");
+  const bare = pathname === "/sign" || pathname.startsWith("/sign/") || pathname.startsWith("/s/");
 
   return (
     <html lang="zh-Hant" className={dmSans.variable} suppressHydrationWarning>

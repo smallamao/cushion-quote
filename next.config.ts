@@ -4,6 +4,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   typedRoutes: true,
+  // 客戶簽署短網址：/s/{code} 對外，內部走 /sign/{code}（同一頁、同一 token）
+  async rewrites() {
+    return [{ source: "/s/:code", destination: "/sign/:code" }];
+  },
 };
 
 const withPWAConfig = withPWA({
