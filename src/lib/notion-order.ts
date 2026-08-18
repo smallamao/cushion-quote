@@ -78,8 +78,11 @@ export function buildNotionProperties(order: CustomOrder) {
     props["下單日"] = { date: { start: order.orderDate } };
   }
 
-  if (order.installDate) {
-    props["出貨日"] = { date: { start: order.installDate } };
+  // 出貨日 = 貨實際離開/交付給客戶那天：物料先進場時「出貨日(選填)」shipDate 才是真正出貨日；
+  // 一般到府安裝與客戶自取沒填 shipDate，退回用「安裝/出貨日」installDate。
+  const shipDate = order.shipDate || order.installDate;
+  if (shipDate) {
+    props["出貨日"] = { date: { start: shipDate } };
   }
 
   if (colorCodes) {
