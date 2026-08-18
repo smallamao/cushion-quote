@@ -230,7 +230,9 @@ textarea {
 
 /* ===== Responsive ===== */
 
-@media (max-width: 768px) {
+/* 手機（<640）：藏側邊欄、用漢堡抽屜。
+   iPad 直向 768–834px 原本落在 max-width:768 邊界，側邊欄整個消失又沒漢堡 → 「看不到選單」。 */
+@media (max-width: 639px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -244,8 +246,10 @@ textarea {
   }
 }
 
-@media (min-width: 769px) and (max-width: 1080px) {
-  .app-shell {
-    grid-template-columns: 56px minmax(0, 1fr);
+/* 平板（640–1080，含 iPad 直向/橫向）：側邊欄永遠可見；寬度沿用使用者的收合狀態
+   （--sidebar-width 由 Sidebar 依 collapsed 設定），不再硬鎖 56px 而切掉展開文字。 */
+@media (min-width: 640px) and (max-width: 1080px) {
+  .page-container {
+    padding: var(--space-5);
   }
 }

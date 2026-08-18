@@ -54,7 +54,7 @@ export function MobileDrawer() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mr-3 flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--bg-subtle)] md:hidden"
+        className="mr-3 flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--bg-subtle)] sm:hidden"
         aria-label="開啟選單"
       >
         <Menu className="h-5 w-5 text-[var(--text-primary)]" strokeWidth={1.5} />
@@ -63,7 +63,7 @@ export function MobileDrawer() {
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/50 md:hidden"
+          className="fixed inset-0 z-50 bg-black/50 sm:hidden"
           onClick={() => setOpen(false)}
           aria-hidden="true"
         />
@@ -72,7 +72,7 @@ export function MobileDrawer() {
       {/* Bottom-sheet — light background for maximum readability */}
       <div
         className={[
-          "fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col transform bg-[var(--bg-elevated)] transition-transform duration-250 ease-out md:hidden",
+          "fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col transform bg-[var(--bg-elevated)] transition-transform duration-250 ease-out sm:hidden",
           open ? "translate-y-0" : "translate-y-full",
         ].join(" ")}
       >
