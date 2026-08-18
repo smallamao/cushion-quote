@@ -19,6 +19,10 @@ interface BankAccount {
   branchName: string;
   accountNumber: string;
   showBranch: boolean; // 台新簡式省略分行
+  /** 備註要標的訂單編號前綴：沙發單 P、訂製坐墊/維修單 S */
+  orderPrefix?: "P" | "S";
+  /** 訂製椅墊帳戶：訂金模式附加「可先匯部分訂金／多數客人匯全額」說明 */
+  isCustomCushion?: boolean;
 }
 
 const BANK_ACCOUNTS: BankAccount[] = [
@@ -69,6 +73,8 @@ const BANK_ACCOUNTS: BankAccount[] = [
   {
     id: "big_custom",
     buttonLabel: "輸出大戶（訂製）",
+    orderPrefix: "S",
+    isCustomCushion: true,
     holderName: "周春懋",
     bankCode: "807",
     bankName: "永豐銀行",
@@ -80,6 +86,8 @@ const BANK_ACCOUNTS: BankAccount[] = [
   {
     id: "line_custom",
     buttonLabel: "輸出連線（訂製）",
+    orderPrefix: "S",
+    isCustomCushion: true,
     holderName: "周春懋",
     bankCode: "824",
     bankName: "連線商業銀行",
@@ -146,10 +154,16 @@ function buildRemittanceMessage(
   lines.push(`帳號：${account.accountNumber}`);
   lines.push(``);
   lines.push(``);
-  lines.push(`⚠️請於備註標明訂單編號（Pxxxx）以利查收 🙏`);
+  lines.push(`⚠️請於備註標明訂單編號（${account.orderPrefix ?? "P"}xxxx）以利查收 🙏`);
   lines.push(`⚠️完成匯款後，請告知匯款日期及帳號後五碼`);
   if (!isBalance) {
     lines.push(`⚠️確認收到款項後才會叫料下排程哦！`);
+  }
+  // 訂製椅墊：工期短，客人常直接匯全額省一趟；只在訂金模式提示
+  if (!isBalance && account.isCustomCushion) {
+    lines.push(``);
+    lines.push(`💡 可以先匯部分訂金，只是椅墊製作時間比較快，`);
+    lines.push(`💡 大部分客人都是直接匯全額～`);
   }
   lines.push(``);
   lines.push(`🔺提醒您，請確認各項訂製內容及注意告知事項`);
