@@ -136,7 +136,8 @@ function formatShippingDate(isoString: string): string {
 function buildRemittanceMessage(
   account: BankAccount,
   amount: string,
-  isBalance: boolean
+  isBalance: boolean,
+  orderNumber = "",
 ): string {
   const payType = isBalance ? "餘額" : "訂金";
   const deadline = getPayDeadline(isBalance);
@@ -154,7 +155,13 @@ function buildRemittanceMessage(
   lines.push(`帳號：${account.accountNumber}`);
   lines.push(``);
   lines.push(``);
-  lines.push(`⚠️請於備註標明訂單編號（${account.orderPrefix ?? "P"}xxxx）以利查收 🙏`);
+  // 有填訂單編號就直接寫死在訊息裡，客人照抄即可；沒填才退回佔位提示
+  const orderNo = orderNumber.trim();
+  lines.push(
+    orderNo
+      ? `⚠️請於備註標明訂單編號 ${orderNo} 以利查收 🙏`
+      : `⚠️請於備註標明訂單編號（${account.orderPrefix ?? "P"}xxxx）以利查收 🙏`,
+  );
   lines.push(`⚠️完成匯款後，請告知匯款日期及帳號後五碼`);
   if (!isBalance) {
     lines.push(`⚠️確認收到款項後才會叫料下排程哦！`);
@@ -274,7 +281,7 @@ export function RemittanceClient() {
 
   function handleAccountClick(account: BankAccount) {
     if (!amount) return;
-    const msg = buildRemittanceMessage(account, amount, isBalance);
+    const msg = buildRemittanceMessage(account, amount, isBalance, orderNumber);
     setModal({ title: `匯款訊息 - ${account.buttonLabel}`, message: msg });
   }
 
@@ -393,7 +400,7 @@ export function RemittanceClient() {
           type="text"
           value={orderNumber}
           onChange={(e) => handleOrderNumberChange(e.target.value)}
-          placeholder="訂單編號（Pxxxx）"
+          placeholder="訂單編號（Pxxxx / Sxxxx）— 填了會直接帶進匯款訊息"
           className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
         />
 
