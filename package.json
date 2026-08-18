@@ -15,6 +15,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@ducanh2912/next-pwa": "^10.2.9",
+    "@google/genai": "^2.17.1",
     "@google/generative-ai": "^0.24.1",
     "@pdf-lib/fontkit": "^1.1.1",
     "@radix-ui/react-checkbox": "^1.3.3",
