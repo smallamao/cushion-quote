@@ -266,7 +266,19 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
     };
   }
 
+  /** 讀取 dataURL 的實際像素尺寸（用來讓版面框跟上新的裁切比例） */
+  function readImageSize(src: string): Promise<{ w: number; h: number } | null> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
   // 裁切完成：dataURL 上傳成正式網址 → 回寫父層（並同步本地照片項目的 url）
+  // 同時依新圖比例重算版面框高度（以框中心為錨），否則 16:9 的裁切結果會被硬塞回
+  // 原本 4:3 的框裡——照片被 cover 再裁一次、色票被 contain 留黑邊，裁切等於白做。
   async function handleCropConfirm(result: string) {
     if (cropIdx === null) return;
     const it = items[cropIdx];
@@ -274,11 +286,21 @@ export function WorkOrderLayoutEditor({ open, order, onClose, onSave, onReplaceI
     if (result === originalSrc) { setCropIdx(null); return; } // 未變更
     setCropSaving(true);
     try {
-      const newUrl = await uploadDataUrl(result);
+      const [newUrl, size] = await Promise.all([uploadDataUrl(result), readImageSize(result)]);
       onReplaceImage({ kind: it.kind ?? "photo", url: originalSrc }, newUrl);
-      if (it.kind !== "swatch") {
-        setItems((prev) => prev.map((p, i) => (i === cropIdx ? { ...p, url: newUrl } : p)));
-      }
+      setItems((prev) =>
+        prev.map((p, i) => {
+          if (i !== cropIdx) return p;
+          const next = it.kind === "swatch" ? { ...p } : { ...p, url: newUrl };
+          if (size && size.w > 0 && size.h > 0) {
+            const newH = Math.round((p.w * size.h) / size.w);
+            const cy = p.y + p.h / 2;
+            next.h = newH;
+            next.y = Math.max(0, Math.round(cy - newH / 2));
+          }
+          return next;
+        }),
+      );
       setCropIdx(null);
     } catch (e) {
       alert(e instanceof Error ? e.message : "裁切上傳失敗");
