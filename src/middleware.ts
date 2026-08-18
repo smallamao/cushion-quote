@@ -76,8 +76,32 @@ function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean 
   return Boolean(apiKey && apiKey.trim().length > 0);
 }
 
+// 客戶簽署短網域（例：s.potatosofa.com）。設定後該網域的根路徑直接接短碼：
+//   s.potatosofa.com/Ab7kQ2  →  內部 /sign/Ab7kQ2
+// 未設定或主機不符時不啟用（一般 /s/{code} 與 /sign/{code} 仍照常）。
+const SIGN_SHORT_HOST = (process.env.NEXT_PUBLIC_SIGN_SHORT_HOST ?? "").trim().toLowerCase();
+const SHORT_CODE_RE = /^\/([A-Za-z0-9]{6,32})\/?$/;
+
+function shortHostRewrite(request: NextRequest): NextResponse | null {
+  if (!SIGN_SHORT_HOST) return null;
+  const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
+  if (host !== SIGN_SHORT_HOST) return null;
+  const { pathname } = request.nextUrl;
+  const m = pathname.match(SHORT_CODE_RE);
+  if (!m) return null;
+  const url = request.nextUrl.clone();
+  url.pathname = `/sign/${m[1]}`;
+  const headers = new Headers(request.headers);
+  headers.set("x-pathname", url.pathname);
+  return NextResponse.rewrite(url, { request: { headers } });
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // 簽署短網域根路徑短碼 → /sign/{code}
+  const shortRewrite = shortHostRewrite(request);
+  if (shortRewrite) return shortRewrite;
 
   // 所有 response 都注入 x-pathname,給 root layout 用
   const requestHeaders = new Headers(request.headers);

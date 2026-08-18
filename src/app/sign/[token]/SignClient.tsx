@@ -41,6 +41,18 @@ function Notice({ title, desc }: { title: string; desc: string }) {
 }
 
 export function SignClient({ token }: { token: string }) {
+  // LINE 內建瀏覽器簽名容易失敗：偵測到就自動補 ?openExternalBrowser=1 重導，
+  // 讓 LINE 改用手機原生瀏覽器開啟。連結本身不必帶參數（越短越好貼）。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ua = navigator.userAgent;
+    const isLine = /\bLine\//i.test(ua);
+    if (isLine && !window.location.search.includes("openExternalBrowser")) {
+      const sep = window.location.search ? "&" : "?";
+      window.location.replace(`${window.location.href}${sep}openExternalBrowser=1`);
+    }
+  }, []);
+
   const [view, setView] = useState<PublicSigningView | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Loader2, Maximize2, X } from "lucide-react";
 
 import type { PurchaseOrder, QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
+import { buildSignLink } from "@/lib/sign-link";
 import { formatCurrency } from "@/lib/utils";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import { generatePDFBlob, generateJpgBlob, buildPdfFileName, type QuotePDFProps } from "@/components/pdf/QuotePDF";
@@ -196,8 +197,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       const json = (await res.json()) as { ok: boolean; token?: string; error?: string };
       if (!json.ok || !json.token) throw new Error(json.error ?? "建立簽署連結失敗");
 
-      // openExternalBrowser=1：讓客戶在 LINE 內點連結時改用手機原生瀏覽器開啟
-      const url = `${window.location.origin}/s/${json.token}?openExternalBrowser=1`;
+      const url = buildSignLink(json.token);
       setSignLink(url);
       try {
         await navigator.clipboard.writeText(url);

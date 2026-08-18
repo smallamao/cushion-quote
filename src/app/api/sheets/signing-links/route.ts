@@ -52,9 +52,9 @@ export async function POST(request: Request) {
     const days = body.expiresInDays ?? 30;
     const expiresAt = days > 0 ? new Date(Date.now() + days * DAY_MS).toISOString() : "";
     const link: SigningLink = {
-      // 8 字元短碼（無易混淆字元 0/O/1/l/I）：連結夠短好貼 LINE；有效期 30 天、簽完即失效，
-      // 62 進位 8 位 ≈ 2×10^14 組合，暴力猜中機率可忽略。
-      token: shortCode(8),
+      // 6 字元短碼（無易混淆字元 0/O/1/l/I）：54^6 ≈ 2.5×10^10 組合；有效期 30 天、
+      // 簽完即失效、查無此碼一律 404 不洩漏資訊，暴力猜中不具實務可行性。
+      token: shortCode(6),
       versionId: version.versionId,
       quoteId: version.quoteId,
       caseId: version.caseId,
