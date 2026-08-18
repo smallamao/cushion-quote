@@ -3,8 +3,11 @@ import { NextResponse } from "next/server";
 // 後台用 PDF 下載代理：把 Cloudinary raw 檔（無副檔名）補上 application/pdf
 // 與 .pdf 檔名再吐出，讓後台合約歸檔點開/下載即為可直接開啟的 PDF。
 // 僅登入者可用（middleware 守 /api/*），且只允許本專案 Cloudinary 資源避免 SSRF。
+// ?dl=1 → 強制下載（attachment）；預設 inline，讓瀏覽器／iframe 直接顯示。
 export async function GET(request: Request) {
-  const url = new URL(request.url).searchParams.get("u") ?? "";
+  const params = new URL(request.url).searchParams;
+  const url = params.get("u") ?? "";
+  const forceDownload = params.get("dl") === "1";
   if (!/^https:\/\/res\.cloudinary\.com\/[\w-]+\//.test(url)) {
     return NextResponse.json({ ok: false, error: "invalid_url" }, { status: 400 });
   }
@@ -20,7 +23,7 @@ export async function GET(request: Request) {
   return new Response(buf, {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${fileName}"`,
+      "Content-Disposition": `${forceDownload ? "attachment" : "inline"}; filename="${fileName}"`,
       "Cache-Control": "private, no-store",
     },
   });

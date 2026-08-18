@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Image as ImageIcon, Loader2, Upload, X } from "lucide-react";
+import { Download, ExternalLink, FileText, Image as ImageIcon, Loader2, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,8 @@ export function SignedContractArchive({
 }: SignedContractArchiveProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  // 檔案預覽（PDF 用 iframe、圖片直接顯示），不必下載
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFiles(files: FileList | null) {
@@ -207,18 +209,22 @@ export function SignedContractArchive({
                   key={`${url}-${index}`}
                   className="group relative rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-2"
                 >
-                  <a
-                    href={isPdf ? `/api/pdf-proxy?u=${encodeURIComponent(url)}` : url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block"
+                  <button
+                    type="button"
+                    onClick={() => setPreviewIndex(index)}
+                    className="block w-full text-left"
+                    title="點擊預覽"
                   >
                     {isPdf ? (
-                      <div className="flex h-24 flex-col items-center justify-center gap-1 text-[var(--text-secondary)]">
-                        <FileText className="h-8 w-8" />
-                        <span className="text-[11px] truncate max-w-full">
-                          {fileNameFromUrl(url)}
-                        </span>
+                      // PDF：用 iframe 直接畫第一頁當縮圖（同源 proxy inline 回傳）
+                      <div className="relative h-24 w-full overflow-hidden rounded bg-white">
+                        <iframe
+                          src={`/api/pdf-proxy?u=${encodeURIComponent(url)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                          title={`合約 ${index + 1}`}
+                          className="pointer-events-none h-[300%] w-[300%] origin-top-left scale-[0.3333] border-0"
+                          tabIndex={-1}
+                        />
+                        <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white">PDF</span>
                       </div>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -228,7 +234,7 @@ export function SignedContractArchive({
                         className="h-24 w-full rounded object-cover"
                       />
                     )}
-                  </a>
+                  </button>
                   <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--text-tertiary)]">
                     <span className="flex items-center gap-1">
                       {isPdf ? (
@@ -255,6 +261,82 @@ export function SignedContractArchive({
           </div>
         </div>
       )}
+
+      {previewIndex !== null && signedContractUrls[previewIndex] && (() => {
+        const url = signedContractUrls[previewIndex];
+        const isPdf = isPdfUrl(url);
+        const inlineSrc = isPdf ? `/api/pdf-proxy?u=${encodeURIComponent(url)}` : url;
+        const dlSrc = isPdf ? `/api/pdf-proxy?u=${encodeURIComponent(url)}&dl=1` : url;
+        return (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
+            onClick={() => setPreviewIndex(null)}
+          >
+            <div
+              className="flex h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-[var(--bg-elevated)] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 text-sm">
+                <span className="truncate font-medium">
+                  合約檔案 {previewIndex + 1} / {signedContractUrls.length} · {fileNameFromUrl(url)}
+                </span>
+                <span className="flex-1" />
+                {signedContractUrls.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewIndex((i) => (i === null ? 0 : (i - 1 + signedContractUrls.length) % signedContractUrls.length))}
+                      className="rounded px-2 py-1 text-xs hover:bg-[var(--bg-hover)]"
+                    >
+                      ◀ 上一份
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewIndex((i) => (i === null ? 0 : (i + 1) % signedContractUrls.length))}
+                      className="rounded px-2 py-1 text-xs hover:bg-[var(--bg-hover)]"
+                    >
+                      下一份 ▶
+                    </button>
+                  </>
+                )}
+                <a
+                  href={inlineSrc}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-[var(--bg-hover)]"
+                  title="在新分頁開啟"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> 新分頁
+                </a>
+                <a
+                  href={dlSrc}
+                  download
+                  className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-[var(--bg-hover)]"
+                  title="下載"
+                >
+                  <Download className="h-3.5 w-3.5" /> 下載
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewIndex(null)}
+                  className="rounded p-1 hover:bg-[var(--bg-hover)]"
+                  title="關閉"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 bg-black/5">
+                {isPdf ? (
+                  <iframe src={inlineSrc} title="合約 PDF" className="h-full w-full border-0" />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={url} alt="合約檔案" className="h-full w-full object-contain" />
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="mt-3">
         <Label className="mb-1 block text-xs">回簽備註</Label>
