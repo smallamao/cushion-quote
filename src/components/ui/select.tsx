@@ -44,7 +44,9 @@ const SelectContent = React.forwardRef<
       sideOffset={4}
       {...props}
     >
-      <SelectPrimitive.Viewport className="max-h-[min(var(--radix-select-content-available-height),300px)] p-1">
+      {/* 高度跟著螢幕可用空間走（Radix 算到視窗邊緣），上限 480px；
+          先前寫死 300px 導致 10 個選項就得捲動，明明畫面還有大片空間 */}
+      <SelectPrimitive.Viewport className="max-h-[min(var(--radix-select-content-available-height),480px)] p-1">
         {children}
       </SelectPrimitive.Viewport>
     </SelectPrimitive.Content>
