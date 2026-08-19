@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useActiveDrivers } from "@/hooks/useDrivers";
 import { openFloatingImages } from "@/components/layout/FloatingImageViewer";
+import { OrderChangeTool } from "@/components/shipping/OrderChangeTool";
 import { LIST_NAMES, PRODUCTS, S_ORDER_CUSTOM_FIELDS, TRELLO } from "@/lib/trello-constants";
 import type { DriverRecord } from "@/lib/drivers-sheet";
 import {
@@ -649,6 +650,11 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
         </Button>
         {saveMsg && <span className="shrink-0 text-xs text-green-600">{saveMsg}</span>}
       </div>
+
+      <hr className="border-[var(--border)]" />
+
+      {/* 訂單異動確認 → 存成該卡片的留言（異動紀錄） */}
+      <OrderChangeTool cardId={card.id} />
 
       <hr className="border-[var(--border)]" />
 
