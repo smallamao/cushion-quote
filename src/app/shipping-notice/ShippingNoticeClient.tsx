@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, ExternalLink, Printer, Navigation, RefreshCw, Scissors, MessageSquare, User, CalendarDays, CalendarClock, CalendarRange } from "lucide-react";
+import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, ExternalLink, Printer, Navigation, RefreshCw, Scissors, MessageSquare, SquarePen, User, CalendarDays, CalendarClock, CalendarRange } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -650,11 +650,6 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
         </Button>
         {saveMsg && <span className="shrink-0 text-xs text-green-600">{saveMsg}</span>}
       </div>
-
-      <hr className="border-[var(--border)]" />
-
-      {/* 訂單異動確認 → 存成該卡片的留言（異動紀錄） */}
-      <OrderChangeTool cardId={card.id} />
 
       <hr className="border-[var(--border)]" />
 
@@ -1724,7 +1719,7 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
   const router = useRouter();
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"actions" | "shipping" | "production" | "customer" | "checklist" | "customfields">("actions");
+  const [view, setView] = useState<"actions" | "shipping" | "production" | "customer" | "checklist" | "customfields" | "orderchange">("actions");
   const [result, setResult] = useState<{ title: string; content: string } | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const [showMovePicker, setShowMovePicker] = useState(false);
@@ -2073,6 +2068,16 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
             onBack={() => setView("actions")}
             onCountChange={setCheckDone}
           />
+        ) : view === "orderchange" ? (
+          <div className="space-y-3">
+            <button
+              onClick={() => setView("actions")}
+              className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            >
+              ← 返回
+            </button>
+            <OrderChangeTool cardId={card.id} />
+          </div>
         ) : (
           <div className="space-y-2">
             <button
@@ -2135,6 +2140,13 @@ function CardDetail({ card, drivers, attachments, onClose, onCardUpdate }: CardD
             >
               <span className="text-base">✂️</span>
               <span>裁剪工作單</span>
+            </button>
+            <button
+              onClick={() => setView("orderchange")}
+              className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-hover)]"
+            >
+              <span className="text-base">📝</span>
+              <span>訂單異動</span>
             </button>
             {showDuePicker ? (
               <div className="rounded-lg border border-[var(--border)] p-2.5">
@@ -2598,6 +2610,7 @@ export function ShippingNoticeClient() {
   const [savingDate, setSavingDate] = useState(false);
   // 頂部快速鍵：同時更改排程日與出貨日（避免改完排程日又要另外開視窗改出貨日）
   const [comboEditor, setComboEditor] = useState<{ cardId: string; scheduleValue: string; dueValue: string } | null>(null);
+  const [orderChangeCardId, setOrderChangeCardId] = useState<string | null>(null);
   const [savingCombo, setSavingCombo] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Skip the first search effect trigger if state was restored from sessionStorage
@@ -2914,6 +2927,16 @@ export function ShippingNoticeClient() {
             onClick={() => void handleQuickAction("customer")}
           >
             <User className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            disabled={!targetCard}
+            title={targetCard ? "訂單異動" : "請先搜尋並點選一張案件"}
+            aria-label="訂單異動"
+            onClick={() => targetCard && setOrderChangeCardId(targetCard.id)}
+          >
+            <SquarePen className="h-4 w-4" />
           </Button>
           <Button
             size="icon"
@@ -3244,6 +3267,30 @@ export function ShippingNoticeClient() {
                 取消
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {orderChangeCardId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setOrderChangeCardId(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-medium text-[var(--text-primary)]">訂單異動</p>
+              <button
+                onClick={() => setOrderChangeCardId(null)}
+                className="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+                aria-label="關閉"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <OrderChangeTool cardId={orderChangeCardId} />
           </div>
         </div>
       )}
