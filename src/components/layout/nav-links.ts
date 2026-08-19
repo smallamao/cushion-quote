@@ -1,7 +1,6 @@
 import {
   Archive,
   BarChart3,
-  Bot,
   Briefcase,
   Calculator,
   Calendar,
@@ -44,7 +43,6 @@ export const navLinks: NavLinkDef[] = [
   { href: "/cases", label: "案件紀錄", icon: Briefcase, roles: ["admin"], group: "business" },
   { href: "/referrals", label: "轉介紹", icon: Users, roles: ["admin"], group: "business" },
   { href: "/templates", label: "快速回覆", icon: MessageSquareText, roles: ["admin"], group: "business" },
-  { href: "/assistant", label: "AI 助手", icon: Bot, roles: ["admin"], group: "business" },
   // ── 作業 ──
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
   { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin"], group: "operations" },

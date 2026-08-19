@@ -96,7 +96,7 @@ export function AssistantPanel() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-11rem)] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--bg-elevated)]">
       {/* 隱私提示 */}
       <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-2 text-[11px] text-[var(--text-tertiary)]">
         <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
