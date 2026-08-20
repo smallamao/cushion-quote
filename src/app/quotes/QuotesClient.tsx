@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, Copy, Edit, Eye, FileCheck2, FilePlus2, Loader2, ReceiptText, RefreshCw, Slash, Trash2, Upload, Wallet } from "lucide-react";
+import { ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, Copy, Edit, Eye, FileCheck2, FilePlus2, Loader2, MessageSquareText, ReceiptText, RefreshCw, Slash, Trash2, Upload, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -94,6 +94,27 @@ function arStatusTitle(ar: ARRecord): string {
   }
 }
 
+/** 追蹤預設間隔（天）——與後端 PATCH 的 DEFAULT_FOLLOW_UP_DAYS 一致 */
+const FOLLOW_UP_DAYS_DEFAULT = 3;
+
+/** 產生可直接貼給客人的報價追蹤訊息 */
+function buildFollowUpMessage(v: QuoteVersionRecord): string {
+  const contact = (v.contactNameSnapshot || v.clientNameSnapshot || "").trim();
+  const scope = (v.projectNameSnapshot || "").trim();
+  const lines = [
+    `${contact ? `${contact} ` : ""}您好～先前為您提供的報價，不知道考慮得如何呢？😊`,
+    "",
+    `${scope ? `【${scope}】` : ""}報價金額 $${Math.round(v.totalAmount).toLocaleString("zh-TW")}`,
+  ];
+  if (v.validUntil) lines.push(`報價有效期限至 ${v.validUntil}`);
+  lines.push(
+    "",
+    "如需調整尺寸、材質或內容，都歡迎直接跟我說，可以再為您微調～",
+    "有任何問題隨時回覆訊息，期待為您服務 🙏",
+  );
+  return lines.join("\n");
+}
+
 function compareDateTextDesc(a: string, b: string): number {
   if (a === b) return 0;
   if (!a) return 1;
@@ -138,6 +159,9 @@ export function QuotesClient() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [optOutSet, setOptOutSet] = useState<Set<string>>(new Set());
+  // 追蹤佇列：banner 點擊後只看待追蹤；追蹤 modal 目標版本
+  const [followUpOnly, setFollowUpOnly] = useState(false);
+  const [followUpTarget, setFollowUpTarget] = useState<VersionRow | null>(null);
 
   useEffect(() => {
     setPage(1);
@@ -230,6 +254,29 @@ export function QuotesClient() {
       body: JSON.stringify(payload),
     });
     if (!fallbackResponse.ok) throw new Error("更新狀態失敗");
+  }
+
+  /** 追蹤完成：複製訊息＋記錄追蹤時間＋重排下一輪（首次追蹤自動轉「追蹤中」） */
+  async function handleFollowUpConfirm(version: VersionRow, message: string) {
+    try { await navigator.clipboard.writeText(message); } catch { /* 複製失敗仍記錄 */ }
+    const days = version.followUpDays > 0 ? version.followUpDays : FOLLOW_UP_DAYS_DEFAULT;
+    const next = new Date();
+    next.setDate(next.getDate() + days);
+    const patch = {
+      lastFollowUpAt: new Date().toISOString(),
+      nextFollowUpDate: next.toLocaleDateString("sv-SE"),
+      ...(version.versionStatus === "sent" ? { versionStatus: "following_up" as VersionStatus } : {}),
+    };
+    const res = await fetch(`/api/sheets/versions/${encodeURIComponent(version.versionId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error("記錄追蹤失敗");
+    setVersions((cur) =>
+      cur.map((v) => (v.versionId === version.versionId ? { ...v, ...patch } : v)),
+    );
+    setFollowUpTarget(null);
   }
 
   async function handleStatusChange(versionId: string, versionStatus: VersionStatus) {
@@ -356,11 +403,32 @@ export function QuotesClient() {
     await handleStatusChange(version.versionId, "superseded");
   }
 
+  // ── 報價追蹤 ─────────────────────────────────────────────
+  const todayStr = new Date().toLocaleDateString("sv-SE");
+  const isTrackable = (v: VersionRow) =>
+    v.versionStatus === "sent" || v.versionStatus === "following_up" || v.versionStatus === "negotiating";
+  /** 待追蹤：可追蹤狀態且追蹤日已到（含逾期） */
+  const isFollowUpDue = (v: VersionRow) =>
+    isTrackable(v) && !!v.nextFollowUpDate && v.nextFollowUpDate <= todayStr;
+  const followUpDue = useMemo(() => versions.filter(isFollowUpDue), [versions, todayStr]);
+  const followUpOverdue = useMemo(
+    () => followUpDue.filter((v) => v.nextFollowUpDate < todayStr),
+    [followUpDue, todayStr],
+  );
+  /** 寄出天數（sentAt 優先，退回報價日期） */
+  const daysSinceSent = (v: VersionRow) => {
+    const base = (v.sentAt || v.quoteDate || "").slice(0, 10);
+    if (!base) return null;
+    const diff = Math.floor((new Date(`${todayStr}T00:00:00`).getTime() - new Date(`${base}T00:00:00`).getTime()) / 86400000);
+    return diff >= 0 ? diff : null;
+  };
+
   const filtered = useMemo(() => {
     const query = debouncedSearch.trim().toLowerCase();
 
     return versions.filter((item) => {
       if (!showSuperseded && item.versionStatus === "superseded") return false;
+      if (followUpOnly && !isFollowUpDue(item)) return false;
       if (filterStatus !== "all" && item.versionStatus !== filterStatus) return false;
       if (filterDateFrom && item.quoteDate < filterDateFrom) return false;
       if (filterDateTo && item.quoteDate > filterDateTo) return false;
@@ -378,7 +446,7 @@ export function QuotesClient() {
         .toLowerCase()
         .includes(query);
     });
-  }, [filterDateFrom, filterDateTo, filterStatus, debouncedSearch, showSuperseded, versions]);
+  }, [filterDateFrom, filterDateTo, filterStatus, debouncedSearch, showSuperseded, versions, followUpOnly, todayStr]);
 
   const groups = useMemo(() => {
     // Build a map of ALL versions per quoteId (for grouping)
@@ -632,6 +700,29 @@ export function QuotesClient() {
     );
   }
 
+  /** 已發送/追蹤中列的老化標記＋「追蹤」快速鍵（生成客戶訊息並記錄追蹤） */
+  function renderFollowUpChip(version: VersionRow) {
+    if (!isTrackable(version)) return null;
+    const days = daysSinceSent(version);
+    const due = isFollowUpDue(version);
+    return (
+      <span className="ml-1 inline-flex items-center gap-1">
+        {days !== null && (
+          <span className={`whitespace-nowrap text-[11px] ${due ? "font-medium text-red-600" : "text-[var(--text-tertiary)]"}`}>
+            寄{days}天{due ? "⚠" : ""}
+          </span>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); setFollowUpTarget(version); }}
+          title="產生追蹤訊息並記錄追蹤"
+          className={`transition-colors ${due ? "text-amber-600 hover:text-amber-700" : "text-[var(--text-tertiary)] hover:text-amber-600"}`}
+        >
+          <MessageSquareText className="h-4 w-4" />
+        </button>
+      </span>
+    );
+  }
+
   function renderStatusSelect(version: VersionRow) {
     const statusInfo = VERSION_STATUS_MAP[version.versionStatus] ?? VERSION_STATUS_MAP.draft;
     const isBusy = busyVersionId === version.versionId;
@@ -673,6 +764,26 @@ export function QuotesClient() {
           重新載入
         </Button>
       </div>
+
+      {followUpDue.length > 0 && (
+        <button
+          onClick={() => setFollowUpOnly((v) => !v)}
+          className={[
+            "flex w-full items-center gap-2 rounded-[var(--radius-md)] border px-4 py-2.5 text-sm transition-colors",
+            followUpOnly
+              ? "border-amber-400 bg-amber-100 text-amber-900"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100",
+          ].join(" ")}
+        >
+          <span>🔔 待追蹤 {followUpDue.length} 筆</span>
+          {followUpOverdue.length > 0 && (
+            <span className="font-medium text-red-600">（{followUpOverdue.length} 筆已逾期）</span>
+          )}
+          <span className="ml-auto text-xs opacity-70">
+            {followUpOnly ? "顯示中 · 點擊還原全部" : "點擊只看待追蹤"}
+          </span>
+        </button>
+      )}
 
       <div className="card-surface rounded-[var(--radius-lg)] px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -940,7 +1051,10 @@ export function QuotesClient() {
                           <span className="text-sm font-medium">{formatCurrency(latest.totalAmount)}</span>
                         </td>
                         <td className="px-4 py-2.5">
-                          {renderStatusSelect(latest)}
+                          <span className="flex items-center">
+                            {renderStatusSelect(latest)}
+                            {renderFollowUpChip(latest)}
+                          </span>
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           {renderActionButtons(latest)}
@@ -1061,6 +1175,14 @@ export function QuotesClient() {
         </DialogContent>
       </Dialog>
 
+      {followUpTarget && (
+        <FollowUpDialog
+          version={followUpTarget}
+          onConfirm={(msg) => handleFollowUpConfirm(followUpTarget, msg)}
+          onClose={() => setFollowUpTarget(null)}
+        />
+      )}
+
       <CreateARDialog
         open={createARVersion !== null}
         onOpenChange={(open) => {
@@ -1080,5 +1202,53 @@ export function QuotesClient() {
         onClose={() => setPreviewVersionId(null)}
       />
     </div>
+  );
+}
+
+/** 報價追蹤視窗：生成可貼給客人的訊息，複製同時記錄追蹤並重排下一輪 */
+function FollowUpDialog({
+  version,
+  onConfirm,
+  onClose,
+}: {
+  version: QuoteVersionRecord;
+  onConfirm: (message: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState(() => buildFollowUpMessage(version));
+  const [busy, setBusy] = useState(false);
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            追蹤訊息 — {version.contactNameSnapshot || version.clientNameSnapshot || version.versionId}
+          </DialogTitle>
+        </DialogHeader>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={10}
+          className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 text-sm leading-relaxed focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+        />
+        <p className="text-[11px] text-[var(--text-tertiary)]">
+          可直接編輯。按「複製並記錄追蹤」會複製全文、記下追蹤時間，並自動排下一輪追蹤日。
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>取消</Button>
+          <Button
+            onClick={() => {
+              setBusy(true);
+              onConfirm(text).catch((err) => {
+                alert(err instanceof Error ? err.message : "記錄追蹤失敗");
+              }).finally(() => setBusy(false));
+            }}
+            disabled={busy || !text.trim()}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "📋 複製並記錄追蹤"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

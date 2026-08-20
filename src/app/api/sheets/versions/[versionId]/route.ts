@@ -172,6 +172,18 @@ interface VersionPatchPayload {
   signedBackDate?: string;
   signedContractUrls?: string[];
   signedNotes?: string;
+  /** 「已追蹤」快速鍵：記錄追蹤時間並重排下一輪 */
+  lastFollowUpAt?: string;
+  nextFollowUpDate?: string;
+}
+
+/** 報價追蹤預設間隔（天）；版本自帶 followUpDays>0 時以版本為準 */
+const DEFAULT_FOLLOW_UP_DAYS = 3;
+
+function addDaysStr(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString("sv-SE");
 }
 
 export async function PATCH(
@@ -202,8 +214,25 @@ export async function PATCH(
       signedBackDate: payload.signedBackDate ?? existing.signedBackDate,
       signedContractUrls: payload.signedContractUrls ?? existing.signedContractUrls,
       signedNotes: payload.signedNotes ?? existing.signedNotes,
+      lastFollowUpAt: payload.lastFollowUpAt ?? existing.lastFollowUpAt,
+      nextFollowUpDate: payload.nextFollowUpDate ?? existing.nextFollowUpDate,
       updatedAt: now,
     };
+
+    // 追蹤排程連動（機制先前只存在於 PUT 的 normalizeVersion，狀態下拉走的
+    // PATCH 漏接 → 追蹤欄位從未被寫入、行事曆報價追蹤永遠是空的）：
+    const today = now.slice(0, 10);
+    if (updated.versionStatus === "sent") {
+      if (!updated.sentAt) updated.sentAt = now;
+      if (updated.followUpDays <= 0) updated.followUpDays = DEFAULT_FOLLOW_UP_DAYS;
+      if (!payload.nextFollowUpDate && !existing.nextFollowUpDate) {
+        updated.nextFollowUpDate = addDaysStr(today, updated.followUpDays);
+      }
+    }
+    if (["accepted", "rejected", "superseded"].includes(updated.versionStatus)) {
+      updated.nextFollowUpDate = ""; // 已成交/已拒絕：追蹤結束，從行事曆與待追蹤清單消失
+    }
+    updated.reminderStatus = calculateReminderStatus(updated);
 
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
