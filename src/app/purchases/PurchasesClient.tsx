@@ -160,15 +160,17 @@ export function PurchasesClient() {
     });
   }
 
+  // 全選只針對「目前這一頁看得到的」筆數——批次改狀態範圍必須所見即所得，
+  // 不可偷偷選到其他頁沒看到的單。（跨頁已選的不受影響，翻頁可累加）
   function toggleSelectAllFiltered() {
     setSelectedIds((prev) => {
-      const filteredIds = filtered.map((o) => o.orderId);
-      const allSelected = filteredIds.every((id) => prev.has(id));
+      const pageIds = pageRows.map((o) => o.orderId);
+      const allSelected = pageIds.every((id) => prev.has(id));
       const next = new Set(prev);
       if (allSelected) {
-        filteredIds.forEach((id) => next.delete(id));
+        pageIds.forEach((id) => next.delete(id));
       } else {
-        filteredIds.forEach((id) => next.add(id));
+        pageIds.forEach((id) => next.add(id));
       }
       return next;
     });
@@ -221,11 +223,11 @@ export function PurchasesClient() {
     }
   }
 
-  const filteredIds = filtered.map((o) => o.orderId);
+  const pageIds = pageRows.map((o) => o.orderId);
   const allFilteredSelected =
-    filteredIds.length > 0 && filteredIds.every((id) => selectedIds.has(id));
+    pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
   const someFilteredSelected =
-    !allFilteredSelected && filteredIds.some((id) => selectedIds.has(id));
+    !allFilteredSelected && pageIds.some((id) => selectedIds.has(id));
 
   return (
     <div className="space-y-6">
