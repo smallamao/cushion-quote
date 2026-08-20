@@ -1578,7 +1578,8 @@ export function QuoteEditor() {
         setNewTemplateName("");
         setNewTemplateDescription("");
         setSaveTemplateDialogOpen(false);
-        loadTemplates();
+        // force：繞過 5 分鐘客戶端快取，讓新範本立即出現在「套用整單範本」下拉
+        loadTemplates(true);
       } else {
         alert(`儲存失敗：${result.error}`);
       }
