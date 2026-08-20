@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { buildGoogleAuthUrl, buildSignedState } from "@/lib/auth";
 
 function sanitizeReturnTo(raw: string | null): string {
-  if (!raw) return "/";
+  if (!raw) return "/shipping-notice";
   if (raw === "/" || /^\/[^/]/.test(raw)) return raw;
-  return "/";
+  return "/shipping-notice";
 }
 
 /**

@@ -2,7 +2,7 @@
   "name": "馬鈴薯沙發營運系統",
   "short_name": "沙發營運",
   "description": "馬鈴薯沙發營運管理系統",
-  "start_url": "/",
+  "start_url": "/shipping-notice",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#E85D28",
@@ -20,6 +20,9 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "lang": "zh-Hant"
 }

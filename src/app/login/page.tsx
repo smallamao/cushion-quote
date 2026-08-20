@@ -33,7 +33,8 @@ function detectEmbeddedBrowser(): EmbeddedBrowser {
 function LoginContent() {
   const searchParams = useSearchParams();
   const errorCode = searchParams.get("error") ?? "";
-  const returnTo = searchParams.get("returnTo") ?? "/";
+  // 預設落點：排程出貨（用戶指定的啟動頁；帶 returnTo 者仍回原頁）
+  const returnTo = searchParams.get("returnTo") ?? "/shipping-notice";
   const errorMessage = errorCode ? ERROR_MESSAGES[errorCode] ?? `登入失敗: ${errorCode}` : null;
 
   const [embedded, setEmbedded] = useState<EmbeddedBrowser>(null);
