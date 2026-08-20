@@ -2894,7 +2894,8 @@ export function ShippingNoticeClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      {/* flex-wrap：手機寬度不足時快捷鍵整組換行，不再擠壓標題 */}
+      <div className="flex flex-wrap items-center gap-2">
         <Truck className="h-5 w-5 shrink-0 text-[var(--accent)]" />
         <h1 className="text-xl font-bold">排程出貨</h1>
         <div className="ml-auto flex items-center gap-1.5">
