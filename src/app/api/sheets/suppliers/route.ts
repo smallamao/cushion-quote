@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { Supplier } from "@/lib/types";
 
+// GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
+export const dynamic = "force-dynamic";
+
 const SHEET = "廠商";
 const RANGE_FULL = `${SHEET}!A:P`;
 const RANGE_DATA = `${SHEET}!A2:P`;

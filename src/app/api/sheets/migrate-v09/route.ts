@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
 
+// GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
+export const dynamic = "force-dynamic";
+
 const VERSION_SHEET = "報價版本";
 const NEW_HEADERS = ["已回簽", "回簽日期", "合約檔案JSON", "回簽備註"];
 // Existing sheet has 43 cols (A:AQ). Need to expand to 47 cols (A:AU).

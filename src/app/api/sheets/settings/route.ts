@@ -4,6 +4,9 @@ import { loadSystemSettings } from "@/lib/settings-sheet";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { SystemSettings } from "@/lib/types";
 
+// GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
+export const dynamic = "force-dynamic";
+
 const SETTINGS_MAP: Array<{ key: string; extract: (s: SystemSettings) => string }> = [
   { key: "quality_premium", extract: (s) => String(s.qualityPremium) },
   { key: "default_waste_rate", extract: (s) => String(s.wasteRate) },

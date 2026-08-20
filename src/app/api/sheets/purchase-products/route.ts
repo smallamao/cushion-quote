@@ -6,6 +6,9 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import { yardToCai } from "@/lib/utils";
 import type { PurchaseProduct, PurchaseProductCategory, PurchaseUnit } from "@/lib/types";
 
+// GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
+export const dynamic = "force-dynamic";
+
 const SHEET = "採購商品";
 // Actual sheet schema (25 columns A:Y) — matches the user's header row.
 // Migration endpoint /migrate-to-25col converts any legacy 13-col rows

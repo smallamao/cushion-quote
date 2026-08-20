@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { QUOTE_NOTE_TEMPLATES, type QuoteNoteTemplate } from "@/lib/quote-note-templates";
 
+// GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
+export const dynamic = "force-dynamic";
+
 const SHEET = "報價補充底稿";
 const RANGE_DATA = `${SHEET}!A2:B100`;
 

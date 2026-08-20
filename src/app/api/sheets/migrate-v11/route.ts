@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
 
+// GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
+export const dynamic = "force-dynamic";
+
 // v11: add 出貨狀態 / 物流單號 / 出貨日期 columns to 案件 sheet (Y, Z, AA)
 const NEW_HEADERS = ["出貨狀態", "物流單號", "出貨日期"];
 

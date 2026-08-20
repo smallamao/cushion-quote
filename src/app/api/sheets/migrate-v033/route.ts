@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
 
+// GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
+export const dynamic = "force-dynamic";
+
 const VERSION_LINE_SHEET = "報價版本明細";
 const NEW_HEADER = "自訂分片尺寸";
 const TARGET_COL = "AG";
