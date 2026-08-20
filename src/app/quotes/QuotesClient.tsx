@@ -260,7 +260,8 @@ export function QuotesClient() {
           action: "use_as_template",
           sourceVersionId: version.versionId,
           caseDraft: {
-            caseName: `${version.projectNameSnapshot || "新案件"}（複製）`,
+            // 散客（無案場名稱）複製後維持無名 → 不會出現在案件紀錄
+            caseName: version.projectNameSnapshot ? `${version.projectNameSnapshot}（複製）` : "",
           },
         }),
       });

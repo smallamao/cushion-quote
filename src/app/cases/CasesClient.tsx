@@ -381,7 +381,7 @@ export function CasesClient() {
                   action: "use_as_template",
                   sourceVersionId: copyDialog.sourceVersionId,
                   caseDraft: {
-                    caseName: `${copyDialog.caseName || "新案件"}（複製）`,
+                    caseName: copyDialog.caseName ? `${copyDialog.caseName}（複製）` : "",
                   },
                 },
         ),

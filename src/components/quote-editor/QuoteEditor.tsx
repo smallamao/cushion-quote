@@ -1897,7 +1897,9 @@ export function QuoteEditor() {
           body: JSON.stringify({
             caseId: payload.version.caseId,
             clientId: selectedClientId === "__new__" ? "" : selectedClientId,
-            ...(trimmedProjectName ? { caseName: trimmedProjectName } : {}),
+            // 總是送 caseName（含空字串）：清空欄位＝清掉案場名稱，
+            // 名稱清空後該案件即從案件紀錄隱藏（散客不進案件紀錄）
+            caseName: trimmedProjectName,
             clientNameSnapshot: companyName,
             contactNameSnapshot: contactName,
             phoneSnapshot: phone,
