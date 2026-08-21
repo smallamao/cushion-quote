@@ -77,7 +77,7 @@ export default async function RootLayout({
             <script
               // eslint-disable-next-line react/no-danger
               dangerouslySetInnerHTML={{
-                __html: `(function(){try{var c=localStorage.getItem('cq-sidebar-collapsed');document.documentElement.style.setProperty('--sidebar-width',c==='true'?'56px':'220px')}catch(e){}})()`,
+                __html: `(function(){try{var c=localStorage.getItem('cq-sidebar-collapsed');document.documentElement.style.setProperty('--sidebar-width',c==='true'?'56px':'220px')}catch(e){}})();(function(){try{var sa=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;if(!sa)return;if(location.pathname!=='/')return;if(sessionStorage.getItem('cq-standalone-launched'))return;sessionStorage.setItem('cq-standalone-launched','1');location.replace('/shipping-notice')}catch(e){}})()`,
               }}
             />
             <div className="app-shell">
