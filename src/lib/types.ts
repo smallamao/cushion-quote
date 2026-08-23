@@ -140,6 +140,7 @@ export const ISSUE_CATEGORIES = [
   "電動功能",
   "填充物",
   "縫線/車縫",
+  "到府清潔",
   "其他",
 ] as const;
 
