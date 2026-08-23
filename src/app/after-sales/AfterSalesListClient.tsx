@@ -325,12 +325,12 @@ export function AfterSalesListClient() {
                         type="button"
                         disabled={isCompleting}
                         onClick={(e) => void handleQuickComplete(s.serviceId, e)}
-                        className="rounded px-1.5 py-0.5 text-[11px] bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
+                        className="rounded border border-green-300 bg-white px-2 py-0.5 text-[11px] text-green-700 hover:bg-green-50 disabled:opacity-50"
                       >
                         {isCompleting ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
                         ) : (
-                          "結案"
+                          "✓ 結案"
                         )}
                       </button>
                     )}
@@ -395,6 +395,7 @@ export function AfterSalesListClient() {
                 <th className="px-3 py-2 text-left">問題</th>
                 <th className="px-3 py-2 text-left">狀態</th>
                 <th className="px-3 py-2 text-left">負責人</th>
+                <th className="w-px whitespace-nowrap px-3 py-2 text-left">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -468,29 +469,30 @@ export function AfterSalesListClient() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        {showComplete && (
-                          <button
-                            type="button"
-                            disabled={isCompleting}
-                            onClick={(e) => void handleQuickComplete(s.serviceId, e)}
-                            className="rounded px-1.5 py-0.5 text-[11px] bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
-                          >
-                            {isCompleting ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              "結案"
-                            )}
-                          </button>
-                        )}
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
-                        >
-                          {STATUS_LABEL[safeStatus]}
-                        </span>
-                      </div>
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${STATUS_COLOR[safeStatus]}`}
+                      >
+                        {STATUS_LABEL[safeStatus]}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-xs">{s.assignedTo || "—"}</td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      {showComplete && (
+                        <button
+                          type="button"
+                          disabled={isCompleting}
+                          onClick={(e) => void handleQuickComplete(s.serviceId, e)}
+                          title="標記為已完成（完成日＝今天）"
+                          className="rounded border border-green-300 bg-white px-2 py-0.5 text-[11px] text-green-700 hover:bg-green-50 disabled:opacity-50"
+                        >
+                          {isCompleting ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            "✓ 結案"
+                          )}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
