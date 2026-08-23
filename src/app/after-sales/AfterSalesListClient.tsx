@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, Plus, Search, Stethoscope } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Loader2, MessageSquareText, Plus, Search, Stethoscope, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,9 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useUnreadReplies } from "@/hooks/useUnreadReplies";
-import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
+import type { AfterSalesService, AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 import { ISSUE_CATEGORIES } from "@/lib/types";
+import { buildAfterSalesNotifyMessage } from "@/lib/after-sales-messages";
 
 const STATUS_LABEL: Record<AfterSalesStatus, string> = {
   pending: "待確認",
@@ -57,6 +58,8 @@ export function AfterSalesListClient() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  // 客戶通知視窗：依分類生成訊息（到府清潔/一般售後），可編輯後複製
+  const [notifyTarget, setNotifyTarget] = useState<AfterSalesService | null>(null);
   const [showStale, setShowStale] = useState(false);
 
   const STALE_DAYS = 14;
@@ -320,6 +323,13 @@ export function AfterSalesListClient() {
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); e.preventDefault(); setNotifyTarget(s); }}
+                      className="rounded border border-[var(--border)] bg-white px-2 py-0.5 text-[11px] text-[var(--accent)] hover:bg-[var(--bg-hover)]"
+                    >
+                      通知
+                    </button>
                     {showComplete && (
                       <button
                         type="button"
@@ -477,6 +487,15 @@ export function AfterSalesListClient() {
                     </td>
                     <td className="px-3 py-2 text-xs">{s.assignedTo || "—"}</td>
                     <td className="whitespace-nowrap px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setNotifyTarget(s); }}
+                        title="產生客戶通知訊息（依分類：到府清潔／一般售後）"
+                        className="mr-1.5 rounded border border-[var(--border)] bg-white px-2 py-0.5 text-[11px] text-[var(--accent)] hover:bg-[var(--bg-hover)]"
+                      >
+                        <MessageSquareText className="mr-0.5 inline h-3 w-3" />
+                        通知
+                      </button>
                       {showComplete && (
                         <button
                           type="button"
@@ -501,6 +520,8 @@ export function AfterSalesListClient() {
         </div>
       )}
 
+      {notifyTarget && <NotifyModal service={notifyTarget} onClose={() => setNotifyTarget(null)} />}
+
       {hasStale && (
         <button
           type="button"
@@ -524,6 +545,54 @@ export function AfterSalesListClient() {
         }}
         isMobile={isMobile}
       />
+    </div>
+  );
+}
+
+/** 售後客戶通知視窗：生成訊息（可編輯）→ 複製全文 */
+function NotifyModal({ service, onClose }: { service: AfterSalesService; onClose: () => void }) {
+  const built = buildAfterSalesNotifyMessage(service);
+  const [text, setText] = useState(built.text);
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={onClose}>
+      <div
+        className="w-full max-w-lg rounded-t-2xl bg-[var(--bg-elevated)] p-5 shadow-2xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-semibold">
+            {built.title} — {service.clientName || service.serviceId}
+          </span>
+          <button onClick={onClose} className="text-[var(--text-tertiary)]">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={13}
+          className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+        />
+        <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+          時段請補上後再複製；日期取自「預定派工日期」。
+        </p>
+        <div className="mt-3 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>關閉</Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard.writeText(text).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              });
+            }}
+          >
+            <Copy className="mr-1 h-3.5 w-3.5" />
+            {copied ? "已複製" : "複製全文"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
