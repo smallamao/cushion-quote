@@ -161,6 +161,8 @@ export interface AfterSalesService {
   status: AfterSalesStatus;
   assignedTo: string;
   scheduledDate: string;
+  /** 預定時段文字（例：14:00-16:00），通知訊息自動帶入 */
+  scheduledTime?: string;
   dispatchNotes: string;
   completedDate: string;
   completionNotes: string;

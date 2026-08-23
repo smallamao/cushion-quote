@@ -19,6 +19,8 @@ export function buildAfterSalesNotifyMessage(s: AfterSalesService): { title: str
     }
   }
 
+  const timeLine = (s.scheduledTime ?? "").trim() || "（請填時段）";
+
   if (isCleaning) {
     return {
       title: "到府清潔通知",
@@ -27,7 +29,7 @@ export function buildAfterSalesNotifyMessage(s: AfterSalesService): { title: str
 您好，已為您安排好資訊如下
 
 ${dateLine}
-時間：（請填時段）
+時間：${timeLine}
 
 沙發醫護師：Barry 佳莉
 電話：0913-605-107
@@ -45,7 +47,7 @@ ${dateLine}
 您好，已為您安排好服務資訊如下
 
 ${dateLine}
-時間：（請填時段）
+時間：${timeLine}
 ${item ? `\n服務項目：${item}\n` : ""}
 ⚠️如需更動煩請儘速通知我們協助調度
 ⚠️受限於交通狀況，易產生延遲狀況，煩請依照師傅實際聯絡情況！`,

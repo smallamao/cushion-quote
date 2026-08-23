@@ -1054,6 +1054,15 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
               onChange={(e) => update("scheduledDate", e.target.value)}
             />
           </div>
+          <div>
+            <Label>預定時段</Label>
+            <Input
+              value={draft.scheduledTime ?? ""}
+              onChange={(e) => update("scheduledTime", e.target.value)}
+              placeholder="例：14:00-16:00"
+            />
+            <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">通知訊息會自動帶入</p>
+          </div>
           <div className="md:col-span-3">
             <Label>派工備註</Label>
             <Textarea

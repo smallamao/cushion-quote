@@ -66,6 +66,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     status?: AfterSalesStatus;
     assignedTo?: string;
     scheduledDate?: string;
+    scheduledTime?: string;
     dispatchNotes?: string;
     completedDate?: string;
     completionNotes?: string;

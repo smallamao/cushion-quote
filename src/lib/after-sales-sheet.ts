@@ -9,8 +9,8 @@ import type {
 } from "@/lib/types";
 
 const MAIN_SHEET = "售後服務";
-const MAIN_RANGE_FULL = `${MAIN_SHEET}!A:AF`;
-const MAIN_RANGE_DATA = `${MAIN_SHEET}!A2:AF`;
+const MAIN_RANGE_FULL = `${MAIN_SHEET}!A:AG`;
+const MAIN_RANGE_DATA = `${MAIN_SHEET}!A2:AG`;
 const MAIN_RANGE_IDS = `${MAIN_SHEET}!A2:A`;
 
 const REPLY_SHEET = "售後服務回應";
@@ -59,6 +59,7 @@ function rowToService(row: string[]): AfterSalesService {
     itemDescription: row[29] || undefined,
     issueCategories: parseJsonArray(row[30]),
     dispatchOrder: row[31] ? Number(row[31]) : undefined,
+    scheduledTime: row[32] ?? "",
     createdAt: row[20] ?? "",
     updatedAt: row[21] ?? "",
     createdBy: row[22] ?? "",
@@ -99,6 +100,7 @@ function serviceToRow(s: AfterSalesService): string[] {
     s.itemDescription ?? "",
     JSON.stringify(s.issueCategories ?? []),
     s.dispatchOrder != null ? String(s.dispatchOrder) : "",
+    s.scheduledTime ?? "",
   ];
 }
 

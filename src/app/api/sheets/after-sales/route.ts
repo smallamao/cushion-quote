@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     status?: AfterSalesStatus;
     assignedTo?: string;
     scheduledDate?: string;
+    scheduledTime?: string;
     dispatchNotes?: string;
     completedDate?: string;
     completionNotes?: string;
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
         status: body.status ?? "pending",
         assignedTo: body.assignedTo ?? "",
         scheduledDate: body.scheduledDate ?? "",
+        scheduledTime: body.scheduledTime ?? "",
         dispatchNotes: body.dispatchNotes ?? "",
         completedDate: body.completedDate ?? "",
         completionNotes: body.completionNotes ?? "",
