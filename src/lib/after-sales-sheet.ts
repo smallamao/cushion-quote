@@ -185,7 +185,7 @@ export async function createService(input: {
   const nextRow = (idRes.data.values ?? []).length + 2; // +1 for header, +1 for next row
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${MAIN_SHEET}!A${nextRow}:AF${nextRow}`,
+    range: `${MAIN_SHEET}!A${nextRow}:AG${nextRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(service)] },
   });
@@ -216,7 +216,7 @@ export async function updateService(
   };
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
-    range: `${MAIN_SHEET}!A${sheetRow}:AF${sheetRow}`,
+    range: `${MAIN_SHEET}!A${sheetRow}:AG${sheetRow}`,
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(updated)] },
   });
