@@ -751,9 +751,9 @@ export function OrderListClient() {
                             >
                               {order.clientName}
                             </button>
-                            {order.clientId && lineUrlByClientId.has(order.clientId) && (
+                            {(order.lineChatUrl?.trim() || (order.clientId && lineUrlByClientId.has(order.clientId))) && (
                               <a
-                                href={lineUrlByClientId.get(order.clientId)}
+                                href={order.lineChatUrl?.trim() || lineUrlByClientId.get(order.clientId ?? "")}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}

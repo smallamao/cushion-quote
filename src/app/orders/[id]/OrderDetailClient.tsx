@@ -192,10 +192,11 @@ export function OrderDetailClient({ orderId }: Props) {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   }, []);
 
-  // LINE 對話直達：取客戶主檔主要聯絡人的 lineChatUrl
-  const lineChatUrl = draft?.clientId
+  // LINE 對話直達：訂單自帶連結（散客）優先，其次客戶主檔主要聯絡人
+  const masterLineUrl = draft?.clientId
     ? companies.find((c) => c.id === draft.clientId)?.primaryContact?.lineChatUrl ?? ""
     : "";
+  const lineChatUrl = (draft?.lineChatUrl ?? "").trim() || masterLineUrl;
 
   const isDirty =
     draft !== null &&
@@ -459,17 +460,25 @@ export function OrderDetailClient({ orderId }: Props) {
                     onChange={(e) => updateDraft("clientName", e.target.value)}
                     placeholder="客戶名稱（散客可直接打字）"
                   />
-                  {lineChatUrl && (
-                    <a
-                      href={lineChatUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-green-300 bg-white px-2.5 py-1 text-xs text-green-700 hover:bg-green-50"
-                      title="開啟此客戶的 LINE 官方帳號對話"
-                    >
-                      💬 開啟 LINE 對話
-                    </a>
-                  )}
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Input
+                      value={draft.lineChatUrl ?? ""}
+                      onChange={(e) => updateDraft("lineChatUrl", e.target.value)}
+                      placeholder="LINE 對話連結（散客免建檔，直接貼這裡）"
+                      className="flex-1 text-xs"
+                    />
+                    {lineChatUrl && (
+                      <a
+                        href={lineChatUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-green-300 bg-white px-2.5 py-1.5 text-xs text-green-700 hover:bg-green-50"
+                        title={draft.lineChatUrl?.trim() ? "開啟 LINE 對話（訂單綁定）" : "開啟 LINE 對話（客戶主檔綁定）"}
+                      >
+                        💬 LINE
+                      </a>
+                    )}
+                  </div>
                   <p className="mt-1 text-xs text-[var(--text-tertiary)]">
                     從客戶資料庫選可統一名稱、歸戶對帳；散客直接在下方打字即可。
                   </p>

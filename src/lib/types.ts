@@ -1248,6 +1248,8 @@ export interface CustomOrder {
   paidDate?: string;
   /** 關聯客戶資料庫的 clientId。空＝散客/未關聯（clientName 為自由文字快照）。對帳單優先以此歸戶 */
   clientId?: string;
+  /** 散客用：LINE OA 對話網址（無客戶主檔時直接存在訂單上） */
+  lineChatUrl?: string;
   /**
    * 出貨日（選填）。只有「物料先進場、之後才安裝」時才填。
    * 空＝出貨日與 installDate（安裝/出貨日）同一天，行事曆只顯示一個事件。
