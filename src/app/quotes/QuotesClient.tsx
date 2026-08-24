@@ -750,7 +750,8 @@ export function QuotesClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      {/* 手機：標題與操作列上下分行；≥sm 恢復同列左右對齊 */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-semibold text-[var(--text-primary)]">報價紀錄</h1>
           <p className="mt-0.5 text-xs text-[var(--text-secondary)]">

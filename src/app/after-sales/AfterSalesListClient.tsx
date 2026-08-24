@@ -162,7 +162,8 @@ export function AfterSalesListClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      {/* 手機：標題與操作列上下分行；≥sm 恢復同列左右對齊 */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Stethoscope className="h-6 w-6" />
