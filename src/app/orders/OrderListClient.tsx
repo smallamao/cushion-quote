@@ -740,30 +740,16 @@ export function OrderListClient() {
                       </td>
                       <td className="px-3 py-2 text-sm">
                         {order.clientName ? (
-                          <span className="flex items-center gap-1">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSummaryClient(order.clientName);
-                              }}
-                              title={`${order.clientName} — 檢視此客戶訂單彙總`}
-                              className="block max-w-[10rem] truncate text-left hover:text-[var(--accent)] hover:underline"
-                            >
-                              {order.clientName}
-                            </button>
-                            {(order.lineChatUrl?.trim() || (order.clientId && lineUrlByClientId.has(order.clientId))) && (
-                              <a
-                                href={order.lineChatUrl?.trim() || lineUrlByClientId.get(order.clientId ?? "")}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                title="開啟 LINE 對話"
-                                className="shrink-0 text-green-600 hover:text-green-700"
-                              >
-                                💬
-                              </a>
-                            )}
-                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSummaryClient(order.clientName);
+                            }}
+                            title={`${order.clientName} — 檢視此客戶訂單彙總`}
+                            className="block max-w-[10rem] truncate text-left hover:text-[var(--accent)] hover:underline"
+                          >
+                            {order.clientName}
+                          </button>
                         ) : (
                           "—"
                         )}
@@ -882,6 +868,23 @@ export function OrderListClient() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">
                         <div className="flex items-center gap-1">
+                          {(() => {
+                            const lineUrl =
+                              order.lineChatUrl?.trim() ||
+                              (order.clientId ? lineUrlByClientId.get(order.clientId) : undefined);
+                            return lineUrl ? (
+                              <a
+                                href={lineUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="開啟此客戶的 LINE 對話"
+                                className="flex h-7 items-center rounded px-1.5 text-sm text-green-600 hover:bg-green-50 hover:text-green-700"
+                              >
+                                💬
+                              </a>
+                            ) : null;
+                          })()}
                           <Button
                             variant="ghost"
                             size="sm"
