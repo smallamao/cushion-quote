@@ -750,7 +750,7 @@ export function QuotesClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-lg font-semibold text-[var(--text-primary)]">報價紀錄</h1>
           <p className="mt-0.5 text-xs text-[var(--text-secondary)]">

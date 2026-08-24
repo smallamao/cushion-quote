@@ -162,7 +162,7 @@ export function AfterSalesListClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Stethoscope className="h-6 w-6" />
