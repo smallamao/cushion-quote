@@ -122,7 +122,7 @@ export async function GET() {
       }),
       sheetsClient.sheets.spreadsheets.values.get({
         spreadsheetId: sheetsClient.spreadsheetId,
-        range: "聯絡人!A2:L",
+        range: "聯絡人!A2:M",
       }),
     ]);
 
@@ -146,6 +146,7 @@ export async function GET() {
           isPrimary: true,
           createdAt: row[10] ?? "",
           updatedAt: row[11] ?? "",
+          lineChatUrl: row[12] ?? "",
         };
         primaryContactMap.set(contact.companyId, contact);
       }

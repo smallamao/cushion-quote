@@ -177,6 +177,17 @@ export function ContactsTab({ companyId }: ContactsTabProps) {
               />
             </div>
             <div>
+              <Label>LINE 對話連結</Label>
+              <Input
+                value={newDraft.lineChatUrl ?? ""}
+                onChange={(e) => updateDraft({ lineChatUrl: e.target.value })}
+                placeholder="chat.line.biz 該客人聊天室網址"
+              />
+              <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                在 LINE 官方帳號後台開啟該客人對話 → 複製網址貼到這裡；訂單頁即可一鍵開啟
+              </p>
+            </div>
+            <div>
               <Label>Email</Label>
               <Input
                 value={newDraft.email ?? ""}

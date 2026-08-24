@@ -17,6 +17,7 @@ function rowToContact(row: string[]): Contact {
     isPrimary: row[9] === "TRUE",
     createdAt: row[10] ?? "",
     updatedAt: row[11] ?? "",
+    lineChatUrl: row[12] ?? "",
   };
 }
 
@@ -34,6 +35,7 @@ function contactToRow(c: Contact): string[] {
     c.isPrimary ? "TRUE" : "FALSE",
     c.createdAt,
     c.updatedAt,
+    c.lineChatUrl ?? "",
   ];
 }
 
@@ -46,7 +48,7 @@ async function unsetOtherPrimaries(
 
   const response = await sheetsClient.sheets.spreadsheets.values.get({
     spreadsheetId: sheetsClient.spreadsheetId,
-    range: "聯絡人!A2:L",
+    range: "聯絡人!A2:M",
   });
 
   const rows = response.data.values ?? [];
@@ -82,7 +84,7 @@ export async function GET(request: Request) {
   try {
     const response = await sheetsClient.sheets.spreadsheets.values.get({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: "聯絡人!A2:L",
+      range: "聯絡人!A2:M",
     });
 
     let contacts = (response.data.values ?? []).map(rowToContact);
@@ -114,7 +116,7 @@ export async function POST(request: Request) {
 
     await sheetsClient.sheets.spreadsheets.values.append({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: "聯絡人!A:L",
+      range: "聯絡人!A:M",
       valueInputOption: "RAW",
       requestBody: { values: [contactToRow(payload)] },
     });
@@ -154,7 +156,7 @@ export async function PATCH(request: Request) {
     const sheetRow = rowIndex + 2;
     await sheetsClient.sheets.spreadsheets.values.update({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `聯絡人!A${sheetRow}:L${sheetRow}`,
+      range: `聯絡人!A${sheetRow}:M${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [contactToRow(payload)] },
     });
@@ -189,7 +191,7 @@ export async function DELETE(request: Request) {
     const sheetRow = rowIndex + 2;
     await sheetsClient.sheets.spreadsheets.values.clear({
       spreadsheetId: sheetsClient.spreadsheetId,
-      range: `聯絡人!A${sheetRow}:L${sheetRow}`,
+      range: `聯絡人!A${sheetRow}:M${sheetRow}`,
     });
 
     return NextResponse.json({ ok: true });

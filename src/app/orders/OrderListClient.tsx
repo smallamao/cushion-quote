@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useCompanies } from "@/hooks/useCompanies";
 import { MonthlyReportModal } from "@/components/orders/MonthlyReportModal";
 import { StatementModal } from "@/components/orders/StatementModal";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
@@ -80,6 +81,15 @@ function getLast12Months(): string[] {
 export function OrderListClient() {
   const router = useRouter();
   const isMobile = useIsMobile();
+  // LINE 對話直達：clientId → 客戶主檔主要聯絡人的 lineChatUrl
+  const { companies } = useCompanies();
+  const lineUrlByClientId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of companies) {
+      if (c.primaryContact?.lineChatUrl) m.set(c.id, c.primaryContact.lineChatUrl);
+    }
+    return m;
+  }, [companies]);
 
   const [orders, setOrders] = useState<CustomOrder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -730,16 +740,30 @@ export function OrderListClient() {
                       </td>
                       <td className="px-3 py-2 text-sm">
                         {order.clientName ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSummaryClient(order.clientName);
-                            }}
-                            title={`${order.clientName} — 檢視此客戶訂單彙總`}
-                            className="block max-w-[10rem] truncate text-left hover:text-[var(--accent)] hover:underline"
-                          >
-                            {order.clientName}
-                          </button>
+                          <span className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSummaryClient(order.clientName);
+                              }}
+                              title={`${order.clientName} — 檢視此客戶訂單彙總`}
+                              className="block max-w-[10rem] truncate text-left hover:text-[var(--accent)] hover:underline"
+                            >
+                              {order.clientName}
+                            </button>
+                            {order.clientId && lineUrlByClientId.has(order.clientId) && (
+                              <a
+                                href={lineUrlByClientId.get(order.clientId)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="開啟 LINE 對話"
+                                className="shrink-0 text-green-600 hover:text-green-700"
+                              >
+                                💬
+                              </a>
+                            )}
+                          </span>
                         ) : (
                           "—"
                         )}

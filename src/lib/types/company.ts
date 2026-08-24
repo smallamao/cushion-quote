@@ -33,6 +33,8 @@ export interface Contact {
   lineId: string;
   email: string;
   businessCardUrl: string;
+  /** LINE OA 對話網址（chat.line.biz 該客人聊天室）；訂單頁「LINE」按鈕直達 */
+  lineChatUrl?: string;
   isPrimary: boolean;
   createdAt: string;
   updatedAt: string;
