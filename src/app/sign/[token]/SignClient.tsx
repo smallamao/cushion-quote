@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { SignatureModal } from "@/components/sign/SignatureModal";
+import { DEPOSIT_PAYMENT_INFO } from "@/lib/deposit-payment";
 import type { PublicSigningView } from "@/lib/signing-types";
 
 function mapError(code: string): string {
@@ -143,6 +144,10 @@ export function SignClient({ token }: { token: string }) {
           >
             下載已簽署合約 PDF
           </a>
+          <div className="mt-6 whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-4 text-left text-sm leading-relaxed text-gray-700">
+            <p className="mb-2 font-semibold text-gray-800">訂金匯款資訊</p>
+            {DEPOSIT_PAYMENT_INFO}
+          </div>
         </div>
       </Shell>
     );

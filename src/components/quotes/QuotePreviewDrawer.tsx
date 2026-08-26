@@ -6,6 +6,7 @@ import { ExternalLink, Loader2, Maximize2, X } from "lucide-react";
 
 import type { PurchaseOrder, QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
 import { buildSignLink } from "@/lib/sign-link";
+import { buildSignShareMessage } from "@/lib/deposit-payment";
 import { formatCurrency } from "@/lib/utils";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import { generatePDFBlob, generateJpgBlob, buildPdfFileName, type QuotePDFProps } from "@/components/pdf/QuotePDF";
@@ -200,7 +201,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       const url = buildSignLink(json.token);
       setSignLink(url);
       try {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(buildSignShareMessage(url));
         setLinkCopied(true);
       } catch {
         setLinkCopied(false);
@@ -494,7 +495,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
                 {signLink && (
                   <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-2 text-[11px]">
                     <div className="mb-1 text-[var(--text-secondary)]">
-                      {linkCopied ? "✓ 已複製，貼給客戶即可簽署：" : "簽署連結（複製給客戶）："}
+                      {linkCopied ? "✓ 已複製（含訂金匯款帳號），貼給客戶即可簽署：" : "簽署連結（複製給客戶，含訂金匯款帳號）："}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <input
@@ -506,7 +507,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
                       <button
                         type="button"
                         onClick={() => {
-                          void navigator.clipboard.writeText(signLink);
+                          void navigator.clipboard.writeText(buildSignShareMessage(signLink));
                           setLinkCopied(true);
                         }}
                         className="shrink-0 rounded bg-[var(--bg-hover)] px-2 py-1 text-[var(--text-secondary)]"
