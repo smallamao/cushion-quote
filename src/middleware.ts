@@ -68,10 +68,14 @@ function isApiPath(pathname: string): boolean {
 // 排程系統（server-to-server，無瀏覽器 cookie）呼叫的採購貼上端點。
 // middleware 只確認帶有 x-api-key header 才放行；真正的金鑰比對（timing-safe）
 // 由該 route 在 node runtime 執行。範圍刻意收得極窄：僅此路徑、僅在帶 header 時。
-const SCHEDULER_PASTE_PATH = "/api/sheets/purchases/from-paste";
+// 帶 x-api-key 的 server-to-server 端點（各 route 自行做 timing-safe 金鑰比對）
+const API_KEY_PATHS = new Set([
+  "/api/sheets/purchases/from-paste",   // 排程系統：用布量貼上
+  "/api/sheets/quotes-v2/from-agent",   // 對話 agent：建報價草稿
+]);
 
 function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean {
-  if (pathname !== SCHEDULER_PASTE_PATH) return false;
+  if (!API_KEY_PATHS.has(pathname)) return false;
   const apiKey = request.headers.get("x-api-key");
   return Boolean(apiKey && apiKey.trim().length > 0);
 }
