@@ -632,6 +632,10 @@ export function QuoteEditor() {
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [signLinkBusy, setSignLinkBusy] = useState(false);
+  // 一版一合約：已回簽的版本不再產生簽署連結（與 QuotePreviewDrawer、後端 409 同一規則）
+  const versionAlreadySigned = Boolean(
+    activeVersion && (activeVersion.signedBack || (activeVersion.signedContractUrls?.length ?? 0) > 0),
+  );
   const [signLinkUrl, setSignLinkUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
@@ -2518,12 +2522,18 @@ export function QuoteEditor() {
             <Button
               size="sm"
               variant="outline"
-              disabled={signLinkBusy || !versionId}
-              title={versionId ? "產生客戶線上簽署連結" : "請先儲存版本"}
+              disabled={signLinkBusy || !versionId || versionAlreadySigned}
+              title={
+                versionAlreadySigned
+                  ? "此版本已回簽，如需修改請建立新版本"
+                  : versionId
+                    ? "產生客戶線上簽署連結"
+                    : "請先儲存版本"
+              }
               onClick={handleGenerateSignLink}
             >
               {signLinkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              {signLinkBusy ? "產生中..." : "簽署連結"}
+              {versionAlreadySigned ? "已回簽，請建新版本" : signLinkBusy ? "產生中..." : "簽署連結"}
             </Button>
           </div>
         )}
