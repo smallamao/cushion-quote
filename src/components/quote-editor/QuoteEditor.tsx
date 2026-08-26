@@ -632,10 +632,6 @@ export function QuoteEditor() {
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [signLinkBusy, setSignLinkBusy] = useState(false);
-  // 一版一合約：已回簽的版本不再產生簽署連結（與 QuotePreviewDrawer、後端 409 同一規則）
-  const versionAlreadySigned = Boolean(
-    activeVersion && (activeVersion.signedBack || (activeVersion.signedContractUrls?.length ?? 0) > 0),
-  );
   const [signLinkUrl, setSignLinkUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
@@ -644,6 +640,10 @@ export function QuoteEditor() {
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyingVersion, setCopyingVersion] = useState(false);
   const [activeVersion, setActiveVersion] = useState<QuoteVersionRecord | null>(null);
+  // 一版一合約：已回簽的版本不再產生簽署連結（與 QuotePreviewDrawer、後端 409 同一規則）
+  const versionAlreadySigned = Boolean(
+    activeVersion && (activeVersion.signedBack || (activeVersion.signedContractUrls?.length ?? 0) > 0),
+  );
   const [validUntil, setValidUntil] = useState<string>(() =>
     defaultValidUntil(settings.quoteValidityDays),
   );
