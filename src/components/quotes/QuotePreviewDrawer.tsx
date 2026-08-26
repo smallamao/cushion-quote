@@ -215,6 +215,9 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
 
   const open = Boolean(versionId);
   const status = version ? (STATUS_MAP[version.versionStatus] ?? STATUS_MAP.draft) : null;
+  const alreadySigned = Boolean(
+    version && (version.signedBack || (version.signedContractUrls?.length ?? 0) > 0),
+  );
 
   return (
     <>
@@ -483,14 +486,18 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
                   </div>
                 )}
 
-                {/* 產生客戶線上簽署連結 */}
+                {/* 產生客戶線上簽署連結；已回簽的版本停用（一版一合約，要改請建新版本） */}
                 <button
                   type="button"
                   onClick={() => void handleGenerateSignLink()}
-                  disabled={!pdfBlob || linkBusy}
+                  disabled={!pdfBlob || linkBusy || alreadySigned}
                   className="w-full rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
                 >
-                  {linkBusy ? "產生中…" : "產生線上簽署連結"}
+                  {alreadySigned
+                    ? "此版本已回簽，如需修改請建立新版本"
+                    : linkBusy
+                      ? "產生中…"
+                      : "產生線上簽署連結"}
                 </button>
                 {signLink && (
                   <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-2 text-[11px]">

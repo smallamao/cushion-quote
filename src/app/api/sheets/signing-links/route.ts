@@ -44,6 +44,14 @@ export async function POST(request: Request) {
     if (!version) {
       return NextResponse.json({ ok: false, error: "version not found" }, { status: 404 });
     }
+    // 一版一合約：已回簽的版本不再產生連結，內容要改請建新版本（舊版自動變已取代）。
+    // 否則客人再簽一次會在同一版本疊出第二份合約，歸檔時分不清哪份算數。
+    if (version.signedBack || (version.signedContractUrls?.length ?? 0) > 0) {
+      return NextResponse.json(
+        { ok: false, error: "此版本已回簽，如需修改請建立新版本" },
+        { status: 409 },
+      );
+    }
 
     // 一次只有一個有效連結：作廢同版本先前 pending 的連結
     await revokePendingLinksForVersion(body.versionId);
