@@ -61,6 +61,7 @@ export function WorkorderTab({
   isDirty,
 }: WorkorderTabProps) {
   const [materialUploading, setMaterialUploading] = useState(false);
+  const [materialDragOver, setMaterialDragOver] = useState(false);
   const [photosUploading, setPhotosUploading] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -68,6 +69,18 @@ export function WorkorderTab({
   const [cropOpen, setCropOpen] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [photosDragOver, setPhotosDragOver] = useState(false);
+
+  async function handleMaterialFile(file: File): Promise<void> {
+    setMaterialUploading(true);
+    try {
+      const url = await uploadFile(file);
+      updateDraft("materialImageUrl", url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "圖片上傳失敗");
+    } finally {
+      setMaterialUploading(false);
+    }
+  }
 
   async function uploadOrderPhotos(files: FileList | File[] | null) {
     const list = Array.from(files ?? []).filter((f) => f.type.startsWith("image/"));
@@ -197,8 +210,18 @@ export function WorkorderTab({
 
         {/* 材料圖片 */}
         <div className="mt-4">
-          <Label>材料圖片</Label>
-          <div className="mt-1 flex items-start gap-4">
+          <Label>材料圖片 <span className="ml-1 text-[10px] font-normal normal-case text-[var(--text-tertiary)]">（可將圖片拖曳到此）</span></Label>
+          <div
+            className={`mt-1 flex items-start gap-4 rounded-lg ${materialDragOver ? "ring-2 ring-[var(--accent)] ring-offset-2" : ""}`}
+            onDragOver={(e) => { e.preventDefault(); setMaterialDragOver(true); }}
+            onDragLeave={(e) => { e.preventDefault(); setMaterialDragOver(false); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setMaterialDragOver(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) void handleMaterialFile(file);
+            }}
+          >
             {draft.materialImageUrl ? (
               <div className="relative">
                 <img
@@ -230,19 +253,10 @@ export function WorkorderTab({
                   accept="image/*"
                   className="sr-only"
                   disabled={materialUploading}
-                  onChange={async (e) => {
+                  onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (!file) return;
-                    setMaterialUploading(true);
-                    try {
-                      const url = await uploadFile(file);
-                      updateDraft("materialImageUrl", url);
-                    } catch (err) {
-                      alert(err instanceof Error ? err.message : "圖片上傳失敗");
-                    } finally {
-                      setMaterialUploading(false);
-                      e.target.value = "";
-                    }
+                    if (file) void handleMaterialFile(file);
+                    e.currentTarget.value = "";
                   }}
                 />
               </label>
