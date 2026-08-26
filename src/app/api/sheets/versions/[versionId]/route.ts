@@ -175,6 +175,8 @@ interface VersionPatchPayload {
   /** 「已追蹤」快速鍵：記錄追蹤時間並重排下一輪 */
   lastFollowUpAt?: string;
   nextFollowUpDate?: string;
+  /** 補充說明附圖（agent 端點補圖用；編輯器走 PUT） */
+  descriptionImageUrl?: string;
 }
 
 /** 報價追蹤預設間隔（天）；版本自帶 followUpDays>0 時以版本為準 */
@@ -216,6 +218,7 @@ export async function PATCH(
       signedNotes: payload.signedNotes ?? existing.signedNotes,
       lastFollowUpAt: payload.lastFollowUpAt ?? existing.lastFollowUpAt,
       nextFollowUpDate: payload.nextFollowUpDate ?? existing.nextFollowUpDate,
+      descriptionImageUrl: payload.descriptionImageUrl ?? existing.descriptionImageUrl,
       updatedAt: now,
     };
 
