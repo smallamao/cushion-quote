@@ -409,7 +409,9 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
                         <td className="px-3 py-2">
                           <div className="font-medium text-[var(--text-primary)]">{line.itemName}</div>
                           {line.spec && (
-                            <div className="text-[10px] text-[var(--text-tertiary)]">{line.spec}</div>
+                            <div className="whitespace-pre-line text-[10px] text-[var(--text-tertiary)]">
+                              {line.spec.split(/\s*[｜|]\s*/).filter(Boolean).join("\n")}
+                            </div>
                           )}
                           {line.notes && (
                             <div className="text-[10px] text-[var(--text-tertiary)]">{line.notes}</div>

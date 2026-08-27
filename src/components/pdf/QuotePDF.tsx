@@ -23,6 +23,15 @@ Font.register({
 
 Font.registerHyphenationCallback((word) => [word]);
 
+/** 規格欄：「｜」或「|」視為分段，每段一行；已含換行的維持原樣 */
+function formatSpecLines(spec: string | undefined): string {
+  return (spec ?? "")
+    .split(/\s*[｜|]\s*/)
+    .map((seg) => seg.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 const C = {
   black: "#111111",
   dark: "#333333",
@@ -427,7 +436,8 @@ function QuotePDFDocument(props: QuotePDFProps) {
                 ) : null}
               </View>
               <View style={s.colSpec}>
-                <Text style={s.tCell}>{item.spec || ""}</Text>
+                {/* 規格用「｜」分段（面料｜泡棉…）；PDF 上每段一行，避免長規格在窄欄內亂斷 */}
+                <Text style={s.tCell}>{formatSpecLines(item.spec)}</Text>
                 {item.specImageUrl ? (
                   <Image src={item.specImageUrl} style={s.specImage} />
                 ) : null}
