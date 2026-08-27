@@ -158,7 +158,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `報價版本!A${sheetRow}:AU${sheetRow}`,
+      range: `報價版本!A${sheetRow}:AW${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(updated)] },
     });

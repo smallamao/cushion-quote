@@ -9,6 +9,7 @@ import {
   CLOUDINARY_FOLDERS,
 } from "@/lib/cloudinary-upload";
 import { DEFAULT_TERMS } from "@/lib/constants";
+import { deriveOptionMeta } from "@/lib/quote-options";
 import { applyTaxModeToTerms } from "@/lib/quote-terms";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { Channel, ItemUnit, LeadSource, VersionLineRecord } from "@/lib/types";
@@ -245,6 +246,8 @@ export async function POST(request: Request) {
           // 條款跟編輯器同一套：未稅去掉逾期罰則、稅金行改「未含」；含稅用預設機關版
           termsTemplate: applyTaxModeToTerms(DEFAULT_TERMS, taxRate > 0),
           internalNotes: ["[agent 建立]", payload.internalNotes ?? ""].filter(Boolean).join(" "),
+          // 兩檔／加價選項 → 多方案：PDF 不顯示合計、列表顯示最低方案
+          ...deriveOptionMeta(lines),
           lines,
         },
       }),
@@ -264,6 +267,7 @@ export async function POST(request: Request) {
         taxAmount,
         totalAmount,
         descriptionImageUrl,
+        ...deriveOptionMeta(lines),
       },
       { status: 201 },
     );
@@ -343,6 +347,7 @@ export async function PATCH(request: Request) {
     const { taxAmount, totalAmount } = taxOf(subtotal, existing.taxRate);
     const updated = {
       ...existing,
+      ...(built ? deriveOptionMeta(built.lines) : {}),
       subtotalBeforeTax: subtotal,
       taxAmount,
       totalAmount,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
+import { deriveOptionMeta } from "@/lib/quote-options";
 import type { QuotePlanRecord, QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
 
 import {
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
     const nextFollowUpDate =
       firstVersion.nextFollowUpDate ?? calculateNextFollowUpDate(sentAt, followUpDays);
 
+    const optionMeta = deriveOptionMeta(firstVersion.lines ?? []);
     const versionRecord: QuoteVersionRecord = {
       versionId,
       quoteId,
@@ -155,6 +157,8 @@ export async function POST(request: Request) {
       signedBackDate: firstVersion.signedBackDate ?? "",
       signedContractUrls: firstVersion.signedContractUrls ?? [],
       signedNotes: firstVersion.signedNotes ?? "",
+      isMultiOption: firstVersion.isMultiOption ?? optionMeta.isMultiOption,
+      optionMinAmount: optionMeta.optionMinAmount,
       createdAt: now,
       updatedAt: now,
     };
@@ -205,7 +209,7 @@ export async function POST(request: Request) {
 
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
-        range: "報價版本!A:AU",
+        range: "報價版本!A:AW",
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(versionRecord)] },
     });
@@ -245,7 +249,7 @@ export async function POST(request: Request) {
     });
     await sortSheetRows(client, {
       sheetName: "報價版本",
-      dataRange: "報價版本!A2:AU",
+      dataRange: "報價版本!A2:AW",
       totalColumnCount: 47,
       primarySortColumnIndex: 35,
       secondarySortColumnIndex: 0,

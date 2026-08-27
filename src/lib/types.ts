@@ -416,6 +416,10 @@ export interface QuoteVersionRecord {
   signedBackDate: string;
   signedContractUrls: string[];
   signedNotes: string;
+  /** 多方案報價：PDF 不顯示合計、列表顯示最低方案「起」、不可直接接受／簽署 */
+  isMultiOption?: boolean;
+  /** 最低方案金額（各品項群取最低後加總，不含加價選項）；由伺服器依明細計算 */
+  optionMinAmount?: number;
   createdAt: string;
   updatedAt: string;
 }

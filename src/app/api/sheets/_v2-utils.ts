@@ -269,6 +269,8 @@ export function versionRowToRecord(row: string[]): QuoteVersionRecord {
     signedBackDate: row[44] ?? "",
     signedContractUrls: parseJsonStringArray(row[45]),
     signedNotes: row[46] ?? "",
+    isMultiOption: toBoolean(row[47]),
+    optionMinAmount: toNumber(row[48]),
   };
 }
 
@@ -334,6 +336,8 @@ export function versionRecordToRow(record: QuoteVersionRecord): string[] {
     record.signedBackDate,
     JSON.stringify(record.signedContractUrls ?? []),
     record.signedNotes,
+    record.isMultiOption ? "TRUE" : "FALSE",
+    String(record.optionMinAmount ?? 0),
   ];
 }
 
@@ -432,7 +436,7 @@ export async function getQuoteRows(client: SheetsClient): Promise<string[][]> {
 export async function getVersionRows(client: SheetsClient): Promise<string[][]> {
   const response = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: `${VERSION_SHEET}!A2:AU`,
+    range: `${VERSION_SHEET}!A2:AW`,
   });
   return response.data.values ?? [];
 }

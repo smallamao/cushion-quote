@@ -130,6 +130,8 @@ function makeVersionRecord(overrides: Partial<QuoteVersionRecord> = {}): QuoteVe
     signedBackDate: "",
     signedContractUrls: [],
     signedNotes: "",
+    isMultiOption: false,
+    optionMinAmount: 0,
     ...overrides,
   };
 }
@@ -301,9 +303,9 @@ describe("Version Row ↔ Record 雙向轉換", () => {
     expect(restored).toEqual(original);
   });
 
-  it("row 長度應為 43 欄", () => {
+  it("row 長度應為 49 欄（A:AW，含多方案報價／最低方案金額）", () => {
     const row = versionRecordToRow(makeVersionRecord());
-    expect(row).toHaveLength(43);
+    expect(row).toHaveLength(49);
   });
 
   it("boolean 欄位 snapshotLocked=true 應正確轉換", () => {

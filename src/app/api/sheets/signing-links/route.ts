@@ -46,6 +46,12 @@ export async function POST(request: Request) {
     }
     // 一版一合約：已回簽的版本不再產生連結，內容要改請建新版本（舊版自動變已取代）。
     // 否則客人再簽一次會在同一版本疊出第二份合約，歸檔時分不清哪份算數。
+    if (version.isMultiOption) {
+      return NextResponse.json(
+        { ok: false, error: "多方案報價不能簽署，請先建立「確認方案」的新版本再產生連結" },
+        { status: 409 },
+      );
+    }
     if (version.signedBack || (version.signedContractUrls?.length ?? 0) > 0) {
       return NextResponse.json(
         { ok: false, error: "此版本已回簽，如需修改請建立新版本" },

@@ -82,6 +82,7 @@ import type {
 } from "@/lib/types";
 import { buildSplitLineFields } from "@/lib/split-panel-metadata";
 import { toFlexItemsFromVersion } from "@/lib/quote-mappers";
+import { deriveOptionMeta } from "@/lib/quote-options";
 import { applyTaxModeToTerms } from "@/lib/quote-terms";
 import { QUOTE_NOTE_TEMPLATES, type QuoteNoteTemplate } from "@/lib/quote-note-templates";
 import { calculateQuotedUnitPrice, clampCommissionRate, formatCurrency, roundPriceToTens, slugDate } from "@/lib/utils";
@@ -621,6 +622,8 @@ export function QuoteEditor() {
   const [descriptionImageUploading, setDescriptionImageUploading] = useState(false);
   const [descriptionImageError, setDescriptionImageError] = useState("");
   const [includeTax, setIncludeTax] = useState(true);
+  // 多方案報價：null＝依品項自動判定；使用者勾選後以勾選為準
+  const [multiOptionOverride, setMultiOptionOverride] = useState<boolean | null>(null);
   const [termsTemplate, setTermsTemplate] = useState(DEFAULT_TERMS);
   const [clientSectionOpen, setClientSectionOpen] = useState(true);
 
@@ -1077,6 +1080,7 @@ export function QuoteEditor() {
       setItemImageUploading({});
       setTermsTemplate(version.termsTemplate || DEFAULT_TERMS);
       setIncludeTax((version.taxRate ?? 0) > 0);
+      setMultiOptionOverride(typeof version.isMultiOption === "boolean" ? version.isMultiOption : null);
       setCommissionOverride({
         mode: version.commissionMode,
         rate: clampCommissionRate(version.commissionRate),
@@ -1617,6 +1621,14 @@ export function QuoteEditor() {
     [includeTax, subtotal, settings.taxRate],
   );
   const total = subtotal + tax;
+  const derivedMultiOption = useMemo(
+    () =>
+      deriveOptionMeta(
+        items.map((item) => ({ itemName: item.name, spec: item.spec, lineAmount: item.amount, isCostItem: item.isCostItem })),
+      ).isMultiOption,
+    [items],
+  );
+  const isMultiOption = multiOptionOverride ?? derivedMultiOption;
   const estimatedCostTotal = useMemo(
     () => items.reduce((sum, item) => sum + (item.costPerUnit ?? 0) * item.qty, 0),
     [items],
@@ -1702,6 +1714,7 @@ export function QuoteEditor() {
     setItemImageErrors({});
     setItemImageUploading({});
     setIncludeTax(true);
+    setMultiOptionOverride(null);
     setTermsTemplate(DEFAULT_TERMS);
     setChannel("retail");
     setCommissionOverride(null);
@@ -1851,6 +1864,7 @@ export function QuoteEditor() {
       grossMarginRate: total > 0 ? grossMarginAmount / total : 0,
       channel,
       termsTemplate,
+      isMultiOption,
       publicDescription: description,
       descriptionImageUrl,
       clientNameSnapshot: companyName,
@@ -1987,6 +2001,7 @@ export function QuoteEditor() {
               grossMarginRate:
                 total > 0 ? (total - estimatedCostTotal) / total : 0,
                termsTemplate,
+               isMultiOption,
                publicDescription: description,
                descriptionImageUrl,
                clientNameSnapshot: companyName,
@@ -2151,6 +2166,7 @@ export function QuoteEditor() {
         tax,
         total,
         termsTemplate: termsTemplate.replace(/(\d+\.)\s/g, "$1\u00A0"),
+        multiOption: isMultiOption,
         settings,
       });
     } catch (err) {
@@ -2179,6 +2195,7 @@ export function QuoteEditor() {
       tax,
       total,
       termsTemplate: termsTemplate.replace(/(\d+\.)\s/g, "$1\u00A0"),
+      multiOption: isMultiOption,
       settings,
     };
   }
@@ -2434,6 +2451,7 @@ export function QuoteEditor() {
                       tax,
                       total,
                       termsTemplate: termsTemplate.replace(/(\d+\.)\s/g, "$1 "),
+                      multiOption: isMultiOption,
                       settings,
                     });
                     const fd = new FormData();
@@ -3281,6 +3299,18 @@ export function QuoteEditor() {
               營業稅 {settings.taxRate}%
             </label>
             <span className="font-medium">{formatCurrency(tax)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <label className="flex items-center gap-2 text-[var(--text-secondary)]">
+              <Checkbox
+                checked={isMultiOption}
+                onCheckedChange={(v) => setMultiOptionOverride(v === true)}
+              />
+              多方案報價
+            </label>
+            <span className="text-[11px] text-[var(--text-tertiary)]">
+              {isMultiOption ? "PDF 不顯示合計，客人擇一" : "PDF 顯示合計"}
+            </span>
           </div>
           <div className="flex items-center justify-between border-t border-[var(--border)] pt-2 text-base">
             <span className="font-semibold text-[var(--text-primary)]">

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
+import { deriveOptionMeta } from "@/lib/quote-options";
 import type { QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
 
 import {
@@ -99,9 +100,20 @@ export async function PUT(
     }
 
     const now = isoNow();
+    const optionMeta = deriveOptionMeta(payload.lines ?? []);
+    const isMultiOption =
+      typeof payload.version.isMultiOption === "boolean" ? payload.version.isMultiOption : optionMeta.isMultiOption;
+    if (payload.version.versionStatus === "accepted" && isMultiOption) {
+      return NextResponse.json(
+        { ok: false, error: "多方案報價不能直接接受，請先建立「確認方案」的新版本（只留客人選的方案）" },
+        { status: 409 },
+      );
+    }
     const record = normalizeVersion(
       {
         ...payload.version,
+        isMultiOption,
+        optionMinAmount: optionMeta.optionMinAmount,
         updatedAt: now,
       },
       now,
@@ -110,7 +122,7 @@ export async function PUT(
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `報價版本!A${sheetRow}:AU${sheetRow}`,
+      range: `報價版本!A${sheetRow}:AW${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(record)] },
     });
@@ -208,6 +220,12 @@ export async function PATCH(
     }
 
     const existing = versionRowToRecord(versionRows[rowIndex] ?? []);
+    if (payload.versionStatus === "accepted" && existing.isMultiOption) {
+      return NextResponse.json(
+        { ok: false, error: "多方案報價不能直接接受，請先建立「確認方案」的新版本（只留客人選的方案）" },
+        { status: 409 },
+      );
+    }
     const now = isoNow();
     const updated: QuoteVersionRecord = {
       ...existing,
@@ -240,7 +258,7 @@ export async function PATCH(
     const sheetRow = rowIndex + 2;
     await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
-      range: `報價版本!A${sheetRow}:AU${sheetRow}`,
+      range: `報價版本!A${sheetRow}:AW${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [versionRecordToRow(updated)] },
     });

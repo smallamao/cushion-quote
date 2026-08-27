@@ -7,6 +7,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { ARRecord, QuoteVersionRecord, VersionStatus } from "@/lib/types";
 import { createQuoteLoadRequest, writeQuoteLoadRequest } from "@/lib/quote-draft-session";
 import { formatCurrency } from "@/lib/utils";
+import { displayAmountOf } from "@/lib/quote-options";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,12 @@ const AR_ICON_CLASS: Record<string, string> = {
   overdue: "text-red-600 hover:text-red-700",
   paid: "text-emerald-600 hover:text-emerald-700",
 };
+
+
+/** 列表金額：多方案顯示最低方案「起」，其餘顯示總額 */
+function formatAmountLabel(v: { totalAmount: number; isMultiOption?: boolean; optionMinAmount?: number }): string {
+  return v.isMultiOption ? `${formatCurrency(displayAmountOf(v))} 起` : formatCurrency(v.totalAmount);
+}
 
 function arStatusTitle(ar: ARRecord): string {
   const received = formatCurrency(ar.receivedAmount);
@@ -498,7 +505,8 @@ export function QuotesClient() {
   );
   const totalCount = nonSupersededAll.length;
   const acceptedCount = nonSupersededAll.filter((item) => item.versionStatus === "accepted").length;
-  const totalAmount = nonSupersededAll.reduce((sum, item) => sum + item.totalAmount, 0);
+  // 多方案以最低方案計，避免把所有方案相加灌水
+  const totalAmount = nonSupersededAll.reduce((sum, item) => sum + displayAmountOf(item), 0);
   const hasFilters =
     searchText.trim() !== "" ||
     filterStatus !== "all" ||
@@ -887,7 +895,7 @@ export function QuotesClient() {
                   </div>
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-sm font-semibold text-[var(--text-primary)]">
-                      {formatCurrency(latest.totalAmount)}
+                      {formatAmountLabel(latest)}
                     </span>
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button
@@ -944,7 +952,7 @@ export function QuotesClient() {
                         </div>
                         <div>
                           <span className="text-[var(--text-tertiary)]">含稅金額：</span>
-                          <span className="text-[var(--text-primary)] font-semibold">{formatCurrency(latest.totalAmount)}</span>
+                          <span className="text-[var(--text-primary)] font-semibold">{formatAmountLabel(latest)}</span>
                         </div>
                       </div>
                       {latest.internalNotes && (
@@ -972,7 +980,7 @@ export function QuotesClient() {
                             </div>
                             <div className="flex items-center gap-2">
                               <span className={`badge ${vStatus.className}`}>{vStatus.label}</span>
-                              <span className="text-xs font-medium">{formatCurrency(v.totalAmount)}</span>
+                              <span className="text-xs font-medium">{formatAmountLabel(v)}</span>
                             </div>
                           </div>
                         );
@@ -1049,7 +1057,7 @@ export function QuotesClient() {
                           <span className="text-sm">{latest.projectNameSnapshot || "—"}</span>
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          <span className="text-sm font-medium">{formatCurrency(latest.totalAmount)}</span>
+                          <span className="text-sm font-medium">{formatAmountLabel(latest)}</span>
                         </td>
                         <td className="px-4 py-2.5">
                           <span className="flex items-center">
@@ -1095,7 +1103,7 @@ export function QuotesClient() {
                                           <span className={`badge ${versionStatus.className}`}>{versionStatus.label}</span>
                                         </td>
                                         <td className="px-2 py-2 text-right font-medium text-[var(--text-primary)]">
-                                          {formatCurrency(version.totalAmount)}
+                                          {formatAmountLabel(version)}
                                         </td>
                                         <td className="px-2 py-2 text-center">
                                           {renderActionButtons(version)}

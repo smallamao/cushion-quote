@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
 
   const res = await client.sheets.spreadsheets.values.get({
     spreadsheetId: client.spreadsheetId,
-    range: "報價版本!A2:AU2000",
+    range: "報價版本!A2:AW2000",
   });
   const rows = (res.data.values ?? []) as string[][];
   const row = rows.find((r) => r[0] === versionId);

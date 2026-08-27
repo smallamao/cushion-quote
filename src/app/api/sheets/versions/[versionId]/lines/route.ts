@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
+import { deriveOptionMeta } from "@/lib/quote-options";
 import type { VersionLineRecord } from "@/lib/types";
 
 import {
@@ -10,6 +11,7 @@ import {
   lineRowToRecord,
   makeItemId,
   replaceVersionLines,
+  versionRecordToRow,
   versionRowToRecord,
 } from "../../../_v2-utils";
 
@@ -55,9 +57,8 @@ export async function PUT(
 
   try {
     const versionRows = await getVersionRows(client);
-    const version = versionRows
-      .map(versionRowToRecord)
-      .find((row) => row.versionId === versionId);
+    const versionIndex = versionRows.findIndex((row) => row[0] === versionId);
+    const version = versionIndex >= 0 ? versionRowToRecord(versionRows[versionIndex] ?? []) : undefined;
     if (!version) {
       return NextResponse.json({ ok: false, error: "version not found" }, { status: 404 });
     }
@@ -100,7 +101,23 @@ export async function PUT(
     }));
 
     await replaceVersionLines(client, versionId, lines);
-    return NextResponse.json({ ok: true, versionId, lineCount: lines.length });
+
+    // 明細變了 → 多方案旗標／最低方案金額跟著重算（旗標若編輯器手動設過就尊重，只更新最低方案）
+    const optionMeta = deriveOptionMeta(lines);
+    const updatedVersion = {
+      ...version,
+      isMultiOption: typeof version.isMultiOption === "boolean" ? version.isMultiOption : optionMeta.isMultiOption,
+      optionMinAmount: optionMeta.optionMinAmount,
+      updatedAt: now,
+    };
+    const sheetRow = versionIndex + 2;
+    await client.sheets.spreadsheets.values.update({
+      spreadsheetId: client.spreadsheetId,
+      range: `報價版本!A${sheetRow}:AW${sheetRow}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [versionRecordToRow(updatedVersion)] },
+    });
+    return NextResponse.json({ ok: true, versionId, lineCount: lines.length, ...optionMeta });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

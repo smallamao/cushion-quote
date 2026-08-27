@@ -14,6 +14,7 @@ import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { toFlexItemsFromVersion } from "@/lib/quote-mappers";
 import { useSettings } from "@/hooks/useSettings";
 import { DEFAULT_TERMS } from "@/lib/constants";
+import { displayAmountOf } from "@/lib/quote-options";
 import { applyTaxModeToTerms } from "@/lib/quote-terms";
 
 interface Props {
@@ -139,6 +140,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       subtotal: version.subtotalBeforeTax,
       tax: version.taxAmount,
       total: version.totalAmount,
+      multiOption: Boolean(version.isMultiOption),
       termsTemplate: (version.termsTemplate || applyTaxModeToTerms(DEFAULT_TERMS, version.taxRate > 0)).replace(/(\d+\.)\s/g, "$1 "),
       settings,
     };
@@ -444,9 +446,18 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
                     稅額 <span className="font-mono">{formatCurrency(version.taxAmount)}</span>
                   </div>
                 )}
-                <div className="text-sm font-semibold text-[var(--text-primary)]">
-                  含稅合計 <span className="font-mono">{formatCurrency(version.totalAmount)}</span>
-                </div>
+                {version.isMultiOption ? (
+                  <div className="text-sm font-semibold text-[var(--text-primary)]">
+                    多方案 · 最低方案 <span className="font-mono">{formatCurrency(displayAmountOf(version))}</span> 起
+                    <div className="mt-0.5 text-[11px] font-normal text-[var(--text-tertiary)]">
+                      PDF 不顯示合計；客人定案後請建立「確認方案」新版本
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm font-semibold text-[var(--text-primary)]">
+                    含稅合計 <span className="font-mono">{formatCurrency(version.totalAmount)}</span>
+                  </div>
+                )}
               </div>
 
               {/* 報價單 PDF 預覽（底部）*/}

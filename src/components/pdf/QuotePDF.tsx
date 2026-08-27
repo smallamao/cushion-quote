@@ -11,6 +11,8 @@ import {
   pdf,
 } from "@react-pdf/renderer";
 
+import { multiOptionNote } from "@/lib/quote-options";
+
 import type { Channel, FlexQuoteItem, SystemSettings } from "@/lib/types";
 
 Font.register({
@@ -173,6 +175,7 @@ const s = StyleSheet.create({
     paddingRight: 10,
   },
   totalValue: { width: 100, textAlign: "right", fontSize: 8.5 },
+  multiOptionNote: { fontSize: 8.5, color: C.muted, textAlign: "right" },
   grandRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -249,6 +252,8 @@ export interface QuotePDFProps {
   total: number;
   termsTemplate: string;
   settings: SystemSettings;
+  /** 多方案報價：不顯示小計／稅額／總額，改一句請擇一 */
+  multiOption?: boolean;
 }
 
 function fmt(n: number): string {
@@ -312,6 +317,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
     total,
     termsTemplate,
     settings,
+    multiOption = false,
   } = props;
 
   const fw = (s: string) => s.replace(/：/g, ": ").replace(/，/g, ", ").replace(/；/g, "; ");
@@ -463,22 +469,29 @@ function QuotePDFDocument(props: QuotePDFProps) {
           </View>
         ) : null}
 
-        <View style={s.totalsBlock}>
-          <View style={s.totalRow}>
-            <Text style={s.totalLabel}>小計</Text>
-            <Text style={s.totalValue}>{fmtCurrency(subtotal)}</Text>
+        {multiOption ? (
+          /* 多方案：合計是所有方案相加的假數字，會嚇到客人；只留一句請擇一 */
+          <View style={s.totalsBlock}>
+            <Text style={s.multiOptionNote}>{multiOptionNote(includeTax)}</Text>
           </View>
-          {includeTax ? (
+        ) : (
+          <View style={s.totalsBlock}>
             <View style={s.totalRow}>
-              <Text style={s.totalLabel}>稅額 ({settings.taxRate}%)</Text>
-              <Text style={s.totalValue}>{fmtCurrency(tax)}</Text>
+              <Text style={s.totalLabel}>小計</Text>
+              <Text style={s.totalValue}>{fmtCurrency(subtotal)}</Text>
             </View>
-          ) : null}
-          <View style={s.grandRow}>
-            <Text style={s.grandLabel}>{includeTax ? "總額" : "總額（未稅）"}</Text>
-            <Text style={s.grandValue}>{fmtCurrency(total)}</Text>
+            {includeTax ? (
+              <View style={s.totalRow}>
+                <Text style={s.totalLabel}>稅額 ({settings.taxRate}%)</Text>
+                <Text style={s.totalValue}>{fmtCurrency(tax)}</Text>
+              </View>
+            ) : null}
+            <View style={s.grandRow}>
+              <Text style={s.grandLabel}>{includeTax ? "總額" : "總額（未稅）"}</Text>
+              <Text style={s.grandValue}>{fmtCurrency(total)}</Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {termsTemplate.trim() ? (
           <View style={s.notesSection}>
