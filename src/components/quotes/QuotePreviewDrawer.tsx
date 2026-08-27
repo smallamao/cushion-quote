@@ -14,6 +14,7 @@ import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { toFlexItemsFromVersion } from "@/lib/quote-mappers";
 import { useSettings } from "@/hooks/useSettings";
 import { DEFAULT_TERMS } from "@/lib/constants";
+import { applyTaxModeToTerms } from "@/lib/quote-terms";
 
 interface Props {
   versionId: string | null;
@@ -138,7 +139,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       subtotal: version.subtotalBeforeTax,
       tax: version.taxAmount,
       total: version.totalAmount,
-      termsTemplate: (version.termsTemplate || DEFAULT_TERMS).replace(/(\d+\.)\s/g, "$1 "),
+      termsTemplate: (version.termsTemplate || applyTaxModeToTerms(DEFAULT_TERMS, version.taxRate > 0)).replace(/(\d+\.)\s/g, "$1 "),
       settings,
     };
     setPdfPropsForLink(props);

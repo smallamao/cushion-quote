@@ -8,21 +8,25 @@ import {
   uploadBufferToCloudinary,
   CLOUDINARY_FOLDERS,
 } from "@/lib/cloudinary-upload";
-import type { Channel, LeadSource } from "@/lib/types";
+import { DEFAULT_TERMS } from "@/lib/constants";
+import { applyTaxModeToTerms } from "@/lib/quote-terms";
+import { getSheetsClient } from "@/lib/sheets-client";
+import type { Channel, ItemUnit, LeadSource, VersionLineRecord } from "@/lib/types";
+import { getVersionLineRows, getVersionRows, lineRowToRecord, versionRowToRecord } from "../../_v2-utils";
 import { POST as createCaseHandler } from "../../cases/route";
-import { PATCH as patchVersionHandler } from "../../versions/[versionId]/route";
+import { PATCH as patchVersionHandler, PUT as putVersionHandler } from "../../versions/[versionId]/route";
 import { POST as createQuoteHandler } from "../route";
 
 export const dynamic = "force-dynamic";
 
 /**
- * 對話 agent（quote-drafter skill）建立「草稿」報價的整合端點。
+ * 對話 agent（quote-drafter skill）建立／修改「草稿」報價的整合端點。
  * 以 x-api-key（AGENT_API_KEY）驗證，與排程系統的 from-paste 同一模式。
  *
  * POST  建案件＋報價＋版本＋品項（永遠 draft，發送權在操作者）
- * PATCH 幫既有版本補「補充說明附圖」
+ * PATCH 修改既有版本：補「補充說明附圖」；或整組換掉品項（只允許 draft）
  *
- * 內部直接組合既有的 cases POST / quotes-v2 POST / versions PATCH，不重複寫入邏輯。
+ * 內部直接組合既有的 cases POST / quotes-v2 POST / versions PUT・PATCH，不重複寫入邏輯。
  */
 
 interface AgentLine {
@@ -72,8 +76,12 @@ interface AgentQuotePayload {
   lines: AgentLine[];
 }
 
-interface AgentAttachImagePayload {
+interface AgentPatchPayload {
   versionId: string;
+  /** 給了就整組取代（只允許草稿），金額重算 */
+  lines?: AgentLine[];
+  publicDescription?: string;
+  internalNotes?: string;
   descriptionImageUrl?: string;
   descriptionImage?: AgentImage;
 }
@@ -107,12 +115,40 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function internalRequest(path: string, body: unknown, method: "POST" | "PATCH" = "POST"): Request {
+function internalRequest(path: string, body: unknown, method: "POST" | "PATCH" | "PUT" = "POST"): Request {
   return new Request(`http://internal${path}`, {
     method,
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+/** 品項＋金額：POST 與 PATCH 共用同一套算法 */
+function buildLines(input: AgentLine[]) {
+  const lines: Array<Partial<VersionLineRecord>> = input.map((l, i) => {
+    const qty = Number(l.qty) || 0;
+    const unitPrice = Math.round(Number(l.unitPrice) || 0);
+    return {
+      lineNo: i + 1,
+      itemName: l.itemName,
+      spec: l.spec ?? "",
+      qty,
+      // 單位跟編輯器同一組選項；agent 給了非標準字串就照字面存，PDF 仍可顯示
+      unit: (l.unit ?? "式") as ItemUnit,
+      unitPrice,
+      lineAmount: Math.round(qty * unitPrice),
+      isCostItem: l.isCostItem ?? false,
+      showOnQuote: true,
+      notes: l.notes ?? "",
+    };
+  });
+  const subtotal = lines.reduce((s, l) => s + (l.lineAmount ?? 0), 0);
+  return { lines, subtotal };
+}
+
+function taxOf(subtotal: number, taxRate: number) {
+  const taxAmount = Math.round((subtotal * taxRate) / 100);
+  return { taxAmount, totalAmount: subtotal + taxAmount };
 }
 
 /** 附圖：優先用給定網址；否則把 base64 上傳到 Cloudinary（同編輯器的 quote-attachments） */
@@ -185,26 +221,9 @@ export async function POST(request: Request) {
     }
 
     // 2) 金額
-    const lines = payload.lines.map((l, i) => {
-      const qty = Number(l.qty) || 0;
-      const unitPrice = Math.round(Number(l.unitPrice) || 0);
-      return {
-        lineNo: i + 1,
-        itemName: l.itemName,
-        spec: l.spec ?? "",
-        qty,
-        unit: l.unit ?? "式",
-        unitPrice,
-        lineAmount: Math.round(qty * unitPrice),
-        isCostItem: l.isCostItem ?? false,
-        showOnQuote: true,
-        notes: l.notes ?? "",
-      };
-    });
-    const subtotal = lines.reduce((s, l) => s + l.lineAmount, 0);
+    const { lines, subtotal } = buildLines(payload.lines);
     const taxRate = payload.taxRate ?? 0;
-    const taxAmount = Math.round((subtotal * taxRate) / 100);
-    const totalAmount = subtotal + taxAmount;
+    const { taxAmount, totalAmount } = taxOf(subtotal, taxRate);
 
     // 3) 報價＋版本＋品項（草稿）
     const quoteRes = await createQuoteHandler(
@@ -223,6 +242,8 @@ export async function POST(request: Request) {
           totalAmount,
           publicDescription: payload.publicDescription ?? "",
           descriptionImageUrl,
+          // 條款跟編輯器同一套：未稅去掉逾期罰則、稅金行改「未含」；含稅用預設機關版
+          termsTemplate: applyTaxModeToTerms(DEFAULT_TERMS, taxRate > 0),
           internalNotes: ["[agent 建立]", payload.internalNotes ?? ""].filter(Boolean).join(" "),
           lines,
         },
@@ -252,14 +273,18 @@ export async function POST(request: Request) {
   }
 }
 
-/** 幫既有版本補附圖（建單時忘了給、或客戶事後才傳照片） */
+/**
+ * 修改既有版本。
+ * - 只補附圖：走 versions PATCH（任何狀態都可以，附圖不影響金額）。
+ * - 換品項／補充說明：只允許 draft，走 versions PUT（與編輯器儲存同一條路），金額重算。
+ */
 export async function PATCH(request: Request) {
   const denied = authorize(request);
   if (denied) return denied;
 
-  let payload: AgentAttachImagePayload;
+  let payload: AgentPatchPayload;
   try {
-    payload = (await request.json()) as AgentAttachImagePayload;
+    payload = (await request.json()) as AgentPatchPayload;
   } catch {
     return NextResponse.json({ ok: false, error: "格式錯誤" }, { status: 400 });
   }
@@ -267,8 +292,14 @@ export async function PATCH(request: Request) {
   if (!versionId) {
     return NextResponse.json({ ok: false, error: "versionId is required" }, { status: 400 });
   }
-  if (!payload.descriptionImageUrl?.trim() && !payload.descriptionImage?.base64) {
-    return NextResponse.json({ ok: false, error: "descriptionImageUrl 或 descriptionImage 至少一項" }, { status: 400 });
+  const wantsLines = Array.isArray(payload.lines);
+  const wantsText = payload.publicDescription !== undefined || payload.internalNotes !== undefined;
+  const wantsImage = Boolean(payload.descriptionImageUrl?.trim() || payload.descriptionImage?.base64);
+  if (!wantsLines && !wantsText && !wantsImage) {
+    return NextResponse.json({ ok: false, error: "lines、publicDescription、internalNotes、附圖至少一項" }, { status: 400 });
+  }
+  if (wantsLines && payload.lines!.length === 0) {
+    return NextResponse.json({ ok: false, error: "lines 不可為空" }, { status: 400 });
   }
 
   try {
@@ -276,15 +307,78 @@ export async function PATCH(request: Request) {
       payload.descriptionImageUrl,
       payload.descriptionImage,
     );
-    const res = await patchVersionHandler(
-      internalRequest(`/api/sheets/versions/${encodeURIComponent(versionId)}`, { descriptionImageUrl }, "PATCH"),
-      { params: Promise.resolve({ versionId }) },
+    const params = { params: Promise.resolve({ versionId }) };
+
+    // 只補圖：不碰金額
+    if (!wantsLines && !wantsText) {
+      const res = await patchVersionHandler(
+        internalRequest(`/api/sheets/versions/${encodeURIComponent(versionId)}`, { descriptionImageUrl }, "PATCH"),
+        params,
+      );
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) {
+        return NextResponse.json({ ok: false, error: `更新版本失敗：${json.error ?? "unknown"}` }, { status: res.status === 404 ? 404 : 500 });
+      }
+      return NextResponse.json({ ok: true, versionId, descriptionImageUrl });
+    }
+
+    const client = await getSheetsClient();
+    if (!client) {
+      return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+    }
+    const existingRow = (await getVersionRows(client)).find((r) => r[0] === versionId);
+    if (!existingRow) {
+      return NextResponse.json({ ok: false, error: "version not found" }, { status: 404 });
+    }
+    const existing = versionRowToRecord(existingRow);
+    if (existing.versionStatus !== "draft") {
+      return NextResponse.json(
+        { ok: false, error: `只能修改草稿（目前狀態 ${existing.versionStatus}）；已發送的請建新版本` },
+        { status: 409 },
+      );
+    }
+
+    const built = wantsLines ? buildLines(payload.lines!) : null;
+    const subtotal = built ? built.subtotal : existing.subtotalBeforeTax;
+    const { taxAmount, totalAmount } = taxOf(subtotal, existing.taxRate);
+    const updated = {
+      ...existing,
+      subtotalBeforeTax: subtotal,
+      taxAmount,
+      totalAmount,
+      publicDescription: payload.publicDescription ?? existing.publicDescription,
+      internalNotes: payload.internalNotes ?? existing.internalNotes,
+      descriptionImageUrl: descriptionImageUrl || existing.descriptionImageUrl,
+    };
+
+    // 換品項走 PUT（會整組取代明細）；只改文字時要把既有明細原樣送回，否則會被清空
+    let lines: Array<Partial<VersionLineRecord>>;
+    if (built) {
+      lines = built.lines;
+    } else {
+      lines = (await getVersionLineRows(client))
+        .filter((r) => r[1] === versionId)
+        .map(lineRowToRecord)
+        .sort((a, b) => a.lineNo - b.lineNo);
+    }
+
+    const res = await putVersionHandler(
+      internalRequest(`/api/sheets/versions/${encodeURIComponent(versionId)}`, { version: updated, lines }, "PUT"),
+      params,
     );
     const json = (await res.json()) as { ok: boolean; error?: string };
     if (!json.ok) {
-      return NextResponse.json({ ok: false, error: `更新版本失敗：${json.error ?? "unknown"}` }, { status: res.status === 404 ? 404 : 500 });
+      return NextResponse.json({ ok: false, error: `更新版本失敗：${json.error ?? "unknown"}` }, { status: 500 });
     }
-    return NextResponse.json({ ok: true, versionId, descriptionImageUrl });
+    return NextResponse.json({
+      ok: true,
+      versionId,
+      subtotal,
+      taxAmount,
+      totalAmount,
+      lineCount: lines.length,
+      descriptionImageUrl: updated.descriptionImageUrl,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
