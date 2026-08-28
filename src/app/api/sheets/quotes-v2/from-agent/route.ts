@@ -337,8 +337,23 @@ export async function PATCH(request: Request) {
   const wantsLines = Array.isArray(payload.lines);
   const wantsText = payload.publicDescription !== undefined || payload.internalNotes !== undefined;
   const wantsImage = Boolean(payload.descriptionImageUrl?.trim() || payload.descriptionImage?.base64);
-  if (!wantsLines && !wantsText && !wantsImage) {
-    return NextResponse.json({ ok: false, error: "lines、publicDescription、internalNotes、附圖至少一項" }, { status: 400 });
+  const wantsSyncOnly = !wantsLines && !wantsText && !wantsImage && payload.syncNotion === true;
+  if (!wantsLines && !wantsText && !wantsImage && !wantsSyncOnly) {
+    return NextResponse.json(
+      { ok: false, error: "lines、publicDescription、internalNotes、附圖至少一項（或 syncNotion:true 只同步 Notion）" },
+      { status: 400 },
+    );
+  }
+
+  // 只同步 Notion：任何狀態的版本都可以（已發送／已接受的也能補同步）
+  if (wantsSyncOnly) {
+    const client = await getSheetsClient();
+    if (!client) return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+    const row = (await getVersionRows(client)).find((r) => r[0] === versionId);
+    if (!row) return NextResponse.json({ ok: false, error: "version not found" }, { status: 404 });
+    const v = versionRowToRecord(row);
+    const notion = await syncToNotion(versionId, v.clientNameSnapshot || v.contactNameSnapshot || "");
+    return NextResponse.json({ ok: true, versionId, versionStatus: v.versionStatus, notion });
   }
   if (wantsLines && payload.lines!.length === 0) {
     return NextResponse.json({ ok: false, error: "lines 不可為空" }, { status: 400 });
