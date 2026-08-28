@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import {
   decodeBase64Image,
@@ -14,6 +14,7 @@ import { applyTaxModeToTerms } from "@/lib/quote-terms";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { Channel, ItemUnit, LeadSource, VersionLineRecord } from "@/lib/types";
 import { getVersionLineRows, getVersionRows, lineRowToRecord, versionRowToRecord } from "../../_v2-utils";
+import { POST as syncNotionHandler } from "@/app/api/notion/sync-quote/route";
 import { POST as createCaseHandler } from "../../cases/route";
 import { PATCH as patchVersionHandler, PUT as putVersionHandler } from "../../versions/[versionId]/route";
 import { POST as createQuoteHandler } from "../route";
@@ -75,6 +76,8 @@ interface AgentQuotePayload {
   descriptionImage?: AgentImage;
   internalNotes?: string;
   lines: AgentLine[];
+  /** 建單後同步 Notion 報價資料庫，預設 true */
+  syncNotion?: boolean;
 }
 
 interface AgentPatchPayload {
@@ -85,6 +88,8 @@ interface AgentPatchPayload {
   internalNotes?: string;
   descriptionImageUrl?: string;
   descriptionImage?: AgentImage;
+  /** 改完同步 Notion，預設 true */
+  syncNotion?: boolean;
 }
 
 function timingSafeEqualStr(a: string, b: string): boolean {
@@ -150,6 +155,33 @@ function buildLines(input: AgentLine[]) {
 function taxOf(subtotal: number, taxRate: number) {
   const taxAmount = Math.round((subtotal * taxRate) / 100);
   return { taxAmount, totalAmount: subtotal + taxAmount };
+}
+
+interface NotionSyncResult {
+  ok: boolean;
+  action?: string;
+  notionUrl?: string;
+  error?: string;
+}
+
+/**
+ * 同步到 Notion 報價資料庫（與報價列表／編輯器的「Notion」按鈕同一支端點）。
+ * best-effort：Notion 沒設定或失敗只回錯誤訊息，不影響報價本身。
+ * clientName 傳散客的「S編號 姓名」，否則 Notion 標題會退回版本名稱。
+ */
+async function syncToNotion(versionId: string, clientName: string): Promise<NotionSyncResult> {
+  try {
+    const req = new NextRequest("http://internal/api/notion/sync-quote", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ versionId, clientName: clientName || undefined }),
+    });
+    const res = await syncNotionHandler(req);
+    const json = (await res.json()) as NotionSyncResult;
+    return json.ok ? json : { ok: false, error: json.error ?? `Notion 同步失敗（${res.status}）` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Notion 同步失敗" };
+  }
 }
 
 /** 附圖：優先用給定網址；否則把 base64 上傳到 Cloudinary（同編輯器的 quote-attachments） */
@@ -257,6 +289,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: `建立報價失敗：${quoteJson.error ?? "unknown"}`, caseId }, { status: 500 });
     }
 
+    const notion =
+      payload.syncNotion !== false && quoteJson.versionId
+        ? await syncToNotion(quoteJson.versionId, payload.client?.company?.trim() || payload.client?.name?.trim() || "")
+        : undefined;
+
     return NextResponse.json(
       {
         ok: true,
@@ -268,6 +305,7 @@ export async function POST(request: Request) {
         totalAmount,
         descriptionImageUrl,
         ...deriveOptionMeta(lines),
+        notion,
       },
       { status: 201 },
     );
@@ -375,6 +413,11 @@ export async function PATCH(request: Request) {
     if (!json.ok) {
       return NextResponse.json({ ok: false, error: `更新版本失敗：${json.error ?? "unknown"}` }, { status: 500 });
     }
+    const notion =
+      payload.syncNotion !== false
+        ? await syncToNotion(versionId, existing.clientNameSnapshot || existing.contactNameSnapshot || "")
+        : undefined;
+
     return NextResponse.json({
       ok: true,
       versionId,
@@ -383,6 +426,7 @@ export async function PATCH(request: Request) {
       totalAmount,
       lineCount: lines.length,
       descriptionImageUrl: updated.descriptionImageUrl,
+      notion,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
