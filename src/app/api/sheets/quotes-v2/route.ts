@@ -250,7 +250,8 @@ export async function POST(request: Request) {
     await sortSheetRows(client, {
       sheetName: "報價版本",
       dataRange: "報價版本!A2:AW",
-      totalColumnCount: 47,
+      // 49 欄（A:AW，含多方案報價／最低方案金額）；排序範圍必須涵蓋全部欄，否則新欄不隨列移動而錯位
+      totalColumnCount: 49,
       primarySortColumnIndex: 35,
       secondarySortColumnIndex: 0,
     });
