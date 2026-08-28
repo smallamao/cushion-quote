@@ -5,22 +5,30 @@ import { NextResponse } from "next/server";
 import {
   buildPurchaseGroupsFromPaste,
   cloneProductAsNew,
+  createProductWithSupplier,
   findBestTemplate,
+  lookupOverride,
+  resolveSupplierByName,
+  UNMATCHED_REASON,
 } from "@/lib/purchase-from-paste";
-import type { AutoCreatedEntry, FromPasteGroup } from "@/lib/purchase-from-paste";
+import type {
+  AutoCreatedEntry,
+  CatalogMismatch,
+  FromPasteGroup,
+  SupplierOverrides,
+} from "@/lib/purchase-from-paste";
 import { renderPurchaseOrderPdfBuffer } from "@/lib/purchase-order-pdf-server";
 import { loadSystemSettings } from "@/lib/settings-sheet";
 import { getSheetsClient } from "@/lib/sheets-client";
-import type {
-  PurchaseOrder,
-  PurchaseOrderItem,
-  PurchaseProduct,
-  PurchaseProductCategory,
-  PurchaseUnit,
-  Supplier,
-} from "@/lib/types";
+import type { PurchaseOrder, PurchaseOrderItem, PurchaseProduct, Supplier } from "@/lib/types";
 
 import { sortSheetRows } from "../../_v2-utils";
+import {
+  authorizeSchedulerRequest,
+  loadCatalogAndSuppliers,
+  productToRow,
+  PRODUCT_RANGE_FULL,
+} from "../_catalog";
 
 // 需要 Node runtime：node:crypto（金鑰比對）、fs（PDF 字型/logo）、react-pdf renderToBuffer。
 export const runtime = "nodejs";
@@ -33,10 +41,6 @@ const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:Q`;
 const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:Q`;
 const ORDER_ID_RANGE = `${ORDER_SHEET}!A2:A`;
 const ITEM_RANGE_FULL = `${ITEM_SHEET}!A:J`;
-const PRODUCT_RANGE = "採購商品!A2:Y";
-const PRODUCT_RANGE_FULL = "採購商品!A:Y"; // append 用（25 欄，與 /api/sheets/purchase-products 一致）
-const SUPPLIER_RANGE = "廠商!A2:P";
-
 type SheetsClient = NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>;
 
 interface FromPasteBody {
@@ -47,109 +51,19 @@ interface FromPasteBody {
   source?: unknown;
   dryRun?: unknown;
   autoCreateMissing?: unknown;
+  /** 需求 A：色號 → 供應商名稱，指定的色號一律開給該廠商 */
+  supplierOverrides?: unknown;
+  /** 需求 B：缺件建檔時供應商用 supplierOverrides 指定的值，不從範本繼承 */
+  createMissingWithSupplier?: unknown;
 }
 
-// ---------------------------------------------------------------------------
-// Auth（server-to-server，無瀏覽器 cookie）
-// ---------------------------------------------------------------------------
-
-function timingSafeEqualStr(a: string, b: string): boolean {
-  const ab = Buffer.from(a, "utf-8");
-  const bb = Buffer.from(b, "utf-8");
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
-}
-
-// ---------------------------------------------------------------------------
-// Sheet 讀取（欄位對照鏡射自 /api/sheets/purchase-products 與 /api/sheets/suppliers）
-// ---------------------------------------------------------------------------
-
-function safeNumber(v: string | undefined): number | undefined {
-  if (v == null || v === "") return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function rowToProduct(row: string[]): PurchaseProduct {
-  const unitPrice = safeNumber(row[10]) ?? 0;
-  return {
-    id: row[0] ?? "",
-    productCode: row[1] ?? "",
-    supplierProductCode: row[2] ?? "",
-    productName: row[3] ?? "",
-    specification: row[4] ?? "",
-    category: (row[5] as PurchaseProductCategory) ?? "其他",
-    unit: (row[6] as PurchaseUnit) ?? "碼",
-    supplierId: row[7] ?? "",
-    supplierName: row[8] ?? "",
-    widthCm: safeNumber(row[9]),
-    unitPrice,
-    listPricePerCai: safeNumber(row[11]),
-    brand: row[12] ?? "",
-    series: row[13] ?? "",
-    colorCode: row[14] ?? "",
-    colorName: row[15] ?? "",
-    imageUrl: row[16] ?? "",
-    notes: row[17] ?? "",
-    isActive: (row[21] ?? "TRUE") !== "FALSE",
-    createdAt: row[22] ?? "",
-    updatedAt: row[23] ?? "",
-  };
-}
-
-/**
- * 商品 → Sheet 列（25 欄，A:Y）。
- * 鏡射自 /api/sheets/purchase-products 的 productToRow，切勿擅自改欄數。
- */
-function productToRow(p: PurchaseProduct): string[] {
-  return [
-    p.id,                                                        // A
-    p.productCode,                                               // B
-    p.supplierProductCode || p.productCode,                      // C — fallback
-    p.productName,                                               // D
-    p.specification,                                             // E
-    p.category,                                                  // F
-    p.unit,                                                      // G
-    p.supplierId,                                                // H
-    p.supplierName ?? "",                                        // I
-    p.widthCm != null ? String(p.widthCm) : "",                  // J
-    String(p.unitPrice ?? 0),                                    // K (進價)
-    p.listPricePerCai != null ? String(p.listPricePerCai) : "",  // L (牌價)
-    p.brand ?? "",                                               // M
-    p.series ?? "",                                              // N
-    p.colorCode ?? "",                                           // O
-    p.colorName ?? "",                                           // P
-    p.imageUrl ?? "",                                            // Q
-    p.notes ?? "",                                               // R
-    "",                                                          // S 最小訂量
-    "",                                                          // T 交期
-    "",                                                          // U 庫存狀態
-    p.isActive ? "TRUE" : "FALSE",                               // V
-    p.createdAt,                                                 // W
-    p.updatedAt,                                                 // X
-    p.updatedAt,                                                 // Y (mirror)
-  ];
-}
-
-function rowToSupplier(row: string[]): Supplier {
-  return {
-    supplierId: row[0] ?? "",
-    name: row[1] ?? "",
-    shortName: row[2] ?? "",
-    contactPerson: row[3] ?? "",
-    phone: row[4] ?? "",
-    mobile: row[5] ?? "",
-    fax: row[6] ?? "",
-    email: row[7] ?? "",
-    taxId: row[8] ?? "",
-    address: row[9] ?? "",
-    paymentMethod: row[10] ?? "",
-    paymentTerms: row[11] ?? "",
-    notes: row[12] ?? "",
-    isActive: row[13] !== "FALSE",
-    createdAt: row[14] ?? "",
-    updatedAt: row[15] ?? "",
-  };
+function parseSupplierOverrides(value: unknown): SupplierOverrides | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const out: SupplierOverrides = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (k.trim() && typeof v === "string" && v.trim()) out[k.trim()] = v.trim();
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,34 +196,15 @@ function toResponseItems(group: FromPasteGroup) {
     productCode: it.productCode,
     productName: it.productName,
     qty: it.qty,
+    quantity: it.qty,
     unit: it.unit,
     caseRef: it.caseRef,
+    orderNo: it.caseRef.replace(/^#/, ""),
     matched: true as const,
+    supplierUsed: it.supplierUsed,
+    supplierFromCatalog: it.supplierFromCatalog,
+    supplierSource: it.supplierSource,
   }));
-}
-
-async function loadCatalogAndSuppliers(
-  client: SheetsClient,
-): Promise<{ catalog: PurchaseProduct[]; suppliers: Supplier[] }> {
-  const [productRes, supplierRes] = await Promise.all([
-    client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: PRODUCT_RANGE,
-    }),
-    client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: SUPPLIER_RANGE,
-    }),
-  ]);
-
-  const catalog = (productRes.data.values ?? [])
-    .map(rowToProduct)
-    .filter((p) => p.id && p.isActive);
-  const suppliers = (supplierRes.data.values ?? [])
-    .map(rowToSupplier)
-    .filter((s) => s.supplierId);
-
-  return { catalog, suppliers };
 }
 
 async function nextOrderSeq(
@@ -331,19 +226,9 @@ async function nextOrderSeq(
 
 export async function POST(request: Request) {
   // 1) 認證：SCHEDULER_API_KEY 未設定 → 503（fail safe，而非放行）。
-  const configuredKey = process.env.SCHEDULER_API_KEY?.trim();
-  if (!configuredKey) {
-    return NextResponse.json(
-      { success: false, error: "SCHEDULER_API_KEY 未設定，端點停用" },
-      { status: 503 },
-    );
-  }
-  const providedKey = request.headers.get("x-api-key")?.trim() ?? "";
-  if (!providedKey || !timingSafeEqualStr(providedKey, configuredKey)) {
-    return NextResponse.json(
-      { success: false, error: "unauthorized" },
-      { status: 401 },
-    );
+  const denied = authorizeSchedulerRequest(request);
+  if (denied) {
+    return NextResponse.json({ success: false, error: denied.error }, { status: denied.status });
   }
 
   // 2) 解析並驗證 body。
@@ -373,6 +258,9 @@ export async function POST(request: Request) {
   const returnJpg = body.returnJpg === true;
   const dryRun = body.dryRun === true;
   const autoCreateMissing = body.autoCreateMissing === true;
+  // 排程系統 2026-08-28 擴充：三個欄位全部選填，不傳時行為與過去完全相同。
+  const supplierOverrides = parseSupplierOverrides(body.supplierOverrides);
+  const createMissingWithSupplier = body.createMissingWithSupplier === true;
   // groupBySupplier 預設 true；目前僅支援依供應商分組（=false 亦視同分組）。
   // 保留欄位以符合規格；未來若要「單張採購單」可在此擴充。
 
@@ -393,10 +281,11 @@ export async function POST(request: Request) {
     const { settings } = await loadSystemSettings();
 
     // 4) 解析 → 比對 → 依供應商分組（初次）。
-    const initial = buildPurchaseGroupsFromPaste(pasteText, catalog, suppliers);
+    const initial = buildPurchaseGroupsFromPaste(pasteText, catalog, suppliers, { supplierOverrides });
     let groups = initial.groups;
     let unmatched = initial.unmatched;
     const warnings = initial.warnings;
+    let catalogMismatch: CatalogMismatch[] = initial.catalogMismatch;
 
     // 5) 自動補建缺漏商品（autoCreateMissing=true）。
     //    找同前綴範本 → 複製 → 更新 in-memory 目錄 → 重新分組。
@@ -408,10 +297,32 @@ export async function POST(request: Request) {
       const toCreate: PurchaseProduct[] = [];
 
       for (const um of unmatched) {
+        if (um.reason !== UNMATCHED_REASON) continue; // 指定廠商不存在等原因 → 不建檔
         if (seenCodes.has(um.productCode)) continue; // (b) 同批同碼只建一次
         seenCodes.add(um.productCode);
 
         const template = findBestTemplate(um.productCode, catalog);
+        const overrideName = lookupOverride(um.productCode, supplierOverrides);
+
+        // 需求 B：呼叫端指定供應商建檔，不從範本繼承（S6934 開到金揚五金那類）。
+        if (createMissingWithSupplier && overrideName) {
+          const overrideSupplier = resolveSupplierByName(overrideName, suppliers);
+          if (!overrideSupplier) {
+            warnings.push(`supplierOverrides 指定的供應商『${overrideName}』不存在，${um.productCode} 未建檔`);
+            continue; // 寧可留在 unmatched，也不用錯的供應商建檔
+          }
+          toCreate.push(
+            createProductWithSupplier(um.productCode, overrideSupplier, template, nowDay, crypto.randomUUID()),
+          );
+          autoCreated.push({
+            productCode: um.productCode,
+            copiedFrom: template?.productCode ?? "",
+            supplier: overrideSupplier.shortName || overrideSupplier.name,
+            supplierSource: "override",
+          });
+          continue;
+        }
+
         if (!template) continue; // (3) 無同前綴範本 → 維持 unmatched
 
         const newProduct = cloneProductAsNew(
@@ -425,6 +336,7 @@ export async function POST(request: Request) {
           productCode: um.productCode,
           copiedFrom: template.productCode,
           supplier: template.supplierName || template.supplierId,
+          supplierSource: "template",
         });
       }
 
@@ -441,13 +353,13 @@ export async function POST(request: Request) {
 
         // (c) 加進 in-memory 目錄後重新分組（dryRun 也需要，以預覽正確分組）。
         const extendedCatalog = [...catalog, ...toCreate];
-        const reResolved = buildPurchaseGroupsFromPaste(
-          pasteText,
-          extendedCatalog,
-          suppliers,
-        );
+        const reResolved = buildPurchaseGroupsFromPaste(pasteText, extendedCatalog, suppliers, {
+          supplierOverrides,
+          autoCreatedCodes: new Set(toCreate.map((p) => p.productCode)),
+        });
         groups = reResolved.groups;
         unmatched = reResolved.unmatched;
+        catalogMismatch = reResolved.catalogMismatch;
         // 合併 warnings，避免重複
         for (const w of reResolved.warnings) {
           if (!warnings.includes(w)) warnings.push(w);
@@ -471,6 +383,7 @@ export async function POST(request: Request) {
         unmatched,
         autoCreated,
         warnings,
+        catalogMismatch,
       });
     }
 
@@ -566,6 +479,7 @@ export async function POST(request: Request) {
       unmatched,
       autoCreated,
       warnings: responseWarnings,
+      catalogMismatch,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

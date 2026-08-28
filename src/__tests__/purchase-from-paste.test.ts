@@ -439,3 +439,120 @@ describe("autoCreateMissing 流程（模擬 route 行為，不連網）", () => 
     expect(template).toBeNull(); // 不應建立
   });
 });
+
+// ---------------------------------------------------------------------------
+// 2026-08-28 排程系統擴充：供應商覆寫／指定供應商建檔／查詢
+// ---------------------------------------------------------------------------
+
+import {
+  createProductWithSupplier,
+  lookupOverride,
+  OVERRIDE_SUPPLIER_NOT_FOUND,
+  resolveSupplierByName,
+} from "@/lib/purchase-from-paste";
+
+describe("resolveSupplierByName", () => {
+  it("簡稱、全名、不分大小寫與空白都對得到", () => {
+    expect(resolveSupplierByName("米盧", suppliers)?.supplierId).toBe(MILU);
+    expect(resolveSupplierByName("米盧股份有限公司", suppliers)?.supplierId).toBe(MILU);
+    expect(resolveSupplierByName(" 布谷 ", suppliers)?.supplierId).toBe(BG);
+  });
+  it("查無回 null，不猜", () => {
+    expect(resolveSupplierByName("不存在的廠商", suppliers)).toBeNull();
+    expect(resolveSupplierByName("", suppliers)).toBeNull();
+  });
+});
+
+describe("lookupOverride", () => {
+  it("色號不分大小寫，值去空白", () => {
+    expect(lookupOverride("gc31606", { GC31606: " 綠都GC " })).toBe("綠都GC");
+    expect(lookupOverride("GC31606", undefined)).toBeUndefined();
+    expect(lookupOverride("GC31606", { GC31606: "" })).toBeUndefined();
+  });
+});
+
+describe("需求 A：supplierOverrides", () => {
+  it("有指定的色號開給指定廠商，忽略目錄；並回 catalogMismatch", () => {
+    // 2200A71 目錄在米盧，指定改開給布谷
+    const result = buildPurchaseGroupsFromPaste("2200A71 10y #P6224", catalog, suppliers, {
+      supplierOverrides: { "2200A71": "布谷" },
+    });
+    expect(result.unmatched).toEqual([]);
+    expect(result.groups).toHaveLength(1);
+    expect(result.groups[0].supplierId).toBe(BG);
+    const item = result.groups[0].items[0];
+    expect(item.supplierUsed).toBe("布谷");
+    expect(item.supplierFromCatalog).toBe("米盧");
+    expect(item.supplierSource).toBe("override");
+    expect(result.catalogMismatch).toEqual([{ productCode: "2200A71", catalog: "米盧", used: "布谷" }]);
+  });
+
+  it("指定與目錄相同 → 不列 catalogMismatch，來源仍標 override", () => {
+    const result = buildPurchaseGroupsFromPaste("2200A71 10y #P6224", catalog, suppliers, {
+      supplierOverrides: { "2200A71": "米盧" },
+    });
+    expect(result.catalogMismatch).toEqual([]);
+    expect(result.groups[0].items[0].supplierSource).toBe("override");
+  });
+
+  it("指定的廠商不存在 → 該行進 unmatched 附原因＋warning，不靜默改用目錄", () => {
+    const result = buildPurchaseGroupsFromPaste("2200A71 10y #P6224\nLY9705 3y #P6224", catalog, suppliers, {
+      supplierOverrides: { "2200A71": "幽靈廠商" },
+    });
+    expect(result.groups.map((g) => g.supplierId)).toEqual([LY]);
+    expect(result.unmatched).toHaveLength(1);
+    expect(result.unmatched[0].productCode).toBe("2200A71");
+    expect(result.unmatched[0].reason).toContain(OVERRIDE_SUPPLIER_NOT_FOUND);
+    expect(result.warnings.some((w) => w.includes("幽靈廠商"))).toBe(true);
+  });
+
+  it("沒指定的色號行為不變（相容性）", () => {
+    const withoutOptions = buildPurchaseGroupsFromPaste(ACCEPTANCE_PASTE, catalog, suppliers);
+    const withEmptyOptions = buildPurchaseGroupsFromPaste(ACCEPTANCE_PASTE, catalog, suppliers, {});
+    expect(withEmptyOptions.groups.map((g) => [g.supplierId, g.items.map((i) => i.productCode)])).toEqual(
+      withoutOptions.groups.map((g) => [g.supplierId, g.items.map((i) => i.productCode)]),
+    );
+    expect(withoutOptions.groups.flatMap((g) => g.items).every((i) => i.supplierSource === "catalog")).toBe(true);
+    expect(withoutOptions.catalogMismatch).toEqual([]);
+  });
+
+  it("autoCreatedCodes 標記 supplierSource=autoCreated", () => {
+    const result = buildPurchaseGroupsFromPaste("2200A71 10y #P6224", catalog, suppliers, {
+      autoCreatedCodes: new Set(["2200A71"]),
+    });
+    expect(result.groups[0].items[0].supplierSource).toBe("autoCreated");
+  });
+});
+
+describe("需求 B：createProductWithSupplier", () => {
+  it("有範本：沿用單位／單價／分類，供應商換成指定的", () => {
+    const template = product("BG114", BG, 250);
+    const created = createProductWithSupplier("BG107", suppliers[0], template, "2026-08-28", "new-id");
+    expect(created.productCode).toBe("BG107");
+    expect(created.unitPrice).toBe(250);
+    expect(created.unit).toBe("碼");
+    expect(created.supplierId).toBe(MILU);
+    expect(created.supplierName).toBe("米盧");
+    expect(created.notes).toContain("BG114");
+    expect(created.notes).toContain("米盧");
+  });
+  it("無範本：建最小商品，供應商用指定的", () => {
+    const created = createProductWithSupplier("2200A21", suppliers[0], null, "2026-08-28", "new-id");
+    expect(created.productCode).toBe("2200A21");
+    expect(created.supplierId).toBe(MILU);
+    expect(created.unitPrice).toBe(0);
+    expect(created.isActive).toBe(true);
+    expect(created.notes).toContain("無同前綴範本");
+  });
+});
+
+describe("findBestTemplate — 連字號前綴退回字母前綴", () => {
+  it("SC598-85：無 SC598 範本時退回 SC 前綴", () => {
+    const cat = [product("SC5762", SC), product("SC5756", SC)];
+    expect(findBestTemplate("SC598-85", cat)?.supplierId).toBe(SC);
+  });
+  it("BBL5-17 仍優先用 BBL5 前綴（不因退回機制改變既有行為）", () => {
+    const cat = [product("BBL5-12", SC), product("B999", BG)];
+    expect(findBestTemplate("BBL5-17", cat)?.productCode).toBe("BBL5-12");
+  });
+});

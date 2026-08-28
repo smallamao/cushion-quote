@@ -48,16 +48,23 @@ export function findBestTemplate(
   const prefix = extractProductPrefix(code);
   if (!prefix) return null;
 
-  const candidates = catalog.filter(
-    (p) => p.isActive && productPrefixes(p).includes(prefix),
-  );
-  if (candidates.length === 0) return null;
+  // 連字號前綴（SC598-85 → SC598）找不到範本時，退回字母前綴（SC）再找一次；
+  // 否則同廠牌新系列第一色永遠建不了檔（排程系統 2026-08-28 驗收案例 SC598-85）。
+  const letterPrefix = prefix.match(/^[一-龥a-zA-Z]+/u)?.[0] ?? "";
+  const prefixesToTry = letterPrefix && letterPrefix !== prefix ? [prefix, letterPrefix] : [prefix];
 
-  // Sort by updatedAt descending; stable fallback to productCode lexicographic
-  return candidates.slice().sort((a, b) => {
-    const cmp = b.updatedAt.localeCompare(a.updatedAt);
-    return cmp !== 0 ? cmp : a.productCode.localeCompare(b.productCode);
-  })[0];
+  for (const candidatePrefix of prefixesToTry) {
+    const candidates = catalog.filter(
+      (p) => p.isActive && productPrefixes(p).includes(candidatePrefix),
+    );
+    if (candidates.length === 0) continue;
+    // Sort by updatedAt descending; stable fallback to productCode lexicographic
+    return candidates.slice().sort((a, b) => {
+      const cmp = b.updatedAt.localeCompare(a.updatedAt);
+      return cmp !== 0 ? cmp : a.productCode.localeCompare(b.productCode);
+    })[0];
+  }
+  return null;
 }
 
 /**
@@ -93,11 +100,88 @@ export function cloneProductAsNew(
   };
 }
 
+/** 廠商名稱正規化：去空白、小寫，讓「綠都GC」「綠都 gc」都對得到 */
+function normalizeSupplierName(name: string): string {
+  return name.replace(/\s+/g, "").toLowerCase();
+}
+
+/**
+ * 依「名稱字串」找廠商主檔：簡稱或全名皆可（呼叫端習慣用簡稱如「米盧」「綠都GC」）。
+ * 找不到回 null，由呼叫端決定要警告還是拒絕，不可靜默改用目錄值。
+ */
+export function resolveSupplierByName(name: string, suppliers: Supplier[]): Supplier | null {
+  const key = normalizeSupplierName(name);
+  if (!key) return null;
+  return (
+    suppliers.find((s) => s.isActive !== false && normalizeSupplierName(s.shortName) === key) ??
+    suppliers.find((s) => s.isActive !== false && normalizeSupplierName(s.name) === key) ??
+    suppliers.find((s) => s.isActive !== false && normalizeSupplierName(s.supplierId) === key) ??
+    null
+  );
+}
+
+/** 呼叫端指定的 色號 → 供應商名稱 對照（key 不分大小寫） */
+export type SupplierOverrides = Record<string, string>;
+
+export function lookupOverride(code: string, overrides: SupplierOverrides | undefined): string | undefined {
+  if (!overrides) return undefined;
+  const target = code.trim().toUpperCase();
+  for (const [k, v] of Object.entries(overrides)) {
+    if (k.trim().toUpperCase() === target && typeof v === "string" && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+/**
+ * 用「指定的供應商」建立缺件商品（排程系統需求 B）。
+ * 有同前綴範本：沿用範本的規格／單位／分類／單價，但供應商一律換成指定的；
+ * 沒範本：建最小可用的商品（面料、碼、單價 0），供應商用指定的。
+ * 絕不從範本繼承供應商——那正是 S6934 開到金揚五金的原因。
+ */
+export function createProductWithSupplier(
+  newCode: string,
+  supplier: Supplier,
+  template: PurchaseProduct | null,
+  now: string,
+  newId: string,
+): PurchaseProduct {
+  const base: PurchaseProduct = template
+    ? cloneProductAsNew(template, newCode, now, newId)
+    : {
+        id: newId,
+        productCode: newCode,
+        supplierProductCode: newCode,
+        productName: newCode,
+        specification: newCode,
+        category: "面料",
+        unit: "碼",
+        supplierId: "",
+        supplierName: "",
+        unitPrice: 0,
+        imageUrl: "",
+        notes: "",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+  return {
+    ...base,
+    supplierId: supplier.supplierId,
+    supplierName: supplier.shortName || supplier.name,
+    notes: template
+      ? `自動由 ${template.productCode} 複製建立；供應商依呼叫端指定為 ${supplier.shortName || supplier.name}`
+      : `自動建立（無同前綴範本）；供應商依呼叫端指定為 ${supplier.shortName || supplier.name}`,
+  };
+}
+
 /** 自動建立商品的審計記錄（回傳給呼叫端）。 */
 export interface AutoCreatedEntry {
   productCode: string;
+  /** 複製自哪個範本；無範本時為空字串 */
   copiedFrom: string;
   supplier: string;
+  /** 供應商來源：範本繼承 or 呼叫端指定 */
+  supplierSource: "template" | "override";
 }
 
 /**
@@ -123,6 +207,12 @@ export interface FromPasteGroupItem {
   /** #案件號（來自貼上行），寫進採購單明細備註。 */
   caseRef: string;
   matched: true;
+  /** 這張單實際開給誰（顯示名） */
+  supplierUsed: string;
+  /** 目錄原本掛的供應商（顯示名；查無為空字串） */
+  supplierFromCatalog: string;
+  /** 供應商來源 */
+  supplierSource: "override" | "catalog" | "autoCreated";
 }
 
 /** 單一供應商的採購分組（對應一張採購單）。 */
@@ -142,13 +232,29 @@ export interface FromPasteUnmatched {
   reason: string;
 }
 
+/** 呼叫端指定的供應商與目錄不一致（提醒人修主檔用） */
+export interface CatalogMismatch {
+  productCode: string;
+  catalog: string;
+  used: string;
+}
+
 export interface FromPasteResult {
   groups: FromPasteGroup[];
   unmatched: FromPasteUnmatched[];
   warnings: string[];
+  catalogMismatch: CatalogMismatch[];
 }
 
-const UNMATCHED_REASON = "商品目錄查無此色號";
+export const UNMATCHED_REASON = "商品目錄查無此色號";
+export const OVERRIDE_SUPPLIER_NOT_FOUND = "supplierOverrides 指定的供應商不存在";
+
+export interface BuildGroupsOptions {
+  /** 色號 → 供應商名稱；有指定的色號一律開給指定廠商，忽略目錄 */
+  supplierOverrides?: SupplierOverrides;
+  /** 本次自動建檔的色號（標記 supplierSource=autoCreated） */
+  autoCreatedCodes?: Set<string>;
+}
 
 function supplierLabel(
   supplierId: string,
@@ -173,7 +279,9 @@ export function buildPurchaseGroupsFromPaste(
   pasteText: string,
   catalog: PurchaseProduct[],
   suppliers: Supplier[],
+  options: BuildGroupsOptions = {},
 ): FromPasteResult {
+  const autoCreatedCodes = new Set([...(options.autoCreatedCodes ?? [])].map((c) => c.toUpperCase()));
   const parsed = parsePurchasePasteText(pasteText);
   // 一次比對整批：resolveParsedLines 對「無數量」行輸出 1 筆、對有數量行
   // 輸出 subItems.length 筆，順序與 parsed 相同，故可用游標對回原行。
@@ -191,6 +299,7 @@ export function buildPurchaseGroupsFromPaste(
   const groupBySupplier = new Map<string, FromPasteGroup>();
   const unmatched: FromPasteUnmatched[] = [];
   const warnings: string[] = [];
+  const catalogMismatch: CatalogMismatch[] = [];
 
   let cursor = 0;
   for (const line of parsed) {
@@ -215,12 +324,45 @@ export function buildPurchaseGroupsFromPaste(
     }
 
     const product = productById.get(head.productId);
-    const supplierId = product?.supplierId ?? "";
+    const catalogSupplierId = product?.supplierId ?? "";
+    const catalogSupplierName = catalogSupplierId
+      ? supplierLabel(catalogSupplierId, supplierById, product?.supplierName ?? "")
+      : "";
+
+    // 呼叫端指定供應商（需求 A）：有指定就用指定的；指定的廠商不存在 → 不靜默改用目錄，
+    // 該行進 unmatched 並附原因＋warning。
+    let supplierId = catalogSupplierId;
+    let supplierSource: FromPasteGroupItem["supplierSource"] = autoCreatedCodes.has(
+      line.productCode.toUpperCase(),
+    )
+      ? "autoCreated"
+      : "catalog";
+    const overrideName = lookupOverride(line.productCode, options.supplierOverrides);
+    if (overrideName) {
+      const overrideSupplier = resolveSupplierByName(overrideName, suppliers);
+      if (!overrideSupplier) {
+        const reason = `${OVERRIDE_SUPPLIER_NOT_FOUND}『${overrideName}』`;
+        warnings.push(`supplierOverrides 指定的供應商『${overrideName}』不存在，「${line.raw}」未建單`);
+        unmatched.push({ line: line.raw, productCode: line.productCode, reason });
+        continue;
+      }
+      supplierId = overrideSupplier.supplierId;
+      supplierSource = "override";
+      if (catalogSupplierId && catalogSupplierId !== overrideSupplier.supplierId) {
+        catalogMismatch.push({
+          productCode: line.productCode,
+          catalog: catalogSupplierName,
+          used: supplierLabel(overrideSupplier.supplierId, supplierById, overrideSupplier.shortName),
+        });
+      }
+    }
+
     if (!supplierId) {
       // 比對到商品卻查無供應商（資料異常）：記 warning 並跳過，避免建出無主單。
       warnings.push(`「${line.raw}」比對到商品但查無供應商，已略過`);
       continue;
     }
+    const supplierUsed = supplierLabel(supplierId, supplierById, product?.supplierName ?? "");
 
     let group = groupBySupplier.get(supplierId);
     if (!group) {
@@ -245,6 +387,9 @@ export function buildPurchaseGroupsFromPaste(
         amount: item.amount,
         caseRef: item.notes,
         matched: true,
+        supplierUsed,
+        supplierFromCatalog: catalogSupplierName,
+        supplierSource,
       });
     }
 
@@ -262,5 +407,6 @@ export function buildPurchaseGroupsFromPaste(
     groups: Array.from(groupBySupplier.values()),
     unmatched,
     warnings,
+    catalogMismatch,
   };
 }
