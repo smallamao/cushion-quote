@@ -237,6 +237,10 @@ export interface CatalogMismatch {
   productCode: string;
   catalog: string;
   used: string;
+  /** 目錄上實際對到的商品（模糊比對時與貼上色號不同） */
+  matchedProductCode?: string;
+  /** 補充：例如「模糊比對」 */
+  note?: string;
 }
 
 export interface FromPasteResult {
@@ -248,6 +252,29 @@ export interface FromPasteResult {
 
 export const UNMATCHED_REASON = "商品目錄查無此色號";
 export const OVERRIDE_SUPPLIER_NOT_FOUND = "supplierOverrides 指定的供應商不存在";
+/** 模糊比對到「別家廠商」的商品，且呼叫端指定了供應商 → 視為查無（可依指定供應商建檔） */
+export const FUZZY_OTHER_SUPPLIER = "模糊比對到他廠商品";
+
+function normalizeIdentifier(s: string): string {
+  return s.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, "");
+}
+
+/**
+ * 貼上的色號是否「精確」對到該商品（四個識別欄位任一相等，忽略大小寫與分隔符號）。
+ * 解析器另有數字模糊比對（2200A21 會對到數字相同的 2200-21），跨廠商時不可信。
+ */
+export function isExactCatalogMatch(code: string, product: PurchaseProduct): boolean {
+  const target = normalizeIdentifier(code);
+  if (!target) return false;
+  return [product.productCode, product.colorCode, product.supplierProductCode, product.specification]
+    .filter(Boolean)
+    .some((field) => normalizeIdentifier(String(field)) === target);
+}
+
+/** 可以自動建檔的 unmatched 原因（其他原因如「指定廠商不存在」不建） */
+export function isAutoCreatableReason(reason: string): boolean {
+  return reason === UNMATCHED_REASON || reason.startsWith(FUZZY_OTHER_SUPPLIER);
+}
 
 export interface BuildGroupsOptions {
   /** 色號 → 供應商名稱；有指定的色號一律開給指定廠商，忽略目錄 */
@@ -346,13 +373,33 @@ export function buildPurchaseGroupsFromPaste(
         unmatched.push({ line: line.raw, productCode: line.productCode, reason });
         continue;
       }
+      const exact = product ? isExactCatalogMatch(line.productCode, product) : false;
+      const usedLabel = supplierLabel(overrideSupplier.supplierId, supplierById, overrideSupplier.shortName);
+      if (product && catalogSupplierId && catalogSupplierId !== overrideSupplier.supplierId && !exact) {
+        // 只是數字相同的他廠商品，拿它的品名／單價去開指定廠商的單是錯的資料 →
+        // 視為查無；createMissingWithSupplier 會用正確色號＋指定廠商建新商品。
+        catalogMismatch.push({
+          productCode: line.productCode,
+          catalog: catalogSupplierName,
+          used: usedLabel,
+          matchedProductCode: product.productCode,
+          note: "模糊比對（目錄無此色號）",
+        });
+        unmatched.push({
+          line: line.raw,
+          productCode: line.productCode,
+          reason: `${FUZZY_OTHER_SUPPLIER} ${product.productCode}（${catalogSupplierName}），與指定供應商 ${usedLabel} 不符`,
+        });
+        continue;
+      }
       supplierId = overrideSupplier.supplierId;
       supplierSource = "override";
       if (catalogSupplierId && catalogSupplierId !== overrideSupplier.supplierId) {
         catalogMismatch.push({
           productCode: line.productCode,
           catalog: catalogSupplierName,
-          used: supplierLabel(overrideSupplier.supplierId, supplierById, overrideSupplier.shortName),
+          used: usedLabel,
+          matchedProductCode: product?.productCode,
         });
       }
     }

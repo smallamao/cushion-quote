@@ -9,7 +9,7 @@ import {
   findBestTemplate,
   lookupOverride,
   resolveSupplierByName,
-  UNMATCHED_REASON,
+  isAutoCreatableReason,
 } from "@/lib/purchase-from-paste";
 import type {
   AutoCreatedEntry,
@@ -297,7 +297,7 @@ export async function POST(request: Request) {
       const toCreate: PurchaseProduct[] = [];
 
       for (const um of unmatched) {
-        if (um.reason !== UNMATCHED_REASON) continue; // 指定廠商不存在等原因 → 不建檔
+        if (!isAutoCreatableReason(um.reason)) continue; // 指定廠商不存在等原因 → 不建檔
         if (seenCodes.has(um.productCode)) continue; // (b) 同批同碼只建一次
         seenCodes.add(um.productCode);
 
@@ -359,7 +359,13 @@ export async function POST(request: Request) {
         });
         groups = reResolved.groups;
         unmatched = reResolved.unmatched;
-        catalogMismatch = reResolved.catalogMismatch;
+        // 重新分組後新建商品已精確對到，第一輪「模糊對到他廠商品」的紀錄會消失；
+        // 但那正是要提醒人的資訊（目錄沒這個色號、之前會對到別家），所以合併保留。
+        const createdCodes = new Set(toCreate.map((p) => p.productCode.toUpperCase()));
+        catalogMismatch = [
+          ...initial.catalogMismatch.filter((m) => createdCodes.has(m.productCode.toUpperCase())),
+          ...reResolved.catalogMismatch,
+        ];
         // 合併 warnings，避免重複
         for (const w of reResolved.warnings) {
           if (!warnings.includes(w)) warnings.push(w);

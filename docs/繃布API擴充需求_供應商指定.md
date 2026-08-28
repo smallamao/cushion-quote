@@ -209,3 +209,81 @@ dryRun: true
 3. **需求 B（建檔指定供應商）** — 根治 autoCreate 繼承錯廠商（金揚五金那類）
 
 三個都做完，排程系統這端就能保證「採購單開給正確廠商」，不必再靠人工事後檢查與作廢。
+
+---
+
+## 10. 實作結果（繃布報價端，2026-08-28）
+
+三個需求＋回應擴充**全部上線**（commit `b0a84d2` 起）。以下是排程端串接時要知道的事。
+
+### 10.1 已實作的介面
+
+| 需求 | 端點 | 狀態 |
+|---|---|---|
+| C 查詢 | `GET /api/sheets/products/lookup?codes=A,B,C`（`x-api-key` 同 from-paste） | ✅ |
+| A 覆寫 | `POST /api/sheets/purchases/from-paste` + `supplierOverrides` | ✅ |
+| B 指定建檔 | 同上 + `createMissingWithSupplier: true` | ✅ |
+| 回應擴充 | `items[].supplierUsed / supplierFromCatalog / supplierSource`、頂層 `catalogMismatch`、`warnings` | ✅ |
+| 相容 | 三欄位皆選填；不傳時行為與過去完全相同（既有 27 個測試原樣通過） | ✅ |
+| dryRun | 所有判斷與新欄位照算，只是不落地 | ✅ |
+
+### 10.2 lookup 回應（實際格式）
+
+```jsonc
+{
+  "success": true,
+  "products": [
+    { "code": "2200A21", "exists": true, "matchType": "fuzzy",   // ← 注意
+      "productCode": "TT-S彈簧2.1", "productName": "…", "specification": "…", "unit": "…",
+      "supplierId": "PS013", "supplierName": "大同", "supplierFullName": "大同沙發材料有限公司",
+      "inactiveMatch": false, "template": null },
+    { "code": "SC598-85", "exists": true, "matchType": "exact", "productCode": "SC59885", "supplierName": "勝騏SC", … },
+    { "code": "XXX999", "exists": false, "matchType": null, …,
+      "inactiveMatch": false,
+      "template": { "productCode": "XXX001", "supplierId": "PS0xx", "supplierName": "…" } }   // autoCreate 會複製誰、繼承誰；null＝建不了檔（除非 createMissingWithSupplier）
+  ],
+  "suppliers": [ { "supplierId": "PS004", "name": "翰銓國際總代理", "shortName": "米盧" }, … ]   // 可用的供應商名稱
+}
+```
+
+**lookup 與 from-paste 用同一個解析器比對**，所以 lookup 看到什麼，建單就會對到什麼。
+
+### 10.3 一個比「目錄掛錯」更根本的原因：數字模糊比對
+
+驗收時發現 `2200A21` **目錄裡根本沒有**。它會「掛到大同」是因為解析器有一層「數字相同就算對到」的模糊比對，把它對到大同的 **`TT-S彈簧2.1`**（一個彈簧）。這就是你們看到「2200A21 掛成大同」的真相，`GC31606` 之前掛阿布也是同類（目前目錄已有正確的 GC31606 → 綠都GC）。
+
+因此 A 的行為比規格多一條：
+
+- 貼上色號**精確**對到目錄商品、但目錄掛的廠商 ≠ 指定廠商 → 只換開單對象，列 `catalogMismatch`（規格原意）。
+- 貼上色號只是**模糊**對到**別家**商品、且有指定廠商 → **不拿那個商品開單**（品名／單價都是別人的），該行視為查無：
+  - 有 `createMissingWithSupplier: true` → 用正確色號＋指定廠商建新商品，再開單（`autoCreated[].supplierSource = "override"`，`catalogMismatch` 會註明 `matchedProductCode` 與 `note: "模糊比對（目錄無此色號）"`）
+  - 沒有 → 留在 `unmatched`，`reason` 以「模糊比對到他廠商品 …」開頭
+- 模糊對到**同一家**（例如 `SC598-85` → `SC59885`）不受影響，照常建單。
+
+**建議排程端**：lookup 回 `matchType: "fuzzy"` 且 `supplierName` 跟你們對照表不同的色號，一律放進 `supplierOverrides` 並開 `createMissingWithSupplier`。
+
+### 10.4 其他行為
+
+- 供應商名稱比對：簡稱（米盧、綠都GC、阿布ABU…）或全名皆可，不分大小寫與空白；查無 → 該行 `unmatched`（reason「supplierOverrides 指定的供應商不存在『X』」）＋ `warnings`，不靜默改用目錄、不建檔。
+- 指定廠商建檔：有同前綴範本就沿用規格／單位／單價、只換供應商；沒範本也會建最小商品（面料、碼、單價 0）。`notes` 會寫「供應商依呼叫端指定為 X」。
+- 範本選取多一層退回：連字號前綴（`SC598-85`→`SC598`）找不到時退回字母前綴（`SC`）。
+- `items[]` 另附 `quantity`（＝qty）與 `orderNo`（＝caseRef 去掉 #），對齊規格範例。
+- 不動商品主檔的既有供應商；主檔修正仍由人決定。
+
+### 10.5 驗收（規格第 7 節原文，本機接同一份目錄、dryRun）
+
+```
+米盧       → 2200A21[override]、2200A71[catalog]
+蘭陽LY     → LY9804[catalog]
+綠都GC     → GC74027[catalog]、GC74020[catalog]、GC75504[catalog]、GC31606[override]
+阿布ABU    → ABU1038A-102[catalog]
+布谷BG     → BG107[catalog]
+勝騏SC     → SC598-85[catalog]、SC5762[catalog]、SC5756[catalog]
+unmatched: []
+autoCreated: [{"productCode":"2200A21","copiedFrom":"","supplier":"米盧","supplierSource":"override"}]
+catalogMismatch: [{"productCode":"2200A21","catalog":"大同","used":"米盧","matchedProductCode":"TT-S彈簧2.1","note":"模糊比對（目錄無此色號）"}]
+```
+
+與預期表一致；`catalogMismatch` 只有 1 筆是因為目錄現在已有正確的 GC31606（2026-08-28 建）。舊 payload（不帶新欄位）與「指定不存在的廠商」兩個相容／防呆案例亦通過。
+
+繃布端沒有 `SCHEDULER_API_KEY` 本機副本，線上請由排程端以 `dryRun: true` 再打一次同一組資料確認。

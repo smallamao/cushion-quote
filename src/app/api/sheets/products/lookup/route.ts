@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { findBestTemplate } from "@/lib/purchase-from-paste";
+import { findBestTemplate, isExactCatalogMatch } from "@/lib/purchase-from-paste";
+import { parsePurchasePasteText, resolveParsedLines } from "@/lib/purchase-paste-parser";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { PurchaseProduct, Supplier } from "@/lib/types";
 
@@ -13,8 +14,9 @@ export const dynamic = "force-dynamic";
  *   GET /api/sheets/products/lookup?codes=2200A21,GC31606,ABU1038A-102
  *   Header: x-api-key（SCHEDULER_API_KEY）
  *
- * 每個色號回：目錄有沒有、掛哪個供應商、若查無時 autoCreateMissing 會複製哪個範本／繼承誰。
- * 呼叫端拿這個跟自己的「正確對照表」比，送單前就能發現目錄掛錯或會繼承錯廠商。
+ * 比對規則與 from-paste 完全相同（同一個解析器），所以這裡看到什麼，建單就會對到什麼。
+ * 每個色號回：有沒有對到、精確還是模糊、對到哪個商品／哪個供應商；查無時 autoCreateMissing
+ * 會複製哪個範本、會繼承誰。呼叫端拿這個跟自己的正確對照表比，送單前就能發現問題。
  */
 
 const MAX_CODES = 200;
@@ -22,22 +24,6 @@ const MAX_CODES = 200;
 function supplierDisplay(supplierId: string, supplierById: Map<string, Supplier>, fallback = ""): string {
   const s = supplierById.get(supplierId);
   return s ? s.shortName || s.name || supplierId : fallback || supplierId;
-}
-
-/** 與 from-paste 同一組識別欄位：productCode / colorCode / supplierProductCode / specification（不分大小寫） */
-function findExact(code: string, catalog: PurchaseProduct[]): { product: PurchaseProduct; matchedBy: string } | null {
-  const target = code.trim().toUpperCase();
-  const fields: Array<[keyof PurchaseProduct, string]> = [
-    ["productCode", "productCode"],
-    ["colorCode", "colorCode"],
-    ["supplierProductCode", "supplierProductCode"],
-    ["specification", "specification"],
-  ];
-  for (const [field, label] of fields) {
-    const hit = catalog.find((p) => String(p[field] ?? "").trim().toUpperCase() === target);
-    if (hit) return { product: hit, matchedBy: label };
-  }
-  return null;
 }
 
 export async function GET(request: Request) {
@@ -63,47 +49,60 @@ export async function GET(request: Request) {
     const { catalog, suppliers } = await loadCatalogAndSuppliers(client, { includeInactive: true });
     const active = catalog.filter((p) => p.isActive);
     const supplierById = new Map(suppliers.map((s) => [s.supplierId, s]));
+    const productById = new Map(active.map((p) => [p.id, p]));
 
-    const products = codes.map((code) => {
-      const activeHit = findExact(code, active);
-      if (activeHit) {
-        const p = activeHit.product;
+    // 與 from-paste 同一條路：每個色號組成一行「色號 1y」丟給解析器比對
+    const parsed = parsePurchasePasteText(codes.map((c) => `${c} 1y`).join("\n"));
+    const resolved = resolveParsedLines(parsed, active);
+
+    const products = codes.map((code, idx) => {
+      const hit = resolved[idx];
+      const product: PurchaseProduct | undefined = hit?.matched ? productById.get(hit.productId) : undefined;
+      if (product) {
+        const exact = isExactCatalogMatch(code, product);
         return {
           code,
           exists: true,
-          productId: p.id,
-          productCode: p.productCode,
-          productName: p.productName,
-          unit: p.unit,
-          supplierId: p.supplierId || null,
-          supplierName: p.supplierId ? supplierDisplay(p.supplierId, supplierById, p.supplierName) : null,
-          supplierFullName: supplierById.get(p.supplierId)?.name ?? null,
-          matchedBy: activeHit.matchedBy,
+          /** exact＝色號就在目錄；fuzzy＝解析器數字／規格模糊對到的，跨廠商時請用 supplierOverrides */
+          matchType: exact ? "exact" : "fuzzy",
+          productId: product.id,
+          productCode: product.productCode,
+          productName: product.productName,
+          specification: product.specification,
+          unit: product.unit,
+          supplierId: product.supplierId || null,
+          supplierName: product.supplierId
+            ? supplierDisplay(product.supplierId, supplierById, product.supplierName)
+            : null,
+          supplierFullName: supplierById.get(product.supplierId)?.name ?? null,
           inactiveMatch: false,
           template: null,
         };
       }
-      const inactiveHit = findExact(code, catalog);
+      const inactiveHit = catalog.find((p) => !p.isActive && isExactCatalogMatch(code, p));
       const template = findBestTemplate(code, active);
       return {
         code,
         exists: false,
+        matchType: null,
         productId: null,
         productCode: null,
         productName: null,
+        specification: null,
         unit: null,
         supplierId: null,
         supplierName: null,
         supplierFullName: null,
-        matchedBy: null,
         /** 目錄有但已停用（from-paste 會當查無） */
         inactiveMatch: Boolean(inactiveHit),
-        /** autoCreateMissing 會複製的範本與「會繼承」的供應商；null＝建不了檔 */
+        /** autoCreateMissing 會複製的範本與「會繼承」的供應商；null＝建不了檔（除非 createMissingWithSupplier） */
         template: template
           ? {
               productCode: template.productCode,
               supplierId: template.supplierId || null,
-              supplierName: template.supplierId ? supplierDisplay(template.supplierId, supplierById, template.supplierName) : null,
+              supplierName: template.supplierId
+                ? supplierDisplay(template.supplierId, supplierById, template.supplierName)
+                : null,
             }
           : null,
       };

@@ -484,7 +484,8 @@ describe("需求 A：supplierOverrides", () => {
     expect(item.supplierUsed).toBe("布谷");
     expect(item.supplierFromCatalog).toBe("米盧");
     expect(item.supplierSource).toBe("override");
-    expect(result.catalogMismatch).toEqual([{ productCode: "2200A71", catalog: "米盧", used: "布谷" }]);
+    expect(result.catalogMismatch).toHaveLength(1);
+    expect(result.catalogMismatch[0]).toMatchObject({ productCode: "2200A71", catalog: "米盧", used: "布谷" });
   });
 
   it("指定與目錄相同 → 不列 catalogMismatch，來源仍標 override", () => {
@@ -554,5 +555,44 @@ describe("findBestTemplate — 連字號前綴退回字母前綴", () => {
   it("BBL5-17 仍優先用 BBL5 前綴（不因退回機制改變既有行為）", () => {
     const cat = [product("BBL5-12", SC), product("B999", BG)];
     expect(findBestTemplate("BBL5-17", cat)?.productCode).toBe("BBL5-12");
+  });
+});
+
+describe("模糊比對到他廠商品 + 指定供應商", () => {
+  // 目錄只有大同的「2200-21」；貼上 2200A21 會被解析器以數字模糊對到它
+  const DATONG = "PS-DT";
+  const fuzzyCatalog = [product("2200-21", DATONG), product("2200A71", MILU)];
+  const fuzzySuppliers = [...suppliers, supplier(DATONG, "大同")];
+
+  it("沒指定供應商：維持現行模糊比對（相容）", () => {
+    const r = buildPurchaseGroupsFromPaste("2200A21 17y #P6047", fuzzyCatalog, fuzzySuppliers);
+    expect(r.groups.map((g) => g.supplierId)).toEqual([DATONG]);
+  });
+
+  it("指定米盧：不拿大同的商品開米盧的單 → 進 unmatched（可建檔）＋catalogMismatch 註明模糊", () => {
+    const r = buildPurchaseGroupsFromPaste("2200A21 17y #P6047", fuzzyCatalog, fuzzySuppliers, {
+      supplierOverrides: { "2200A21": "米盧" },
+    });
+    expect(r.groups).toEqual([]);
+    expect(r.unmatched).toHaveLength(1);
+    expect(r.unmatched[0].reason).toContain("模糊比對到他廠商品 2200-21");
+    expect(r.catalogMismatch[0]).toMatchObject({ productCode: "2200A21", catalog: "大同", used: "米盧", matchedProductCode: "2200-21" });
+  });
+
+  it("指定的廠商跟模糊對到的一樣 → 照常建單（同廠模糊比對如 SC598-85→SC59885 不受影響）", () => {
+    const r = buildPurchaseGroupsFromPaste("2200A21 17y #P6047", fuzzyCatalog, fuzzySuppliers, {
+      supplierOverrides: { "2200A21": "大同" },
+    });
+    expect(r.groups.map((g) => g.supplierId)).toEqual([DATONG]);
+    expect(r.unmatched).toEqual([]);
+  });
+
+  it("精確對到但目錄掛錯廠商 → 只換開單對象，列 catalogMismatch", () => {
+    const r = buildPurchaseGroupsFromPaste("2200A71 10y #P6224", fuzzyCatalog, fuzzySuppliers, {
+      supplierOverrides: { "2200A71": "大同" },
+    });
+    expect(r.groups.map((g) => g.supplierId)).toEqual([DATONG]);
+    expect(r.groups[0].items[0].supplierSource).toBe("override");
+    expect(r.catalogMismatch[0]).toMatchObject({ productCode: "2200A71", catalog: "米盧", used: "大同" });
   });
 });
