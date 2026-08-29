@@ -1,5 +1,5 @@
-"use client";
-
+// 共用模組（不標 use client）：瀏覽器端由 drawer/editor 內嵌，伺服器端由 quote-pdf-server 渲染 Notion 報價圖。
+// 模組層不得使用瀏覽器 API；瀏覽器專用函式（generatePDFBlob 等）只在 client 呼叫。
 import {
   Document,
   Font,
@@ -15,15 +15,24 @@ import { multiOptionNote } from "@/lib/quote-options";
 
 import type { Channel, FlexQuoteItem, SystemSettings } from "@/lib/types";
 
-Font.register({
-  family: "NotoSansTC",
-  fonts: [
-    { src: "/fonts/NotoSansTC-Regular.ttf", fontWeight: 400 },
-    { src: "/fonts/NotoSansTC-Bold.ttf", fontWeight: 700 },
-  ],
-});
+// 字型：只在瀏覽器用相對 URL 註冊。伺服器端（quote-pdf-server 渲染 Notion 報價圖）
+// 由 registerServerFonts 以檔案系統絕對路徑註冊——react-pdf 同 family 先註冊者優先，
+// 這裡若無條件註冊，伺服器會拿 /fonts/... 去 open() 而 ENOENT。
+if (typeof window !== "undefined") {
+  Font.register({
+    family: "NotoSansTC",
+    fonts: [
+      { src: "/fonts/NotoSansTC-Regular.ttf", fontWeight: 400 },
+      { src: "/fonts/NotoSansTC-Bold.ttf", fontWeight: 700 },
+    ],
+  });
 
-Font.registerHyphenationCallback((word) => [word]);
+  Font.registerHyphenationCallback((word) => [word]);
+}
+
+// 本地資產（logo／印章）：瀏覽器用相對 URL；伺服器端渲染（Notion 報價圖）要用檔案系統絕對路徑
+const localAsset = (p: string): string =>
+  typeof window === "undefined" ? `${process.cwd()}/public${p}` : p;
 
 /** 規格欄：「｜」或「|」視為分段，每段一行；已含換行的維持原樣 */
 function formatSpecLines(spec: string | undefined): string {
@@ -296,7 +305,7 @@ export function buildPdfFileName(props: Pick<QuotePDFProps, "quoteId" | "project
   return `${props.quoteId} - ${quoteProjectName}.pdf`;
 }
 
-function QuotePDFDocument(props: QuotePDFProps) {
+export function QuotePDFDocument(props: QuotePDFProps) {
   const {
     quoteId,
     quoteDate,
@@ -343,7 +352,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
       >
         <View style={s.header}>
           <View style={s.headerLeft}>
-            <Image src="/logo.png" style={s.logo} />
+            <Image src={localAsset("/logo.png")} style={s.logo} />
             <View style={s.brandBlock}>
               <Text style={s.brandName}>{settings.companyName}</Text>
             </View>
@@ -519,7 +528,7 @@ function QuotePDFDocument(props: QuotePDFProps) {
                 </Text>
               ) : null}
             </View>
-            <Image src="/stamp.png" style={{ width: 72, height: 72, opacity: 0.85, alignSelf: "flex-end" }} />
+            <Image src={localAsset("/stamp.png")} style={{ width: 72, height: 72, opacity: 0.85, alignSelf: "flex-end" }} />
           </View>
           <View style={{ alignItems: "flex-end" as const, flex: 1 }}>
             {settings.companyPhone ? (

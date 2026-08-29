@@ -15,6 +15,7 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import type { Channel, ItemUnit, LeadSource, VersionLineRecord } from "@/lib/types";
 import { getVersionLineRows, getVersionRows, lineRowToRecord, versionRowToRecord } from "../../_v2-utils";
 import { POST as syncNotionHandler } from "@/app/api/notion/sync-quote/route";
+import { buildQuoteJpgUrl } from "../_quote-image";
 import { POST as createCaseHandler } from "../../cases/route";
 import { PATCH as patchVersionHandler, PUT as putVersionHandler } from "../../versions/[versionId]/route";
 import { POST as createQuoteHandler } from "../route";
@@ -161,6 +162,8 @@ interface NotionSyncResult {
   ok: boolean;
   action?: string;
   notionUrl?: string;
+  /** 這次同步帶去的報價圖網址；undefined＝產圖失敗、無圖同步（原因在 server log） */
+  jpgUrl?: string;
   error?: string;
 }
 
@@ -171,14 +174,24 @@ interface NotionSyncResult {
  */
 async function syncToNotion(versionId: string, clientName: string): Promise<NotionSyncResult> {
   try {
+    // 報價圖：伺服器端渲染 PDF → Cloudinary 轉第 1 頁 JPG（與 UI 按鈕的 jpgUrl 同義）。
+    // 失敗就無圖同步，不擋流程。
+    let jpgUrl: string | undefined;
+    try {
+      jpgUrl = await buildQuoteJpgUrl(versionId);
+    } catch (err) {
+      // 無圖同步：不擋流程，但要在 log 留下原因（曾默默失敗過，Notion 沒圖查不到為什麼）
+      console.error(`[from-agent] 報價圖產生失敗 ${versionId}:`, err instanceof Error ? err.message : err);
+      jpgUrl = undefined;
+    }
     const req = new NextRequest("http://internal/api/notion/sync-quote", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ versionId, clientName: clientName || undefined }),
+      body: JSON.stringify({ versionId, clientName: clientName || undefined, jpgUrl }),
     });
     const res = await syncNotionHandler(req);
     const json = (await res.json()) as NotionSyncResult;
-    return json.ok ? json : { ok: false, error: json.error ?? `Notion 同步失敗（${res.status}）` };
+    return json.ok ? { ...json, jpgUrl } : { ok: false, error: json.error ?? `Notion 同步失敗（${res.status}）` };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Notion 同步失敗" };
   }

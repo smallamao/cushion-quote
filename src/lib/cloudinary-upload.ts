@@ -74,6 +74,7 @@ export async function uploadBufferToCloudinary(
   data: Buffer,
   mimeType: string,
   folder: string = defaultFolderFor(mimeType),
+  resourceTypeOverride?: "image" | "video" | "raw",
 ): Promise<CloudinaryUploadResult> {
   if (!ensureConfigured()) throw new Error("Cloudinary 未設定");
 
@@ -88,7 +89,7 @@ export async function uploadBufferToCloudinary(
   const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
     cloudinary.uploader
       .upload_stream(
-        { folder, public_id: publicId, resource_type: resourceTypeFor(mimeType) },
+        { folder, public_id: publicId, resource_type: resourceTypeOverride ?? resourceTypeFor(mimeType) },
         (error, uploadResult) => {
           if (error || !uploadResult) {
             reject(error ?? new Error("上傳失敗"));
