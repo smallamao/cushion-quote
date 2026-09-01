@@ -12,6 +12,7 @@ export const CLOUDINARY_FOLDERS = {
   quoteAttachments: "quote-attachments",
   contractAttachments: "contract-attachments",
   afterSalesVideos: "after-sales-videos",
+  productImages: "product-images",
 } as const;
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // 15 MB

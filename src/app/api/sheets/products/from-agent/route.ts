@@ -9,6 +9,7 @@ import {
   productToRow,
   rowToProduct,
 } from "@/lib/purchase-products-sheet";
+import { CLOUDINARY_FOLDERS, uploadBufferToCloudinary } from "@/lib/cloudinary-upload";
 import { cacheInvalidate } from "@/lib/sheets-cache";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { PurchaseProduct } from "@/lib/types";
@@ -66,8 +67,35 @@ interface AgentProductInput {
   colorCode?: string;
   colorName?: string;
   imageUrl?: string;
+  /** 由伺服器代抓後上傳 Cloudinary，回存 HTTPS 網址（來源站台常是純 HTTP）。 */
+  imageSourceUrl?: string;
   notes?: string;
   isActive?: boolean;
+}
+
+/**
+ * 代抓外部圖片並上傳 Cloudinary，回傳 HTTPS 網址。
+ *
+ * 🔴 為什麼需要：布廠官網多半只有純 HTTP（勝騏 shengchyi.com.tw 連 HTTPS 埠都不開），
+ * 而本站是 HTTPS。瀏覽器會擋掉 HTTPS 頁面裡的 HTTP 圖片（mixed content）→
+ * 網址本身正確、curl 也抓得到，但商品頁上就是不顯示（2026-09-01 老闆回報）。
+ * 由伺服器端抓（不受 mixed content 限制）再轉存到 Cloudinary 才會顯示。
+ */
+async function mirrorImage(sourceUrl: string): Promise<string> {
+  const res = await fetch(sourceUrl, { redirect: "follow" });
+  if (!res.ok) throw new Error(`來源圖片抓取失敗 HTTP ${res.status}`);
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.startsWith("image/")) {
+    throw new Error(`來源不是圖片（content-type: ${contentType || "未知"}）`);
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const uploaded = await uploadBufferToCloudinary(
+    buffer,
+    contentType,
+    CLOUDINARY_FOLDERS.productImages,
+    "image",
+  );
+  return uploaded.url;
 }
 
 /** 忽略大小寫與分隔符號比對商品編號（目錄裡 SC53392 vs 貼上的 SC533-92）。 */
@@ -86,6 +114,7 @@ function buildProduct(
   input: AgentProductInput,
   template: PurchaseProduct | undefined,
   today: string,
+  mode: "create" | "update" = "create",
 ): PurchaseProduct {
   const base: PurchaseProduct = template
     ? { ...template }
@@ -133,7 +162,13 @@ function buildProduct(
     colorCode: input.colorCode ?? base.colorCode,
     colorName: input.colorName ?? base.colorName,
     imageUrl: input.imageUrl ?? base.imageUrl,
-    notes: input.notes ?? (template ? `由 ${template.productCode} 複製建立（排程系統）` : ""),
+    // 🔴 更新既有商品時不可動備註：template 就是它自己，會寫成「由自己複製建立」
+    // 這種無意義的字並蓋掉原本的備註（2026-09-01 dry-run 時抓到）。
+    notes:
+      input.notes ??
+      (mode === "create" && template
+        ? `由 ${template.productCode} 複製建立（排程系統）`
+        : base.notes),
     isActive: input.isActive ?? true,
     createdAt: today,
     updatedAt: today,
@@ -180,20 +215,21 @@ export async function POST(request: Request) {
     const catalog = rows.map(rowToProduct).filter((p) => p.id);
 
     const errors: string[] = [];
+    const warnings: string[] = [];
     const toAppend: PurchaseProduct[] = [];
     const toUpdate: { rowNumber: number; product: PurchaseProduct }[] = [];
     const seen = new Set<string>();
 
-    inputs.forEach((input, idx) => {
+    for (const [idx, input] of inputs.entries()) {
       const label = input.productCode || `第 ${idx + 1} 筆`;
       if (!input.productCode?.trim()) {
         errors.push(`${label}：productCode 為必填`);
-        return;
+        continue;
       }
       const key = normalizeCode(input.productCode);
       if (seen.has(key)) {
         errors.push(`${label}：同一次請求裡重複出現`);
-        return;
+        continue;
       }
       seen.add(key);
 
@@ -203,7 +239,7 @@ export async function POST(request: Request) {
         if (!template) {
           // 指定的範本不存在就停手——不要退而求其次挑一個，那正是抄錯品名單價的來源
           errors.push(`${label}：指定的範本 ${input.copyFrom} 不在目錄中`);
-          return;
+          continue;
         }
       }
 
@@ -212,24 +248,41 @@ export async function POST(request: Request) {
       );
       if (existingIdx >= 0 && !allowUpdate) {
         errors.push(`${label}：商品編號已存在（要覆蓋請帶 allowUpdate: true）`);
-        return;
+        continue;
       }
 
       if (existingIdx >= 0) {
         const current = catalog[existingIdx];
-        const merged = buildProduct(input, current, today);
+        const merged = buildProduct(input, current, today, "update");
+        if (input.imageSourceUrl) {
+          try {
+            merged.imageUrl = await mirrorImage(input.imageSourceUrl);
+          } catch (e) {
+            warnings.push(`${label}：圖片轉存失敗（${e instanceof Error ? e.message : "unknown"}），沿用原圖`);
+          }
+        }
         merged.id = current.id;                    // 更新不換 ID
         merged.createdAt = current.createdAt || today;
         toUpdate.push({ rowNumber: existingIdx + 2, product: merged }); // +2：表頭 + 1-indexed
-        return;
+        continue;
       }
 
       if (!template && !input.supplierId) {
         errors.push(`${label}：沒有 copyFrom 就必須給 supplierId`);
-        return;
+        continue;
       }
-      toAppend.push(buildProduct(input, template, today));
-    });
+      const product = buildProduct(input, template, today);
+      if (input.imageSourceUrl) {
+        try {
+          product.imageUrl = await mirrorImage(input.imageSourceUrl);
+        } catch (e) {
+          // 圖片抓不到不該擋住建檔——商品建起來、圖之後補；但一定要講出來
+          warnings.push(`${label}：圖片轉存失敗（${e instanceof Error ? e.message : "unknown"}），imageUrl 留空`);
+          product.imageUrl = "";
+        }
+      }
+      toAppend.push(product);
+    }
 
     if (errors.length > 0) {
       return NextResponse.json({ ok: false, errors }, { status: 400 });
@@ -281,6 +334,7 @@ export async function POST(request: Request) {
         ok: failed.length === 0,
         created: toAppend.length,
         updated: toUpdate.length,
+        warnings,
         notPersisted: failed,
         saved,
       },
