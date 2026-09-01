@@ -60,3 +60,41 @@ export function findBestTemplate(code, catalog) {
 
 ## 排程端現況
 串接已完成、可正常呼叫（金鑰對、能建單、PDF→JPG 都通）。**只差這個 findBestTemplate 欄位修正**，整條線就完整自動。
+
+---
+
+# 追加 Bug 2：cloneProductAsNew 複製時「規格/顏色欄」沒跟著改（規格殘留範本）
+
+> 回報：2026-07-23（autoCreate 修好後實測發現）
+
+## 現象
+autoCreate 補建 BBL5-17（範本 GABBL504）後，採購單 PDF「規格」欄顯示 **`BBL5-04`**（＝範本 GABBL504 的 specification），而非 `BBL5-17`。
+對照真商品：BBL5-12 規格＝`BBL5-12`、BBL5-19 規格＝`BBL5-19`——**規格本應與色號一致**，複製時漏改。廠商認商品編號沒問題，但規格誤導。
+
+## 根因
+`lib/purchase-from-paste.ts` 的 `cloneProductAsNew`：
+```ts
+return { ...template, id: newId, productCode: newCode, colorCode: newCode, notes, createdAt: now, updatedAt: now };
+```
+只改 `productCode` / `colorCode`；`specification`、`supplierProductCode`、`colorName` 全沿用範本 → 認色的欄位錯。
+
+## 修法（重設「認色」欄位，家族共用欄位照抄不動）
+```ts
+return {
+  ...template,
+  id: newId,
+  productCode: newCode,
+  colorCode: newCode,
+  specification: newCode,        // ← 補：規格跟色號一致（本例 BBL5 家族 spec==色號）
+  supplierProductCode: newCode,  // ← 補：廠商品號用新色號（或清空 "")
+  colorName: "",                 // ← 補：顏色名清空（範本的顏色名對新色是錯的）
+  notes: `自動由 ${template.productCode} 複製建立`,
+  createdAt: now,
+  updatedAt: now,
+};
+```
+> 價格 `unitPrice/costPerCai/listPricePerCai`、`widthCm/brand/series/material/supplierId` 為同家族共用，照抄正確，勿改。
+> 若你們 specification 語意不是「色號」而是真規格（寬度/材質），請改成清空 `""`，至少別殘留範本錯值。
+
+## 驗收
+重跑 → BBL5-17/09 的規格欄應為 `BBL5-17`/`BBL5-09`（或空），不再是 `BBL5-04`。

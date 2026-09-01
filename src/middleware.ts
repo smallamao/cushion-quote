@@ -73,6 +73,7 @@ const API_KEY_PATHS = new Set([
   "/api/sheets/purchases/from-paste",   // 排程系統：用布量貼上
   "/api/sheets/quotes-v2/from-agent",   // 對話 agent：建報價草稿
   "/api/sheets/products/lookup",        // 排程系統：建單前查目錄／供應商
+  "/api/sheets/products/from-agent",    // 排程系統：補建缺少的採購商品（copyFrom 指定範本）
 ]);
 
 function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean {

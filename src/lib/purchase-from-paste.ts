@@ -51,18 +51,42 @@ export function findBestTemplate(
   // 連字號前綴（SC598-85 → SC598）找不到範本時，退回字母前綴（SC）再找一次；
   // 否則同廠牌新系列第一色永遠建不了檔（排程系統 2026-08-28 驗收案例 SC598-85）。
   const letterPrefix = prefix.match(/^[一-龥a-zA-Z]+/u)?.[0] ?? "";
-  const prefixesToTry = letterPrefix && letterPrefix !== prefix ? [prefix, letterPrefix] : [prefix];
 
-  for (const candidatePrefix of prefixesToTry) {
-    const candidates = catalog.filter(
-      (p) => p.isActive && productPrefixes(p).includes(candidatePrefix),
-    );
-    if (candidates.length === 0) continue;
+  const pickNewest = (candidates: PurchaseProduct[]): PurchaseProduct =>
     // Sort by updatedAt descending; stable fallback to productCode lexicographic
-    return candidates.slice().sort((a, b) => {
+    candidates.slice().sort((a, b) => {
       const cmp = b.updatedAt.localeCompare(a.updatedAt);
       return cmp !== 0 ? cmp : a.productCode.localeCompare(b.productCode);
     })[0];
+
+  // 1) 前綴完全相同
+  const exact = catalog.filter((p) => p.isActive && productPrefixes(p).includes(prefix));
+  if (exact.length > 0) return pickNewest(exact);
+
+  // 2) 🔴 正規化後的前綴（去分隔符）—— 同一系列在目錄裡常常沒有連字號：
+  //    貼上 `SC533-92`（前綴 SC533），目錄卻是 `SC53381`（無連字號 → 前綴只抽到 SC）。
+  //    步驟 1 對不上就會直接掉到步驟 3，挑到「最近更新的 SC 商品」＝完全不同系列，
+  //    而 cloneProductAsNew 會把範本的 productName 與 unitPrice 整包抄過去 → 品名單價全錯。
+  //    isExactCatalogMatch 早就用 normalizeIdentifier 忽略分隔符了，這裡補上同一套。
+  //    （排程系統 2026-09-01 P6228：SC533-92 挑到 SC51835，老闆要求改複製同系列 SC533）
+  const normPrefix = normalizeIdentifier(prefix);
+  if (normPrefix) {
+    const nearby = catalog.filter(
+      (p) =>
+        p.isActive &&
+        [p.productCode, p.colorCode, p.supplierProductCode, p.specification]
+          .filter(Boolean)
+          .some((f) => normalizeIdentifier(String(f)).startsWith(normPrefix)),
+    );
+    if (nearby.length > 0) return pickNewest(nearby);
+  }
+
+  // 3) 最後才退回字母前綴（同廠牌新系列第一色）
+  if (letterPrefix && letterPrefix !== prefix) {
+    const byLetter = catalog.filter(
+      (p) => p.isActive && productPrefixes(p).includes(letterPrefix),
+    );
+    if (byLetter.length > 0) return pickNewest(byLetter);
   }
   return null;
 }

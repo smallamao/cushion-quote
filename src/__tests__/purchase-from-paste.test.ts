@@ -320,6 +320,36 @@ describe("findBestTemplate", () => {
     expect(findBestTemplate("BG116", [bySpec])?.productCode).toBe("X001");
     expect(findBestTemplate("BG116", [bySupCode])?.productCode).toBe("X002");
   });
+
+  // 🔴 目錄裡同系列常常沒有連字號：貼上 SC533-92（前綴 SC533），目錄卻是 SC53381。
+  // 修正前只比對「前綴字面相同」→ 對不上 → 直接掉到字母前綴 SC → 挑到完全不同系列的
+  // SC51835，而 cloneProductAsNew 會整包沿用範本的 productName / unitPrice → 品名單價全錯。
+  // （排程系統 2026-09-01 P6228 老闆抓到）
+  it("同系列但目錄無連字號：SC533-92 要挑 SC533 系列，不可掉到別系列的 SC 商品", () => {
+    const catalog: PurchaseProduct[] = [
+      { ...product("SC53381", SC, 380), updatedAt: "2026-05-01", productName: "533系列 北歐雲朵貓抓布" },
+      { ...product("SC53395", SC, 380), updatedAt: "2026-06-01", productName: "533系列 北歐雲朵貓抓布" },
+      { ...product("SC51835", SC, 250), updatedAt: "2026-08-20", productName: "518系列 涼感布" },
+    ];
+    const result = findBestTemplate("SC533-92", catalog);
+    expect(result?.productCode).toBe("SC53395");      // 同系列中最近更新的
+    expect(result?.unitPrice).toBe(380);              // 不可抄到 518 系列的 250
+  });
+
+  it("正規化前綴比對不可誤傷：SC518-01 仍挑 518 系列", () => {
+    const catalog: PurchaseProduct[] = [
+      { ...product("SC53395", SC, 380), updatedAt: "2026-06-01" },
+      { ...product("SC51835", SC, 250), updatedAt: "2026-08-20" },
+    ];
+    expect(findBestTemplate("SC518-01", catalog)?.productCode).toBe("SC51835");
+  });
+
+  it("完全沒有同系列時，仍退回字母前綴（維持 SC598-85 那次的行為）", () => {
+    const catalog: PurchaseProduct[] = [
+      { ...product("SC51835", SC, 250), updatedAt: "2026-08-20" },
+    ];
+    expect(findBestTemplate("SC777-01", catalog)?.productCode).toBe("SC51835");
+  });
 });
 
 // ---------------------------------------------------------------------------
