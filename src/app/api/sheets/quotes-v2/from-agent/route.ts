@@ -464,7 +464,7 @@ export async function PATCH(request: Request) {
     }
     const notion =
       payload.syncNotion !== false
-        ? await syncToNotion(versionId, existing.clientNameSnapshot || existing.contactNameSnapshot || "")
+        ? await syncToNotion(targetVersionId, existing.clientNameSnapshot || existing.contactNameSnapshot || "")
         : undefined;
 
     return NextResponse.json({
