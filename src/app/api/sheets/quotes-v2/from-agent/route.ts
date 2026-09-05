@@ -17,6 +17,7 @@ import { getVersionLineRows, getVersionRows, lineRowToRecord, versionRowToRecord
 import { POST as syncNotionHandler } from "@/app/api/notion/sync-quote/route";
 import { buildQuoteJpgUrl } from "../_quote-image";
 import { POST as createCaseHandler } from "../../cases/route";
+import { POST as createVersionHandler } from "../../versions/route";
 import { PATCH as patchVersionHandler, PUT as putVersionHandler } from "../../versions/[versionId]/route";
 import { POST as createQuoteHandler } from "../route";
 
@@ -83,6 +84,9 @@ interface AgentQuotePayload {
 
 interface AgentPatchPayload {
   versionId: string;
+  /** 定案流程：以 versionId 為底建立新版本（V1 自動變已取代），lines 等修改套用在新版本上 */
+  createNewVersion?: boolean;
+  versionLabel?: string;
   /** 給了就整組取代（只允許草稿），金額重算 */
   lines?: AgentLine[];
   publicDescription?: string;
@@ -373,30 +377,47 @@ export async function PATCH(request: Request) {
   }
 
   try {
+    // 定案流程（需求：客人選定方案後開「確認方案」新版本，保留原多方案紀錄）
+    let targetVersionId = versionId;
+    if (payload.createNewVersion === true) {
+      const res = await createVersionHandler(
+        internalRequest("/api/sheets/versions", {
+          action: "new_version",
+          basedOnVersionId: versionId,
+          versionLabel: payload.versionLabel ?? "確認方案",
+        }),
+      );
+      const json = (await res.json()) as { ok: boolean; versionId?: string; error?: string };
+      if (!json.ok || !json.versionId) {
+        return NextResponse.json({ ok: false, error: `建立新版本失敗：${json.error ?? "unknown"}` }, { status: 500 });
+      }
+      targetVersionId = json.versionId;
+    }
+
     const descriptionImageUrl = await resolveDescriptionImageUrl(
       payload.descriptionImageUrl,
       payload.descriptionImage,
     );
-    const params = { params: Promise.resolve({ versionId }) };
+    const params = { params: Promise.resolve({ versionId: targetVersionId }) };
 
     // 只補圖：不碰金額
     if (!wantsLines && !wantsText) {
       const res = await patchVersionHandler(
-        internalRequest(`/api/sheets/versions/${encodeURIComponent(versionId)}`, { descriptionImageUrl }, "PATCH"),
+        internalRequest(`/api/sheets/versions/${encodeURIComponent(targetVersionId)}`, { descriptionImageUrl }, "PATCH"),
         params,
       );
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (!json.ok) {
         return NextResponse.json({ ok: false, error: `更新版本失敗：${json.error ?? "unknown"}` }, { status: res.status === 404 ? 404 : 500 });
       }
-      return NextResponse.json({ ok: true, versionId, descriptionImageUrl });
+      return NextResponse.json({ ok: true, versionId: targetVersionId, descriptionImageUrl });
     }
 
     const client = await getSheetsClient();
     if (!client) {
       return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
     }
-    const existingRow = (await getVersionRows(client)).find((r) => r[0] === versionId);
+    const existingRow = (await getVersionRows(client)).find((r) => r[0] === targetVersionId);
     if (!existingRow) {
       return NextResponse.json({ ok: false, error: "version not found" }, { status: 404 });
     }
@@ -428,13 +449,13 @@ export async function PATCH(request: Request) {
       lines = built.lines;
     } else {
       lines = (await getVersionLineRows(client))
-        .filter((r) => r[1] === versionId)
+        .filter((r) => r[1] === targetVersionId)
         .map(lineRowToRecord)
         .sort((a, b) => a.lineNo - b.lineNo);
     }
 
     const res = await putVersionHandler(
-      internalRequest(`/api/sheets/versions/${encodeURIComponent(versionId)}`, { version: updated, lines }, "PUT"),
+      internalRequest(`/api/sheets/versions/${encodeURIComponent(targetVersionId)}`, { version: updated, lines }, "PUT"),
       params,
     );
     const json = (await res.json()) as { ok: boolean; error?: string };
@@ -448,7 +469,8 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      versionId,
+      versionId: targetVersionId,
+      basedOn: payload.createNewVersion ? versionId : undefined,
       subtotal,
       taxAmount,
       totalAmount,
