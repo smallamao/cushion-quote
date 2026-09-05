@@ -39,25 +39,6 @@ function ensureFontsRegistered(): boolean {
   return true;
 }
 
-let cachedLogo: string | null | undefined;
-
-/** 讀取 public/logo.png 為 data URI；找不到時回傳 undefined（PDF 就不畫 logo）。 */
-function loadLogoDataUri(): string | undefined {
-  if (cachedLogo !== undefined) return cachedLogo ?? undefined;
-  try {
-    const logoPath = path.join(process.cwd(), "public", "logo.png");
-    const buffer = fs.readFileSync(logoPath);
-    cachedLogo = `data:image/png;base64,${buffer.toString("base64")}`;
-  } catch {
-    cachedLogo = null;
-  }
-  return cachedLogo ?? undefined;
-}
-
-/**
- * 於伺服器端把採購單渲染成 PDF Buffer。
- * 字型檔遺失時丟出錯誤，讓呼叫端可 try/catch 後降級（不阻擋建單）。
- */
 export async function renderPurchaseOrderPdfBuffer(
   props: Omit<PurchaseOrderPDFProps, "logoSrc">,
 ): Promise<Buffer> {
@@ -67,6 +48,6 @@ export async function renderPurchaseOrderPdfBuffer(
     );
   }
   return renderToBuffer(
-    <PurchaseOrderDocument {...props} logoSrc={loadLogoDataUri()} />,
+    <PurchaseOrderDocument {...props} />,
   );
 }

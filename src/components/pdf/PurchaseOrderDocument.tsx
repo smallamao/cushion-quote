@@ -20,6 +20,8 @@ import type {
   SystemSettings,
 } from "@/lib/types";
 
+import { BRAND_LOGO_DATA_URI } from "@/lib/brand-logo";
+
 const C = {
   black: "#111111",
   dark: "#333333",
@@ -206,7 +208,7 @@ export function PurchaseOrderDocument({
   order,
   items,
   settings,
-  logoSrc = "/logo.png",
+  logoSrc = BRAND_LOGO_DATA_URI,
 }: PurchaseOrderPDFProps) {
   const supplier = order.supplierSnapshot ?? {
     name: "",
