@@ -59,7 +59,14 @@ export async function buildQuoteJpgUrl(versionId: string): Promise<string> {
 
   const pdf = await renderQuotePdfBuffer(props);
   const uploaded = await uploadBufferToCloudinary(pdf, "application/pdf", CLOUDINARY_FOLDERS.quoteAttachments, "image");
-  // PDF 以 image 型別上傳後，可用轉檔參數取第 1 頁 JPG（帳號封鎖的是 .pdf 原檔供檔，衍生圖不受影響）
-  const jpgUrl = uploaded.url.replace("/upload/", "/upload/pg_1,f_jpg,w_1400,q_auto/").replace(/\.pdf$/i, ".jpg");
-  return jpgUrl.endsWith(".jpg") ? jpgUrl : `${jpgUrl}.jpg`;
+  // PDF 以 image 型別上傳後，用轉檔參數取第 1 頁 JPG
+  const derived = uploaded.url.replace("/upload/", "/upload/pg_1,f_jpg,w_1400,q_auto/").replace(/\.pdf$/i, ".jpg");
+  const derivedUrl = derived.endsWith(".jpg") ? derived : `${derived}.jpg`;
+  // Notion 的圖片代理抓「即時轉檔網址」常在第一次轉檔時逾時並快取失敗（S962 事件）。
+  // 自己先抓下衍生圖，再以靜態圖檔重新上傳（notion-quotes，與編輯器同資料夾），交給 Notion 的是純靜態資產。
+  const res = await fetch(derivedUrl);
+  if (!res.ok) throw new Error(`報價圖轉檔失敗（${res.status}）`);
+  const jpgBuffer = Buffer.from(await res.arrayBuffer());
+  const staticUpload = await uploadBufferToCloudinary(jpgBuffer, "image/jpeg", "notion-quotes");
+  return staticUpload.url;
 }
