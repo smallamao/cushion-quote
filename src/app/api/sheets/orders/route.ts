@@ -10,6 +10,8 @@ import {
   orderRecordToRow,
   orderRowToRecord,
 } from "@/lib/order-utils";
+import { lineRowToRecord } from "@/app/api/sheets/_v2-utils";
+import { versionLinesToOrderItems } from "@/lib/quote-mappers";
 import type { CustomOrder, OrderStatus } from "@/lib/types";
 
 // GET /api/sheets/orders
@@ -145,6 +147,7 @@ export async function POST(request: Request) {
     let materialCode = "";
     const materialImageUrl = "";
     let initialNotes: CustomOrder["notes"] = [];
+    let orderItems: CustomOrder["items"] = [];
 
     if (body.sourceType === "quote") {
       if (!body.versionId) {
@@ -201,32 +204,51 @@ export async function POST(request: Request) {
         installAddress = caseRow[6] ?? "";
       }
 
-      // 3. Find first version line item to get materialId
+      // 3. 讀本版本所有明細（帶入訂單品項用）
       const lineRes = await client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
         range: "報價版本明細!A2:AJ2000",
       });
-      const lineRows = (lineRes.data.values ?? []) as string[][];
-      const lineRow = lineRows.find((r) => r[1] === versionId);
-      const materialId = lineRow ? (lineRow[7] ?? "") : "";
+      const lineRecords = ((lineRes.data.values ?? []) as string[][])
+        .filter((r) => r[1] === versionId)
+        .map(lineRowToRecord);
 
-      // 4. Look up material info
-      if (materialId) {
+      // 4. 讀材質資料庫，建 id→{name, code} 對照（給訂單主布料＋各品項色號）
+      const materialNameById = new Map<string, string>();
+      const materialCodeById = new Map<string, string>();
+      const neededMaterialIds = new Set(
+        lineRecords.map((l) => l.materialId).filter(Boolean),
+      );
+      if (neededMaterialIds.size > 0) {
         const matRes = await client.sheets.spreadsheets.values.get({
           spreadsheetId: client.spreadsheetId,
           range: "材質資料庫!A2:R2000",
         });
         const matRows = (matRes.data.values ?? []) as string[][];
-        const matRow = matRows.find((r) => r[0] === materialId);
-        if (matRow) {
-          const brand = matRow[1] ?? "";
-          const series = matRow[2] ?? "";
-          const code = matRow[3] ?? "";
+        for (const r of matRows) {
+          const id = r[0];
+          if (!id || !neededMaterialIds.has(id)) continue;
+          const brand = r[1] ?? "";
+          const series = r[2] ?? "";
+          const code = r[3] ?? "";
           // col[4]=colorName (not used in materialName per spec)
-          materialName = `${brand} ${series} ${code}`.trim();
-          materialCode = code;
+          materialNameById.set(id, `${brand} ${series} ${code}`.trim());
+          materialCodeById.set(id, code);
         }
       }
+
+      // 訂單主布料：取第一筆（依 lineNo）有材質的明細
+      const firstWithMaterial = lineRecords
+        .slice()
+        .sort((a, b) => a.lineNo - b.lineNo)
+        .find((l) => l.materialId && materialNameById.has(l.materialId));
+      if (firstWithMaterial) {
+        materialName = materialNameById.get(firstWithMaterial.materialId) ?? "";
+        materialCode = materialCodeById.get(firstWithMaterial.materialId) ?? "";
+      }
+
+      // 5. 報價明細 → 訂單品項（含名稱、尺寸規格、數量、色號、備註）
+      orderItems = versionLinesToOrderItems(lineRecords, materialCodeById);
     } else {
       // sourceType === "direct"
       const directBody = body as { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string; clientId?: string };
@@ -277,7 +299,7 @@ export async function POST(request: Request) {
       materialCode,
       materialImageUrl,
       deadline: "",
-      items: [],
+      items: orderItems,
       notes: initialNotes,
       photos: [],
       invoiceStatus,
