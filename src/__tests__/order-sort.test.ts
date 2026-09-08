@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compareOrders, cmpDateDesc } from "@/lib/order-sort";
+import { compareOrders, cmpDateDesc, cmpInstallDate } from "@/lib/order-sort";
 import type { CustomOrder } from "@/lib/types";
 
 function mk(o: Partial<CustomOrder>): CustomOrder {
@@ -25,8 +25,20 @@ describe("cmpDateDesc", () => {
   });
 });
 
+describe("cmpInstallDate（安裝/出貨日：無日期排最前）", () => {
+  it("有日期時新到舊", () => {
+    expect(cmpInstallDate("2026-07-24", "2026-07-22")).toBeLessThan(0);
+    expect(cmpInstallDate("2026-07-22", "2026-07-24")).toBeGreaterThan(0);
+  });
+  it("空值排最前（不論另一邊新舊）", () => {
+    expect(cmpInstallDate("", "2026-01-01")).toBeLessThan(0);
+    expect(cmpInstallDate("2026-01-01", "")).toBeGreaterThan(0);
+    expect(cmpInstallDate("", "")).toBe(0);
+  });
+});
+
 describe("compareOrders（對齊 Notion 排序）", () => {
-  it("狀態分組 → 安裝日新舊 → 下單日新舊 → 建立時間舊新", () => {
+  it("狀態分組 → 無安裝日在前→有安裝日新舊 → 下單日新舊 → 建立時間舊新", () => {
     const orders = [
       mk({ orderNumber: "C1", status: "completed", installDate: "2026-07-20" }),
       mk({ orderNumber: "W1", status: "waiting", installDate: "2026-07-27" }),
@@ -40,13 +52,14 @@ describe("compareOrders（對齊 Notion 排序）", () => {
     ];
     const sorted = [...orders].sort(compareOrders).map((o) => o.orderNumber);
     expect(sorted).toEqual([
-      // production：安裝日新→舊，再下單日新→舊，最後建立時間舊→新
-      "P_install24",
-      "P_install22",
+      // production：先「無安裝日」者（依下單日新→舊、再建立時間舊→新），
       "P_order21",
       "P_order12",
       "P_noDate_old",
       "P_noDate_new",
+      // 再「有安裝日」者，新→舊
+      "P_install24",
+      "P_install22",
       // 其餘狀態依序在後
       "W1",
       "C1",
