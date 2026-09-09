@@ -29,6 +29,11 @@ function optionGroupKey(line: OptionLineLike): string {
   return (line.itemName ?? "").split("\n")[0].replace(/\s+/g, "").trim();
 }
 
+/** 對外顯示的品項：不是工本費、也沒被設為不顯示 */
+function isVisibleLine(line: OptionLineLike): boolean {
+  return line.showOnQuote !== false && !line.isCostItem;
+}
+
 export function isAddonLine(line: OptionLineLike): boolean {
   return ADDON_PATTERN.test(`${line.itemName ?? ""} ${line.spec ?? ""}`);
 }
@@ -40,7 +45,7 @@ export function isAddonLine(line: OptionLineLike): boolean {
  * - 最低方案金額＝各組取最低金額後加總；加價選項不計
  */
 export function deriveOptionMeta(lines: OptionLineLike[]): OptionMeta {
-  const visible = lines.filter((l) => l.showOnQuote !== false && !l.isCostItem);
+  const visible = lines.filter(isVisibleLine);
   const addons = visible.filter(isAddonLine);
   const regular = visible.filter((l) => !isAddonLine(l));
 
@@ -58,6 +63,37 @@ export function deriveOptionMeta(lines: OptionLineLike[]): OptionMeta {
     isMultiOption: hasTiers || addons.length > 0,
     optionMinAmount: Math.round(optionMinAmount),
   };
+}
+
+const OPTION_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+
+/**
+ * PDF 項次欄要印的方案標籤，回傳與輸入等長的陣列（null＝沿用數字項次）。
+ *
+ * 項次印「1、2」時客人會讀成「兩樣商品各買一件」：S987 彭桂香把兩檔
+ * $20,000 與 $21,500 加成 $41,000，直接放棄成交。同組多檔改印
+ * 「方案一／方案二」，加價選項印「加購」，讓每一列自己說清楚是替代還是加買。
+ */
+export function deriveOptionLabels(lines: OptionLineLike[]): (string | null)[] {
+  const groupSizes = new Map<string, number>();
+  for (const line of lines) {
+    if (!isVisibleLine(line) || isAddonLine(line)) continue;
+    const key = optionGroupKey(line);
+    groupSizes.set(key, (groupSizes.get(key) ?? 0) + 1);
+  }
+
+  const used = new Map<string, number>();
+  return lines.map((line) => {
+    if (!isVisibleLine(line)) return null;
+    if (isAddonLine(line)) return "加購";
+
+    const key = optionGroupKey(line);
+    if ((groupSizes.get(key) ?? 0) < 2) return null;
+
+    const ordinal = (used.get(key) ?? 0) + 1;
+    used.set(key, ordinal);
+    return `方案${OPTION_NUMERALS[ordinal - 1] ?? ordinal}`;
+  });
 }
 
 /** 列表／統計用：多方案顯示最低方案金額，其餘用版本總額 */

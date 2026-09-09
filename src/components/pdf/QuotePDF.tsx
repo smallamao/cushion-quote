@@ -11,7 +11,7 @@ import {
   pdf,
 } from "@react-pdf/renderer";
 
-import { multiOptionNote } from "@/lib/quote-options";
+import { deriveOptionLabels, multiOptionNote } from "@/lib/quote-options";
 
 import type { Channel, FlexQuoteItem, SystemSettings } from "@/lib/types";
 
@@ -129,7 +129,25 @@ const s = StyleSheet.create({
   tCell: { fontSize: 8.5 },
   tCellR: { fontSize: 8.5, textAlign: "right" },
 
+  optionBanner: {
+    flexDirection: "row" as const,
+    gap: 6,
+    marginBottom: 8,
+    padding: 7,
+    borderWidth: 1,
+    borderColor: C.black,
+    borderRadius: 3,
+    backgroundColor: C.headerBg,
+  },
+  optionBannerMark: { fontSize: 10, fontWeight: 700, color: C.black },
+  optionBannerBody: { flex: 1 },
+  optionBannerTitle: { fontSize: 10, fontWeight: 700, color: C.black },
+  optionBannerText: { fontSize: 8.5, color: C.dark, marginTop: 2 },
+
   colIdx: { width: 24 },
+  /* 印「方案一／加購」時項次欄要放得下三個全形字 */
+  colIdxLabel: { width: 42 },
+  optionLabel: { fontSize: 8, fontWeight: 700 },
   colName: { flex: 1.4 },
   colSpec: { flex: 1 },
   colQty: { width: 50, textAlign: "right" },
@@ -334,6 +352,21 @@ export function QuotePDFDocument(props: QuotePDFProps) {
   const validUntil = validUntilProp && validUntilProp.trim() ? validUntilProp : addDays(quoteDate, validityDays);
   const quoteProjectName = formatQuoteProjectName(projectName, quoteName);
 
+  // 項次欄：多檔品項印「方案一／方案二」、加價選項印「加購」，避免被讀成兩樣商品
+  const optionLabels = deriveOptionLabels(
+    items.map((i) => ({
+      itemName: i.name,
+      spec: i.spec,
+      lineAmount: i.amount,
+      isCostItem: i.isCostItem,
+    })),
+  );
+  const idxCol = optionLabels.some(Boolean) ? s.colIdxLabel : s.colIdx;
+  // 沒有加購行時不要提「加購」，免得客人回頭找一個不存在的項目
+  const optionBannerText = optionLabels.includes("加購")
+    ? "下列各方案為替代方案，金額不需相加；標示「加購」者為可另外加選的項目。"
+    : "下列各方案為替代方案，請挑選其中一案，金額不需相加。";
+
   const visibleItems = items.filter((i) => !i.isCostItem);
   const itemsWithImg = visibleItems.filter((i) => i.imageUrl).length;
   const itemsNoImg = visibleItems.length - itemsWithImg;
@@ -427,9 +460,20 @@ export function QuotePDFDocument(props: QuotePDFProps) {
           </View>
         </View>
 
+        {multiOption ? (
+          /* 客人會把兩檔金額相加（S987 加成 $41,000 後放棄），開頭先講清楚是擇一 */
+          <View style={s.optionBanner}>
+            <Text style={s.optionBannerMark}>◆</Text>
+            <View style={s.optionBannerBody}>
+              <Text style={s.optionBannerTitle}>本報價為多方案報價，請擇一選購</Text>
+              <Text style={s.optionBannerText}>{optionBannerText}</Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={s.table}>
           <View style={s.tHead}>
-            <Text style={[s.tHeadText, s.colIdx]}>項次</Text>
+            <Text style={[s.tHeadText, idxCol]}>項次</Text>
             <Text style={[s.tHeadText, s.colName]}>商品名稱</Text>
             <Text style={[s.tHeadText, s.colSpec]}>規格</Text>
             <Text style={[s.tHeadText, s.colQty]}>數量</Text>
@@ -438,7 +482,11 @@ export function QuotePDFDocument(props: QuotePDFProps) {
           </View>
           {items.map((item, idx) => (
             <View key={item.id} style={s.tRow} wrap={false}>
-              <Text style={[s.tCell, s.colIdx]}>{idx + 1}</Text>
+              {optionLabels[idx] ? (
+                <Text style={[s.optionLabel, idxCol]}>{optionLabels[idx]}</Text>
+              ) : (
+                <Text style={[s.tCell, idxCol]}>{idx + 1}</Text>
+              )}
               <View style={s.colName}>
                 <Text style={[s.tCell, { fontWeight: 700 }]}>{item.name}</Text>
                 {item.isCostItem && (
