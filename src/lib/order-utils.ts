@@ -1,11 +1,11 @@
 import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AV`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AV10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AW`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AW10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AV${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:AW${sheetRow}`;
 
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
@@ -40,7 +40,7 @@ export function todayDateStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// 33 columns A (index 0) through AG (index 32)
+// 49 columns A (index 0) through AW (index 48)
 export function orderRowToRecord(row: string[]): CustomOrder {
   const record: CustomOrder = {
     orderId: row[0] ?? "",
@@ -91,6 +91,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     createdBy: row[32] ?? "",
     materialPurchases: parseJsonSafe<MaterialPurchase[]>(row[33], []),
     notionPageId: row[47] ?? "",
+    lineChatUrl: row[48] ?? "",
   };
 
   // Migrate legacy imageUrl → photos[0] for each item
@@ -154,6 +155,7 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     r.installContactName ?? "",
     r.installContactPhone ?? "",
     r.notionPageId ?? "",
+    r.lineChatUrl ?? "",
   ];
 }
 
