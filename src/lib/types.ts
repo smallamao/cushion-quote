@@ -1060,6 +1060,33 @@ export interface InventoryLot {
   remainingQty?: number; // computed: sum of transactions for this lot
 }
 
+/**
+ * 裁剩庫存 (FabricRemnant) — 簡易「碎布架清單」，一塊實體布料一筆。
+ * 刻意不做成庫存帳：同色號可有多筆（不同批次/不同長度分開記），
+ * 因為 (a) 不同批次可能色差、(b) 1.5碼+2碼 的利用率不等於整支 3.5碼。
+ * 師傅裁完登記、用掉改長度、用完或建錯就停用（軟刪）。
+ */
+export type FabricRemnantPieceType = "整支" | "裁剩";
+
+export interface FabricRemnant {
+  id: string;
+  productId: string;      // 關聯採購商品（分組/彙總用）
+  productCode: string;    // 色號快照
+  productName: string;    // 品名快照
+  specification: string;  // 色名/規格快照
+  supplierName: string;   // 供應商快照
+  series: string;         // 系列快照
+  lengthYd: number;       // 這一塊還剩幾碼
+  pieceType: FabricRemnantPieceType;
+  receivedDate: string;   // 進貨日（辨批次/色差）
+  source: string;         // 來源：哪張採購單或工單裁剩
+  location: string;       // 擺放位置
+  notes: string;
+  isActive: boolean;      // false = 已用完/刪除，不再顯示
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PurchaseProductHistoryItem {
   orderDate: string;
   orderId: string;

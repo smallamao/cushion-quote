@@ -13,6 +13,7 @@ import {
   ReceiptText,
   Ruler,
   ScanLine,
+  Scissors,
   Settings,
   ShoppingCart,
   Stethoscope,
@@ -59,6 +60,7 @@ export const navLinks: NavLinkDef[] = [
   // ── 倉儲 ──
   { href: "/purchase-products", label: "採購商品", icon: Package, roles: ["admin"], group: "inventory" },
   { href: "/inventory", label: "庫存管理", icon: Archive, roles: ["admin"], group: "inventory" },
+  { href: "/fabric-remnants", label: "裁剩庫存", icon: Scissors, roles: ["admin"], group: "inventory" },
   { href: "/reports", label: "採購報表", icon: BarChart3, roles: ["admin"], group: "inventory" },
   // ── 系統 ──
   { href: "/settings", label: "系統設定", icon: Settings, roles: ["admin"], group: "system" },
