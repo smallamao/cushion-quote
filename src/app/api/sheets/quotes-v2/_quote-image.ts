@@ -1,4 +1,7 @@
 import { CLOUDINARY_FOLDERS, uploadBufferToCloudinary } from "@/lib/cloudinary-upload";
+
+/** A4 頁高（pt），用來把爆頁的報價單換算成等高的單張長頁 */
+const A4_PAGE_HEIGHT_PT = 842;
 import { toFlexItemsFromVersion } from "@/lib/quote-mappers";
 import { renderQuotePdfBuffer } from "@/lib/quote-pdf-server";
 import { applyTaxModeToTerms } from "@/lib/quote-terms";
@@ -58,9 +61,27 @@ export async function buildQuoteJpgUrl(versionId: string): Promise<string> {
   };
 
   const pdf = await renderQuotePdfBuffer(props);
-  const uploaded = await uploadBufferToCloudinary(pdf, "application/pdf", CLOUDINARY_FOLDERS.quoteAttachments, "image");
-  // PDF 以 image 型別上傳後，用轉檔參數取第 1 頁 JPG
-  const derived = uploaded.url.replace("/upload/", "/upload/pg_1,f_jpg,w_1400,q_auto/").replace(/\.pdf$/i, ".jpg");
+  let uploaded = await uploadBufferToCloudinary(pdf, "application/pdf", CLOUDINARY_FOLDERS.quoteAttachments, "image");
+
+  // 給 Notion 的圖只取得到第 1 頁（pg_1），A4 一旦爆頁後面就整段消失（S990 事件）。
+  // 超過一頁就改用長頁模式重印成單頁：高度取 A4 頁高 × 頁數，寧可底部留白也不要被裁掉。
+  const pageCount = uploaded.pages ?? 1;
+  if (pageCount > 1) {
+    const longPdf = await renderQuotePdfBuffer({
+      ...props,
+      pdfMode: "long",
+      longPageHeight: A4_PAGE_HEIGHT_PT * pageCount,
+    });
+    uploaded = await uploadBufferToCloudinary(longPdf, "application/pdf", CLOUDINARY_FOLDERS.quoteAttachments, "image");
+  }
+
+  // PDF 以 image 型別上傳後，用轉檔參數取第 1 頁 JPG。
+  // 長頁是用「A4 頁高 × 頁數」印的，底部會多出大片留白 → 再裁掉純白邊、補回固定白框。
+  const transform =
+    pageCount > 1
+      ? "pg_1,f_jpg,w_1400,q_auto/e_trim,bo_60px_solid_white"
+      : "pg_1,f_jpg,w_1400,q_auto";
+  const derived = uploaded.url.replace("/upload/", `/upload/${transform}/`).replace(/\.pdf$/i, ".jpg");
   const derivedUrl = derived.endsWith(".jpg") ? derived : `${derived}.jpg`;
   // Notion 的圖片代理抓「即時轉檔網址」常在第一次轉檔時逾時並快取失敗（S962 事件）。
   // 自己先抓下衍生圖，再以靜態圖檔重新上傳（notion-quotes，與編輯器同資料夾），交給 Notion 的是純靜態資產。

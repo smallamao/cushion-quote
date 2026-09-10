@@ -65,6 +65,8 @@ export function defaultFolderFor(mimeType: string): string {
 export interface CloudinaryUploadResult {
   url: string;
   publicId: string;
+  /** 多頁 PDF 以 image 型別上傳時，Cloudinary 會回傳頁數；其他檔案為 undefined */
+  pages?: number;
 }
 
 /**
@@ -87,7 +89,7 @@ export async function uploadBufferToCloudinary(
   // 無副檔名則以 octet-stream 供檔（200），前端讀取時再強制標回 application/pdf。
   const publicId = `${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
-  const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
+  const result = await new Promise<{ secure_url: string; public_id: string; pages?: number }>((resolve, reject) => {
     cloudinary.uploader
       .upload_stream(
         { folder, public_id: publicId, resource_type: resourceTypeOverride ?? resourceTypeFor(mimeType) },
@@ -102,7 +104,7 @@ export async function uploadBufferToCloudinary(
       .end(data);
   });
 
-  return { url: result.secure_url, publicId: result.public_id };
+  return { url: result.secure_url, publicId: result.public_id, pages: result.pages };
 }
 
 /** 解析 `data:image/jpeg;base64,...` 或純 base64（需另給 mimeType） */
