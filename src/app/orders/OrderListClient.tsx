@@ -642,6 +642,23 @@ export function OrderListClient() {
                     <span>下單：{order.orderDate || "—"}</span>
                   </div>
                   <div className="mt-2 flex items-center justify-end gap-1 border-t border-[var(--border)] pt-2">
+                    {(() => {
+                      const lineUrl =
+                        order.lineChatUrl?.trim() ||
+                        (order.clientId ? lineUrlByClientId.get(order.clientId) : undefined);
+                      return lineUrl ? (
+                        <a
+                          href={lineUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="開啟此客戶的 LINE 對話"
+                          className="mr-auto flex h-7 items-center rounded px-2 text-sm text-green-600 hover:bg-green-50 hover:text-green-700"
+                        >
+                          💬 LINE
+                        </a>
+                      ) : null;
+                    })()}
                     {order.workOrderPdfUrl && (
                       <Button
                         variant="ghost"
