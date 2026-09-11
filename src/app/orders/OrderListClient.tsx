@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList, Copy, FileBarChart2, FileText, Loader2, Pencil, Plus, ReceiptText, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ClipboardList, Copy, FileBarChart2, FileText, Loader2, Navigation, Pencil, Phone, Plus, ReceiptText, RefreshCw, Search, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -642,23 +642,49 @@ export function OrderListClient() {
                     <span>下單：{order.orderDate || "—"}</span>
                   </div>
                   <div className="mt-2 flex items-center justify-end gap-1 border-t border-[var(--border)] pt-2">
-                    {(() => {
-                      const lineUrl =
-                        order.lineChatUrl?.trim() ||
-                        (order.clientId ? lineUrlByClientId.get(order.clientId) : undefined);
-                      return lineUrl ? (
+                    <div className="mr-auto flex items-center gap-1">
+                      {(() => {
+                        const lineUrl =
+                          order.lineChatUrl?.trim() ||
+                          (order.clientId ? lineUrlByClientId.get(order.clientId) : undefined);
+                        return lineUrl ? (
+                          <a
+                            href={lineUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title="開啟此客戶的 LINE 對話"
+                            className="flex h-7 items-center rounded px-2 text-sm text-green-600 hover:bg-green-50 hover:text-green-700"
+                          >
+                            💬 LINE
+                          </a>
+                        ) : null;
+                      })()}
+                      {order.installAddress?.trim() ? (
                         <a
-                          href={lineUrl}
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.installAddress.trim())}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          title="開啟此客戶的 LINE 對話"
-                          className="mr-auto flex h-7 items-center rounded px-2 text-sm text-green-600 hover:bg-green-50 hover:text-green-700"
+                          title={`導航到 ${order.installAddress.trim()}`}
+                          className="flex h-7 items-center gap-1 rounded px-2 text-xs text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                         >
-                          💬 LINE
+                          <Navigation className="h-3.5 w-3.5" />
+                          導航
                         </a>
-                      ) : null;
-                    })()}
+                      ) : null}
+                      {order.installContactPhone?.trim() ? (
+                        <a
+                          href={`tel:${order.installContactPhone.trim()}`}
+                          onClick={(e) => e.stopPropagation()}
+                          title={`撥打 ${order.installContactPhone.trim()}`}
+                          className="flex h-7 items-center gap-1 rounded px-2 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                          撥號
+                        </a>
+                      ) : null}
+                    </div>
                     {order.workOrderPdfUrl && (
                       <Button
                         variant="ghost"
