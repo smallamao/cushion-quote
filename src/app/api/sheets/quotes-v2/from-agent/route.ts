@@ -15,7 +15,10 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import type { Channel, ItemUnit, LeadSource, VersionLineRecord } from "@/lib/types";
 import { getVersionLineRows, getVersionRows, lineRowToRecord, versionRowToRecord } from "../../_v2-utils";
 import { POST as syncNotionHandler } from "@/app/api/notion/sync-quote/route";
-import { buildQuoteJpgUrl } from "../_quote-image";
+import { buildQuoteAssets, buildQuoteJpgUrl } from "../_quote-image";
+import { PATCH as versionPatchHandler } from "@/app/api/sheets/versions/[versionId]/route";
+import { POST as signingLinkHandler } from "@/app/api/sheets/signing-links/route";
+import { buildSignShareMessage } from "@/lib/deposit-payment";
 import { POST as createCaseHandler } from "../../cases/route";
 import { POST as createVersionHandler } from "../../versions/route";
 import { PATCH as patchVersionHandler, PUT as putVersionHandler } from "../../versions/[versionId]/route";
@@ -95,6 +98,66 @@ interface AgentPatchPayload {
   descriptionImage?: AgentImage;
   /** 改完同步 Notion，預設 true */
   syncNotion?: boolean;
+  /** 定案：把版本狀態改成已接受（多方案會被擋，要先建確認方案） */
+  acceptVersion?: boolean;
+  /** 定案：產生線上簽署連結，回傳短網址與可直接貼給客人的訊息 */
+  createSigningLink?: boolean;
+  /** 簽署連結有效天數，預設 30；0＝不過期 */
+  signExpiresInDays?: number;
+}
+
+interface FinalizeResult {
+  accepted?: { ok: boolean; error?: string };
+  signing?: { ok: boolean; token?: string; signUrl?: string; shareMessage?: string; error?: string };
+}
+
+/**
+ * 客人定案後的收尾：改已接受、產生簽署連結。
+ * 兩者都重用後台既有的 handler，才不會漏掉多方案擋擋、追蹤排程連動、
+ * 舊連結作廢這些副作用（自己重寫一份遲早會走鐘）。
+ */
+async function finalizeVersion(
+  versionId: string,
+  payload: AgentPatchPayload,
+  origin: string,
+): Promise<FinalizeResult> {
+  const out: FinalizeResult = {};
+
+  if (payload.acceptVersion === true) {
+    const res = await versionPatchHandler(
+      internalRequest(`/api/sheets/versions/${encodeURIComponent(versionId)}`, { versionStatus: "accepted" }, "PATCH"),
+      { params: Promise.resolve({ versionId }) },
+    );
+    const json = (await res.json()) as { ok: boolean; error?: string };
+    out.accepted = json.ok ? { ok: true } : { ok: false, error: json.error ?? `狀態變更失敗（${res.status}）` };
+    if (!json.ok) return out;
+  }
+
+  if (payload.createSigningLink === true) {
+    try {
+      const { pdfUrl, jpgUrl } = await buildQuoteAssets(versionId);
+      const res = await signingLinkHandler(
+        internalRequest("/api/sheets/signing-links", {
+          versionId,
+          unsignedPdfUrl: pdfUrl,
+          unsignedImageUrl: jpgUrl,
+          expiresInDays: payload.signExpiresInDays,
+        }),
+      );
+      const json = (await res.json()) as { ok: boolean; token?: string; error?: string };
+      if (!json.ok || !json.token) {
+        out.signing = { ok: false, error: json.error ?? `簽署連結建立失敗（${res.status}）` };
+      } else {
+        const shortHost = (process.env.NEXT_PUBLIC_SIGN_SHORT_HOST ?? "").trim();
+        const signUrl = shortHost ? `https://${shortHost}/${json.token}` : `${origin}/s/${json.token}`;
+        out.signing = { ok: true, token: json.token, signUrl, shareMessage: buildSignShareMessage(signUrl) };
+      }
+    } catch (err) {
+      out.signing = { ok: false, error: err instanceof Error ? err.message : "簽署連結建立失敗" };
+    }
+  }
+
+  return out;
 }
 
 function timingSafeEqualStr(a: string, b: string): boolean {
@@ -354,12 +417,31 @@ export async function PATCH(request: Request) {
   const wantsLines = Array.isArray(payload.lines);
   const wantsText = payload.publicDescription !== undefined || payload.internalNotes !== undefined;
   const wantsImage = Boolean(payload.descriptionImageUrl?.trim() || payload.descriptionImage?.base64);
-  const wantsSyncOnly = !wantsLines && !wantsText && !wantsImage && payload.syncNotion === true;
-  if (!wantsLines && !wantsText && !wantsImage && !wantsSyncOnly) {
+  const wantsFinalize = payload.acceptVersion === true || payload.createSigningLink === true;
+  const wantsSyncOnly = !wantsLines && !wantsText && !wantsImage && !wantsFinalize && payload.syncNotion === true;
+  if (!wantsLines && !wantsText && !wantsImage && !wantsSyncOnly && !wantsFinalize) {
     return NextResponse.json(
-      { ok: false, error: "lines、publicDescription、internalNotes、附圖至少一項（或 syncNotion:true 只同步 Notion）" },
+      { ok: false, error: "lines、publicDescription、internalNotes、附圖至少一項（或 syncNotion:true 只同步 Notion、acceptVersion／createSigningLink 定案）" },
       { status: 400 },
     );
+  }
+  const origin = (() => {
+    try { return new URL(request.url).origin; } catch { return ""; }
+  })();
+
+  // 只做定案（不改內容）：直接對現有版本收尾
+  if (wantsFinalize && !wantsLines && !wantsText && !wantsImage) {
+    const client = await getSheetsClient();
+    if (!client) return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
+    const row = (await getVersionRows(client)).find((r) => r[0] === versionId);
+    if (!row) return NextResponse.json({ ok: false, error: "version not found" }, { status: 404 });
+    const v = versionRowToRecord(row);
+    const finalize = await finalizeVersion(versionId, payload, origin);
+    const notion =
+      payload.syncNotion !== false
+        ? await syncToNotion(versionId, v.clientNameSnapshot || v.contactNameSnapshot || "")
+        : undefined;
+    return NextResponse.json({ ok: true, versionId, totalAmount: v.totalAmount, ...finalize, notion });
   }
 
   // 只同步 Notion：任何狀態的版本都可以（已發送／已接受的也能補同步）
@@ -462,6 +544,9 @@ export async function PATCH(request: Request) {
     if (!json.ok) {
       return NextResponse.json({ ok: false, error: `更新版本失敗：${json.error ?? "unknown"}` }, { status: 500 });
     }
+    // 順序不可對調：先寫完定案內容，狀態與簽署連結才會對應到正確的金額與品項
+    const finalize = wantsFinalize ? await finalizeVersion(targetVersionId, payload, origin) : {};
+
     const notion =
       payload.syncNotion !== false
         ? await syncToNotion(targetVersionId, existing.clientNameSnapshot || existing.contactNameSnapshot || "")
@@ -476,6 +561,7 @@ export async function PATCH(request: Request) {
       totalAmount,
       lineCount: lines.length,
       descriptionImageUrl: updated.descriptionImageUrl,
+      ...finalize,
       notion,
     });
   } catch (err) {

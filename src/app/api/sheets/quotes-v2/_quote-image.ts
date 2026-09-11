@@ -18,7 +18,19 @@ import { getVersionLineRows, getVersionRows, lineRowToRecord, versionRowToRecord
  * 以 image 資源型別上傳 Cloudinary（PDF 進 image pipeline）→ 回第 1 頁 JPG 轉檔網址。
  * 任一步失敗就 throw，由呼叫端 catch 後「無圖同步」，不影響報價與 Notion 文字欄位。
  */
+export interface QuoteAssets {
+  /** 給 Notion 與簽署頁顯示用的靜態長圖 */
+  jpgUrl: string;
+  /** 待簽報價單 PDF（Cloudinary），簽署連結需要 */
+  pdfUrl: string;
+}
+
+/** 只要圖時用這支（沿用舊呼叫端） */
 export async function buildQuoteJpgUrl(versionId: string): Promise<string> {
+  return (await buildQuoteAssets(versionId)).jpgUrl;
+}
+
+export async function buildQuoteAssets(versionId: string): Promise<QuoteAssets> {
   const client = await getSheetsClient();
   if (!client) throw new Error("Google Sheets 未設定");
 
@@ -89,5 +101,5 @@ export async function buildQuoteJpgUrl(versionId: string): Promise<string> {
   if (!res.ok) throw new Error(`報價圖轉檔失敗（${res.status}）`);
   const jpgBuffer = Buffer.from(await res.arrayBuffer());
   const staticUpload = await uploadBufferToCloudinary(jpgBuffer, "image/jpeg", "notion-quotes");
-  return staticUpload.url;
+  return { jpgUrl: staticUpload.url, pdfUrl: uploaded.url };
 }
