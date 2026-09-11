@@ -4,24 +4,43 @@ import { DEFAULT_TERMS } from "@/lib/constants";
 import { applyTaxModeToTerms } from "@/lib/quote-terms";
 
 describe("applyTaxModeToTerms", () => {
-  it("未稅：移除逾期罰則、稅金改未含、重新編號為 1-4", () => {
+  it("未稅：移除逾期罰則與機關履約期限、稅金改未含、重新編號為 1-3", () => {
     const out = applyTaxModeToTerms(DEFAULT_TERMS, false);
     expect(out).not.toContain("逾期罰則");
+    expect(out).not.toContain("機關簽包");
     expect(out).toContain("本報價未含營業稅金");
     expect(out).not.toContain("已含營業稅金");
     const lines = out.split("\n");
-    expect(lines).toHaveLength(4);
-    expect(lines.map((l) => l.match(/^\d+/)?.[0])).toEqual(["1", "2", "3", "4"]);
-    expect(lines[3]).toMatch(/^4\.\s*本報價未含營業稅金$/);
+    expect(lines).toHaveLength(3);
+    expect(lines.map((l) => l.match(/^\d+/)?.[0])).toEqual(["1", "2", "3"]);
+    expect(lines[2]).toMatch(/^3\.\s*本報價未含營業稅金$/);
   });
 
-  it("含稅：只把稅金行改回已含，不還原逾期罰則、其他行保留", () => {
+  it("未稅：手動寫過的履約期限要保留，只拿掉機關版制式條文", () => {
+    const custom = [
+      "1. 付款方式：匯款",
+      "2. 履約期限：收件後 7 個工作天內完成",
+      "3. 履約期限：機關簽包後於30個工作天內完成施作及交貨。",
+      "4. 本報價已含營業稅金",
+    ].join("\n");
+    const out = applyTaxModeToTerms(custom, false);
+    expect(out).toContain("收件後 7 個工作天內完成");
+    expect(out).not.toContain("機關簽包");
+    expect(out.split("\n")).toHaveLength(3);
+  });
+
+  it("含稅：機關履約期限要留著（機關版本來就需要）", () => {
+    expect(applyTaxModeToTerms(DEFAULT_TERMS, true)).toContain("機關簽包");
+  });
+
+  it("含稅：只把稅金行改回已含，不還原逾期罰則與機關履約期限、其他行保留", () => {
     const untaxed = applyTaxModeToTerms(DEFAULT_TERMS, false);
     const retaxed = applyTaxModeToTerms(untaxed, true);
     expect(retaxed).toContain("本報價已含營業稅金");
     expect(retaxed).not.toContain("逾期罰則");
+    expect(retaxed).not.toContain("機關簽包");
     expect(retaxed).toContain("付款方式：匯款");
-    expect(retaxed.split("\n")).toHaveLength(4);
+    expect(retaxed.split("\n")).toHaveLength(3);
   });
 
   it("含稅：稅金行 未含→已含（原地置換、保留序號分隔）", () => {
