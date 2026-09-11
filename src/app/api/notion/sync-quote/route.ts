@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { versionRowToRecord } from "@/app/api/sheets/_v2-utils";
+import { classifyQuoteCategory } from "@/lib/quote-category";
 
 const NOTION_API = "https://api.notion.com/v1";
 
@@ -21,7 +22,10 @@ function mapStatus(versionStatus: string): string {
   }
 }
 
-function buildProperties(version: ReturnType<typeof versionRowToRecord>) {
+function buildProperties(
+  version: ReturnType<typeof versionRowToRecord>,
+  lineNames: string[] = [],
+) {
   const fmtMoney = (n: number) => (n ? `$${Math.round(n).toLocaleString("zh-TW")}` : "");
   const title = version.clientNameSnapshot || version.versionLabel || version.versionId;
 
@@ -37,6 +41,13 @@ function buildProperties(version: ReturnType<typeof versionRowToRecord>) {
   if (version.quoteDate) {
     props["詢價日"] = { date: { start: version.quoteDate } };
   }
+
+  // 分類由品項名推得：第一行對外品項判斷力最強，判不出來才看方案名稱與其餘品項。
+  const category = classifyQuoteCategory(
+    lineNames[0] ?? "",
+    [version.quoteNameSnapshot, version.projectNameSnapshot, ...lineNames].filter(Boolean).join(" "),
+  );
+  if (category) props["分類"] = { select: { name: category } };
 
   return props;
 }
@@ -96,9 +107,24 @@ export async function POST(req: NextRequest) {
   if (!row) return NextResponse.json({ ok: false, error: "報價版本不存在" }, { status: 404 });
 
   const version = versionRowToRecord(row);
+
+  // 明細只為了推分類而讀；讀不到就退回只用方案名稱判斷，不讓同步失敗。
+  let lineNames: string[] = [];
+  try {
+    const lineRes = await client.sheets.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range: "報價版本明細!A2:M3000",
+    });
+    lineNames = ((lineRes.data.values ?? []) as string[][])
+      .filter((r) => r[1] === versionId)
+      .sort((a, b) => Number(a[4] ?? 0) - Number(b[4] ?? 0))
+      .map((r) => r[5] ?? "");
+  } catch {
+    lineNames = [];
+  }
   // Prefer live clientName from request (editor state) over potentially-empty snapshot
   if (clientNameOverride) version.clientNameSnapshot = clientNameOverride;
-  const properties = buildProperties(version);
+  const properties = buildProperties(version, lineNames);
   const notionTitle = version.clientNameSnapshot || version.versionLabel || version.versionId;
 
   const existingId = await findExistingPage(notionTitle, dbId);
