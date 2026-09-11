@@ -41,4 +41,7 @@ export interface PublicSigningView {
   total: number;
   expiresAt: string;
   signedPdfUrl: string;
+  /** 訂貨人資訊預填值（若報價已有聯絡電話/地址快照）；客人可確認或修正 */
+  contactPhone?: string;
+  contactAddress?: string;
 }

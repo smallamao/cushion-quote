@@ -14,6 +14,8 @@ function mapError(code: string): string {
       return "此報價單已完成簽署或連結已失效。";
     case "invalid_signature":
       return "簽名內容無效，請重新簽名。";
+    case "missing_orderer_info":
+      return "請填寫完整的訂貨人姓名、電話與地址。";
     default:
       return "簽署失敗，請稍後再試或聯絡馬鈴薯沙發。";
   }
@@ -59,6 +61,8 @@ export function SignClient({ token }: { token: string }) {
   const [loadError, setLoadError] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [signerName, setSignerName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -79,6 +83,8 @@ export function SignClient({ token }: { token: string }) {
         }
         setView(json.view);
         setSignerName(json.view.clientName ?? "");
+        setPhone(json.view.contactPhone ?? "");
+        setAddress(json.view.contactAddress ?? "");
       } catch {
         if (!cancelled) setLoadError(true);
       } finally {
@@ -95,14 +101,23 @@ export function SignClient({ token }: { token: string }) {
   }, []);
 
   async function submit() {
+    const name = signerName.trim();
+    const phoneV = phone.trim();
+    const addressV = address.trim();
     if (!signatureData || !agreed || submitting) return;
+    if (!name || !phoneV || !addressV) return;
     setSubmitting(true);
     setSubmitError("");
     try {
       const res = await fetch(`/api/public/sign/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signatureDataUrl: signatureData, signerName: signerName.trim() }),
+        body: JSON.stringify({
+          signatureDataUrl: signatureData,
+          signerName: name,
+          ordererPhone: phoneV,
+          ordererAddress: addressV,
+        }),
       });
       const json = (await res.json()) as { ok: boolean; signedPdfUrl?: string; error?: string };
       if (!json.ok || !json.signedPdfUrl) throw new Error(mapError(json.error ?? ""));
@@ -168,7 +183,13 @@ export function SignClient({ token }: { token: string }) {
     );
   }
 
-  const canSubmit = Boolean(signatureData) && agreed && !submitting;
+  const canSubmit =
+    Boolean(signatureData) &&
+    agreed &&
+    !submitting &&
+    Boolean(signerName.trim()) &&
+    Boolean(phone.trim()) &&
+    Boolean(address.trim());
 
   return (
     <Shell>
@@ -220,11 +241,37 @@ export function SignClient({ token }: { token: string }) {
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <label className="mb-1 block text-xs font-medium text-gray-500">簽署人姓名</label>
+          <p className="mb-1 text-sm font-semibold text-gray-800">訂貨人資訊</p>
+          <p className="mb-3 text-xs text-gray-400">簽名的人即為訂貨人，以下為出貨聯絡用</p>
+
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            姓名 <span className="text-red-500">*</span>
+          </label>
           <input
             value={signerName}
             onChange={(e) => setSignerName(e.target.value)}
             placeholder="請輸入姓名"
+            className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            電話 <span className="text-red-500">*</span>
+          </label>
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            inputMode="tel"
+            placeholder="請輸入聯絡電話"
+            className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            地址 <span className="text-red-500">*</span>
+          </label>
+          <input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="請輸入地址"
             className="mb-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
 

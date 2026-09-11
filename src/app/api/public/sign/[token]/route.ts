@@ -44,6 +44,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
 
   let clientName = "";
   let total = 0;
+  let contactPhone = "";
+  let contactAddress = "";
   const client = await getSheetsClient();
   if (client) {
     try {
@@ -53,6 +55,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       if (version) {
         clientName = version.clientNameSnapshot;
         total = version.totalAmount;
+        contactPhone = version.clientPhoneSnapshot;
+        contactAddress = version.projectAddressSnapshot;
       }
     } catch {
       /* display-only, tolerate */
@@ -68,6 +72,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     total,
     expiresAt: link.expiresAt,
     signedPdfUrl: link.signedPdfUrl,
+    contactPhone,
+    contactAddress,
   };
   return NextResponse.json({ ok: true, view });
 }
@@ -75,6 +81,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
 interface SignBody {
   signatureDataUrl: string;
   signerName: string;
+  /** 訂貨人資訊（簽署人＝訂貨人）；電話、地址為必填 */
+  ordererPhone?: string;
+  ordererAddress?: string;
 }
 
 async function uploadSignedPdf(bytes: Uint8Array, quoteId: string): Promise<string> {
@@ -111,6 +120,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (!body?.signatureDataUrl?.startsWith("data:image/png;base64,")) {
     return NextResponse.json({ ok: false, error: "invalid_signature" }, { status: 400 });
   }
+  // 訂貨人資訊：姓名（＝簽署人）、電話、地址皆必填（前端已擋，後端再驗一次）
+  const signerName = (body.signerName ?? "").trim();
+  const ordererPhone = (body.ordererPhone ?? "").trim();
+  const ordererAddress = (body.ordererAddress ?? "").trim();
+  if (!signerName || !ordererPhone || !ordererAddress) {
+    return NextResponse.json({ ok: false, error: "missing_orderer_info" }, { status: 400 });
+  }
   if (!process.env.CLOUDINARY_CLOUD_NAME) {
     return NextResponse.json({ ok: false, error: "Cloudinary 未設定" }, { status: 503 });
   }
@@ -126,7 +142,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const ip = clientIp(request);
     const userAgent = request.headers.get("user-agent") ?? "";
     const signedAtDisplay = formatTaipei(nowIso);
-    const signerName = (body.signerName ?? "").trim();
 
     const signedPdf = await bakeSignedPdf(unsignedPdf, {
       signatureDataUrl: body.signatureDataUrl,
@@ -145,10 +160,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const rowIndex = rows.findIndex((r) => r[0] === link.versionId);
     if (rowIndex === -1) throw new Error("version not found");
     const existing = versionRowToRecord(rows[rowIndex] ?? []);
-    const noteLine = `[線上簽署] ${signerName || "客戶"} 於 ${signedAtDisplay} 簽署（IP ${ip || "—"}，驗證碼 ${link.token}）`;
+    const noteLine = `[線上簽署] ${signerName || "客戶"} 於 ${signedAtDisplay} 簽署（電話 ${ordererPhone}，地址 ${ordererAddress}，IP ${ip || "—"}，驗證碼 ${link.token}）`;
     const updated: QuoteVersionRecord = {
       ...existing,
       versionStatus: "accepted",
+      // 訂貨人資訊：客人簽署時填寫，寫回報價版本聯絡人/電話/地址快照，
+      // 供之後從此報價開訂製訂單時自動帶入（開單邏輯優先讀這三欄）。
+      contactNameSnapshot: signerName,
+      clientPhoneSnapshot: ordererPhone,
+      projectAddressSnapshot: ordererAddress,
       signedBack: true,
       signedBackDate: nowIso.slice(0, 10),
       signedContractUrls: [...(existing.signedContractUrls ?? []), signedPdfUrl],

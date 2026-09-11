@@ -161,7 +161,7 @@ export async function POST(request: Request) {
       // 1. Find the version row
       const versionRes = await client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
-        range: "報價版本!A2:AQ2000",
+        range: "報價版本!A2:AW2000",
       });
       const versionRows = (versionRes.data.values ?? []) as string[][];
       const versionRow = versionRows.find((r) => r[0] === versionId);
@@ -197,11 +197,20 @@ export async function POST(request: Request) {
       const caseRow = caseRows.find((r) => r[0] === caseId);
       orderNumber = caseId;
       orderTitle = caseRow ? (caseRow[1] ?? "") : "";
-      // 案場現場資訊帶入（案件：col4 聯絡人、col5 電話、col6 地址）→ 給師傅派工用
-      if (caseRow) {
-        installContactName = caseRow[4] ?? "";
-        installContactPhone = caseRow[5] ?? "";
-        installAddress = caseRow[6] ?? "";
+      // 訂貨人／現場資訊帶入：
+      // 只有「客人有線上簽署」(signedBack col43=TRUE) 時，才優先取簽署時回寫於
+      // 報價版本的訂貨人快照（col30 聯絡人 / col31 電話 / col33 地址）；
+      // 否則一律讀「當前案件」現場資訊（col4/5/6），避免用到凍結的舊快照或
+      // 未修復的舊格式欄位（legacy 欄位位移）。→ 給出貨與師傅派工用。
+      const versionSigned = String(versionRow[43] ?? "").toUpperCase() === "TRUE";
+      if (versionSigned) {
+        installContactName = versionRow[30] || (caseRow?.[4] ?? "");
+        installContactPhone = versionRow[31] || (caseRow?.[5] ?? "");
+        installAddress = versionRow[33] || (caseRow?.[6] ?? "");
+      } else {
+        installContactName = caseRow?.[4] ?? "";
+        installContactPhone = caseRow?.[5] ?? "";
+        installAddress = caseRow?.[6] ?? "";
       }
 
       // 3. 讀本版本所有明細（帶入訂單品項用）
