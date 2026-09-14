@@ -48,6 +48,16 @@ describe("classifyQuoteCategory", () => {
     expect(classifyQuoteCategory("折讓", "訂製臥榻墊 W213 x 60")).toBe("訂製臥榻墊");
   });
 
+
+  it("只看品名第一行，附註裡的字不得劫持分類（禾雅事件）", () => {
+    const name = "訂製臥榻坐墊\n\nW194 x 50.2 x 6cm * 一片\n（整片不分割）\n（含外布套拉鍊）\n（底面魔鬼氈定位）";
+    expect(classifyQuoteCategory(name)).toBe("訂製臥榻墊");
+  });
+
+  it("第一行本身就是布套時仍歸訂製皮布套", () => {
+    expect(classifyQuoteCategory("訂製外布套\n\n坐墊布套\nW88 x 80 x 15cm * 二件")).toBe("訂製皮布套");
+  });
+
   it("完全無法判斷時回 null，不亂填", () => {
     expect(classifyQuoteCategory("卡座繃布板 樣式一")).toBeNull();
     expect(classifyQuoteCategory("")).toBeNull();

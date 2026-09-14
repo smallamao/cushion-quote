@@ -35,10 +35,18 @@ const RULES: { category: QuoteCategory; pattern: RegExp }[] = [
   { category: "訂製臥榻墊", pattern: /臥榻|臥鋪|床墊|坐墊|椅墊/ },
 ];
 
-function matchOne(text: string): QuoteCategory | null {
+function matchIn(text: string): QuoteCategory | null {
   const clean = (text ?? "").replace(/\s+/g, "");
   if (!clean) return null;
   return RULES.find((r) => r.pattern.test(clean))?.category ?? null;
+}
+
+/**
+ * 主判斷只看品名第一行：品名後面常掛工法附註（例「（含外布套拉鍊）」），
+ * 掃整段會被附註劫持——臥榻坐墊因此被歸成訂製皮布套（禾雅 2026-09-14）。
+ */
+function matchFirstLine(text: string): QuoteCategory | null {
+  return matchIn((text ?? "").split("\n")[0]);
 }
 
 /**
@@ -46,5 +54,6 @@ function matchOne(text: string): QuoteCategory | null {
  * @param fallback 備援文字（方案名稱＋全部品項），primary 判不出來時才看
  */
 export function classifyQuoteCategory(primary: string, fallback = ""): QuoteCategory | null {
-  return matchOne(primary) ?? matchOne(fallback);
+  // 備援刻意掃全文：主判斷已經失敗，這時寧可從附註撈到線索也好過留白
+  return matchFirstLine(primary) ?? matchIn(fallback);
 }

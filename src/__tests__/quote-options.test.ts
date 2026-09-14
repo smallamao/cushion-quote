@@ -5,6 +5,7 @@ import {
   deriveOptionMeta,
   displayAmountOf,
   isAddonLine,
+  multiOptionNote,
 } from "@/lib/quote-options";
 
 const line = (itemName: string, lineAmount: number, extra: Record<string, unknown> = {}) => ({
@@ -146,5 +147,21 @@ describe("deriveOptionLabels", () => {
     expect(
       deriveOptionLabels([line("摺疊墊", 7800), line("摺疊墊", 16500), line("摺疊墊", 19000)]),
     ).toEqual(["方案一", "方案二", "方案三"]);
+  });
+});
+
+describe("multiOptionNote", () => {
+  it("未稅：說明金額未含營業稅", () => {
+    const note = multiOptionNote(false);
+    expect(note).toContain("請擇一");
+    expect(note).toContain("未含營業稅");
+    expect(note).not.toContain("已含");
+  });
+
+  it("含稅：方案金額是未稅行金額，必須說另加稅，不能寫已含（禾雅事件）", () => {
+    const note = multiOptionNote(true, 5);
+    expect(note).toContain("未含營業稅");
+    expect(note).toContain("5%");
+    expect(note).not.toContain("已含營業稅");
   });
 });

@@ -529,7 +529,7 @@ export function QuotePDFDocument(props: QuotePDFProps) {
         {multiOption ? (
           /* 多方案：合計是所有方案相加的假數字，會嚇到客人；只留一句請擇一 */
           <View style={s.totalsBlock}>
-            <Text style={s.multiOptionNote}>{multiOptionNote(includeTax)}</Text>
+            <Text style={s.multiOptionNote}>{multiOptionNote(includeTax, settings.taxRate)}</Text>
           </View>
         ) : (
           <View style={s.totalsBlock}>

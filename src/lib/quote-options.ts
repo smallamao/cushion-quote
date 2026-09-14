@@ -106,7 +106,16 @@ export function displayAmountOf(version: {
   return version.totalAmount;
 }
 
-/** PDF 多方案時取代合計區塊的說明句 */
-export function multiOptionNote(includeTax: boolean): string {
-  return `本報價為多方案報價，各方案金額如上，請擇一；金額${includeTax ? "已含" : "未含"}營業稅。`;
+/**
+ * PDF 多方案時取代合計區塊的說明句。
+ *
+ * 多方案不顯示小計／稅額／總額，表上看到的是**各行的未稅金額**。
+ * 因此含稅單也必須寫「未含營業稅、另加 N%」——寫成「已含」會讓客人以為
+ * 方案價就是最終價，請款時才發現多 5%（禾雅窗飾 2026-09-14 發現）。
+ */
+export function multiOptionNote(includeTax: boolean, taxRate = 5): string {
+  const base = "本報價為多方案報價，各方案金額如上，請擇一；";
+  return includeTax
+    ? `${base}上列金額均未含營業稅，結算時另加 ${taxRate}%。`
+    : `${base}金額未含營業稅。`;
 }
