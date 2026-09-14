@@ -92,13 +92,72 @@ export function findBestTemplate(
 }
 
 /**
+ * 新色號與範本是不是同一個系列。
+ *
+ * 判斷方式刻意和 findBestTemplate 的比對同一套（四個識別欄各自抽前綴，
+ * 再用 normalizeIdentifier 忽略分隔符），這樣「靠什麼對到範本，就照什麼繼承」。
+ * 跨系列＝範本只是拿來借單位／分類／供應商，品名與單價都不該當真。
+ */
+export function isCrossFamilyClone(template: PurchaseProduct, newCode: string): boolean {
+  const prefix = extractProductPrefix(newCode);
+  if (!prefix) return true; // 抽不出前綴（純數字碼如 3324）→ 一律當跨系列，不借名字
+  const prefixes = productPrefixes(template);
+  if (prefixes.includes(prefix)) return false;
+  const norm = normalizeIdentifier(prefix);
+  if (!norm) return true;
+  return !prefixes.some((p) => {
+    const n = normalizeIdentifier(p);
+    return n !== "" && (n.startsWith(norm) || norm.startsWith(n));
+  });
+}
+
+/**
+ * 決定「從範本複製出來的新色號」該叫什麼名字。
+ *
+ * 🔴 為什麼不能直接沿用 template.productName（2026-09-14 老闆回報）：
+ * PS-20260910-11 寄給尚慶的採購單上，PVC6916 / S3324 / BF01-13 三行的商品名稱
+ * 全印成「BBL5 北歐輕絨貓抓布」，S6916 印成「半牛皮 S6934」——因為 cloneProductAsNew
+ * 把四個識別代碼欄都換成新碼了，只有 productName 靠 `...template` 整包抄。
+ * 同系列時看不出問題（BBL5-17 本來就該叫 BBL5 北歐輕絨貓抓布），跨系列就變成別人的名字。
+ * **廠商看的是「商品名稱」欄**，所以整張單對他們來說都在講同一塊布。
+ *
+ * 三條規則，由具體到一般：
+ * 1. 品名裡直接帶著範本自己的代碼 → 換成新碼（「半牛皮 S6934」→「半牛皮 S6916」）。
+ *    代碼長度 <3 不做替換，免得把品名裡的「1」「01」之類誤換掉。
+ * 2. 品名是純系列名且同系列 → 沿用（「LY93」給 LY9306A、「BBL5 北歐輕絨貓抓布」給 BBL5-17）。
+ * 3. 跨系列 → 一律用新色號本身當品名。寧可品名陽春，也不可掛別人的名字。
+ */
+export function deriveProductName(template: PurchaseProduct, newCode: string): string {
+  const name = (template.productName ?? "").trim();
+  if (!name) return newCode;
+
+  for (const raw of [
+    template.productCode,
+    template.supplierProductCode,
+    template.colorCode,
+    template.specification,
+  ]) {
+    const src = String(raw ?? "").trim();
+    if (src.length >= 3 && name.includes(src)) {
+      return name.split(src).join(newCode);
+    }
+  }
+
+  return isCrossFamilyClone(template, newCode) ? newCode : name;
+}
+
+/**
  * 將範本整列複製，把所有「識別代碼」欄位都改成 newCode，
- * 並在 notes 標記來源供審計。供應商/單價/單位/分類/品名等沿用範本。
+ * 並在 notes 標記來源供審計。供應商/單價/單位/分類沿用範本；
+ * **品名走 deriveProductName**（跨系列不可沿用，見上）。
  *
  * 識別欄位＝productCode / colorCode / specification / supplierProductCode。
  * 因為不同系列把色號存在不同欄（例如 BBL5 系列 productCode 是內部碼 GABBL5XX、
  * 真正色號存在 specification），若只換 productCode/colorCode，規格與廠商產品編號
  * 會殘留範本的值（BBL5-17 的規格顯示成範本的 BBL5-04）。全部同步為 newCode 才乾淨。
+ *
+ * ⚠️ 跨系列複製時單價也是範本的（PVC6916 抄到 BBL5 的 300/碼）。單價錯了看得出來、
+ * 品名錯了廠商看不懂，所以這裡只根治品名；單價由呼叫端用 isCrossFamilyClone 發警告。
  *
  * @param template 範本商品（從同前綴取得）
  * @param newCode  缺少的色號（即自動建立的 productCode）
@@ -111,6 +170,7 @@ export function cloneProductAsNew(
   now: string,
   newId: string,
 ): PurchaseProduct {
+  const crossFamily = isCrossFamilyClone(template, newCode);
   return {
     ...template,
     id: newId,
@@ -118,7 +178,10 @@ export function cloneProductAsNew(
     colorCode: newCode,
     specification: newCode,
     supplierProductCode: newCode,
-    notes: `自動由 ${template.productCode} 複製建立`,
+    productName: deriveProductName(template, newCode),
+    notes: crossFamily
+      ? `自動由 ${template.productCode} 複製建立（跨系列，品名與單價待人工確認）`
+      : `自動由 ${template.productCode} 複製建立`,
     createdAt: now,
     updatedAt: now,
   };

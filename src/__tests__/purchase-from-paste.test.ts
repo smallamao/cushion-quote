@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildPurchaseGroupsFromPaste,
   cloneProductAsNew,
+  deriveProductName,
+  isCrossFamilyClone,
   extractProductPrefix,
   findBestTemplate,
 } from "@/lib/purchase-from-paste";
@@ -624,5 +626,90 @@ describe("模糊比對到他廠商品 + 指定供應商", () => {
     expect(r.groups.map((g) => g.supplierId)).toEqual([DATONG]);
     expect(r.groups[0].items[0].supplierSource).toBe("override");
     expect(r.catalogMismatch[0]).toMatchObject({ productCode: "2200A71", catalog: "米盧", used: "大同" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 🔴 跨系列複製不可沿用範本品名（2026-09-14 老闆回報「廠商整個全亂」）
+//
+// PS-20260910-11 寄到尚慶的採購單上，PVC6916 / S3324 / BF01-13 三個品項的
+// 商品名稱全部印成「BBL5 北歐輕絨貓抓布」，S6916 印成「半牛皮 S6934」。
+// 根因：cloneProductAsNew 把 productCode / colorCode / specification /
+// supplierProductCode 四個識別欄都改成新碼了，唯獨 productName 是靠
+// `...template` 整包沿用 —— 同系列看起來沒事，跨系列就變成別人的名字。
+// 廠商看的是「商品名稱」那一欄，所以對他們來說整張單都在講同一塊布。
+// ---------------------------------------------------------------------------
+describe("deriveProductName：新色號的品名不可借用別系列", () => {
+  const bbl5: PurchaseProduct = {
+    ...product("GABBL509", SC, 300),
+    specification: "BBL5-09",
+    colorCode: "BBL5-09",
+    productName: "BBL5 北歐輕絨貓抓布",
+  };
+
+  it("跨系列複製 → 品名改用新色號本身，不可沿用範本品名", () => {
+    // 這三筆就是 PS-20260910-11 印錯的那三行
+    expect(deriveProductName(bbl5, "PVC6916")).toBe("PVC6916");
+    expect(deriveProductName(bbl5, "S3324")).toBe("S3324");
+    expect(deriveProductName(bbl5, "BF01-13")).toBe("BF01-13");
+  });
+
+  it("同系列複製 → 系列品名照舊沿用（BBL5-17 仍叫 BBL5 北歐輕絨貓抓布）", () => {
+    expect(deriveProductName(bbl5, "BBL5-17")).toBe("BBL5 北歐輕絨貓抓布");
+  });
+
+  it("品名裡直接帶著範本代碼 → 把代碼換成新碼，其餘文字保留", () => {
+    const s6934: PurchaseProduct = {
+      ...product("S6934", SC, 0),
+      productName: "半牛皮 S6934",
+      specification: "",
+      unit: "才",
+    };
+    // PS-20260910-11 第 1 行：S6916 印成「半牛皮 S6934」
+    expect(deriveProductName(s6934, "S6916")).toBe("半牛皮 S6916");
+  });
+
+  it("同系列但品名帶代碼 → 一樣換碼，不會因為同系列就整包照抄", () => {
+    const gu806: PurchaseProduct = { ...product("谷806", SC, 40), productName: "谷806" };
+    expect(deriveProductName(gu806, "谷811")).toBe("谷811");
+  });
+
+  it("系列品名不含代碼且同系列 → 沿用（LY9306 的 LY93 給 LY9306A）", () => {
+    const ly: PurchaseProduct = {
+      ...product("LY9306", SC, 280),
+      productName: "LY93",
+      specification: "9306",
+    };
+    expect(deriveProductName(ly, "LY9306A")).toBe("LY93");
+  });
+
+  it("範本沒有品名 → 用新碼，不可留空", () => {
+    const blank: PurchaseProduct = { ...product("GABBL509", SC, 300), productName: "" };
+    expect(deriveProductName(blank, "PVC6916")).toBe("PVC6916");
+  });
+
+  it("短代碼不可拿去做字串替換（避免誤傷品名裡的數字）", () => {
+    const short: PurchaseProduct = {
+      ...product("A1", SC, 100),
+      productName: "以色列貓抓布 極致旗艦(3200)",
+      colorCode: "01",
+      specification: "1",
+    };
+    // 品名裡的 "1"/"01" 不可被當成代碼換掉；跨系列 → 直接用新碼
+    expect(deriveProductName(short, "MCC0004")).toBe("MCC0004");
+  });
+
+  it("🔴 哨兵：cloneProductAsNew 必須經過 deriveProductName，不得退回整包沿用", () => {
+    const cloned = cloneProductAsNew(bbl5, "PVC6916", "2026-09-14", "new-id");
+    expect(cloned.productName).toBe("PVC6916");
+    expect(cloned.productName).not.toBe("BBL5 北歐輕絨貓抓布");
+    // 其餘欄位行為不變
+    expect(cloned.supplierId).toBe(SC);
+    expect(cloned.unitPrice).toBe(300);
+  });
+
+  it("isCrossFamilyClone 標出「範本只是借單位/供應商」的情形，供呼叫端警告", () => {
+    expect(isCrossFamilyClone(bbl5, "PVC6916")).toBe(true);
+    expect(isCrossFamilyClone(bbl5, "BBL5-17")).toBe(false);
   });
 });

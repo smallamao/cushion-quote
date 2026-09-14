@@ -14,6 +14,8 @@ import { cacheInvalidate } from "@/lib/sheets-cache";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { PurchaseProduct } from "@/lib/types";
 
+import { deriveProductName, isCrossFamilyClone } from "@/lib/purchase-from-paste";
+
 import { authorizeSchedulerRequest } from "../../purchases/_catalog";
 
 export const dynamic = "force-dynamic";
@@ -148,7 +150,15 @@ function buildProduct(
     id: crypto.randomUUID(),
     productCode: input.productCode ?? base.productCode,
     supplierProductCode: input.supplierProductCode ?? input.productCode ?? base.supplierProductCode,
-    productName: input.productName ?? base.productName,
+    // 🔴 建檔時品名不可整包沿用範本（2026-09-14）：呼叫端沒明講品名，就由
+    //    deriveProductName 依「同系列沿用／跨系列改用新碼」決定。
+    //    這條端點就是 PS-20260910-11 那四筆錯品名的來源——我當初只給 copyFrom
+    //    想借單價與供應商，品名卻跟著抄成「BBL5 北歐輕絨貓抓布」寄給了尚慶。
+    productName:
+      input.productName ??
+      (mode === "create" && template
+        ? deriveProductName(template, input.productCode ?? base.productCode)
+        : base.productName),
     specification: input.specification ?? base.specification,
     category: (input.category ?? base.category) as PurchaseProduct["category"],
     unit: (input.unit ?? base.unit) as PurchaseProduct["unit"],
@@ -272,6 +282,13 @@ export async function POST(request: Request) {
         continue;
       }
       const product = buildProduct(input, template, today);
+      if (template && !input.productName && isCrossFamilyClone(template, input.productCode)) {
+        // 跨系列借範本：品名已改用新碼，但單價／幅寬／品牌仍是範本的，必須講出來。
+        warnings.push(
+          `${label}：範本 ${template.productCode} 與新碼不同系列，品名已改為「${product.productName}」；` +
+            `單價 ${product.unitPrice} 沿用自範本，請確認`,
+        );
+      }
       if (input.imageSourceUrl) {
         try {
           product.imageUrl = await mirrorImage(input.imageSourceUrl);
