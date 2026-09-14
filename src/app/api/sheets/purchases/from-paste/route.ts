@@ -195,6 +195,10 @@ function toResponseItems(group: FromPasteGroup) {
   return group.items.map((it) => ({
     productCode: it.productCode,
     productName: it.productName,
+    // 🔴 排程端要在送單前比對「這張單真的會印出什麼」——品名與單價都得回，
+    //    否則只能靠猜（2026-09-14 品名抄錯整張單寄給尚慶之後補）。
+    specification: it.specification,
+    unitPrice: it.unitPrice,
     qty: it.qty,
     quantity: it.qty,
     unit: it.unit,

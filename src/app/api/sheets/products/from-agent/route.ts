@@ -311,6 +311,7 @@ export async function POST(request: Request) {
         dryRun: true,
         wouldCreate: toAppend,
         wouldUpdate: toUpdate.map((u) => u.product),
+        warnings,
       });
     }
 
