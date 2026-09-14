@@ -16,6 +16,8 @@ function mapError(code: string): string {
       return "簽名內容無效，請重新簽名。";
     case "missing_orderer_info":
       return "請填寫完整的訂貨人姓名、電話與地址。";
+    case "missing_invoice_info":
+      return "勾選開立發票時，請填寫統一編號與發票抬頭。";
     default:
       return "簽署失敗，請稍後再試或聯絡馬鈴薯沙發。";
   }
@@ -63,6 +65,9 @@ export function SignClient({ token }: { token: string }) {
   const [signerName, setSignerName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [issueInvoice, setIssueInvoice] = useState(false);
+  const [taxId, setTaxId] = useState("");
+  const [invoiceTitle, setInvoiceTitle] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -104,8 +109,11 @@ export function SignClient({ token }: { token: string }) {
     const name = signerName.trim();
     const phoneV = phone.trim();
     const addressV = address.trim();
+    const taxIdV = taxId.trim();
+    const invoiceTitleV = invoiceTitle.trim();
     if (!signatureData || !agreed || submitting) return;
     if (!name || !phoneV || !addressV) return;
+    if (issueInvoice && (!taxIdV || !invoiceTitleV)) return;
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -117,6 +125,9 @@ export function SignClient({ token }: { token: string }) {
           signerName: name,
           ordererPhone: phoneV,
           ordererAddress: addressV,
+          issueInvoice,
+          taxId: taxIdV,
+          invoiceTitle: invoiceTitleV,
         }),
       });
       const json = (await res.json()) as { ok: boolean; signedPdfUrl?: string; error?: string };
@@ -189,7 +200,14 @@ export function SignClient({ token }: { token: string }) {
     !submitting &&
     Boolean(signerName.trim()) &&
     Boolean(phone.trim()) &&
-    Boolean(address.trim());
+    Boolean(address.trim()) &&
+    (!issueInvoice || (Boolean(taxId.trim()) && Boolean(invoiceTitle.trim())));
+
+  // 開發票加稅預覽：未稅報價（taxRate 0）以未稅小計外加 5% 營業稅；已含稅則沿用原總價。
+  const invoiceAlreadyTaxed = (view.taxRate ?? 0) > 0;
+  const invoiceBase = view.subtotal ?? view.total;
+  const invoiceTax = Math.round(invoiceBase * 0.05);
+  const invoiceTotal = invoiceBase + invoiceTax;
 
   return (
     <Shell>
@@ -274,6 +292,54 @@ export function SignClient({ token }: { token: string }) {
             placeholder="請輸入地址"
             className="mb-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
+
+          <label className="mb-3 flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={issueInvoice}
+              onChange={(e) => setIssueInvoice(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>需要開立統一發票（未稅價需另加 5% 營業稅）</span>
+          </label>
+
+          {issueInvoice && (
+            <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                統一編號 <span className="text-red-500">*</span>
+              </label>
+              <input
+                value={taxId}
+                onChange={(e) => setTaxId(e.target.value)}
+                inputMode="numeric"
+                placeholder="請輸入統一編號"
+                className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                發票抬頭 <span className="text-red-500">*</span>
+              </label>
+              <input
+                value={invoiceTitle}
+                onChange={(e) => setInvoiceTitle(e.target.value)}
+                placeholder="請輸入發票抬頭"
+                className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+
+              {invoiceAlreadyTaxed ? (
+                <p className="text-xs text-gray-500">
+                  本報價已含稅，總計 NT$ {view.total.toLocaleString()}（不再另加稅）。
+                </p>
+              ) : (
+                <p className="text-xs text-gray-600">
+                  未稅 NT$ {invoiceBase.toLocaleString()}／營業稅5% NT$ {invoiceTax.toLocaleString()}／
+                  <span className="font-semibold text-gray-900">
+                    含稅總計 NT$ {invoiceTotal.toLocaleString()}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
 
           <label className="mb-1 block text-xs font-medium text-gray-500">手寫簽名</label>
           {signatureData ? (

@@ -46,6 +46,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   let total = 0;
   let contactPhone = "";
   let contactAddress = "";
+  let subtotal = 0;
+  let taxRate = 0;
   const client = await getSheetsClient();
   if (client) {
     try {
@@ -57,6 +59,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         total = version.totalAmount;
         contactPhone = version.clientPhoneSnapshot;
         contactAddress = version.projectAddressSnapshot;
+        // 未稅小計與稅率：供客戶端計算勾選開發票時的 5% 加稅（未稅→含稅）
+        subtotal = version.subtotalBeforeTax;
+        taxRate = version.taxRate;
       }
     } catch {
       /* display-only, tolerate */
@@ -74,6 +79,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     signedPdfUrl: link.signedPdfUrl,
     contactPhone,
     contactAddress,
+    subtotal,
+    taxRate,
   };
   return NextResponse.json({ ok: true, view });
 }
@@ -84,6 +91,11 @@ interface SignBody {
   /** 訂貨人資訊（簽署人＝訂貨人）；電話、地址為必填 */
   ordererPhone?: string;
   ordererAddress?: string;
+  /** 是否開立統一發票：勾選時未稅報價會另加 5% 營業稅並轉為含稅 */
+  issueInvoice?: boolean;
+  /** 開發票時必填：統一編號、發票抬頭 */
+  taxId?: string;
+  invoiceTitle?: string;
 }
 
 async function uploadSignedPdf(bytes: Uint8Array, quoteId: string): Promise<string> {
@@ -127,6 +139,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (!signerName || !ordererPhone || !ordererAddress) {
     return NextResponse.json({ ok: false, error: "missing_orderer_info" }, { status: 400 });
   }
+  // 開立統一發票：勾選時統編與抬頭皆必填（前端已擋，後端再驗一次）
+  const issueInvoice = body.issueInvoice === true;
+  const taxId = (body.taxId ?? "").trim();
+  const invoiceTitle = (body.invoiceTitle ?? "").trim();
+  if (issueInvoice && (!taxId || !invoiceTitle)) {
+    return NextResponse.json({ ok: false, error: "missing_invoice_info" }, { status: 400 });
+  }
   if (!process.env.CLOUDINARY_CLOUD_NAME) {
     return NextResponse.json({ ok: false, error: "Cloudinary 未設定" }, { status: 503 });
   }
@@ -160,10 +179,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const rowIndex = rows.findIndex((r) => r[0] === link.versionId);
     if (rowIndex === -1) throw new Error("version not found");
     const existing = versionRowToRecord(rows[rowIndex] ?? []);
-    const noteLine = `[線上簽署] ${signerName || "客戶"} 於 ${signedAtDisplay} 簽署（電話 ${ordererPhone}，地址 ${ordererAddress}，IP ${ip || "—"}，驗證碼 ${link.token}）`;
+
+    // 開立統一發票：只對「未稅」報價（taxRate 0/falsy 且 taxAmount 0）另加 5% 營業稅，
+    // 避免對已含稅報價重複課稅（double-tax）。加稅只動 taxRate/taxAmount/totalAmount，
+    // subtotalBeforeTax（未稅）維持不變，故毛利不受影響（稅為代收代付）。含稅後的
+    // totalAmount 由下方既有的 syncVersionToParents 自動連動到應收/訂單/發票。
+    const isCurrentlyUntaxed = !existing.taxRate && !existing.taxAmount;
+    const addTax = issueInvoice && isCurrentlyUntaxed;
+    const addedTaxAmount = addTax ? Math.round(existing.subtotalBeforeTax * 0.05) : 0;
+    const taxFields: Partial<Pick<QuoteVersionRecord, "taxRate" | "taxAmount" | "totalAmount">> =
+      addTax
+        ? {
+            taxRate: 5,
+            taxAmount: addedTaxAmount,
+            totalAmount: existing.subtotalBeforeTax + addedTaxAmount,
+          }
+        : {};
+
+    // 統編／抬頭無對應 schema 欄位，發票為人工開立，故僅存進 signedNotes 作存證與開票依據。
+    const invoiceNote = issueInvoice
+      ? addTax
+        ? `｜開立統一發票：統編 ${taxId}、抬頭 ${invoiceTitle}（未稅 ${existing.subtotalBeforeTax} ＋5%稅 ${addedTaxAmount} ＝含稅 ${existing.subtotalBeforeTax + addedTaxAmount}）`
+        : `｜開立統一發票：統編 ${taxId}、抬頭 ${invoiceTitle}`
+      : "";
+    const noteLine = `[線上簽署] ${signerName || "客戶"} 於 ${signedAtDisplay} 簽署（電話 ${ordererPhone}，地址 ${ordererAddress}，IP ${ip || "—"}，驗證碼 ${link.token}）${invoiceNote}`;
     const updated: QuoteVersionRecord = {
       ...existing,
       versionStatus: "accepted",
+      ...taxFields,
       // 訂貨人資訊：客人簽署時填寫，寫回報價版本聯絡人/電話/地址快照，
       // 供之後從此報價開訂製訂單時自動帶入（開單邏輯優先讀這三欄）。
       contactNameSnapshot: signerName,
@@ -197,7 +240,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     await appendNotification({
       type: "quote_signed",
       title: "報價單已線上簽署",
-      body: `${signerName || "客戶"} 已簽署 ${link.quoteId}（NT$ ${(existing.totalAmount ?? 0).toLocaleString()}）`,
+      body: `${signerName || "客戶"} 已簽署 ${link.quoteId}（NT$ ${(updated.totalAmount ?? 0).toLocaleString()}）`,
       link: "/quotes",
     });
 

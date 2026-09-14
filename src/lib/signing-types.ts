@@ -44,4 +44,8 @@ export interface PublicSigningView {
   /** 訂貨人資訊預填值（若報價已有聯絡電話/地址快照）；客人可確認或修正 */
   contactPhone?: string;
   contactAddress?: string;
+  /** 未稅小計（version.subtotalBeforeTax）；供客戶端計算勾選開發票時的 5% 加稅 */
+  subtotal?: number;
+  /** 目前稅率（version.taxRate）；>0 代表此報價已含稅，勾選開發票時不再加稅 */
+  taxRate?: number;
 }
