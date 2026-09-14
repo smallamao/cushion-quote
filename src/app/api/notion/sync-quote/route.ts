@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { versionRowToRecord } from "@/app/api/sheets/_v2-utils";
 import { classifyQuoteCategory } from "@/lib/quote-category";
+import { buildNotionTitle } from "@/lib/notion-title";
 
 const NOTION_API = "https://api.notion.com/v1";
 
@@ -22,27 +23,12 @@ function mapStatus(versionStatus: string): string {
   }
 }
 
-/**
- * Notion 頁面標題＝該頁的唯一鍵（findExistingPage 以標題比對）。
- *
- * 散客標題帶 S 編號（「S993 鄭鳳珍」），新案子會拿到新編號，天然唯一。
- * B2B 沒有 S 編號，標題只剩公司名 → 同一家公司的每個案子都會覆蓋前一頁
- * （禾雅窗飾報過 5 次，Notion 上只剩最後一次，2026-09-14 發現）。
- * 因此沒有 S 編號時，補上案名讓每個案子各自成頁。
- */
-function buildNotionTitle(version: ReturnType<typeof versionRowToRecord>): string {
-  const base = version.clientNameSnapshot || version.versionLabel || version.versionId;
-  if (/^S\d{3}/.test(base)) return base;
-  const caseLabel = version.projectNameSnapshot || version.quoteNameSnapshot || "";
-  return caseLabel ? `${base}｜${caseLabel}` : base;
-}
-
 function buildProperties(
   version: ReturnType<typeof versionRowToRecord>,
   lineNames: string[] = [],
 ) {
   const fmtMoney = (n: number) => (n ? `$${Math.round(n).toLocaleString("zh-TW")}` : "");
-  const title = buildNotionTitle(version);
+  const title = buildNotionTitle(version.clientNameSnapshot, version.projectNameSnapshot, version.quoteNameSnapshot);
 
   const props: Record<string, unknown> = {
     編號: { title: [{ text: { content: title } }] },
@@ -140,7 +126,7 @@ export async function POST(req: NextRequest) {
   // Prefer live clientName from request (editor state) over potentially-empty snapshot
   if (clientNameOverride) version.clientNameSnapshot = clientNameOverride;
   const properties = buildProperties(version, lineNames);
-  const notionTitle = buildNotionTitle(version);
+  const notionTitle = buildNotionTitle(version.clientNameSnapshot, version.projectNameSnapshot, version.quoteNameSnapshot);
 
   const existingId = await findExistingPage(notionTitle, dbId);
 
