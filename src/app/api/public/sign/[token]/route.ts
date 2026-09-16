@@ -1,6 +1,7 @@
 import { v2 as cloudinary } from "cloudinary";
 import { NextResponse } from "next/server";
 
+import { findCompanyIdentityForCase } from "@/lib/company-lookup";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { bakeSignedPdf } from "@/lib/signing-pdf";
 import { getSigningLinkByToken, updateSigningLink } from "@/lib/signing-links-sheet";
@@ -48,6 +49,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   let contactAddress = "";
   let subtotal = 0;
   let taxRate = 0;
+  let taxId = "";
+  let invoiceTitle = "";
   const client = await getSheetsClient();
   if (client) {
     try {
@@ -62,6 +65,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         // 未稅小計與稅率：供客戶端計算勾選開發票時的 5% 加稅（未稅→含稅）
         subtotal = version.subtotalBeforeTax;
         taxRate = version.taxRate;
+        // 長期配合的 B2B 客戶不該每次簽核都重打統編——主檔有就帶進來。
+        // 散客查不到（公司名稱是空的），維持原本自行輸入的流程。
+        const identity = await findCompanyIdentityForCase(
+          client,
+          version.caseId,
+          version.clientNameSnapshot,
+        );
+        if (identity?.taxId) {
+          taxId = identity.taxId;
+          invoiceTitle = identity.companyName || version.clientNameSnapshot;
+        }
       }
     } catch {
       /* display-only, tolerate */
@@ -81,6 +95,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     contactAddress,
     subtotal,
     taxRate,
+    taxId,
+    invoiceTitle,
   };
   return NextResponse.json({ ok: true, view });
 }

@@ -48,4 +48,8 @@ export interface PublicSigningView {
   subtotal?: number;
   /** 目前稅率（version.taxRate）；>0 代表此報價已含稅，勾選開發票時不再加稅 */
   taxRate?: number;
+  /** 客戶主檔的統一編號；空＝散客或主檔沒填，由客人自行輸入 */
+  taxId?: string;
+  /** 發票抬頭預設值（＝客戶主檔公司名稱）；客人仍可改 */
+  invoiceTitle?: string;
 }

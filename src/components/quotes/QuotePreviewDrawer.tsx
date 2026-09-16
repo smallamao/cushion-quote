@@ -43,6 +43,8 @@ const PO_STATUS_MAP: Record<string, { label: string; cls: string }> = {
 export function QuotePreviewDrawer({ versionId, onClose }: Props) {
   const [version, setVersion] = useState<QuoteVersionRecord | null>(null);
   const [lines, setLines] = useState<VersionLineRecord[]>([]);
+  /** 客戶主檔統編；預覽要跟伺服器印的報價單一致（散客為空字串，PDF 就不顯示該列） */
+  const [clientTaxId, setClientTaxId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [tab, setTab] = useState<"quote" | "purchases">("quote");
@@ -82,6 +84,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
   useEffect(() => {
     if (!versionId) {
       setVersion(null);
+      setClientTaxId("");
       setLines([]);
       return;
     }
@@ -93,11 +96,12 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
     void fetch(`/api/sheets/versions/${encodeURIComponent(versionId)}`)
       .then(async (r) => {
         if (!r.ok) throw new Error("load");
-        return r.json() as Promise<{ version: QuoteVersionRecord; lines: VersionLineRecord[] }>;
+        return r.json() as Promise<{ version: QuoteVersionRecord; lines: VersionLineRecord[]; clientTaxId?: string }>;
       })
       .then((data) => {
         if (cancelled) return;
         setVersion(data.version);
+        setClientTaxId(data.clientTaxId ?? "");
         setLines(data.lines.filter((l) => l.showOnQuote).sort((a, b) => a.lineNo - b.lineNo));
       })
       .catch(() => {
@@ -128,7 +132,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
         phone: version.clientPhoneSnapshot || "",
         email: "",
         address: version.projectAddressSnapshot || "",
-        taxId: "",
+        taxId: clientTaxId,
       },
       projectName: version.projectNameSnapshot || "",
       quoteName: version.quoteNameSnapshot || undefined,
@@ -150,7 +154,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
       .catch(() => { if (!cancelled) setPdfError(true); })
       .finally(() => { if (!cancelled) setPdfLoading(false); });
     return () => { cancelled = true; };
-  }, [version, lines, settings, settingsLoading]);
+  }, [version, lines, settings, settingsLoading, clientTaxId]);
 
   // 內嵌預覽用的 object URL
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { findCompanyIdentityForCase } from "@/lib/company-lookup";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { deriveOptionMeta } from "@/lib/quote-options";
 import type { QuoteVersionRecord, VersionLineRecord } from "@/lib/types";
@@ -70,7 +71,10 @@ export async function GET(
       .map(lineRowToRecord)
       .filter((line) => line.versionId === versionId);
 
-    return NextResponse.json({ version, lines });
+    // 預覽側欄的報價單 PDF 要跟伺服器印出來的那份一致，所以統編也在這裡查好回去。
+    const identity = await findCompanyIdentityForCase(client, version.caseId, version.clientNameSnapshot);
+
+    return NextResponse.json({ version, lines, clientTaxId: identity?.taxId ?? "" });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

@@ -7,6 +7,7 @@ import { renderQuotePdfBuffer } from "@/lib/quote-pdf-server";
 import { applyTaxModeToTerms } from "@/lib/quote-terms";
 import { DEFAULT_TERMS } from "@/lib/constants";
 import { loadSystemSettings } from "@/lib/settings-sheet";
+import { findCompanyIdentityForCase } from "@/lib/company-lookup";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { QuotePDFProps } from "@/components/pdf/QuotePDF";
 
@@ -42,6 +43,8 @@ export async function buildQuoteAssets(versionId: string): Promise<QuoteAssets> 
     .filter((l) => l.versionId === versionId)
     .sort((a, b) => a.lineNo - b.lineNo);
   const { settings } = await loadSystemSettings();
+  // B2B 報價單要印統編（客戶主檔有就帶）。散客查不到，維持空白不顯示該列。
+  const identity = await findCompanyIdentityForCase(client, version.caseId, version.clientNameSnapshot);
 
   const props: QuotePDFProps = {
     quoteId: version.quoteId,
@@ -55,7 +58,7 @@ export async function buildQuoteAssets(versionId: string): Promise<QuoteAssets> 
       phone: version.clientPhoneSnapshot || "",
       email: "",
       address: version.projectAddressSnapshot || "",
-      taxId: "",
+      taxId: identity?.taxId ?? "",
     },
     projectName: version.projectNameSnapshot || "",
     quoteName: version.quoteNameSnapshot || undefined,

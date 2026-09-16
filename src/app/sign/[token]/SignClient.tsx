@@ -90,6 +90,14 @@ export function SignClient({ token }: { token: string }) {
         setSignerName(json.view.clientName ?? "");
         setPhone(json.view.contactPhone ?? "");
         setAddress(json.view.contactAddress ?? "");
+        // 客戶主檔查到統編＝這是長期配合的公司戶，一定要開發票。
+        // 直接帶入並預先勾選，客人只要簽名；散客查不到就維持空白自行填寫。
+        const masterTaxId = json.view.taxId ?? "";
+        if (masterTaxId) {
+          setTaxId(masterTaxId);
+          setInvoiceTitle(json.view.invoiceTitle ?? json.view.clientName ?? "");
+          setIssueInvoice(true);
+        }
       } catch {
         if (!cancelled) setLoadError(true);
       } finally {
@@ -300,7 +308,11 @@ export function SignClient({ token }: { token: string }) {
               onChange={(e) => setIssueInvoice(e.target.checked)}
               className="mt-0.5"
             />
-            <span>需要開立統一發票（未稅價需另加 5% 營業稅）</span>
+            <span>
+              {invoiceAlreadyTaxed
+                ? "需要開立統一發票（本報價已含營業稅，不再另加）"
+                : "需要開立統一發票（未稅價需另加 5% 營業稅）"}
+            </span>
           </label>
 
           {issueInvoice && (
