@@ -119,9 +119,12 @@ export function SignClient({ token }: { token: string }) {
     const addressV = address.trim();
     const taxIdV = taxId.trim();
     const invoiceTitleV = invoiceTitle.trim();
+    // 含稅報價：統編為選填（有填＝開公司統編發票，沒填＝個人發票）；未稅報價維持原本「勾選才加稅開票」。
+    const alreadyTaxed = (view?.taxRate ?? 0) > 0;
+    const wantInvoice = alreadyTaxed ? Boolean(taxIdV) : issueInvoice;
     if (!signatureData || !agreed || submitting) return;
     if (!name || !phoneV || !addressV) return;
-    if (issueInvoice && (!taxIdV || !invoiceTitleV)) return;
+    if (wantInvoice && (!taxIdV || !invoiceTitleV)) return;
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -133,7 +136,7 @@ export function SignClient({ token }: { token: string }) {
           signerName: name,
           ordererPhone: phoneV,
           ordererAddress: addressV,
-          issueInvoice,
+          issueInvoice: wantInvoice,
           taxId: taxIdV,
           invoiceTitle: invoiceTitleV,
         }),
@@ -202,6 +205,8 @@ export function SignClient({ token }: { token: string }) {
     );
   }
 
+  // 含稅：統編選填（填了才需一併填抬頭）；未稅：沿用勾選才必填。
+  const wantInvoiceGate = ((view.taxRate ?? 0) > 0) ? Boolean(taxId.trim()) : issueInvoice;
   const canSubmit =
     Boolean(signatureData) &&
     agreed &&
@@ -209,7 +214,7 @@ export function SignClient({ token }: { token: string }) {
     Boolean(signerName.trim()) &&
     Boolean(phone.trim()) &&
     Boolean(address.trim()) &&
-    (!issueInvoice || (Boolean(taxId.trim()) && Boolean(invoiceTitle.trim())));
+    (!wantInvoiceGate || (Boolean(taxId.trim()) && Boolean(invoiceTitle.trim())));
 
   // 開發票加稅預覽：未稅報價（taxRate 0）以未稅小計外加 5% 營業稅；已含稅則沿用原總價。
   const invoiceAlreadyTaxed = (view.taxRate ?? 0) > 0;
@@ -301,56 +306,86 @@ export function SignClient({ token }: { token: string }) {
             className="mb-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
 
-          <label className="mb-3 flex items-start gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={issueInvoice}
-              onChange={(e) => setIssueInvoice(e.target.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              {invoiceAlreadyTaxed
-                ? "需要開立統一發票（本報價已含營業稅，不再另加）"
-                : "需要開立統一發票（未稅價需另加 5% 營業稅）"}
-            </span>
-          </label>
-
-          {issueInvoice && (
+          {invoiceAlreadyTaxed ? (
+            /* 已含稅：一定會開發票，統編為選填（公司報帳才填、個人免填），不再用勾選框藏起來 */
             <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="mb-1 text-sm font-medium text-gray-700">統一發票</p>
+              <p className="mb-3 text-xs text-gray-400">
+                本報價已含營業稅，將為您開立發票。
+                <span className="text-gray-600">公司報帳請填統編（個人免填）。</span>
+              </p>
               <label className="mb-1 block text-xs font-medium text-gray-500">
-                統一編號 <span className="text-red-500">*</span>
+                統一編號 <span className="text-gray-400">（公司報帳才填）</span>
               </label>
               <input
                 value={taxId}
                 onChange={(e) => setTaxId(e.target.value)}
                 inputMode="numeric"
-                placeholder="請輸入統一編號"
+                placeholder="個人免填；公司請填 8 碼統編"
                 className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               />
-
-              <label className="mb-1 block text-xs font-medium text-gray-500">
-                發票抬頭 <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={invoiceTitle}
-                onChange={(e) => setInvoiceTitle(e.target.value)}
-                placeholder="請輸入發票抬頭"
-                className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-
-              {invoiceAlreadyTaxed ? (
-                <p className="text-xs text-gray-500">
-                  本報價已含稅，總計 NT$ {view.total.toLocaleString()}（不再另加稅）。
-                </p>
-              ) : (
-                <p className="text-xs text-gray-600">
-                  未稅 NT$ {invoiceBase.toLocaleString()}／營業稅5% NT$ {invoiceTax.toLocaleString()}／
-                  <span className="font-semibold text-gray-900">
-                    含稅總計 NT$ {invoiceTotal.toLocaleString()}
-                  </span>
-                </p>
+              {taxId.trim() && (
+                <>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                    發票抬頭 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    value={invoiceTitle}
+                    onChange={(e) => setInvoiceTitle(e.target.value)}
+                    placeholder="請輸入公司抬頭"
+                    className="mb-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  {!invoiceTitle.trim() && (
+                    <p className="text-xs text-red-500">填了統編請一併填發票抬頭</p>
+                  )}
+                </>
               )}
             </div>
+          ) : (
+            /* 未稅：維持原本「勾選才開票並外加 5% 稅」 */
+            <>
+              <label className="mb-3 flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={issueInvoice}
+                  onChange={(e) => setIssueInvoice(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>需要開立統一發票（未稅價需另加 5% 營業稅）</span>
+              </label>
+
+              {issueInvoice && (
+                <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                    統一編號 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    value={taxId}
+                    onChange={(e) => setTaxId(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="請輸入統一編號"
+                    className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+
+                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                    發票抬頭 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    value={invoiceTitle}
+                    onChange={(e) => setInvoiceTitle(e.target.value)}
+                    placeholder="請輸入發票抬頭"
+                    className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+
+                  <p className="text-xs text-gray-600">
+                    未稅 NT$ {invoiceBase.toLocaleString()}／營業稅5% NT$ {invoiceTax.toLocaleString()}／
+                    <span className="font-semibold text-gray-900">
+                      含稅總計 NT$ {invoiceTotal.toLocaleString()}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </>
           )}
 
           <label className="mb-1 block text-xs font-medium text-gray-500">手寫簽名</label>
