@@ -166,6 +166,9 @@ export function QuotesClient() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [optOutSet, setOptOutSet] = useState<Set<string>>(new Set());
+  // caseId → 該案的客戶/聯絡人/案名（給搜尋用）：簽核後版本快照可能與案件聯絡人不同名，
+  // 例：案件聯絡人「S970 Joyce Chen」、版本簽核填「陳美君」——兩個名字都要搜得到。
+  const [caseNameById, setCaseNameById] = useState<Map<string, string>>(new Map());
   // 追蹤佇列：banner 點擊後只看待追蹤；追蹤 modal 目標版本
   const [followUpOnly, setFollowUpOnly] = useState(false);
   const [followUpTarget, setFollowUpTarget] = useState<VersionRow | null>(null);
@@ -177,9 +180,10 @@ export function QuotesClient() {
   const load = useCallback(async (background = false) => {
     if (!background) setLoading(true);
     try {
-      const [versionsRes, optOutRes] = await Promise.all([
+      const [versionsRes, optOutRes, casesRes] = await Promise.all([
         fetch("/api/sheets/versions?includeLines=false", { cache: "no-store" }),
         fetch("/api/sheets/einvoices/opt-out", { cache: "no-store" }),
+        fetch("/api/sheets/cases", { cache: "no-store" }),
       ]);
       if (!versionsRes.ok) throw new Error("load");
       const payload = (await versionsRes.json()) as { versions: VersionRow[] };
@@ -187,6 +191,16 @@ export function QuotesClient() {
       if (optOutRes.ok) {
         const ids = (await optOutRes.json()) as string[];
         setOptOutSet(new Set(ids));
+      }
+      if (casesRes.ok) {
+        const cj = (await casesRes.json()) as {
+          cases?: Array<{ caseId: string; caseName?: string; clientNameSnapshot?: string; contactNameSnapshot?: string }>;
+        };
+        const m = new Map<string, string>();
+        for (const c of cj.cases ?? []) {
+          m.set(c.caseId, `${c.contactNameSnapshot ?? ""} ${c.clientNameSnapshot ?? ""} ${c.caseName ?? ""}`);
+        }
+        setCaseNameById(m);
       }
     } catch {
       if (!background) setVersions([]);
@@ -448,12 +462,14 @@ export function QuotesClient() {
         item.quoteNameSnapshot,
         item.versionId,
         item.quoteId,
+        // 也比對所屬案件的客戶/聯絡人/案名（版本快照與案件聯絡人可能不同名）
+        caseNameById.get(item.caseId) ?? "",
       ]
         .join(" ")
         .toLowerCase()
         .includes(query);
     });
-  }, [filterDateFrom, filterDateTo, filterStatus, debouncedSearch, showSuperseded, versions, followUpOnly, todayStr]);
+  }, [filterDateFrom, filterDateTo, filterStatus, debouncedSearch, showSuperseded, versions, followUpOnly, todayStr, caseNameById]);
 
   const groups = useMemo(() => {
     // Build a map of ALL versions per quoteId (for grouping)
