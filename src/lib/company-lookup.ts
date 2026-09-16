@@ -45,21 +45,36 @@ export function pickCompanyRow(rows: string[][], key: CompanyLookupKey): string[
     if (byId) return byId;
   }
   if (companyName) {
-    const byName = rows.find(
+    // 名稱比對必須唯一才算數。兩家公司共用同一個簡稱時，rows.find 會挑到表上
+    // 排前面的那一列，把別人的統編貼到這張報價上——寧可不帶，讓客人自己填。
+    const byName = rows.filter(
       (row) =>
         (row[COL_COMPANY_NAME] ?? "").trim() === companyName ||
         (row[COL_SHORT_NAME] ?? "").trim() === companyName,
     );
-    if (byName) return byName;
+    if (byName.length === 1) return byName[0];
   }
   return null;
 }
 
+/**
+ * 台灣統一編號固定 8 位數字。
+ *
+ * 一定要驗格式，不能信任欄位位置：客戶資料庫裡還有沒遷移完的舊列，欄位整排
+ * 位移，統一編號那格存的是「TRUE」（其實是啟用欄）。大予空間規劃、煦苑室內
+ * 裝修兩列 2026-09-16 實際查到就是這樣。沒驗就會把 TRUE 或電話號碼當統編
+ * 預填進簽署頁，客人簽下去、發票就開錯。
+ */
+export function isValidTaxId(value: string): boolean {
+  return /^\d{8}$/.test(value.trim());
+}
+
 export function companyRowToIdentity(row: string[]): CompanyIdentity {
+  const rawTaxId = (row[COL_TAX_ID] ?? "").trim();
   return {
     clientId: (row[COL_CLIENT_ID] ?? "").trim(),
     companyName: (row[COL_COMPANY_NAME] ?? "").trim(),
-    taxId: (row[COL_TAX_ID] ?? "").trim(),
+    taxId: isValidTaxId(rawTaxId) ? rawTaxId : "",
   };
 }
 

@@ -92,6 +92,7 @@ export function QuotePreviewDrawer({ versionId, onClose }: Props) {
     setLoading(true);
     setError(false);
     setVersion(null);
+    setClientTaxId("");
     setLines([]);
     void fetch(`/api/sheets/versions/${encodeURIComponent(versionId)}`)
       .then(async (r) => {
