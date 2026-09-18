@@ -219,13 +219,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         : `｜開立統一發票：統編 ${taxId}、抬頭 ${invoiceTitle}`
       : "";
     const noteLine = `[線上簽署] ${signerName || "客戶"} 於 ${signedAtDisplay} 簽署（電話 ${ordererPhone}，地址 ${ordererAddress}，IP ${ip || "—"}，驗證碼 ${link.token}）${invoiceNote}`;
+    // 保留原聯絡人開頭的散客編號（S/P/L### 等），避免被客戶簽核填的姓名整個洗掉，
+    // 導致報價紀錄找不到 S 編號（老闆 2026-09 回報：S997、S970 簽核後編號消失）。
+    const idPrefix = (existing.contactNameSnapshot ?? "").match(/^([A-Za-z]{1,2}\d{3,})\b/)?.[1] ?? "";
+    const mergedContactName =
+      idPrefix && !signerName.toUpperCase().startsWith(idPrefix.toUpperCase())
+        ? `${idPrefix} ${signerName}`
+        : signerName;
     const updated: QuoteVersionRecord = {
       ...existing,
       versionStatus: "accepted",
       ...taxFields,
       // 訂貨人資訊：客人簽署時填寫，寫回報價版本聯絡人/電話/地址快照，
       // 供之後從此報價開訂製訂單時自動帶入（開單邏輯優先讀這三欄）。
-      contactNameSnapshot: signerName,
+      // 聯絡人保留原本 S 編號前綴 + 客戶簽的姓名，不整個覆蓋。
+      contactNameSnapshot: mergedContactName,
       clientPhoneSnapshot: ordererPhone,
       projectAddressSnapshot: ordererAddress,
       signedBack: true,
