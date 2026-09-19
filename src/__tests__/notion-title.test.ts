@@ -28,6 +28,23 @@ describe("buildNotionTitle", () => {
     );
   });
 
+  // 散客的「客戶名稱」欄是空的，S 編號與姓名在「聯絡人」欄。
+  // 沒退回 contactName 的話標題會是空字串，拿去比對既有頁會覆蓋掉不相干的舊頁（S939 事件）。
+  it("散客客戶名稱為空時退回聯絡人", () => {
+    expect(buildNotionTitle("", "", "沙發 160cm 整組更換面料", "S939 陳皓寧")).toBe("S939 陳皓寧");
+    expect(buildNotionTitle("", "臥榻墊訂製", "", "S1006 陳萍萍")).toBe("S1006 陳萍萍");
+  });
+
+  it("公司名存在時不被聯絡人蓋過", () => {
+    expect(
+      buildNotionTitle("禾雅窗飾美學有限公司", "新莊案 臥榻坐墊", "", "張雅欣 Alice"),
+    ).toBe("禾雅窗飾美學有限公司｜新莊案 臥榻坐墊");
+  });
+
+  it("兩個都空就回空字串，由呼叫端擋掉不可當唯一鍵", () => {
+    expect(buildNotionTitle("", "某案名", "", "")).toBe("");
+  });
+
   it("什麼都沒有時就用客戶名", () => {
     expect(buildNotionTitle("禾雅窗飾美學有限公司", "", "")).toBe("禾雅窗飾美學有限公司");
   });

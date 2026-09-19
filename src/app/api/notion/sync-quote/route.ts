@@ -28,7 +28,7 @@ function buildProperties(
   lineNames: string[] = [],
 ) {
   const fmtMoney = (n: number) => (n ? `$${Math.round(n).toLocaleString("zh-TW")}` : "");
-  const title = buildNotionTitle(version.clientNameSnapshot, version.projectNameSnapshot, version.quoteNameSnapshot);
+  const title = buildNotionTitle(version.clientNameSnapshot, version.projectNameSnapshot, version.quoteNameSnapshot, version.contactNameSnapshot);
 
   const props: Record<string, unknown> = {
     編號: { title: [{ text: { content: title } }] },
@@ -54,6 +54,8 @@ function buildProperties(
 }
 
 async function findExistingPage(title: string, dbId: string): Promise<string | null> {
+  // 空標題不是有效的唯一鍵——拿空字串去比對會撈到不相干的無標題頁並覆蓋它。
+  if (!title.trim()) return null;
   const res = await fetch(`${NOTION_API}/databases/${dbId}/query`, {
     method: "POST",
     headers: headers(),
@@ -126,7 +128,7 @@ export async function POST(req: NextRequest) {
   // Prefer live clientName from request (editor state) over potentially-empty snapshot
   if (clientNameOverride) version.clientNameSnapshot = clientNameOverride;
   const properties = buildProperties(version, lineNames);
-  const notionTitle = buildNotionTitle(version.clientNameSnapshot, version.projectNameSnapshot, version.quoteNameSnapshot);
+  const notionTitle = buildNotionTitle(version.clientNameSnapshot, version.projectNameSnapshot, version.quoteNameSnapshot, version.contactNameSnapshot);
 
   const existingId = await findExistingPage(notionTitle, dbId);
 
