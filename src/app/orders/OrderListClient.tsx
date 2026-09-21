@@ -254,6 +254,40 @@ export function OrderListClient() {
     }
   }, [billingSelection, billingDueDate]);
 
+  // 單張補建應收（B）：訂單清單灰色收款燈可點 → 設到期日 → 建一張 AR（重用 from-orders，單張也吃）
+  const [buildArOrder, setBuildArOrder] = useState<CustomOrder | null>(null);
+  const [buildArDueDate, setBuildArDueDate] = useState("");
+  const [buildingAr, setBuildingAr] = useState(false);
+  const [buildArError, setBuildArError] = useState("");
+
+  const openBuildAr = useCallback((order: CustomOrder) => {
+    setBuildArError("");
+    const now = new Date();
+    setBuildArDueDate(new Date(now.getFullYear(), now.getMonth() + 2, 0).toLocaleDateString("sv-SE"));
+    setBuildArOrder(order);
+  }, []);
+
+  const handleBuildSingleAr = useCallback(async () => {
+    if (!buildArOrder || !buildArDueDate) return;
+    setBuildingAr(true);
+    setBuildArError("");
+    try {
+      const res = await fetch("/api/sheets/ar/from-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: [buildArOrder.orderId], dueDate: buildArDueDate }),
+      });
+      const json = (await res.json()) as { ok: boolean; ar?: { arId: string }; error?: string };
+      if (!json.ok || !json.ar) throw new Error(json.error ?? "建立應收失敗");
+      setBuildArOrder(null);
+      setArReloadTick((t) => t + 1);
+    } catch (err) {
+      setBuildArError(err instanceof Error ? err.message : "建立應收失敗");
+    } finally {
+      setBuildingAr(false);
+    }
+  }, [buildArOrder, buildArDueDate]);
+
   // 應收帳款對照：三層 join 用的索引
   //   1. versionId 直連（單筆報價 AR）
   //   2. versionId → 月結待出(已合併) → consolidatedArId（有報價的合併請款）
@@ -873,10 +907,14 @@ export function OrderListClient() {
                           const resolved = resolveOrderAr(order);
                           if (!resolved) {
                             return (
-                              <span
-                                title="未建應收帳款"
-                                className="inline-block h-2.5 w-2.5 rounded-full border-2 border-gray-300"
-                              />
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openBuildAr(order); }}
+                                title="未建應收帳款 · 點此建立（建立後才能記錄收款、核對入帳）"
+                                className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-[var(--bg-hover)]"
+                              >
+                                <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-dashed border-gray-300" />
+                              </button>
                             );
                           }
                           const { ar, merged } = resolved;
@@ -1159,6 +1197,55 @@ export function OrderListClient() {
             <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>取消</Button>
             <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting}>
               {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "確認刪除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 單張補建應收（B）：灰色收款燈點下去 → 設到期日 → 建 AR */}
+      <Dialog open={!!buildArOrder} onOpenChange={(o) => { if (!o) setBuildArOrder(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>建立應收帳款</DialogTitle>
+            <DialogDescription>
+              直接建立的訂單不會自動開應收。建立後即可記錄收款、進入「核對入帳」對帳。
+            </DialogDescription>
+          </DialogHeader>
+          {buildArOrder && (
+            <div className="space-y-3 text-sm">
+              <div className="rounded-md bg-[var(--bg-subtle)] p-3">
+                <div className="font-mono text-[var(--accent)]">
+                  {buildArOrder.orderNumber || buildArOrder.orderId}
+                </div>
+                <div className="mt-0.5">{buildArOrder.clientName}</div>
+                <div className="mt-0.5 text-[var(--text-secondary)]">
+                  金額 NT$ {(buildArOrder.quotedAmount || 0).toLocaleString()}
+                </div>
+              </div>
+              {(buildArOrder.quotedAmount || 0) <= 0 && (
+                <p className="rounded bg-amber-50 px-2.5 py-2 text-xs text-amber-700">
+                  此單金額為 0——請先到訂單「財務」頁填入金額，再回來建立應收。
+                </p>
+              )}
+              <div>
+                <label className="mb-1 block text-xs text-[var(--text-secondary)]">收款到期日</label>
+                <input
+                  type="date"
+                  value={buildArDueDate}
+                  onChange={(e) => setBuildArDueDate(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+                />
+              </div>
+              {buildArError && <p className="text-sm text-red-600">{buildArError}</p>}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBuildArOrder(null)} disabled={buildingAr}>取消</Button>
+            <Button
+              onClick={() => void handleBuildSingleAr()}
+              disabled={buildingAr || !buildArDueDate || (buildArOrder?.quotedAmount || 0) <= 0}
+            >
+              {buildingAr ? <Loader2 className="h-4 w-4 animate-spin" /> : "建立應收"}
             </Button>
           </DialogFooter>
         </DialogContent>
