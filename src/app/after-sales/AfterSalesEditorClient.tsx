@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+import { CleaningSlotSection } from "@/components/after-sales/CleaningSlotSection";
 import {
   ArrowLeft,
   Eye,
@@ -1000,6 +1002,11 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
         <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">
           派工 / 維修記錄
         </h2>
+        {mode === "edit" && meta?.serviceId && draft.issueCategories?.includes("到府清潔") && (
+          <div className="mb-4">
+            <CleaningSlotSection serviceId={meta.serviceId} />
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
             <Label>狀態</Label>

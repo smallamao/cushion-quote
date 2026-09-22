@@ -201,6 +201,35 @@ export interface EquipmentModel {
   updatedAt: string;
 }
 
+// ===== 到府清潔時段媒合 =====
+export type CleaningSlotPeriod = "上午" | "下午" | "晚上" | "皆可";
+export type CleaningSlotStatus =
+  | "awaiting_customer" // 已建連結，等客人選時段
+  | "awaiting_tech"     // 客人已選，等師傅挑
+  | "confirmed"         // 師傅已確認
+  | "tech_rejected";    // 師傅三組都不行
+
+export interface CleaningSlotProposal {
+  date: string; // YYYY-MM-DD
+  period: CleaningSlotPeriod;
+}
+
+/** 一次到府清潔的時段媒合過程（獨立於售後服務單，確認後精準寫回售後單日期/時段）。 */
+export interface CleaningSlotSession {
+  sessionId: string;      // CLN-YYYYMMDD-XXXX
+  serviceId: string;      // 關聯售後服務單
+  customerToken: string;  // 客人選時段連結 token
+  techToken: string;      // 師傅確認連結 token（客人送出後才有）
+  proposedSlots: CleaningSlotProposal[]; // 客人選的最多 3 組
+  confirmedDate: string;
+  confirmedPeriod: CleaningSlotPeriod | "";
+  status: CleaningSlotStatus;
+  customerAddress: string; // 客人於連結確認/補填，確認後寫回售後單
+  customerPhone: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CommissionOverride {
   mode: CommissionMode;
   rate: number;

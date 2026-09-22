@@ -318,6 +318,13 @@ const SHEET_DEFINITIONS = [
     headers: ["replyId", "serviceId", "occurredAt", "author", "content", "attachments", "createdAt"],
   },
   {
+    title: "清潔時段",
+    headers: [
+      "sessionId", "serviceId", "客人連結token", "師傅連結token", "客人選時段JSON",
+      "確認日期", "確認時段", "狀態", "客人地址", "客人電話", "建立時間", "更新時間",
+    ],
+  },
+  {
     title: "銀行核對紀錄",
     headers: [
       "reconId", "txId", "txDate", "amount", "description",

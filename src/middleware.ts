@@ -44,6 +44,8 @@ function isPublicPath(pathname: string): boolean {
     // 客戶線上簽署頁與其公開 API（token 為唯一憑證，免登入）
     pathname === "/sign" ||
     pathname.startsWith("/sign/") ||
+    pathname === "/cleaning" ||
+    pathname.startsWith("/cleaning/") ||
     pathname.startsWith("/s/") ||
     pathname.startsWith("/api/public/") ||
     // init & migrate 改由 x-init-secret header 保護，不列為公開路徑
@@ -76,8 +78,18 @@ const API_KEY_PATHS = new Set([
   "/api/sheets/products/from-agent",    // 排程系統：補建缺少的採購商品（copyFrom 指定範本）
 ]);
 
+// 採購單 PDF 取回：路徑帶單號（/api/sheets/purchases/PS-20260922-05/pdf），
+// 不是固定字串所以另外用 regex。route 內有 timing-safe 金鑰比對（authorizeSchedulerRequest）。
+// 用途：出完採購單後把 PDF 存進 Synology 正式存檔——2026-09-22 發現本地 JPG 會遺失，
+// 單子只存在繃布系統裡，想重新拿檔案卻沒有伺服器路徑。
+const API_KEY_PATH_PATTERNS: RegExp[] = [
+  /^\/api\/sheets\/purchases\/[^/]+\/pdf$/,
+];
+
 function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean {
-  if (!API_KEY_PATHS.has(pathname)) return false;
+  const allowed = API_KEY_PATHS.has(pathname)
+    || API_KEY_PATH_PATTERNS.some((re) => re.test(pathname));
+  if (!allowed) return false;
   const apiKey = request.headers.get("x-api-key");
   return Boolean(apiKey && apiKey.trim().length > 0);
 }
