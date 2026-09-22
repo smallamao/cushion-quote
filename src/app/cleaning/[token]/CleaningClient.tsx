@@ -68,6 +68,7 @@ export function CleaningClient({ token }: { token: string }) {
     { date: "", period: "皆可" },
     { date: "", period: "皆可" },
   ]);
+  const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
 
@@ -84,6 +85,7 @@ export function CleaningClient({ token }: { token: string }) {
         }
         setData(json);
         if (json.role === "customer") {
+          setName(json.view.clientName);
           setAddress(json.view.address);
           setPhone(json.view.phone);
         }
@@ -110,7 +112,7 @@ export function CleaningClient({ token }: { token: string }) {
       const res = await fetch(`/api/public/cleaning/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slots: chosen, address: address.trim(), phone: phone.trim() }),
+        body: JSON.stringify({ slots: chosen, name: name.trim(), address: address.trim(), phone: phone.trim() }),
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (!json.ok) throw new Error(json.error ?? "送出失敗");
@@ -192,6 +194,9 @@ export function CleaningClient({ token }: { token: string }) {
 
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="mb-2 text-sm font-semibold text-gray-800">到府資訊</p>
+            <label className="mb-1 block text-xs font-medium text-gray-500">姓名</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="您的稱呼"
+              className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <label className="mb-1 block text-xs font-medium text-gray-500">地址</label>
             <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="清潔地址"
               className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />

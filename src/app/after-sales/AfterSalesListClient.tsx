@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Copy, Loader2, MessageSquareText, Plus, Search, Stethoscope, X } from "lucide-react";
+import { CalendarClock, Check, ChevronDown, ChevronRight, Copy, Loader2, MessageSquareText, Plus, Search, Stethoscope, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,26 @@ export function AfterSalesListClient() {
   const { services, loading, error, reload } = useAfterSales();
   const { markAsRead } = useUnreadReplies();
   const isAdmin = user?.role === "admin";
+
+  // 一鍵約清潔時段：建空白到府清潔單＋產生客人選時段連結（內勤零登打）
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickLink, setQuickLink] = useState<string | null>(null);
+  const [quickCopied, setQuickCopied] = useState(false);
+  async function handleQuickCleaning() {
+    setQuickBusy(true);
+    try {
+      const res = await fetch("/api/sheets/after-sales/quick-cleaning", { method: "POST" });
+      const json = (await res.json()) as { ok: boolean; customerToken?: string; error?: string };
+      if (!json.ok || !json.customerToken) throw new Error(json.error ?? "產生失敗");
+      setQuickLink(`${window.location.origin}/cleaning/${json.customerToken}`);
+      setQuickCopied(false);
+      reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "產生失敗");
+    } finally {
+      setQuickBusy(false);
+    }
+  }
 
   // 進入售後列表頁時延遲標記已讀，避免跟頁面載入搶 API 配額
   useEffect(() => {
@@ -174,14 +194,49 @@ export function AfterSalesListClient() {
           </p>
         </div>
         {isAdmin && (
-          <Link href={"/after-sales/new" as never}>
-            <Button>
-              <Plus className="mr-1 h-4 w-4" />
-              新增報修單
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => void handleQuickCleaning()} disabled={quickBusy} title="一鍵建到府清潔單＋產生客人選時段連結">
+              {quickBusy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-1 h-4 w-4" />}
+              約清潔時段
             </Button>
-          </Link>
+            <Link href={"/after-sales/new" as never}>
+              <Button>
+                <Plus className="mr-1 h-4 w-4" />
+                新增報修單
+              </Button>
+            </Link>
+          </div>
         )}
       </div>
+
+      {quickLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setQuickLink(null)}>
+          <div className="w-full max-w-md rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-base font-semibold">客人選時段連結已產生</h2>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              已幫你建好一張空白到府清潔單。把連結貼給客人，他自己填姓名／地址／電話並選時段——你不用先建單、不用登打。師傅確認後會自動回填。
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="flex-1 truncate rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-1.5 font-mono text-xs">{quickLink}</div>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(quickLink);
+                    setQuickCopied(true);
+                    setTimeout(() => setQuickCopied(false), 1800);
+                  } catch { /* ignore */ }
+                }}
+              >
+                {quickCopied ? <><Check className="mr-1 h-3.5 w-3.5" />已複製</> : <><Copy className="mr-1 h-3.5 w-3.5" />複製</>}
+              </Button>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setQuickLink(null)}>關閉</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">

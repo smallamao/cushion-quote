@@ -112,6 +112,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       }
       const address = typeof body.address === "string" ? body.address.trim() : session.customerAddress;
       const phone = typeof body.phone === "string" ? body.phone.trim() : session.customerPhone;
+      const name = typeof body.name === "string" ? body.name.trim() : "";
       const next: CleaningSlotSession = {
         ...session,
         proposedSlots: slots,
@@ -121,6 +122,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         status: "awaiting_tech",
       };
       await writeSession(next, rowNumber);
+      // 即時把客人填的資料寫回服務單（空白單一送出就長出內容；內勤零登打）
+      const svcPatch: Parameters<typeof updateService>[1] = {};
+      if (name) svcPatch.clientName = name;
+      if (address) svcPatch.deliveryAddress = address;
+      if (phone) svcPatch.clientPhone = phone;
+      if (Object.keys(svcPatch).length > 0) await updateService(session.serviceId, svcPatch);
       return NextResponse.json({ ok: true });
     }
 
