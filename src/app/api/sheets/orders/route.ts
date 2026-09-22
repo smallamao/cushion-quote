@@ -11,6 +11,7 @@ import {
   orderRowToRecord,
 } from "@/lib/order-utils";
 import { lineRowToRecord } from "@/app/api/sheets/_v2-utils";
+import { classifyOrderCategory, inferDeliveryMethod } from "@/lib/order-category";
 import { versionLinesToOrderItems } from "@/lib/quote-mappers";
 import type { CustomOrder, OrderStatus } from "@/lib/types";
 
@@ -139,6 +140,8 @@ export async function POST(request: Request) {
     let quotedAmount = 0;
     let versionTaxRate = 0;
     let directItemCategory = "";
+    let quoteItemCategory: import("@/lib/types").OrderItemCategory | "" = "";
+    let quoteDeliveryMethod: import("@/lib/types").OrderDeliveryMethod | "" = "";
     let clientId = "";
     let installAddress = "";
     let installContactName = "";
@@ -186,7 +189,9 @@ export async function POST(request: Request) {
           color: "black" as const,
           isWarning: false,
         }));
-      clientName = versionRow[29] ?? "";
+      // 散客的「客戶名稱」欄一律是空的，S 編號與姓名存在「聯絡人」欄（col30）。
+      // 不退回的話轉出來的訂單客戶是空白（2026-09-22 老闆反映）。
+      clientName = (versionRow[29] || versionRow[30]) ?? "";
 
       // 2. Find the case for caseName → orderTitle
       const caseRes = await client.sheets.spreadsheets.values.get({
@@ -196,7 +201,10 @@ export async function POST(request: Request) {
       const caseRows = (caseRes.data.values ?? []) as string[][];
       const caseRow = caseRows.find((r) => r[0] === caseId);
       orderNumber = caseId;
-      orderTitle = caseRow ? (caseRow[1] ?? "") : "";
+      // 訂製內容取案件名稱；散客依慣例不填案件名稱，退回方案名稱（col42），
+      // 否則訂單的「訂製內容」是空白，工單開起來看不出要做什麼。
+      orderTitle = (caseRow?.[1] || versionRow[42]) ?? "";
+      clientId = caseRow?.[2] ?? "";
       // 訂貨人／現場資訊帶入：
       // 只有「客人有線上簽署」(signedBack col43=TRUE) 時，才優先取簽署時回寫於
       // 報價版本的訂貨人快照（col30 聯絡人 / col31 電話 / col33 地址）；
@@ -258,6 +266,21 @@ export async function POST(request: Request) {
 
       // 5. 報價明細 → 訂單品項（含名稱、尺寸規格、數量、色號、備註）
       orderItems = versionLinesToOrderItems(lineRecords, materialCodeById);
+
+      // 6. 由品項名稱推「品項分類」與「配送方式」，省掉開單後逐欄補打。
+      //    判不出來就留空交人工選，不硬塞。
+      const visibleNames = lineRecords
+        .slice()
+        .sort((a, b) => a.lineNo - b.lineNo)
+        .filter((l) => !l.isCostItem && l.showOnQuote)
+        .map((l) => l.itemName ?? "");
+      quoteItemCategory = classifyOrderCategory(
+        visibleNames[0] ?? "",
+        [versionRow[42] ?? "", ...visibleNames].filter(Boolean).join(" "),
+      );
+      quoteDeliveryMethod = inferDeliveryMethod(
+        lineRecords.map((l) => `${l.itemName ?? ""} ${l.spec ?? ""}`),
+      );
     } else {
       // sourceType === "direct"
       const directBody = body as { sourceType: "direct"; clientName: string; orderNumber: string; itemCategory?: string; clientId?: string };
@@ -290,11 +313,12 @@ export async function POST(request: Request) {
       clientName,
       orderNumber,
       orderTitle,
-      itemCategory: (directItemCategory as import("@/lib/types").OrderItemCategory) || "",
-      deliveryMethod: "",
+      itemCategory:
+        (directItemCategory as import("@/lib/types").OrderItemCategory) || quoteItemCategory,
+      deliveryMethod: quoteDeliveryMethod,
       status: "production",
       sourceType: body.sourceType,
-      orderDate: "",
+      orderDate: now.slice(0, 10),
       supplierOrderDate: "",
       productionDueDate: "",
       installDate: "",
