@@ -22,7 +22,14 @@ import { getVersionLineRows, getVersionRows, lineRowToRecord, versionRowToRecord
 export interface QuoteAssets {
   /** 給 Notion 與簽署頁顯示用的靜態長圖 */
   jpgUrl: string;
-  /** 待簽報價單 PDF（Cloudinary），簽署連結需要 */
+  /**
+   * 待簽報價單 PDF（Cloudinary raw，無副檔名），簽署連結需要。
+   *
+   * 一定要走 raw：以 image 型別上傳 PDF 時 Cloudinary 會自動把 .pdf 補回
+   * secure_url，而帳號預設封鎖 .pdf 對外供檔 → 簽署時伺服器抓檔回 401，
+   * 客人只會看到「簽署失敗」（S1016 吳俊穎 2026-09-22）。
+   * image 那份仍要留著，因為取第 1 頁轉 JPG 只有 image pipeline 做得到。
+   */
   pdfUrl: string;
 }
 
@@ -76,6 +83,14 @@ export async function buildQuoteAssets(versionId: string): Promise<QuoteAssets> 
   };
 
   const pdf = await renderQuotePdfBuffer(props);
+  // 簽署用的那份必須是 raw（無副檔名才抓得到）；A4 版才是給人簽的文件，
+  // 下面可能改印的長頁版只為了轉圖，不可拿來當合約本文。
+  const signingPdf = await uploadBufferToCloudinary(
+    pdf,
+    "application/pdf",
+    CLOUDINARY_FOLDERS.signingUnsigned,
+    "raw",
+  );
   let uploaded = await uploadBufferToCloudinary(pdf, "application/pdf", CLOUDINARY_FOLDERS.quoteAttachments, "image");
 
   // 給 Notion 的圖只取得到第 1 頁（pg_1），A4 一旦爆頁後面就整段消失（S990 事件）。
@@ -104,5 +119,5 @@ export async function buildQuoteAssets(versionId: string): Promise<QuoteAssets> 
   if (!res.ok) throw new Error(`報價圖轉檔失敗（${res.status}）`);
   const jpgBuffer = Buffer.from(await res.arrayBuffer());
   const staticUpload = await uploadBufferToCloudinary(jpgBuffer, "image/jpeg", "notion-quotes");
-  return { jpgUrl: staticUpload.url, pdfUrl: uploaded.url };
+  return { jpgUrl: staticUpload.url, pdfUrl: signingPdf.url };
 }

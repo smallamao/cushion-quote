@@ -10,6 +10,7 @@ import { v2 as cloudinary } from "cloudinary";
 
 export const CLOUDINARY_FOLDERS = {
   quoteAttachments: "quote-attachments",
+  signingUnsigned: "signing-unsigned",
   contractAttachments: "contract-attachments",
   afterSalesVideos: "after-sales-videos",
   productImages: "product-images",
