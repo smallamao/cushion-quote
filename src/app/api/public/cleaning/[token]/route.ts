@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
 import { findServiceById, updateService } from "@/lib/after-sales-sheet";
+import { appendNotification } from "@/lib/notifications-sheet";
 import {
   RANGE_DATA,
   ROW_RANGE,
@@ -128,6 +129,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       if (address) svcPatch.deliveryAddress = address;
       if (phone) svcPatch.clientPhone = phone;
       if (Object.keys(svcPatch).length > 0) await updateService(session.serviceId, svcPatch);
+      await appendNotification({
+        type: "cleaning_slot",
+        title: "客人已選好清潔時段",
+        body: `${name || "客人"}已送出方便時段，請把師傅連結傳給師傅確認`,
+        link: `/after-sales/${session.serviceId}`,
+      });
       return NextResponse.json({ ok: true });
     }
 
@@ -140,6 +147,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     }
     if (body.reject === true) {
       await writeSession({ ...session, status: "tech_rejected" }, rowNumber);
+      await appendNotification({
+        type: "cleaning_slot",
+        title: "師傅回報：時段都不行",
+        body: "師傅三組時段都無法配合，請重發連結給客人選其他時段",
+        link: `/after-sales/${session.serviceId}`,
+      });
       return NextResponse.json({ ok: true, rejected: true });
     }
     const idx = Number(body.chosenIndex);
@@ -161,6 +174,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (session.customerAddress) patch.deliveryAddress = session.customerAddress;
     if (session.customerPhone) patch.clientPhone = session.customerPhone;
     await updateService(session.serviceId, patch);
+    await appendNotification({
+      type: "cleaning_slot",
+      title: "師傅已確認清潔時段",
+      body: `已排定 ${chosen.date} ${period}，記得通知客人`,
+      link: `/after-sales/${session.serviceId}`,
+    });
     return NextResponse.json({ ok: true, confirmed: { date: chosen.date, period } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
