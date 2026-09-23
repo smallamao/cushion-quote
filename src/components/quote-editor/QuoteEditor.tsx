@@ -2735,6 +2735,14 @@ export function QuoteEditor() {
                 />
               </div>
               <div>
+                <Label>地址</Label>
+                <Input
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="安裝／送貨地址（客人簽核時自動帶入，免重填）"
+                />
+              </div>
+              <div>
                 <Label>統一編號</Label>
                 <Input
                   value={taxId}
