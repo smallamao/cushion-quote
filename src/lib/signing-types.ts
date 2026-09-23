@@ -41,7 +41,8 @@ export interface PublicSigningView {
   total: number;
   expiresAt: string;
   signedPdfUrl: string;
-  /** 訂貨人資訊預填值（若報價已有聯絡電話/地址快照）；客人可確認或修正 */
+  /** 訂貨人資訊預填值（若報價已有聯絡人/電話/地址快照）；客人可確認或修正 */
+  contactName?: string;
   contactPhone?: string;
   contactAddress?: string;
   /** 未稅小計（version.subtotalBeforeTax）；供客戶端計算勾選開發票時的 5% 加稅 */

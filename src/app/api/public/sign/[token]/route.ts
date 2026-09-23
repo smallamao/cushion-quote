@@ -44,6 +44,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     link.status === "pending" && isSigningLinkExpired(link, Date.now()) ? "expired" : link.status;
 
   let clientName = "";
+  let contactName = "";
   let total = 0;
   let contactPhone = "";
   let contactAddress = "";
@@ -59,6 +60,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         .find((v) => v.versionId === link.versionId);
       if (version) {
         clientName = version.clientNameSnapshot;
+        // 姓名預填讀「聯絡人」快照（散客的公司名 clientNameSnapshot 為空，
+        // 報價單上顯示與訂貨人姓名都是 contactNameSnapshot）。
+        contactName = version.contactNameSnapshot;
         total = version.totalAmount;
         contactPhone = version.clientPhoneSnapshot;
         contactAddress = version.projectAddressSnapshot;
@@ -88,6 +92,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     unsignedImageUrl: link.unsignedImageUrl,
     quoteId: link.quoteId,
     clientName,
+    contactName,
     total,
     expiresAt: link.expiresAt,
     signedPdfUrl: link.signedPdfUrl,

@@ -87,7 +87,8 @@ export function SignClient({ token }: { token: string }) {
           return;
         }
         setView(json.view);
-        setSignerName(json.view.clientName ?? "");
+        // 訂貨人姓名預填「聯絡人」；散客沒有公司名，clientName 會是空的。
+        setSignerName(json.view.contactName || json.view.clientName || "");
         setPhone(json.view.contactPhone ?? "");
         setAddress(json.view.contactAddress ?? "");
         // 客戶主檔查到統編＝這是長期配合的公司戶，一定要開發票。
