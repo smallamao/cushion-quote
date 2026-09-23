@@ -223,6 +223,54 @@ export async function updateService(
   return updated;
 }
 
+/** 實體刪除一張售後服務單（連同其回應列）。找不到回 false。 */
+export async function deleteService(serviceId: string): Promise<boolean> {
+  const client = await getSheetsClient();
+  if (!client) return false;
+  const idRes = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: MAIN_RANGE_IDS,
+  });
+  const rowIndex = (idRes.data.values ?? []).flat().indexOf(serviceId);
+  if (rowIndex === -1) return false;
+
+  const meta = await client.sheets.spreadsheets.get({
+    spreadsheetId: client.spreadsheetId,
+    fields: "sheets.properties(title,sheetId)",
+  });
+  const sheetId = meta.data.sheets?.find((s) => s.properties?.title === MAIN_SHEET)?.properties?.sheetId;
+  if (sheetId == null) return false;
+
+  // 刪主檔那一列（rowIndex 為 A2 起算，+1 補表頭 → 0-indexed grid row）
+  await client.sheets.spreadsheets.batchUpdate({
+    spreadsheetId: client.spreadsheetId,
+    requestBody: {
+      requests: [
+        { deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: rowIndex + 1, endIndex: rowIndex + 2 } } },
+      ],
+    },
+  });
+
+  // 順手刪掉該單的回應列（best-effort）
+  try {
+    const replySheetId = meta.data.sheets?.find((s) => s.properties?.title === REPLY_SHEET)?.properties?.sheetId;
+    if (replySheetId != null) {
+      const rr = await client.sheets.spreadsheets.values.get({ spreadsheetId: client.spreadsheetId, range: REPLY_RANGE_DATA });
+      const rows = (rr.data.values ?? []) as string[][];
+      const delIdx = rows.map((r, i) => (r[1] === serviceId ? i : -1)).filter((i) => i >= 0).sort((a, b) => b - a);
+      for (const i of delIdx) {
+        await client.sheets.spreadsheets.batchUpdate({
+          spreadsheetId: client.spreadsheetId,
+          requestBody: { requests: [{ deleteDimension: { range: { sheetId: replySheetId, dimension: "ROWS", startIndex: i + 1, endIndex: i + 2 } } }] },
+        });
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+  return true;
+}
+
 // ==================== replies ====================
 
 export async function listAllReplies(): Promise<AfterSalesReply[]> {

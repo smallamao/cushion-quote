@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
 import {
+  deleteService,
   findServiceById,
   listReplies,
   updateService,
@@ -110,6 +111,28 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: true, service });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "儲存失敗";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
+
+// DELETE /api/sheets/after-sales/[serviceId] — 實體刪除（僅 admin，供清除測試/建錯的單）
+export async function DELETE(request: Request, context: RouteContext) {
+  const session = getSession(request);
+  if (!session) {
+    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
+  }
+  if (session.role !== "admin") {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+  const { serviceId } = await context.params;
+  try {
+    const done = await deleteService(serviceId);
+    if (!done) {
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "刪除失敗";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

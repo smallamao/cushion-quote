@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, Check, ChevronDown, ChevronRight, Copy, Loader2, MessageSquareText, Plus, Search, Stethoscope, X } from "lucide-react";
+import { CalendarClock, Check, ChevronDown, ChevronRight, Copy, Loader2, MessageSquareText, Plus, Search, Stethoscope, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +80,24 @@ export function AfterSalesListClient() {
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
   // 客戶通知視窗：依分類生成訊息（到府清潔/一般售後），可編輯後複製
   const [notifyTarget, setNotifyTarget] = useState<AfterSalesService | null>(null);
+  // 刪除售後單（admin，供清除測試/建錯）
+  const [deleteTarget, setDeleteTarget] = useState<AfterSalesService | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/sheets/after-sales/${deleteTarget.serviceId}`, { method: "DELETE" });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "刪除失敗");
+      setDeleteTarget(null);
+      reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "刪除失敗");
+    } finally {
+      setDeleting(false);
+    }
+  }
   const [showStale, setShowStale] = useState(false);
 
   const STALE_DAYS = 14;
@@ -567,6 +585,16 @@ export function AfterSalesListClient() {
                           )}
                         </button>
                       )}
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); e.preventDefault(); setDeleteTarget(s); }}
+                          title="刪除此售後單（清除測試／建錯）"
+                          className="ml-1.5 rounded border border-red-200 bg-white px-2 py-0.5 text-[11px] text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="inline h-3 w-3" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -577,6 +605,25 @@ export function AfterSalesListClient() {
       )}
 
       {notifyTarget && <NotifyModal service={notifyTarget} onClose={() => setNotifyTarget(null)} />}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="w-full max-w-sm rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-base font-semibold">刪除售後單？</h2>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              <span className="font-mono text-[var(--accent)]">{deleteTarget.serviceId}</span>
+              {deleteTarget.clientName ? `　${deleteTarget.clientName}` : ""}
+              <br />此操作<span className="font-semibold text-red-600">無法還原</span>（會連同回應一起刪）。若是正常結案的單，建議改用「取消」狀態而非刪除。
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>取消</Button>
+              <Button size="sm" className="bg-red-600 text-white hover:bg-red-700" onClick={() => void handleDelete()} disabled={deleting}>
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "確定刪除"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {hasStale && (
         <button
