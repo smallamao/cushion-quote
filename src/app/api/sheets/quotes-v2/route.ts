@@ -153,10 +153,13 @@ export async function POST(request: Request) {
       projectAddressSnapshot: firstVersion.projectAddressSnapshot ?? caseRecord.projectAddress,
       channelSnapshot: firstVersion.channelSnapshot ?? caseRecord.channelSnapshot,
       quoteNameSnapshot: quoteRecord.quoteName,
-      signedBack: firstVersion.signedBack ?? false,
-      signedBackDate: firstVersion.signedBackDate ?? "",
-      signedContractUrls: firstVersion.signedContractUrls ?? [],
-      signedNotes: firstVersion.signedNotes ?? "",
+      // 新建/複製報價一律為「未簽」——不可沿用來源版本的回簽狀態與合約，
+      // 否則複製案件會把原案的簽署合約與紀錄帶過來（老闆 2026-09 回報：
+      // CA-202609-051 複製自 009-V02，錯抄了 009 的回簽合約）。
+      signedBack: false,
+      signedBackDate: "",
+      signedContractUrls: [],
+      signedNotes: "",
       isMultiOption: firstVersion.isMultiOption ?? optionMeta.isMultiOption,
       optionMinAmount: optionMeta.optionMinAmount,
       createdAt: now,
