@@ -17,10 +17,11 @@ interface WeekRow {
   confirmedAt: string;
   disputeNote: string;
   createdAt: string;
+  staleDue: boolean;
 }
 
 interface Summary {
-  total: number; confirmed: number; disputed: number; sent: number; notSent: number;
+  total: number; confirmed: number; disputed: number; sent: number; notSent: number; staleDue: number;
 }
 
 const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
@@ -206,6 +207,12 @@ export function MaterialConfirmClient() {
             <span className="text-gray-500">未發送 {summary.notSent}</span>
             {summary.disputed > 0 && <span className="text-red-600">回報有誤 {summary.disputed} ⚠️</span>}
           </div>
+          {summary.staleDue > 0 && (
+            <p className="mt-2 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-800">
+              ⚠️ 有 {summary.staleDue} 張的出貨日比排程日早（還沒更新）。客人頁會改用排程日當預計完工日，
+              但建議先在 Trello 更新出貨日再發連結。
+            </p>
+          )}
           <p className={`mt-3 rounded-lg px-3 py-2 text-sm font-medium ${
             ready ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"
           }`}>
@@ -232,6 +239,11 @@ export function MaterialConfirmClient() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-semibold">{r.orderNumber} {r.customerName}</span>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${meta.cls}`}>{meta.label}</span>
+                {r.staleDue && (
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
+                    出貨日未更新
+                  </span>
+                )}
                 {waited !== null && waited >= 2 && (
                   <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
                     已等 {waited} 天，該催了

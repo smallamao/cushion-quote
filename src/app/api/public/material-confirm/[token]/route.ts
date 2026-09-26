@@ -21,6 +21,7 @@ import {
   addCardComment,
   addCheckItem,
   ensureTodoChecklist,
+  getCardEstimatedDate,
   getCardImageAttachments,
   rocDateLabel,
   toTaipeiYmd,
@@ -70,11 +71,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     /* 取不到就當 0 張，頁面會顯示「照片載入失敗」而不是整頁壞掉 */
   }
 
+  // 預計完工日當下重抓（出貨日常常是舊的，見 getCardEstimatedDate 註解）；
+  // 抓不到才退回建連結當下存的出貨日。
+  let estimatedDate = "";
+  try {
+    estimatedDate = await getCardEstimatedDate(c.cardId);
+  } catch {
+    estimatedDate = toTaipeiYmd(c.dueDate);
+  }
+
   const view: PublicMaterialConfirmView = {
     status: c.status,
     orderNumber: c.orderNumber,
     customerName: c.customerName,
-    estimatedDate: toTaipeiYmd(c.dueDate),
+    estimatedDate,
     photoCount,
     preferredSlots: c.preferredSlots,
     confirmedAt: c.confirmedAt,

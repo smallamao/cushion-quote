@@ -207,3 +207,30 @@ export function getCustomFieldDate(card: BoardCardLite, fieldId: string): string
   const v = (card.customFieldItems ?? []).find((i) => i.idCustomField === fieldId)?.value?.date;
   return v ?? "";
 }
+
+/** 排程日自訂欄位（與排程系統同一個欄位 id）。 */
+export const SCHEDULE_DAY_FIELD = "5dbffb41d3233f81ca015792";
+
+/**
+ * 客人頁要顯示的「預計完工日」。
+ *
+ * 🔴 不能只看卡片 due：實查 2026-10-12 那週 10 張單，**5 張的出貨日比排程日還早**
+ * （例 P6260 排程 10/13、出貨仍是舊的 10/03）。照 due 顯示會叫客人挑一個東西還沒做完的
+ * 日期。取「出貨日、排程日」較晚者，兩個都沒有就回空字串不硬編。
+ * 另外一律當下重抓，老闆改了日期客人頁就跟著對，不吃建連結當下的快照。
+ */
+export function pickEstimatedDate(dueYmd: string, scheduleYmd: string): string {
+  if (dueYmd && scheduleYmd) return dueYmd >= scheduleYmd ? dueYmd : scheduleYmd;
+  return dueYmd || scheduleYmd || "";
+}
+
+export async function getCardEstimatedDate(cardId: string): Promise<string> {
+  const card = await trelloJson<BoardCardLite>(`cards/${cardId}`, {
+    fields: "due",
+    customFieldItems: "true",
+  });
+  return pickEstimatedDate(
+    toTaipeiYmd(card.due ?? ""),
+    toTaipeiYmd(getCustomFieldDate(card, SCHEDULE_DAY_FIELD)),
+  );
+}

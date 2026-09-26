@@ -35,6 +35,8 @@ interface WeekRow {
   confirmedAt: string;
   disputeNote: string;
   createdAt: string;
+  /** 出貨日早於排程日＝這張的出貨日還沒更新，客人會看到錯的完工日 */
+  staleDue: boolean;
 }
 
 export async function GET(request: Request) {
@@ -65,12 +67,14 @@ export async function GET(request: Request) {
     .map((c): WeekRow => {
       const { orderNumber, customerName } = splitOrderCardName(c.name);
       const found = byCard.get(c.id);
+      const scheduleDate = toTaipeiYmd(getCustomFieldDate(c, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY));
+      const dueDate = toTaipeiYmd(c.due ?? "");
       return {
         cardId: c.id,
         orderNumber,
         customerName,
-        scheduleDate: toTaipeiYmd(getCustomFieldDate(c, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY)),
-        dueDate: toTaipeiYmd(c.due ?? ""),
+        scheduleDate,
+        dueDate,
         token: found?.token ?? null,
         status: found?.status ?? "not_sent",
         preferredSlots: found?.preferredSlots ?? [],
@@ -78,6 +82,7 @@ export async function GET(request: Request) {
         confirmedAt: found?.confirmedAt ?? "",
         disputeNote: found?.disputeNote ?? "",
         createdAt: found?.createdAt ?? "",
+        staleDue: Boolean(dueDate && scheduleDate && dueDate < scheduleDate),
       };
     })
     .sort((a, b) =>
@@ -92,6 +97,7 @@ export async function GET(request: Request) {
     disputed: rows.filter((r) => r.status === "disputed").length,
     sent: rows.filter((r) => r.status === "sent").length,
     notSent: rows.filter((r) => r.status === "not_sent").length,
+    staleDue: rows.filter((r) => r.staleDue).length,
   };
   // 全部綠燈才可以往下走叫料——這是流程關卡，不是純顯示。
   const readyForMaterialCall = summary.total > 0 && summary.confirmed === summary.total;

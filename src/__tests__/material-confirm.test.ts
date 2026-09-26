@@ -12,7 +12,7 @@ import {
   generateToken,
   rowToConfirm,
 } from "@/lib/material-confirm-sheet";
-import { candidateUrls, rocDateLabel, toTaipeiYmd } from "@/lib/trello-server";
+import { candidateUrls, pickEstimatedDate, rocDateLabel, toTaipeiYmd } from "@/lib/trello-server";
 
 describe("splitOrderCardName", () => {
   it("拆出訂單編號與客戶姓名", () => {
@@ -216,5 +216,31 @@ describe("訂單照片取圖順序", () => {
     const bare = { ...imagePng, previews: [] };
     expect(candidateUrls(bare, true)).toEqual([bare.downloadUrl]);
     expect(candidateUrls(bare, false)).toEqual([bare.downloadUrl]);
+  });
+});
+
+// 實查 2026-10-12 那週 10 張單，5 張的出貨日比排程日早（還沒更新）。
+// 照 due 顯示會叫客人挑一個東西還沒做完的日期。
+describe("客人看到的預計完工日", () => {
+  it("出貨日晚於排程日時用出貨日", () => {
+    expect(pickEstimatedDate("2026-10-20", "2026-10-14")).toBe("2026-10-20");
+  });
+
+  it("出貨日還沒更新（早於排程日）時改用排程日，不給客人不可能的日期", () => {
+    // P6260 戴逸萍：排程 10/13、出貨仍是舊的 10/03
+    expect(pickEstimatedDate("2026-10-03", "2026-10-13")).toBe("2026-10-13");
+  });
+
+  it("兩者相同就是那天", () => {
+    expect(pickEstimatedDate("2026-10-14", "2026-10-14")).toBe("2026-10-14");
+  });
+
+  it("只有其中一個就用那個", () => {
+    expect(pickEstimatedDate("", "2026-10-13")).toBe("2026-10-13");
+    expect(pickEstimatedDate("2026-10-20", "")).toBe("2026-10-20");
+  });
+
+  it("都沒有就回空字串，不硬編一個日期", () => {
+    expect(pickEstimatedDate("", "")).toBe("");
   });
 });
