@@ -5,6 +5,7 @@ import {
   Calculator,
   Calendar,
   CircleHelp,
+  ClipboardCheck,
   ClipboardList,
   FileText,
   HandCoins,
@@ -46,6 +47,7 @@ export const navLinks: NavLinkDef[] = [
   { href: "/templates", label: "快速回覆", icon: MessageSquareText, roles: ["admin"], group: "business" },
   // ── 作業 ──
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
+  { href: "/material-confirm", label: "叫料確認", icon: ClipboardCheck, roles: ["admin"], group: "operations" },
   { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin"], group: "operations" },
   { href: "/orders", label: "訂製訂單", icon: ClipboardList, roles: ["admin"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"], group: "operations" },
