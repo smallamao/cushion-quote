@@ -4,6 +4,7 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import { loadSystemSettings } from "@/lib/settings-sheet";
 import { renderPurchaseOrderPdfBuffer } from "@/lib/purchase-order-pdf-server";
 
+import { authorizeSchedulerRequest } from "../../_catalog";
 import { rowToOrder, rowToItem } from "../../_order-parsers";
 
 // react-pdf renderToBuffer + 字型檔讀取需要 Node runtime（非 Edge）。
@@ -31,6 +32,16 @@ function safeFilePart(s: string): string {
  * 這支讓「下載 / 轉傳採購單」變成一個 URL，桌機、手機、伺服器一致。
  */
 export async function GET(_request: Request, context: RouteContext) {
+  // 排程系統（server-to-server）用 x-api-key 取回已建好的採購單 PDF。
+  // middleware 只確認「有帶 header」就放行，真正的 timing-safe 比對在這裡做——
+  // 沒有這段就等於任何帶任意 header 的人都能讀全部採購單。
+  // 瀏覽器（已登入、帶 cookie、不帶 x-api-key）維持原本行為，不受影響。
+  if (_request.headers.get("x-api-key")) {
+    const denied = authorizeSchedulerRequest(_request);
+    if (denied) {
+      return NextResponse.json({ ok: false, error: denied.error }, { status: denied.status });
+    }
+  }
   const { orderId } = await context.params;
   const client = await getSheetsClient();
   if (!client) {
