@@ -46,6 +46,8 @@ function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/sign/") ||
     pathname === "/cleaning" ||
     pathname.startsWith("/cleaning/") ||
+    // 叫料確認單：客人核對訂貨單照片＋簽名＋提供希望收件時段（token 為唯一憑證，免登入）
+    pathname.startsWith("/confirm/") ||
     pathname.startsWith("/s/") ||
     pathname.startsWith("/api/public/") ||
     // init & migrate 改由 x-init-secret header 保護，不列為公開路徑
