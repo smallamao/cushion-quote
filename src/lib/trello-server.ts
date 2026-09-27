@@ -219,9 +219,32 @@ export const SCHEDULE_DAY_FIELD = "5dbffb41d3233f81ca015792";
  * 日期。取「出貨日、排程日」較晚者，兩個都沒有就回空字串不硬編。
  * 另外一律當下重抓，老闆改了日期客人頁就跟著對，不吃建連結當下的快照。
  */
+/** 生產週長度：排程日當天起算一週（Numbers 的「日期範圍」就是這個，例 排程 10/14 → 10/14-20）。 */
+const PRODUCTION_WEEK_DAYS = 6;
+
+function addDaysYmd(ymd: string, n: number): string {
+  const t = Date.parse(`${ymd}T00:00:00Z`);
+  if (!Number.isFinite(t)) return ymd;
+  const d = new Date(t + n * 86400000);
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
+/**
+ * 客人看到的「預計完工日」。
+ *
+ * 🔴 不可以只看卡片 due。2026-09-27 對帳實測：排程日在 Numbers 與 Trello 之間
+ * **零筆不一致**，但出貨日有 17 筆對不上（P6260 排程 10/13、due 仍是舊的 10/03），
+ * 而且兩邊都可能是舊的那一方（P6010 的 Numbers 日期範圍還停在 6/30-7/5）。
+ * 唯一可信的是排程日，所以基準取「排程日那週的最後一天」＝ Numbers 日期範圍的迄日。
+ *
+ * due 比生產週結束還晚時才採用 due——那代表老闆刻意排得更後面，不能擅自提前承諾。
+ */
 export function pickEstimatedDate(dueYmd: string, scheduleYmd: string): string {
-  if (dueYmd && scheduleYmd) return dueYmd >= scheduleYmd ? dueYmd : scheduleYmd;
-  return dueYmd || scheduleYmd || "";
+  if (!scheduleYmd) return dueYmd || "";
+  const weekEnd = addDaysYmd(scheduleYmd, PRODUCTION_WEEK_DAYS);
+  if (!dueYmd) return weekEnd;
+  return dueYmd > weekEnd ? dueYmd : weekEnd;
 }
 
 export async function getCardEstimatedDate(cardId: string): Promise<string> {
