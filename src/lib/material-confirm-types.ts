@@ -91,10 +91,14 @@ export interface MaterialConfirm {
   signerUserAgent: string;
   createdAt: string;
   updatedAt: string;
-  // ── 階段二（出貨前，司機挑日）預留欄位 ──
+  // ── 階段二：司機挑日 ──
   driverToken: string;
   chosenDate: string;
   chosenPeriod: DeliveryPeriod | "";
+  /** 老闆實際把連結傳給客人的時間。空＝連結建好了但還沒傳出去 */
+  notifiedAt: string;
+  /** 同一批交給同一位司機的共用 token（一條連結含多筆） */
+  driverBatchToken: string;
 }
 
 /** 客人端只看得到這些——照片一律走 token 端點，不外洩 Trello 卡號與網址。 */

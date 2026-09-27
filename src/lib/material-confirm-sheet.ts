@@ -5,7 +5,8 @@
  *  A token / B cardId / C 訂單編號 / D 客戶姓名 / E 狀態 / F 生產週 / G 預計出貨日 /
  *  H 希望時段JSON / I 簽名者 / J 簽名圖 / K 確認時間 / L 內容有誤說明 /
  *  M 簽署IP / N 簽署裝置 / O 建立時間 / P 更新時間 /
- *  Q 司機token / R 確定日期 / S 確定時段          ← Q~S 為階段二（司機挑日）預留
+ *  Q 司機token / R 確定日期 / S 確定時段 /
+ *  T 已傳送給客人 / U 司機批次token
  */
 import "server-only";
 
@@ -21,15 +22,16 @@ import {
 } from "@/lib/material-confirm-types";
 
 export const SHEET = "叫料確認";
-export const RANGE_FULL = `${SHEET}!A:S`;
-export const RANGE_DATA = `${SHEET}!A2:S`;
-export const ROW_RANGE = (sheetRow: number) => `${SHEET}!A${sheetRow}:S${sheetRow}`;
+export const RANGE_FULL = `${SHEET}!A:U`;
+export const RANGE_DATA = `${SHEET}!A2:U`;
+export const ROW_RANGE = (sheetRow: number) => `${SHEET}!A${sheetRow}:U${sheetRow}`;
 
 export const SHEET_HEADERS = [
   "token", "cardId", "訂單編號", "客戶姓名", "狀態", "生產週", "預計出貨日",
   "希望時段JSON", "簽名者", "簽名圖", "確認時間", "內容有誤說明",
   "簽署IP", "簽署裝置", "建立時間", "更新時間",
   "司機token", "確定日期", "確定時段",
+  "已傳送給客人", "司機批次token",
 ];
 
 type SheetsClient = NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>;
@@ -74,6 +76,8 @@ export function rowToConfirm(row: string[]): MaterialConfirm {
     driverToken:     row[16] ?? "",
     chosenDate:      row[17] ?? "",
     chosenPeriod:    (row[18] as DeliveryPeriod) || "",
+    notifiedAt:      row[19] ?? "",
+    driverBatchToken: row[20] ?? "",
   };
 }
 
@@ -98,13 +102,40 @@ export function confirmToRow(c: MaterialConfirm): string[] {
     c.driverToken,                        // Q
     c.chosenDate,                         // R
     c.chosenPeriod,                       // S
+    c.notifiedAt,                         // T
+    c.driverBatchToken,                   // U
   ];
+}
+
+/**
+ * 表頭自我修復：欄位是往後加的，既有工作表的表頭會比 SHEET_HEADERS 短。
+ * 不比對就會出現「資料寫在 T 欄、表頭卻只到 S」的錯位，之後沒人看得懂那欄是什麼。
+ */
+async function ensureHeaders(client: SheetsClient): Promise<void> {
+  const res = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: `${SHEET}!A1:U1`,
+  });
+  const current = (res.data.values ?? [[]])[0] ?? [];
+  const same =
+    current.length === SHEET_HEADERS.length &&
+    SHEET_HEADERS.every((h, i) => current[i] === h);
+  if (same) return;
+  await client.sheets.spreadsheets.values.update({
+    spreadsheetId: client.spreadsheetId,
+    range: `${SHEET}!A1`,
+    valueInputOption: "RAW",
+    requestBody: { values: [SHEET_HEADERS] },
+  });
 }
 
 async function ensureSheetExists(client: SheetsClient): Promise<void> {
   const meta = await client.sheets.spreadsheets.get({ spreadsheetId: client.spreadsheetId });
   const exists = (meta.data.sheets ?? []).some((s) => s.properties?.title === SHEET);
-  if (exists) return;
+  if (exists) {
+    await ensureHeaders(client);
+    return;
+  }
   await client.sheets.spreadsheets.batchUpdate({
     spreadsheetId: client.spreadsheetId,
     requestBody: { requests: [{ addSheet: { properties: { title: SHEET } } }] },
@@ -146,6 +177,15 @@ export async function findByCardId(
   if (!cardId) return null;
   const all = await listConfirms();
   return all.find((x) => x.confirm.cardId === cardId) ?? null;
+}
+
+/** 同一批交給同一位司機的所有單。 */
+export async function findByDriverBatch(
+  batchToken: string,
+): Promise<Array<{ confirm: MaterialConfirm; rowNumber: number }>> {
+  if (!batchToken) return [];
+  const all = await listConfirms();
+  return all.filter((x) => x.confirm.driverBatchToken === batchToken);
 }
 
 export async function appendConfirm(c: MaterialConfirm): Promise<void> {

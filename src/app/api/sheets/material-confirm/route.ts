@@ -14,6 +14,7 @@ import {
   findByCardId,
   generateToken,
   listConfirms,
+  writeConfirm,
 } from "@/lib/material-confirm-sheet";
 import { splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
 import { getBoardCards, getCustomFieldDate, toTaipeiYmd } from "@/lib/trello-server";
@@ -29,6 +30,8 @@ interface WeekRow {
   dueDate: string;        // YYYY-MM-DD（台灣）
   /** 尚未建連結時為 null */
   token: string | null;
+  /** 老闆實際把連結傳出去的時間；空＝建好了還沒傳 */
+  notifiedAt: string;
   /** 客人確認後才有；老闆排車時把這條傳給司機 */
   driverToken: string | null;
   chosenDate: string;
@@ -80,6 +83,7 @@ export async function GET(request: Request) {
         scheduleDate,
         dueDate,
         token: found?.token ?? null,
+        notifiedAt: found?.notifiedAt ?? "",
         driverToken: found?.driverToken || null,
         chosenDate: found?.chosenDate ?? "",
         chosenPeriod: found?.chosenPeriod ?? "",
@@ -111,6 +115,8 @@ export async function GET(request: Request) {
     sent: rows.filter((r) => r.status === "sent").length,
     notSent: rows.filter((r) => r.status === "not_sent").length,
     staleDue: rows.filter((r) => r.staleDue).length,
+    // 連結建好了但還沒傳給客人——最容易漏掉的一種
+    unsent: rows.filter((r) => r.token && !r.notifiedAt && r.status === "sent").length,
   };
   // 全部綠燈才可以往下走叫料——這是流程關卡，不是純顯示。
   const readyForMaterialCall = summary.total > 0 && customerDone === summary.total;
@@ -119,12 +125,54 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  let body: { cardIds?: unknown; weekKey?: unknown };
+  let body: { cardIds?: unknown; weekKey?: unknown; action?: unknown; tokens?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ ok: false, error: "bad_json" }, { status: 400 });
   }
+
+  const action = typeof body.action === "string" ? body.action : "create";
+
+  // 標記「已傳送給客人」——連結建好 ≠ 已經傳出去，這兩件事要分開記，
+  // 否則看板永遠顯示「已發送」，老闆不知道自己傳到哪一筆了。
+  if (action === "notified") {
+    const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
+    if (tokens.length === 0) return NextResponse.json({ ok: false, error: "沒有指定要標記的項目" }, { status: 400 });
+    const all = await listConfirms();
+    const now = new Date().toISOString();
+    let n = 0;
+    for (const { confirm, rowNumber } of all) {
+      if (!tokens.includes(confirm.token) || confirm.notifiedAt) continue;
+      await writeConfirm({ ...confirm, notifiedAt: now }, rowNumber);
+      n += 1;
+    }
+    return NextResponse.json({ ok: true, marked: n });
+  }
+
+  // 司機批次：把這幾筆綁上同一個 token，司機一條連結全部處理完
+  if (action === "driver_batch") {
+    const ids = Array.isArray(body.cardIds) ? (body.cardIds as unknown[]).map(String).filter(Boolean) : [];
+    if (ids.length === 0) return NextResponse.json({ ok: false, error: "請選擇要交給司機的訂單" }, { status: 400 });
+    const all = await listConfirms();
+    const picked = all.filter((x) => ids.includes(x.confirm.cardId));
+    const notReady = picked.filter((x) => x.confirm.status !== "confirmed");
+    if (notReady.length) {
+      return NextResponse.json({
+        ok: false,
+        error: `有 ${notReady.length} 筆客人還沒確認或已排定：${notReady.map((x) => x.confirm.orderNumber).join("、")}`,
+      }, { status: 400 });
+    }
+    if (picked.length === 0) return NextResponse.json({ ok: false, error: "找不到對應資料" }, { status: 400 });
+    // 沿用既有批次 token（同一批重發不會換連結），都沒有才開新的
+    const batchToken = picked.find((x) => x.confirm.driverBatchToken)?.confirm.driverBatchToken || generateToken();
+    for (const { confirm, rowNumber } of picked) {
+      if (confirm.driverBatchToken === batchToken) continue;
+      await writeConfirm({ ...confirm, driverBatchToken: batchToken }, rowNumber);
+    }
+    return NextResponse.json({ ok: true, batchToken, count: picked.length });
+  }
+
   const cardIds = Array.isArray(body.cardIds) ? (body.cardIds as unknown[]).map(String).filter(Boolean) : [];
   const weekKey = typeof body.weekKey === "string" ? body.weekKey : "";
   if (cardIds.length === 0) {
@@ -174,6 +222,8 @@ export async function POST(request: Request) {
       driverToken: "",
       chosenDate: "",
       chosenPeriod: "",
+      notifiedAt: "",
+      driverBatchToken: "",
     };
     await appendConfirm(row);
     created.push({ cardId, orderNumber, customerName, token: row.token, reused: false });

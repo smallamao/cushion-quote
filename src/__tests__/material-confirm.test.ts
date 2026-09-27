@@ -84,12 +84,14 @@ const sample: MaterialConfirm = {
   driverToken: "",
   chosenDate: "",
   chosenPeriod: "",
+  notifiedAt: "",
+  driverBatchToken: "",
 };
 
 describe("叫料確認 工作表列對應", () => {
   it("欄數與表頭一致（欄序是唯一真相，改欄位必須同步）", () => {
     expect(confirmToRow(sample)).toHaveLength(SHEET_HEADERS.length);
-    expect(SHEET_HEADERS).toHaveLength(19);
+    expect(SHEET_HEADERS).toHaveLength(21);
   });
 
   it("寫出再讀回完全一致", () => {

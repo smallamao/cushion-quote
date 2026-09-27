@@ -11,6 +11,7 @@ interface WeekRow {
   scheduleDate: string;
   dueDate: string;
   token: string | null;
+  notifiedAt: string;
   driverToken: string | null;
   chosenDate: string;
   chosenPeriod: string;
@@ -25,7 +26,7 @@ interface WeekRow {
 
 interface Summary {
   total: number; confirmed: number; disputed: number; sent: number; notSent: number;
-  staleDue: number; scheduled: number; driverRejected: number;
+  staleDue: number; scheduled: number; driverRejected: number; unsent: number;
 }
 
 const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
@@ -82,6 +83,8 @@ export function MaterialConfirmClient() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [batchLink, setBatchLink] = useState<string>("");
 
   const origin = typeof window === "undefined" ? "" : window.location.origin;
 
@@ -111,6 +114,10 @@ export function MaterialConfirmClient() {
   useEffect(() => { void load(); }, [load]);
 
   const notSentIds = useMemo(() => rows.filter((r) => !r.token).map((r) => r.cardId), [rows]);
+  // 連結建好但還沒傳出去的
+  const unsentRows = useMemo(() => rows.filter((r) => r.token && !r.notifiedAt && r.status === "sent"), [rows]);
+  // 客人確認完、等排車的（可以交給司機）
+  const readyForDriver = useMemo(() => rows.filter((r) => r.status === "confirmed"), [rows]);
 
   async function createLinks(cardIds: string[]) {
     if (cardIds.length === 0) return;
@@ -166,6 +173,58 @@ export function MaterialConfirmClient() {
     ].join("\n");
   }
 
+  /**
+   * 產生「LINE 批次傳送」擴充功能的訂單編號欄內容：一行一筆「編號 姓名 連結」。
+   * 擴充功能 v3.10.0 會把每行的連結代進訊息的 {{連結}}，一次發完整批，
+   * 不用逐筆複製貼上——也就不會把 A 的連結貼到 B 的聊天室。
+   */
+  function batchListText(rows: WeekRow[]): string {
+    return rows
+      .filter((r) => r.token)
+      .map((r) => `${r.orderNumber} ${r.customerName} ${linkOf(r)}`.replace(/\s+/g, " ").trim())
+      .join("\n");
+  }
+
+  async function copyBatchAndMark(rows: WeekRow[]) {
+    const text = batchListText(rows);
+    if (!text) { setError("沒有可傳送的項目"); return; }
+    await copy(text, "batch");
+    // 複製＝準備要發了，順手記下來，否則看板永遠分不出「建好了」與「傳出去了」
+    const tokens = rows.map((r) => r.token).filter(Boolean) as string[];
+    try {
+      await fetch("/api/sheets/material-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "notified", tokens }),
+      });
+      await load();
+    } catch {
+      /* 標記失敗不影響已複製的內容 */
+    }
+  }
+
+  async function makeDriverBatch() {
+    const cardIds = Array.from(picked);
+    if (cardIds.length === 0) { setError("請先勾選要交給司機的訂單"); return; }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/sheets/material-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "driver_batch", cardIds }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string; batchToken?: string; count?: number };
+      if (!json.ok || !json.batchToken) { setError(json.error ?? "產生失敗"); return; }
+      setBatchLink(`${origin}/d/b/${json.batchToken}`);
+      await load();
+    } catch {
+      setError("產生失敗，請稍後再試");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copy(text: string, key: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -214,6 +273,14 @@ export function MaterialConfirmClient() {
             {busy ? "建立中…" : `為 ${notSentIds.length} 筆尚未發送的訂單建立連結`}
           </button>
         )}
+        {unsentRows.length > 0 && (
+          <button
+            type="button" onClick={() => void copyBatchAndMark(unsentRows)}
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white"
+          >
+            {copied === "batch" ? "已複製 ✓" : `📋 複製 ${unsentRows.length} 筆批次清單（貼 LINE 批次傳送）`}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -227,7 +294,8 @@ export function MaterialConfirmClient() {
             <span className="font-medium">共 {summary.total} 張</span>
             <span className="text-emerald-700">已確認 {summary.confirmed}</span>
             <span className="text-amber-700">等回覆 {summary.sent}</span>
-            <span className="text-gray-500">未發送 {summary.notSent}</span>
+            <span className="text-gray-500">未建連結 {summary.notSent}</span>
+            {summary.unsent > 0 && <span className="text-orange-700">連結未傳出 {summary.unsent}</span>}
             {summary.scheduled > 0 && <span className="text-blue-700">配送已排定 {summary.scheduled}</span>}
             {summary.disputed > 0 && <span className="text-red-600">回報有誤 {summary.disputed} ⚠️</span>}
             {summary.driverRejected > 0 && <span className="text-red-600">司機排不進 {summary.driverRejected} ⚠️</span>}
@@ -248,6 +316,71 @@ export function MaterialConfirmClient() {
         </div>
       )}
 
+      {/* 司機批次 */}
+      {readyForDriver.length > 0 && (
+        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+          <p className="text-sm font-medium text-[var(--text-primary)]">
+            🚚 交給司機排車（{readyForDriver.length} 筆客人已確認、等排車）
+          </p>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
+            勾選同一位司機要跑的幾筆 → 產生一條連結，司機一頁全部挑完，不用開好幾次。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {readyForDriver.map((r) => (
+              <button
+                key={r.cardId}
+                type="button"
+                onClick={() => setPicked((p) => {
+                  const n = new Set(p);
+                  if (n.has(r.cardId)) n.delete(r.cardId); else n.add(r.cardId);
+                  return n;
+                })}
+                className={`rounded-full border px-3 py-1.5 text-xs ${
+                  picked.has(r.cardId)
+                    ? "border-blue-600 bg-blue-600 font-medium text-white"
+                    : "border-[var(--border)] bg-[var(--surface)]"
+                }`}
+              >
+                {picked.has(r.cardId) ? "✓ " : ""}{r.orderNumber} {r.customerName}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button" onClick={() => void makeDriverBatch()} disabled={busy || picked.size === 0}
+              className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+            >
+              {busy ? "產生中…" : `產生司機批次連結（已選 ${picked.size}）`}
+            </button>
+            {picked.size > 0 && (
+              <button type="button" onClick={() => setPicked(new Set())}
+                className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs">
+                清除勾選
+              </button>
+            )}
+          </div>
+          {batchLink && (
+            <div className="mt-3 rounded-lg border border-blue-200 bg-white p-3">
+              <p className="text-xs text-[var(--text-secondary)]">司機連結（傳給司機這一條就好）</p>
+              <p className="mt-1 break-all font-mono text-xs">{batchLink}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void copy(`【馬鈴薯沙發】配送時段確認\n\n這批共 ${picked.size || ""} 筆，麻煩幫忙挑時間，地址電話都在裡面：\n${batchLink}`, "drvbatch")}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white"
+                >
+                  {copied === "drvbatch" ? "已複製 ✓" : "複製司機訊息"}
+                </button>
+                <a href={batchLink} target="_blank" rel="noopener noreferrer"
+                  className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs">
+                  預覽司機看到的畫面
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 清單 */}
       <div className="mt-4 space-y-3">
         {rows.length === 0 && !loading && (
@@ -264,6 +397,11 @@ export function MaterialConfirmClient() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-semibold">{r.orderNumber} {r.customerName}</span>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${meta.cls}`}>{meta.label}</span>
+                {r.token && !r.notifiedAt && r.status === "sent" && (
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
+                    連結未傳出
+                  </span>
+                )}
                 {r.staleDue && (
                   <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
                     出貨日未更新
