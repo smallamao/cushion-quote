@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CONCRETE_DELIVERY_PERIODS,
   DELIVERY_PERIODS,
   normalizeDeliveryPeriod,
+  periodStartHour,
+  toDueIso,
   splitOrderCardName,
   type MaterialConfirm,
 } from "@/lib/material-confirm-types";
@@ -242,5 +245,39 @@ describe("客人看到的預計完工日", () => {
 
   it("都沒有就回空字串，不硬編一個日期", () => {
     expect(pickEstimatedDate("", "")).toBe("");
+  });
+});
+
+describe("司機定案：時段 → Trello 出貨日", () => {
+  it("出貨日取時段的起始整點（出貨通知再據此算到貨區間）", () => {
+    expect(periodStartHour("上午 10:00-12:00")).toBe(10);
+    expect(periodStartHour("下午 13:00-15:00")).toBe(13);
+    expect(periodStartHour("下午 15:00-17:00")).toBe(15);
+    expect(periodStartHour("傍晚 17:00-19:00")).toBe(17);
+  });
+
+  // 「皆可」沒有具體時間，硬給一個預設會讓客人在錯的時間等門。
+  it("「皆可」沒有起始時間，必須由司機另外指定", () => {
+    expect(periodStartHour("皆可")).toBeNull();
+    expect(toDueIso("2026-10-29", "皆可")).toBeNull();
+  });
+
+  it("換算成 UTC 時扣掉台灣的 8 小時", () => {
+    expect(toDueIso("2026-10-29", "下午 13:00-15:00")).toBe("2026-10-29T05:00:00.000Z");
+    expect(toDueIso("2026-10-29", "上午 10:00-12:00")).toBe("2026-10-29T02:00:00.000Z");
+  });
+
+  it("傍晚時段換算後仍在同一天（不會因時區跨日）", () => {
+    expect(toDueIso("2026-10-29", "傍晚 17:00-19:00")).toBe("2026-10-29T09:00:00.000Z");
+  });
+
+  it("沒有日期就回 null，不生出一個假的出貨日", () => {
+    expect(toDueIso("", "下午 13:00-15:00")).toBeNull();
+  });
+
+  it("可挑的具體時段只有四個，不含皆可", () => {
+    expect(CONCRETE_DELIVERY_PERIODS).toHaveLength(4);
+    expect(CONCRETE_DELIVERY_PERIODS as string[]).not.toContain("皆可");
+    CONCRETE_DELIVERY_PERIODS.forEach((p) => expect(periodStartHour(p)).not.toBeNull());
   });
 });

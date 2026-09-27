@@ -11,7 +11,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { NextResponse } from "next/server";
 
 import { appendNotification } from "@/lib/notifications-sheet";
-import { findByToken, writeConfirm } from "@/lib/material-confirm-sheet";
+import { findByToken, generateToken, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
   normalizeDeliveryPeriod,
   type PreferredSlot,
@@ -174,10 +174,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
     const signatureUrl = await uploadSignature(signatureDataUrl, c.orderNumber || "order");
     const confirmedAt = new Date().toISOString();
+    // 客人一確認就把司機連結備好，之後排車直接複製，不用再多一步產生。
     await writeConfirm(
       {
         ...c,
         status: "confirmed",
+        driverToken: c.driverToken || generateToken(),
         signerName,
         signatureUrl,
         confirmedAt,

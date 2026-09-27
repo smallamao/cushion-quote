@@ -29,6 +29,10 @@ interface WeekRow {
   dueDate: string;        // YYYY-MM-DD（台灣）
   /** 尚未建連結時為 null */
   token: string | null;
+  /** 客人確認後才有；老闆排車時把這條傳給司機 */
+  driverToken: string | null;
+  chosenDate: string;
+  chosenPeriod: string;
   status: MaterialConfirm["status"] | "not_sent";
   preferredSlots: MaterialConfirm["preferredSlots"];
   signerName: string;
@@ -76,6 +80,9 @@ export async function GET(request: Request) {
         scheduleDate,
         dueDate,
         token: found?.token ?? null,
+        driverToken: found?.driverToken || null,
+        chosenDate: found?.chosenDate ?? "",
+        chosenPeriod: found?.chosenPeriod ?? "",
         status: found?.status ?? "not_sent",
         preferredSlots: found?.preferredSlots ?? [],
         signerName: found?.signerName ?? "",
@@ -91,16 +98,22 @@ export async function GET(request: Request) {
         : a.scheduleDate.localeCompare(b.scheduleDate),
     );
 
+  // 客人已確認＝confirmed 之後的任何狀態（司機已排定、司機回報不行，客人那關都過了）。
+  // 叫料關卡看的是「客人確認了沒」，不是司機排到日期沒有。
+  const CUSTOMER_DONE = new Set(["confirmed", "scheduled", "driver_rejected"]);
+  const customerDone = rows.filter((r) => CUSTOMER_DONE.has(r.status)).length;
   const summary = {
     total: rows.length,
-    confirmed: rows.filter((r) => r.status === "confirmed").length,
+    confirmed: customerDone,
+    scheduled: rows.filter((r) => r.status === "scheduled").length,
+    driverRejected: rows.filter((r) => r.status === "driver_rejected").length,
     disputed: rows.filter((r) => r.status === "disputed").length,
     sent: rows.filter((r) => r.status === "sent").length,
     notSent: rows.filter((r) => r.status === "not_sent").length,
     staleDue: rows.filter((r) => r.staleDue).length,
   };
   // 全部綠燈才可以往下走叫料——這是流程關卡，不是純顯示。
-  const readyForMaterialCall = summary.total > 0 && summary.confirmed === summary.total;
+  const readyForMaterialCall = summary.total > 0 && customerDone === summary.total;
 
   return NextResponse.json({ ok: true, rows, summary, readyForMaterialCall });
 }

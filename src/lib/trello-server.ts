@@ -234,3 +234,90 @@ export async function getCardEstimatedDate(cardId: string): Promise<string> {
     toTaipeiYmd(getCustomFieldDate(card, SCHEDULE_DAY_FIELD)),
   );
 }
+
+// ── 司機頁需要的配送資訊 ─────────────────────────────
+
+const CF = {
+  COMMUNITY_NAME: "60de85e6d4389c54299831bb",
+  PRIMARY_CONTACT_NAME: "68dbc601cb33326044f58b0c",
+  PRIMARY_CONTACT_PHONE: "68dbc64de823fab14eff02ab",
+  SECONDARY_CONTACT_NAME: "68dbc658fe59d273e97395a4",
+  SECONDARY_CONTACT_PHONE: "68dbc662112596182820b8e4",
+} as const;
+
+export interface DeliveryInfo {
+  orderNumber: string;
+  customerName: string;
+  /** 地址（含社區名與【無電梯】等註記） */
+  address: string;
+  /** 現場註記，例：無電梯、室內梯、扶手現場組裝 */
+  notes: string[];
+  primaryPhone: string;
+  primaryName: string;
+  secondaryPhone: string;
+  secondaryName: string;
+  /** 卡片描述裡非地址、非電話的行＝品項 */
+  items: string[];
+}
+
+interface CardDetail {
+  id: string;
+  name: string;
+  desc: string;
+  labels?: Array<{ name?: string }>;
+  customFieldItems?: BoardCardLite["customFieldItems"];
+}
+
+function cfText(card: CardDetail, fieldId: string): string {
+  return (card.customFieldItems ?? []).find((i) => i.idCustomField === fieldId)?.value?.text ?? "";
+}
+
+/** 「開頭像電話號碼」的行＝聯絡資訊（含 0958575724/許惠婷 這種斜線格式）。 */
+function looksLikePhoneLine(line: string): boolean {
+  const first = line.split(/[/\s]/)[0] ?? "";
+  return /^0\d{8,9}$/.test(first.replace(/-/g, ""));
+}
+
+/**
+ * 司機頁要顯示的配送資訊。欄位取法刻意對齊既有的司機確認訊息
+ * （`buildDriverConfirmBlock`）——司機看慣什麼就給什麼，不另創格式。
+ */
+export async function getDeliveryInfo(cardId: string): Promise<DeliveryInfo> {
+  const card = await trelloJson<CardDetail>(`cards/${cardId}`, {
+    fields: "name,desc,labels",
+    customFieldItems: "true",
+  });
+
+  const lines = (card.desc ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const address = lines[0] ?? "";
+  const community = cfText(card, CF.COMMUNITY_NAME);
+
+  const labelNames = (card.labels ?? []).map((l) => l.name ?? "");
+  const notes: string[] = [];
+  if (labelNames.some((n) => n.includes("組裝"))) notes.push("扶手現場組裝");
+  if (labelNames.some((n) => n.includes("無電梯"))) notes.push("無電梯");
+  if (labelNames.some((n) => n.includes("室內梯"))) notes.push("室內梯");
+
+  const orderNumber = (card.name.match(/[PS]\d{3,6}/) ?? [""])[0];
+  const rest = lines.slice(1);
+
+  const primaryPhone = cfText(card, CF.PRIMARY_CONTACT_PHONE) || (rest.find(looksLikePhoneLine) ?? "").split(/[/\s]/)[0] || "";
+  const primaryName = cfText(card, CF.PRIMARY_CONTACT_NAME) || card.name.replace(orderNumber, "").trim();
+
+  return {
+    orderNumber,
+    customerName: card.name.replace(orderNumber, "").trim(),
+    address: community ? `${address}〔${community}〕` : address,
+    notes,
+    primaryPhone,
+    primaryName,
+    secondaryPhone: cfText(card, CF.SECONDARY_CONTACT_PHONE).split("/")[0]?.trim() ?? "",
+    secondaryName: cfText(card, CF.SECONDARY_CONTACT_NAME),
+    items: rest.filter((l) => !looksLikePhoneLine(l)),
+  };
+}
+
+/** 設定卡片出貨日（Trello due）。 */
+export async function setCardDue(cardId: string, dueIso: string): Promise<void> {
+  await trelloJson(`cards/${cardId}`, { due: dueIso }, { method: "PUT" });
+}

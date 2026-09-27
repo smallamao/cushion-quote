@@ -11,6 +11,9 @@ interface WeekRow {
   scheduleDate: string;
   dueDate: string;
   token: string | null;
+  driverToken: string | null;
+  chosenDate: string;
+  chosenPeriod: string;
   status: MaterialConfirmStatus | "not_sent";
   preferredSlots: PreferredSlot[];
   signerName: string;
@@ -21,7 +24,8 @@ interface WeekRow {
 }
 
 interface Summary {
-  total: number; confirmed: number; disputed: number; sent: number; notSent: number; staleDue: number;
+  total: number; confirmed: number; disputed: number; sent: number; notSent: number;
+  staleDue: number; scheduled: number; driverRejected: number;
 }
 
 const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
@@ -62,8 +66,10 @@ function daysSince(iso: string): number | null {
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   not_sent:  { label: "尚未發送", cls: "bg-gray-100 text-gray-600" },
   sent:      { label: "已發送・等回覆", cls: "bg-amber-100 text-amber-800" },
-  confirmed: { label: "已確認", cls: "bg-emerald-100 text-emerald-800" },
+  confirmed: { label: "已確認・待排車", cls: "bg-emerald-100 text-emerald-800" },
   disputed:  { label: "客戶回報有誤", cls: "bg-red-100 text-red-700" },
+  scheduled: { label: "配送已排定", cls: "bg-blue-100 text-blue-800" },
+  driver_rejected: { label: "司機三組都不行", cls: "bg-red-100 text-red-700" },
 };
 
 export function MaterialConfirmClient() {
@@ -143,6 +149,23 @@ export function MaterialConfirmClient() {
     ].join("\n");
   }
 
+  function driverLinkOf(r: WeekRow): string {
+    return r.driverToken ? `${origin}/d/${r.driverToken}` : "";
+  }
+
+  function driverMsgOf(r: WeekRow): string {
+    const slots = r.preferredSlots.map((s, i) => `${i + 1}. ${fmtMd(s.date)} ${s.period}`).join("\n");
+    return [
+      `【馬鈴薯沙發】配送時段確認　#${r.orderNumber} ${r.customerName}`,
+      "",
+      "客人希望的時間：",
+      slots,
+      "",
+      "麻煩點下方連結挑一個，地址電話都在裡面：",
+      driverLinkOf(r),
+    ].join("\n");
+  }
+
   async function copy(text: string, key: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -205,7 +228,9 @@ export function MaterialConfirmClient() {
             <span className="text-emerald-700">已確認 {summary.confirmed}</span>
             <span className="text-amber-700">等回覆 {summary.sent}</span>
             <span className="text-gray-500">未發送 {summary.notSent}</span>
+            {summary.scheduled > 0 && <span className="text-blue-700">配送已排定 {summary.scheduled}</span>}
             {summary.disputed > 0 && <span className="text-red-600">回報有誤 {summary.disputed} ⚠️</span>}
+            {summary.driverRejected > 0 && <span className="text-red-600">司機排不進 {summary.driverRejected} ⚠️</span>}
           </div>
           {summary.staleDue > 0 && (
             <p className="mt-2 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-800">
@@ -254,7 +279,19 @@ export function MaterialConfirmClient() {
                 </span>
               </div>
 
-              {r.status === "confirmed" && (
+              {r.status === "scheduled" && (
+                <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800">
+                  🚚 司機已確定：{fmtMd(r.chosenDate)} {r.chosenPeriod}（出貨日已寫回 Trello）
+                </p>
+              )}
+
+              {r.status === "driver_rejected" && (
+                <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+                  司機回報三組時段都無法配合，請直接跟客人另約時間。
+                </p>
+              )}
+
+              {(r.status === "confirmed" || r.status === "scheduled" || r.status === "driver_rejected") && (
                 <div className="mt-2 text-sm text-[var(--text-secondary)]">
                   <span className="text-[var(--text-primary)]">{r.signerName}</span> 已簽名確認
                   {r.preferredSlots.length > 0 && (
@@ -295,6 +332,22 @@ export function MaterialConfirmClient() {
                     >
                       預覽客人看到的畫面
                     </a>
+                    {r.driverToken && r.status !== "scheduled" && (
+                      <>
+                        <button
+                          type="button" onClick={() => void copy(driverMsgOf(r), `drv-${r.cardId}`)}
+                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white"
+                        >
+                          {copied === `drv-${r.cardId}` ? "已複製 ✓" : "🚚 複製司機訊息"}
+                        </button>
+                        <a
+                          href={driverLinkOf(r)} target="_blank" rel="noopener noreferrer"
+                          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs"
+                        >
+                          預覽司機看到的畫面
+                        </a>
+                      </>
+                    )}
                   </>
                 ) : (
                   <button

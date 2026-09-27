@@ -14,6 +14,14 @@ export type DeliveryPeriod =
   | "傍晚 17:00-19:00"
   | "皆可";
 
+/** 有明確時間的時段（不含「皆可」）。司機要定案時只能挑這四個。 */
+export const CONCRETE_DELIVERY_PERIODS: DeliveryPeriod[] = [
+  "上午 10:00-12:00",
+  "下午 13:00-15:00",
+  "下午 15:00-17:00",
+  "傍晚 17:00-19:00",
+];
+
 export const DELIVERY_PERIODS: DeliveryPeriod[] = [
   "上午 10:00-12:00",
   "下午 13:00-15:00",
@@ -27,9 +35,34 @@ export function normalizeDeliveryPeriod(v: string | undefined): DeliveryPeriod {
 }
 
 export type MaterialConfirmStatus =
-  | "sent"       // 已產生連結，等客人確認
-  | "confirmed"  // 客人已簽名確認
-  | "disputed";  // 客人回報內容有誤，等廠務處理
+  | "sent"            // 已產生連結，等客人確認
+  | "confirmed"       // 客人已簽名確認，等司機挑日期
+  | "disputed"        // 客人回報內容有誤，等廠務處理
+  | "scheduled"       // 司機已從三組挑定一組
+  | "driver_rejected"; // 司機三組都不行，要另外跟客人喬
+
+/**
+ * 時段的起始整點（台灣時間）。Trello 的 due 存的是「到貨區間的開始」，
+ * 出貨通知再依此加上 timeRangeHours 算出區間——沿用既有 buildShippingMsg 的慣例。
+ * 「皆可」沒有明確時間，回 null：司機定案時必須挑一個具體時段。
+ */
+export function periodStartHour(period: DeliveryPeriod): number | null {
+  switch (period) {
+    case "上午 10:00-12:00": return 10;
+    case "下午 13:00-15:00": return 13;
+    case "下午 15:00-17:00": return 15;
+    case "傍晚 17:00-19:00": return 17;
+    default: return null;
+  }
+}
+
+/** YYYY-MM-DD ＋ 時段 → Trello due 用的 UTC ISO（台灣 -8 小時）。 */
+export function toDueIso(date: string, period: DeliveryPeriod): string | null {
+  const hour = periodStartHour(period);
+  if (!date || hour === null) return null;
+  const t = Date.parse(`${date}T${String(hour).padStart(2, "0")}:00:00+08:00`);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
 
 /** 客人希望的收件日期時段（最多 3 組）。 */
 export interface PreferredSlot {
