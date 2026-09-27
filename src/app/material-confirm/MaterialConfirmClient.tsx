@@ -22,6 +22,19 @@ interface WeekRow {
   disputeNote: string;
   createdAt: string;
   staleDue: boolean;
+  driftReasons: string[];
+}
+
+interface DriftStatus {
+  checked: boolean;
+  checkedAt: string;
+  numbersSavedAt: string;
+  error: string;
+  totalRecords: number;
+  weekRecords: number;
+  ageHours: number | null;
+  stale: boolean;
+  numbersNewer: boolean;
 }
 
 interface Summary {
@@ -92,6 +105,8 @@ export function MaterialConfirmClient() {
   const [rows, setRows] = useState<WeekRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [ready, setReady] = useState(false);
+  const [drift, setDrift] = useState<DriftStatus | null>(null);
+  const [safeToSend, setSafeToSend] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,16 +122,19 @@ export function MaterialConfirmClient() {
     try {
       const res = await fetch(`/api/sheets/material-confirm?start=${start}&end=${end}`, { cache: "no-store" });
       const json = (await res.json()) as {
-        ok: boolean; error?: string; rows?: WeekRow[]; summary?: Summary; readyForMaterialCall?: boolean;
+        ok: boolean; error?: string; rows?: WeekRow[]; summary?: Summary;
+        readyForMaterialCall?: boolean; driftStatus?: DriftStatus; safeToSend?: boolean;
       };
       if (!json.ok) {
         setError(json.error ?? "讀取失敗");
-        setRows([]); setSummary(null); setReady(false);
+        setRows([]); setSummary(null); setReady(false); setDrift(null); setSafeToSend(false);
         return;
       }
       setRows(json.rows ?? []);
       setSummary(json.summary ?? null);
       setReady(Boolean(json.readyForMaterialCall));
+      setDrift(json.driftStatus ?? null);
+      setSafeToSend(Boolean(json.safeToSend));
     } catch {
       setError("讀取失敗，請檢查網路");
     } finally {
@@ -343,8 +361,11 @@ export function MaterialConfirmClient() {
         )}
         {unsentRows.length > 0 && (
           <button
-            type="button" onClick={() => void copyBatchAndMark(unsentRows)}
-            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white"
+            type="button"
+            disabled={!safeToSend}
+            title={safeToSend ? "" : "要先通過 Numbers 對帳才能發給客人"}
+            onClick={() => void copyBatchAndMark(unsentRows)}
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             {copied === "batch" ? "已複製 ✓" : `📋 複製 ${unsentRows.length} 筆批次清單（貼 LINE 批次傳送）`}
           </button>
@@ -353,6 +374,40 @@ export function MaterialConfirmClient() {
 
       {error && (
         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      )}
+
+      {/* Numbers 對帳狀態 */}
+      {drift && (
+        <div className={`mt-4 rounded-xl border p-4 ${
+          drift.error || drift.weekRecords > 0 ? "border-red-300 bg-red-50"
+          : drift.stale ? "border-amber-300 bg-amber-50"
+          : "border-emerald-300 bg-emerald-50"
+        }`}>
+          <p className="text-sm font-medium">
+            {!drift.checked && "❔ 尚未對帳 — 還不知道 Trello 跟你的 Numbers 對不對得上"}
+            {drift.checked && drift.error && `🔴 對帳失敗：${drift.error}`}
+            {drift.checked && !drift.error && drift.numbersNewer &&
+              "⚠️ 你在對帳之後又改過 Numbers — 請重跑對帳"}
+            {drift.checked && !drift.error && !drift.numbersNewer && drift.stale &&
+              `⚠️ 對帳結果已過期（${drift.ageHours} 小時前）— 請重跑`}
+            {drift.checked && !drift.error && !drift.stale && drift.weekRecords > 0 &&
+              `🔴 這週有 ${drift.weekRecords} 筆與 Numbers 不一致 — 修好才能發給客人`}
+            {drift.checked && !drift.error && !drift.stale && drift.weekRecords === 0 &&
+              "✅ 這週與 Numbers 一致，可以發給客人"}
+          </p>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
+            {drift.checkedAt
+              ? `本機最後對帳 ${new Date(drift.checkedAt).toLocaleString("zh-TW", { hour12: false })}`
+              : "本機從未推送過對帳結果"}
+            {drift.totalRecords > 0 && `　全期間共 ${drift.totalRecords} 筆差異`}
+          </p>
+          {!safeToSend && (
+            <p className="mt-2 rounded bg-white/70 px-3 py-2 text-xs text-[var(--text-primary)]">
+              在你的電腦上跟我說「<strong>跑排程對帳</strong>」，我會重新比對 Numbers 與 Trello 並把結果送上來。
+              通過之後「複製批次清單」才會解鎖。
+            </p>
+          )}
+        </div>
       )}
 
       {/* 統計 */}
@@ -521,6 +576,13 @@ export function MaterialConfirmClient() {
                 <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
                   客戶回報：{r.disputeNote}
                 </p>
+              )}
+
+              {r.driftReasons.length > 0 && (
+                <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+                  🔴 與 Numbers 不一致：
+                  {r.driftReasons.map((x, i) => <span key={i} className="ml-1">{x}</span>)}
+                </div>
               )}
 
               {r.status === "postponed" && (

@@ -80,6 +80,7 @@ const API_KEY_PATHS = new Set([
   "/api/sheets/quotes-v2/from-agent",   // 對話 agent：建報價草稿
   "/api/sheets/products/lookup",        // 排程系統：建單前查目錄／供應商
   "/api/sheets/products/from-agent",    // 排程系統：補建缺少的採購商品（copyFrom 指定範本）
+  "/api/sheets/schedule-drift",         // 排程系統：推送 Numbers vs Trello 對帳結果
 ]);
 
 // 採購單 PDF 取回：路徑帶單號（/api/sheets/purchases/PS-20260922-05/pdf），

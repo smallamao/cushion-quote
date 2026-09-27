@@ -17,6 +17,7 @@ import {
   writeConfirm,
 } from "@/lib/material-confirm-sheet";
 import { splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
+import { readDrift } from "@/lib/schedule-drift-sheet";
 import { getBoardCards, getCustomFieldDate, toTaipeiYmd } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
@@ -44,6 +45,8 @@ interface WeekRow {
   createdAt: string;
   /** 出貨日早於排程日＝這張的出貨日還沒更新，客人會看到錯的完工日 */
   staleDue: boolean;
+  /** 本機對帳（Numbers vs Trello）在這筆上發現的差異說明 */
+  driftReasons: string[];
 }
 
 export async function GET(request: Request) {
@@ -70,6 +73,15 @@ export async function GET(request: Request) {
   const existing = await listConfirms();
   const byCard = new Map(existing.map((x) => [x.confirm.cardId, x.confirm]));
 
+  // 本機推上來的 Numbers vs Trello 對帳結果。null＝從來沒推過或讀不到，
+  // 這時要當「不知道」而不是「沒問題」——看板會顯示尚未對帳。
+  const drift = await readDrift();
+  const driftByOrder = new Map<string, string[]>();
+  for (const r of drift?.records ?? []) {
+    if (!r.orderNumber) continue;
+    driftByOrder.set(r.orderNumber, [...(driftByOrder.get(r.orderNumber) ?? []), r.reason]);
+  }
+
   const rows: WeekRow[] = inWeek
     .map((c): WeekRow => {
       const { orderNumber, customerName } = splitOrderCardName(c.name);
@@ -94,6 +106,7 @@ export async function GET(request: Request) {
         disputeNote: found?.disputeNote ?? "",
         createdAt: found?.createdAt ?? "",
         staleDue: Boolean(dueDate && scheduleDate && dueDate < scheduleDate),
+        driftReasons: driftByOrder.get(orderNumber) ?? [],
       };
     })
     .sort((a, b) =>
@@ -124,7 +137,36 @@ export async function GET(request: Request) {
   // 全部綠燈才可以往下走叫料——這是流程關卡，不是純顯示。
   const readyForMaterialCall = summary.total > 0 && customerDone === summary.total;
 
-  return NextResponse.json({ ok: true, rows, summary, readyForMaterialCall });
+  // ── Numbers 對帳狀態 ──────────────────────────────
+  // 老闆是以本地 Numbers 為主，雲端看到的是 Trello。發連結前要先確認兩邊對得上，
+  // 否則客人會拿到錯週次、錯日期的確認單。這裡把「能不能發」變成程式判斷，
+  // 不是靠人記得去跑對帳（同 [[gate-in-code-not-in-skill]]）。
+  const DRIFT_MAX_AGE_HOURS = 24;
+  const weekDrift = rows.filter((r) => r.driftReasons.length > 0);
+  const checkedMs = drift ? Date.parse(drift.checkedAt) : NaN;
+  const ageHours = Number.isFinite(checkedMs) ? (Date.now() - checkedMs) / 3600000 : Infinity;
+  // Numbers 存檔時間比對帳時間晚＝老闆改完還沒重跑對帳，結果過期
+  const savedMs = drift?.numbersSavedAt ? Date.parse(drift.numbersSavedAt) : NaN;
+  const numbersNewer = Number.isFinite(savedMs) && Number.isFinite(checkedMs) && savedMs > checkedMs;
+
+  const driftStatus = {
+    checked: Boolean(drift),
+    checkedAt: drift?.checkedAt ?? "",
+    numbersSavedAt: drift?.numbersSavedAt ?? "",
+    error: drift?.error ?? "",
+    /** 整批（不只本週）的差異筆數 */
+    totalRecords: drift?.records.length ?? 0,
+    /** 本週的差異筆數 */
+    weekRecords: weekDrift.length,
+    ageHours: Number.isFinite(ageHours) ? Math.round(ageHours * 10) / 10 : null,
+    stale: !drift || numbersNewer || ageHours > DRIFT_MAX_AGE_HOURS,
+    numbersNewer,
+  };
+  // 可以發連結給客人的條件：對帳跑過、沒過期、沒錯誤、且本週零差異
+  const safeToSend =
+    driftStatus.checked && !driftStatus.stale && !driftStatus.error && driftStatus.weekRecords === 0;
+
+  return NextResponse.json({ ok: true, rows, summary, readyForMaterialCall, driftStatus, safeToSend });
 }
 
 export async function POST(request: Request) {
