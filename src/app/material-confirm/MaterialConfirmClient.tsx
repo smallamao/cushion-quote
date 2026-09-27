@@ -35,13 +35,25 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** 下一個週一（今天就是週一則取今天）——每週叫料確認都是針對即將生產的那一週。 */
-function defaultStart(): string {
+/** 今天之後的第 n 個週一（n=1 是最近的下一個週一；今天是週一則算第 1 個）。 */
+function nthMonday(n: number): string {
   const now = new Date(Date.now() + 8 * 60 * 60 * 1000);
   const dow = now.getUTCDay();
-  const add = dow === 1 ? 0 : (8 - dow) % 7;
-  now.setUTCDate(now.getUTCDate() + add);
+  const toMonday = dow === 1 ? 0 : (8 - dow) % 7;
+  now.setUTCDate(now.getUTCDate() + toMonday + (n - 1) * 7);
   return ymd(now);
+}
+
+/**
+ * 預設打開第 3 個週一那一週。
+ * 叫料實際落在生產週前 11～14 天（9/10 出 9/21 週、9/17 出 9/28 週、9/21 出 10/5 週），
+ * 換算過來就是往後數第 3 個週一。
+ * 🔴 舊版預設「下一個週一」，9/27 打開會停在 9/28 那週——那週的料 9/17 就叫完了，
+ *    畫面卻寫「10 張全部未確認、還不能叫料」，看的人只會一頭霧水。
+ * ⚠️ 這只是預設值，不保證每次都對（叫料提前幾天會變動）；上方四顆週次按鈕可一鍵切換。
+ */
+function defaultStart(): string {
+  return nthMonday(3);
 }
 
 function addDays(base: string, n: number): string {
@@ -252,8 +264,54 @@ export function MaterialConfirmClient() {
         全部客戶確認後才進行組件叫料。客戶確認即為訂貨單條款的不可取消時點，系統會留存簽名與時間。
       </p>
 
-      {/* 週次 */}
-      <div className="mt-4 flex flex-wrap items-end gap-2">
+      {/* 操作步驟 */}
+      <ol className="mt-4 grid gap-2 sm:grid-cols-3">
+        {[
+          { n: 1, t: "建立連結", d: "為這週的訂單產生客人專屬連結" },
+          { n: 2, t: "傳給客人", d: "複製批次清單，貼進 LINE 批次傳送" },
+          { n: 3, t: "等全部確認", d: "全綠才能進行組件叫料" },
+        ].map((x) => {
+          const active =
+            x.n === 1 ? notSentIds.length > 0
+            : x.n === 2 ? notSentIds.length === 0 && unsentRows.length > 0
+            : notSentIds.length === 0 && unsentRows.length === 0;
+          return (
+            <li key={x.n} className={`rounded-lg border px-3 py-2 ${
+              active ? "border-[var(--accent)] bg-[var(--accent)]/5" : "border-[var(--border)] bg-[var(--surface)] opacity-60"
+            }`}>
+              <p className="text-sm font-medium">
+                {active ? "👉 " : ""}{x.n}. {x.t}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{x.d}</p>
+            </li>
+          );
+        })}
+      </ol>
+
+      {/* 週次快選 */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-[var(--text-secondary)]">
+          生產週（今天 {fmtMd(ymd(new Date(Date.now() + 8 * 60 * 60 * 1000)))}）：
+        </span>
+        {[1, 2, 3, 4].map((n) => {
+          const mon = nthMonday(n);
+          const on = start === mon;
+          return (
+            <button
+              key={n} type="button"
+              onClick={() => { setStart(mon); setEnd(addDays(mon, 5)); }}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${
+                on ? "border-[var(--accent)] bg-[var(--accent)] font-medium text-white" : "border-[var(--border)] bg-[var(--surface)]"
+              }`}
+            >
+              {fmtMd(mon)} 起
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 自訂區間 */}
+      <div className="mt-2 flex flex-wrap items-end gap-2">
         <label className="text-xs text-[var(--text-secondary)]">
           生產週起
           <input
@@ -512,9 +570,9 @@ export function MaterialConfirmClient() {
                 ) : (
                   <button
                     type="button" onClick={() => void createLinks([r.cardId])} disabled={busy}
-                    className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                    className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-40"
                   >
-                    建立連結
+                    只建這一筆
                   </button>
                 )}
               </div>
