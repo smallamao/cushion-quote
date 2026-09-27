@@ -402,9 +402,19 @@ export function MaterialConfirmClient() {
             {drift.totalRecords > 0 && `　全期間共 ${drift.totalRecords} 筆差異`}
           </p>
           {!safeToSend && (
-            <p className="mt-2 rounded bg-white/70 px-3 py-2 text-xs text-[var(--text-primary)]">
-              在你的電腦上跟我說「<strong>跑排程對帳</strong>」，我會重新比對 Numbers 與 Trello 並把結果送上來。
-              通過之後「複製批次清單」才會解鎖。
+            <p className="mt-2 rounded bg-white/70 px-3 py-2 text-xs leading-relaxed text-[var(--text-primary)]">
+              {drift.weekRecords > 0 ? (
+                <>
+                  請先把上面標紅的那幾筆改成一致（改 Trello 或改 Numbers 都可以）。
+                  <strong>存檔 Numbers 後約 20 秒會自動重新對帳</strong>，這裡就會跟著更新，
+                  「複製批次清單」也會自動解鎖 —— 你不需要另外執行什麼。
+                </>
+              ) : (
+                <>
+                  對帳是<strong>存檔《馬鈴薯排程.numbers》時自動跑的</strong>（約 20 秒）。
+                  這裡卡住通常代表你的電腦沒開機、或剛改完還沒跑完 —— 開著電腦等一下再重新整理。
+                </>
+              )}
             </p>
           )}
         </div>
