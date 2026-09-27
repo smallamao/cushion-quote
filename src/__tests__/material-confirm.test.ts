@@ -296,3 +296,32 @@ describe("司機定案：時段 → Trello 出貨日", () => {
     CONCRETE_DELIVERY_PERIODS.forEach((p) => expect(periodStartHour(p)).not.toBeNull());
   });
 });
+
+// 老闆現行 LINE 文案寫的是「【10/8 ～ 10/14 製作完成】」＝一段區間，不是單一天。
+describe("製作完成區間", () => {
+  it("起日＝排程日，迄日＝排程日+6", () => {
+    expect(pickEstimatedDate("", "2026-10-08")).toBe("2026-10-14");
+  });
+
+  it("客人頁顯示的區間對得上老闆訊息的寫法", () => {
+    const start = "2026-10-08";
+    const end = pickEstimatedDate("", start);
+    expect(`${start.slice(5).replace("-", "/").replace(/^0/, "")} ～ ${end.slice(5).replace("-", "/").replace(/^0/, "")}`)
+      .toBe("10/08 ～ 10/14");
+  });
+});
+
+// 客人現場還沒好卻只有「確認」「有誤」兩條路 → 他只能不回，整週叫料卡住。
+describe("延後備料狀態", () => {
+  it("postponed 不可被當成客人已確認", () => {
+    const CUSTOMER_DONE = new Set(["confirmed", "scheduled", "driver_rejected"]);
+    expect(CUSTOMER_DONE.has("postponed")).toBe(false);
+  });
+
+  it("寫進工作表再讀回不會掉", () => {
+    const row = confirmToRow({ ...sample, status: "postponed", disputeNote: "裝潢預計月底完成" });
+    const back = rowToConfirm(row);
+    expect(back.status).toBe("postponed");
+    expect(back.disputeNote).toBe("裝潢預計月底完成");
+  });
+});

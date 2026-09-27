@@ -104,6 +104,8 @@ export async function GET(request: Request) {
 
   // 客人已確認＝confirmed 之後的任何狀態（司機已排定、司機回報不行，客人那關都過了）。
   // 叫料關卡看的是「客人確認了沒」，不是司機排到日期沒有。
+  // 🔴 postponed 不算——客人明確說「現在還不能進場，請延後」，這筆就不該跟著本週叫料，
+  //    老闆要先把它移出這週（改排程日）才走得下去。
   const CUSTOMER_DONE = new Set(["confirmed", "scheduled", "driver_rejected"]);
   const customerDone = rows.filter((r) => CUSTOMER_DONE.has(r.status)).length;
   const summary = {
@@ -112,6 +114,7 @@ export async function GET(request: Request) {
     scheduled: rows.filter((r) => r.status === "scheduled").length,
     driverRejected: rows.filter((r) => r.status === "driver_rejected").length,
     disputed: rows.filter((r) => r.status === "disputed").length,
+    postponed: rows.filter((r) => r.status === "postponed").length,
     sent: rows.filter((r) => r.status === "sent").length,
     notSent: rows.filter((r) => r.status === "not_sent").length,
     staleDue: rows.filter((r) => r.staleDue).length,

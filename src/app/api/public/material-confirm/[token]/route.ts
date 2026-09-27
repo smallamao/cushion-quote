@@ -21,7 +21,7 @@ import {
   addCardComment,
   addCheckItem,
   ensureTodoChecklist,
-  getCardEstimatedDate,
+  getCardProductionWindow,
   getCardImageAttachments,
   rocDateLabel,
   toTaipeiYmd,
@@ -71,11 +71,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     /* 取不到就當 0 張，頁面會顯示「照片載入失敗」而不是整頁壞掉 */
   }
 
-  // 預計完工日當下重抓（出貨日常常是舊的，見 getCardEstimatedDate 註解）；
+  // 製作完成區間當下重抓（出貨日常常是舊的，見 pickEstimatedDate 註解）；
   // 抓不到才退回建連結當下存的出貨日。
+  let productionStart = "";
   let estimatedDate = "";
   try {
-    estimatedDate = await getCardEstimatedDate(c.cardId);
+    const win = await getCardProductionWindow(c.cardId);
+    productionStart = win.start;
+    estimatedDate = win.end;
   } catch {
     estimatedDate = toTaipeiYmd(c.dueDate);
   }
@@ -84,6 +87,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     status: c.status,
     orderNumber: c.orderNumber,
     customerName: c.customerName,
+    productionStart,
     estimatedDate,
     photoCount,
     preferredSlots: c.preferredSlots,
@@ -146,6 +150,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       return NextResponse.json({ ok: true, status: "disputed" });
     }
 
+    // ── 客人現場還不能進場，要求延後備料 ──────────────
+    // 老闆現行訊息就有這條路（「若目前尚無法安排進場，煩請先告知！我們會協助延後備料」）。
+    // 沒有這個出口，裝潢還沒好的客人只能不回，整週叫料就卡在他身上。
+    if (action === "postpone") {
+      const note = String(body.note ?? "").trim();
+      if (c.status === "confirmed" || c.status === "scheduled") {
+        return NextResponse.json({ ok: false, error: "already_confirmed" }, { status: 409 });
+      }
+      await writeConfirm(
+        { ...c, status: "postponed", disputeNote: note || "客人表示目前無法安排進場" },
+        rowNumber,
+      );
+      await addCardComment(
+        c.cardId,
+        [
+          "【叫料確認單】⏸ 客戶表示目前無法安排進場",
+          `時間：${fmtTaipei(new Date().toISOString())}`,
+          note ? `\n客戶說明：\n${note}` : "",
+          "\n※ 尚未同意叫料，請協助延後備料或順延製作。",
+        ].filter(Boolean).join("\n"),
+      ).catch(() => {});
+      await appendNotification({
+        type: "material_confirm",
+        title: `⏸ ${c.orderNumber} 客戶要求延後備料`,
+        body: note ? note.slice(0, 120) : "客人表示目前無法安排進場",
+        link: "/material-confirm",
+      });
+      return NextResponse.json({ ok: true, status: "postponed" });
+    }
+
     // ── 客人確認並簽名 ────────────────────────────────
     if (action !== "confirm") {
       return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
@@ -165,8 +199,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       .filter((s) => s && typeof s.date === "string" && s.date)
       .slice(0, 3)
       .map((s) => ({ date: s.date as string, period: normalizeDeliveryPeriod(s.period) }));
-    if (slots.length === 0) {
-      return NextResponse.json({ ok: false, error: "請至少選一組希望收件日期" }, { status: 400 });
+    // 「隨時可配合」＝整段期間都行、由我們安排，這時不需要填日期
+    const anytime = body.anytime === true;
+    if (slots.length === 0 && !anytime) {
+      return NextResponse.json({ ok: false, error: "請至少選一組希望收件日期，或勾選「隨時可配合」" }, { status: 400 });
     }
     if (!process.env.CLOUDINARY_CLOUD_NAME) {
       return NextResponse.json({ ok: false, error: "Cloudinary 未設定" }, { status: 503 });
@@ -184,7 +220,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         signatureUrl,
         confirmedAt,
         preferredSlots: slots,
-        disputeNote: "",
+        disputeNote: anytime ? "客人表示：隨時可配合，由我們安排" : "",
         signerIp: clientIp(req),
         signerUserAgent: (req.headers.get("user-agent") ?? "").slice(0, 300),
       },
@@ -193,7 +229,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
     // Trello 回寫：留言放完整證據，待辦事項放狀態（沿用訂金/尾款的既有寫法）。
     // 任何一邊失敗都不該讓客人看到錯誤——確認本身已經存進 Google 表了。
-    const slotLines = slots.map((s, i) => `${i + 1}. ${fmtSlot(s)}`).join("\n");
+    const slotLines = anytime && slots.length === 0
+      ? "　隨時可配合，由我們安排"
+      : slots.map((s, i) => `${i + 1}. ${fmtSlot(s)}`).join("\n") +
+        (anytime ? "\n　（客人另註明：其他時間也可配合）" : "");
     await addCardComment(
       c.cardId,
       [

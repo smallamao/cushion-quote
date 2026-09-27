@@ -38,6 +38,7 @@ export type MaterialConfirmStatus =
   | "sent"            // 已產生連結，等客人確認
   | "confirmed"       // 客人已簽名確認，等司機挑日期
   | "disputed"        // 客人回報內容有誤，等廠務處理
+  | "postponed"       // 客人現場還不能進場，要求延後備料
   | "scheduled"       // 司機已從三組挑定一組
   | "driver_rejected"; // 司機三組都不行，要另外跟客人喬
 
@@ -70,6 +71,12 @@ export interface PreferredSlot {
   period: DeliveryPeriod;
 }
 
+/**
+ * 客人選「隨時可配合」時不挑日期，這個旗標代表「整段期間都行，你們安排」。
+ * 老闆現行訊息的範例就有「隨時可配合」——只給日期格會逼客人亂填一個。
+ */
+export const ANYTIME_FLAG = "anytime";
+
 /** 一張訂單的叫料確認 session。 */
 export interface MaterialConfirm {
   token: string;          // 客人連結 token（唯一憑證）
@@ -85,7 +92,7 @@ export interface MaterialConfirm {
   signerName: string;
   signatureUrl: string;   // Cloudinary
   confirmedAt: string;
-  /** 客人回報「內容有誤」時填的說明 */
+  /** 客人回報「內容有誤」或「無法進場」時填的說明 */
   disputeNote: string;
   signerIp: string;
   signerUserAgent: string;
@@ -106,7 +113,9 @@ export interface PublicMaterialConfirmView {
   status: MaterialConfirmStatus;
   orderNumber: string;
   customerName: string;
-  /** 預計完工日 YYYY-MM-DD（台灣時區）；空＝未設定 */
+  /** 製作完成區間的起日 YYYY-MM-DD（＝排程日）；空＝未設定 */
+  productionStart: string;
+  /** 製作完成區間的迄日 YYYY-MM-DD（＝排程日+6）；空＝未設定 */
   estimatedDate: string;
   /** 照片張數；客人端用 /photo/{i} 逐張取圖 */
   photoCount: number;

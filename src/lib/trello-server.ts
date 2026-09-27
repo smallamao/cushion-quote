@@ -247,15 +247,25 @@ export function pickEstimatedDate(dueYmd: string, scheduleYmd: string): string {
   return dueYmd > weekEnd ? dueYmd : weekEnd;
 }
 
-export async function getCardEstimatedDate(cardId: string): Promise<string> {
+export interface ProductionWindow {
+  /** 製作起日＝排程日 */
+  start: string;
+  /** 製作完成日＝排程日+6，或 due 更晚時取 due */
+  end: string;
+}
+
+/**
+ * 客人訊息上寫的「【10/8 ～ 10/14 製作完成】」那段區間。
+ * 起日＝排程日（Numbers 與 Trello 零差異，可信），迄日見 pickEstimatedDate。
+ */
+export async function getCardProductionWindow(cardId: string): Promise<ProductionWindow> {
   const card = await trelloJson<BoardCardLite>(`cards/${cardId}`, {
     fields: "due",
     customFieldItems: "true",
   });
-  return pickEstimatedDate(
-    toTaipeiYmd(card.due ?? ""),
-    toTaipeiYmd(getCustomFieldDate(card, SCHEDULE_DAY_FIELD)),
-  );
+  const sched = toTaipeiYmd(getCustomFieldDate(card, SCHEDULE_DAY_FIELD));
+  const due = toTaipeiYmd(card.due ?? "");
+  return { start: sched, end: pickEstimatedDate(due, sched) };
 }
 
 // ── 司機頁需要的配送資訊 ─────────────────────────────

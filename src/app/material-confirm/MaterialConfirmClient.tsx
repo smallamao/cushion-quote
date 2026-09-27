@@ -26,7 +26,7 @@ interface WeekRow {
 
 interface Summary {
   total: number; confirmed: number; disputed: number; sent: number; notSent: number;
-  staleDue: number; scheduled: number; driverRejected: number; unsent: number;
+  staleDue: number; scheduled: number; driverRejected: number; unsent: number; postponed: number;
 }
 
 const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
@@ -69,6 +69,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   sent:      { label: "已發送・等回覆", cls: "bg-amber-100 text-amber-800" },
   confirmed: { label: "已確認・待排車", cls: "bg-emerald-100 text-emerald-800" },
   disputed:  { label: "客戶回報有誤", cls: "bg-red-100 text-red-700" },
+  postponed: { label: "客戶要求延後備料", cls: "bg-amber-100 text-amber-800" },
   scheduled: { label: "配送已排定", cls: "bg-blue-100 text-blue-800" },
   driver_rejected: { label: "司機三組都不行", cls: "bg-red-100 text-red-700" },
 };
@@ -143,16 +144,25 @@ export function MaterialConfirmClient() {
     return r.token ? `${origin}/confirm/${r.token}` : "";
   }
 
+  /** 沿用老闆現行的 LINE 文案，只把「回覆同意叫料製作」換成點連結。 */
   function lineMsgOf(r: WeekRow): string {
     return [
-      "【馬鈴薯沙發】訂單內容確認",
+      "【叫料前，最後確認通知】",
       "",
-      `${r.customerName}您好，您的訂單 ${r.orderNumber} 即將進入備料裁切。`,
-      "麻煩您點下方連結核對訂貨單內容，並提供三組方便收件的日期時段：",
+      `${r.customerName}您好 👋`,
+      "即將進行訂單的 備料作業",
+      "請先確認 訂貨單上的款式、尺寸、顏色 是否正確！",
+      "後續製作將完全依照訂貨單內容進行。",
       "",
+      "請點下方連結，核對訂貨單照片並提供可進沙發的時間：",
       linkOf(r),
       "",
-      "確認後我們就會開始為您叫料，感謝您！",
+      "⚠️ 若目前尚無法安排進場，連結裡也可以直接告知，",
+      "我們會協助延後備料或順延製作。",
+      "",
+      "💡 送出確認後我們會立即備料排程，",
+      "　 屆時將無法修改、取消訂單（訂金恕不退還），",
+      "　 若有任何修改請在送出前一次告知。",
     ].join("\n");
   }
 
@@ -298,6 +308,7 @@ export function MaterialConfirmClient() {
             {summary.unsent > 0 && <span className="text-orange-700">連結未傳出 {summary.unsent}</span>}
             {summary.scheduled > 0 && <span className="text-blue-700">配送已排定 {summary.scheduled}</span>}
             {summary.disputed > 0 && <span className="text-red-600">回報有誤 {summary.disputed} ⚠️</span>}
+            {summary.postponed > 0 && <span className="text-amber-700">要求延後 {summary.postponed} ⏸</span>}
             {summary.driverRejected > 0 && <span className="text-red-600">司機排不進 {summary.driverRejected} ⚠️</span>}
           </div>
           {summary.staleDue > 0 && (
@@ -312,6 +323,11 @@ export function MaterialConfirmClient() {
             {ready
               ? "✅ 全部客戶都已確認 — 可以進行組件叫料了"
               : `⛔ 還不能叫料：尚有 ${summary.total - summary.confirmed} 張未確認`}
+            {summary.postponed > 0 && (
+              <span className="mt-1 block font-normal">
+                其中 {summary.postponed} 張客戶要求延後備料 — 請先把那幾張移出本週（改排程日），本週才走得下去。
+              </span>
+            )}
           </p>
         </div>
       )}
@@ -446,6 +462,12 @@ export function MaterialConfirmClient() {
               {r.status === "disputed" && (
                 <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
                   客戶回報：{r.disputeNote}
+                </p>
+              )}
+
+              {r.status === "postponed" && (
+                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  ⏸ 客戶目前無法進場{r.disputeNote ? `：${r.disputeNote}` : ""}
                 </p>
               )}
 
