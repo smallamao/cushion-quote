@@ -214,6 +214,15 @@ export default async function DispatchPage({
           <div style={{ marginBottom: 14 }}>
             <div style={labelStyle}>預定時間</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{schedule}</div>
+            {/* 一鍵把整張派工資訊存進手機行事曆（.ics：時間、地址、電話、問題都帶入） */}
+            {service.scheduledDate && (
+              <a
+                href={`/api/public/dispatch/${encodeURIComponent(serviceId)}/${encodeURIComponent(sig)}/ics`}
+                style={{ ...bigAction, background: "#fff7ed", color: "#c2410c" }}
+              >
+                📅 加入行事曆
+              </a>
+            )}
           </div>
         )}
         {service.dispatchNotes && (
