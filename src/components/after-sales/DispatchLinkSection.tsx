@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Loader2, MapPin, Phone, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { buildDispatchUrl } from "@/lib/dispatch-public-url";
 
 // 外部師傅派工連結：內勤複製後貼 LINE 給師傅，師傅手機打開免登入即可直撥電話／導航地址。
 // 連結由後端簽章（HMAC 綁單號），任何狀態（含已排程）都能開，清潔與修復通用。
@@ -20,7 +21,7 @@ export function DispatchLinkSection({ serviceId }: { serviceId: string }) {
       const res = await fetch(`/api/sheets/after-sales/${serviceId}/dispatch-link`, { cache: "no-store" });
       const json = (await res.json()) as { ok: boolean; path?: string; error?: string };
       if (!json.ok || !json.path) throw new Error(json.error ?? "無法取得連結");
-      setUrl(`${window.location.origin}${json.path}`);
+      setUrl(buildDispatchUrl(json.path));
     } catch (e) {
       setError(e instanceof Error ? e.message : "無法取得連結");
     } finally {

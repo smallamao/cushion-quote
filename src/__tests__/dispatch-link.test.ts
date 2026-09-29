@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import {
@@ -5,6 +6,15 @@ import {
   verifyDispatchToken,
   buildDispatchPath,
 } from "@/lib/dispatch-link";
+
+/** 複製 lib 內的簽章算式，用來產生「舊版 32 字簽章」驗相容性。 */
+function legacySig(serviceId: string, day: number, key: string): string {
+  return crypto
+    .createHmac("sha256", key)
+    .update(`dispatch:${serviceId}:${day}`)
+    .digest("base64url")
+    .slice(0, 32);
+}
 
 // dispatch-link 在每次呼叫時讀 process.env，故測試直接改 env 即可。
 const ORIG = { ...process.env };
@@ -26,9 +36,22 @@ describe("dispatch-link", () => {
     expect(verifyDispatchToken("AS-20260925-01", token as string, NOW)).toBe(true);
   });
 
-  it("token 格式為 {day36}~{sig}，sig 32 字", () => {
+  it("token 格式為 {day36}~{sig}，新簽章 16 字（網址更短）", () => {
     const token = signDispatchToken("AS-1", NOW) as string;
-    expect(token).toMatch(/^[0-9a-z]+~[A-Za-z0-9_-]{32}$/);
+    expect(token).toMatch(/^[0-9a-z]+~[A-Za-z0-9_-]{16}$/);
+  });
+
+  it("舊版 32 字簽章仍可驗過（改版前發出的連結不斷線）", () => {
+    const day = Math.floor(NOW / DAY);
+    const old = `${day.toString(36)}~${legacySig("AS-1", day, "test-secret-abc")}`;
+    expect(verifyDispatchToken("AS-1", old, NOW)).toBe(true);
+  });
+
+  it("長度非 16/32 的簽章一律拒絕（不可用超短簽章試猜）", () => {
+    const token = signDispatchToken("AS-1", NOW) as string;
+    const [d, sig] = token.split("~");
+    expect(verifyDispatchToken("AS-1", `${d}~${sig.slice(0, 8)}`, NOW)).toBe(false);
+    expect(verifyDispatchToken("AS-1", `${d}~${sig.slice(0, 4)}`, NOW)).toBe(false);
   });
 
   it("竄改簽章會被拒絕", () => {
@@ -71,9 +94,9 @@ describe("dispatch-link", () => {
     expect(verifyDispatchToken("AS-1", "zz~", NOW)).toBe(false);
   });
 
-  it("buildDispatchPath 產出 /dispatch/{id}/{day36}~{sig}", () => {
+  it("buildDispatchPath 產出短路徑 /w/{id}/{day36}~{sig}", () => {
     const path = buildDispatchPath("AS-20260925-01") as string;
-    expect(path).toMatch(/^\/dispatch\/AS-20260925-01\/[0-9a-z]+~[A-Za-z0-9_-]{32}$/);
+    expect(path).toMatch(/^\/w\/AS-20260925-01\/[0-9a-z]+~[A-Za-z0-9_-]{16}$/);
   });
 
   it("DISPATCH_LINK_SECRET 優先於 AUTH_SECRET（兩者簽出不同值）", () => {

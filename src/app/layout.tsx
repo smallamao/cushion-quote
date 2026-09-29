@@ -68,6 +68,7 @@ export default async function RootLayout({
     pathname === "/sign" ||
     pathname.startsWith("/sign/") ||
     pathname.startsWith("/s/") ||
+    pathname.startsWith("/w/") ||
     pathname === "/dispatch" ||
     pathname.startsWith("/dispatch/");
 

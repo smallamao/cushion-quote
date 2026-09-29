@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { useAfterSales } from "@/hooks/useAfterSales";
+import { buildDispatchUrl } from "@/lib/dispatch-public-url";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -50,7 +51,7 @@ export function AfterSalesListClient() {
     const path = dispatchPaths[serviceId];
     if (!path) return;
     navigator.clipboard
-      .writeText(`${window.location.origin}${path}`)
+      .writeText(buildDispatchUrl(path))
       .then(() => {
         setCopiedDispatchId(serviceId);
         setTimeout(

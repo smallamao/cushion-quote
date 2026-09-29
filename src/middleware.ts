@@ -47,6 +47,8 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/cleaning" ||
     pathname.startsWith("/cleaning/") ||
     // 外部師傅派工單頁（簽章綁單號，免登入；驗簽在頁面 node runtime 做）
+    // /w 為現行短路徑，/dispatch 為改版前舊路徑（只做轉址）
+    pathname.startsWith("/w/") ||
     pathname === "/dispatch" ||
     pathname.startsWith("/dispatch/") ||
     // 叫料確認單：客人核對訂貨單照片＋簽名＋提供希望收件時段（token 為唯一憑證，免登入）
