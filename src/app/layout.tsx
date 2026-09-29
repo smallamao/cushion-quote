@@ -62,9 +62,14 @@ export const metadata: Metadata = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  // 客戶簽署頁（/sign）不需登入、不套營運後台的側邊欄/頁首，直接裸版呈現。
+  // 對外免登入頁（客戶簽署 /sign、外部師傅派工 /dispatch）不套營運後台側邊欄/頁首，裸版呈現。
   const pathname = (await headers()).get("x-pathname") ?? "";
-  const bare = pathname === "/sign" || pathname.startsWith("/sign/") || pathname.startsWith("/s/");
+  const bare =
+    pathname === "/sign" ||
+    pathname.startsWith("/sign/") ||
+    pathname.startsWith("/s/") ||
+    pathname === "/dispatch" ||
+    pathname.startsWith("/dispatch/");
 
   return (
     <html lang="zh-Hant" className={dmSans.variable} suppressHydrationWarning>

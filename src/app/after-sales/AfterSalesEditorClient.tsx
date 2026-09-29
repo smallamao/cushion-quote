@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CleaningSlotSection } from "@/components/after-sales/CleaningSlotSection";
+import { DispatchLinkSection } from "@/components/after-sales/DispatchLinkSection";
 import {
   ArrowLeft,
   Eye,
@@ -1005,6 +1006,12 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
         {mode === "edit" && meta?.serviceId && draft.issueCategories?.includes("到府清潔") && (
           <div className="mb-4">
             <CleaningSlotSection serviceId={meta.serviceId} />
+          </div>
+        )}
+        {/* 派工連結：清潔與修復都適用，任何狀態都能給外部師傅（電話直撥／地址導航）。 */}
+        {mode === "edit" && meta?.serviceId && (
+          <div className="mb-4">
+            <DispatchLinkSection serviceId={meta.serviceId} />
           </div>
         )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
