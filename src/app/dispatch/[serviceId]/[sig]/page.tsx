@@ -71,9 +71,9 @@ export default async function DispatchPage({
 }) {
   const { serviceId, sig } = await params;
 
-  // 先驗簽（純運算、不碰 Sheets）→ 亂猜的簽章不會觸發任何讀取。
+  // 先驗簽（純運算、不碰 Sheets）→ 亂猜或過期（逾 30 天）的簽章不會觸發任何讀取。
   if (!verifyDispatchToken(serviceId, sig)) {
-    return <Notice title="連結無效" desc="這條派工連結不正確或已失效，請向內勤重新索取。" />;
+    return <Notice title="連結已失效" desc="這條派工連結不正確或已超過 30 天，請向內勤重新索取。" />;
   }
 
   // Sheets 讀取可能失敗（額度/連線/憑證）。對外頁不可把錯誤堆疊丟給師傅，
@@ -87,6 +87,10 @@ export default async function DispatchPage({
   }
   if (!service) {
     return <Notice title="查無此單" desc="找不到對應的派工單，請確認連結是否完整。" />;
+  }
+  // 已完成／已取消 → 停用連結（避免結案後電話地址仍被外流查看）。
+  if (service.status === "completed" || service.status === "cancelled") {
+    return <Notice title="此單已結案" desc="這張工單已完成或取消，派工連結已自動停用。" />;
   }
 
   const model = [service.modelNameSnapshot, service.itemDescription].filter(Boolean).join(" ");

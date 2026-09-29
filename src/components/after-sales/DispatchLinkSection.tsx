@@ -48,10 +48,13 @@ export function DispatchLinkSection({ serviceId }: { serviceId: string }) {
         <Send className="h-4 w-4 text-[var(--accent)]" />
         派工連結（給外部師傅）
       </h3>
-      <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-tertiary)]">
+      <p className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-tertiary)]">
         <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />點就撥</span>
         <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />點就導航</span>
         <span>· 免登入 · 清潔／修復通用</span>
+      </p>
+      <p className="mb-3 text-xs text-[var(--text-tertiary)]">
+        連結 30 天內有效，工單「已完成／已取消」後自動停用。
       </p>
 
       {loading ? (
