@@ -10,6 +10,8 @@ import {
   orderRowToRecord,
 } from "@/lib/order-utils";
 import { updateNotionPageIfExists } from "@/lib/notion-order";
+import { appendNotification } from "@/lib/notifications-sheet";
+import { getSignedQuoteAmount } from "@/lib/quote-signed-amount";
 import type { CustomOrder } from "@/lib/types";
 
 interface RouteContext {
@@ -51,7 +53,15 @@ export async function GET(_request: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "order row missing" }, { status: 404 });
     }
     const order = orderRowToRecord(rowData);
-    return NextResponse.json({ ok: true, order });
+    // 一併回「客人簽署的金額」，讓訂單頁能在金額被改動時標示差額。
+    // best-effort：查不到就不標，不影響訂單載入。
+    let signedQuote = null;
+    try {
+      signedQuote = await getSignedQuoteAmount(client, order.versionId);
+    } catch {
+      signedQuote = null;
+    }
+    return NextResponse.json({ ok: true, order, signedQuote });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
@@ -107,6 +117,32 @@ export async function PUT(request: Request, context: RouteContext) {
       valueInputOption: "RAW",
       requestBody: { values: [orderRecordToRow(updated)] },
     });
+
+    // 訂單金額被改成與「客人簽署金額」不同時主動通知。
+    // 規格定案（選布、到府實量）後改價是常態，但差額不能默默吞掉——客人只同意過
+    // 簽署當下那個金額，差額必須另外請客人確認（老闆 2026-09-29 指定要堵的洞）。
+    // 只在本次真的改動金額時才發，避免每次存檔都洗通知。
+    try {
+      if (updated.versionId && updated.quotedAmount !== existing.quotedAmount) {
+        const signed = await getSignedQuoteAmount(client, updated.versionId);
+        if (
+          signed?.signedBack &&
+          signed.signedAmount > 0 &&
+          updated.quotedAmount !== signed.signedAmount
+        ) {
+          const diff = updated.quotedAmount - signed.signedAmount;
+          const arrow = diff > 0 ? "多" : "少";
+          await appendNotification({
+            type: "order_amount_mismatch",
+            title: "訂單金額與客人簽署金額不符",
+            body: `${updated.orderId}（${updated.clientName}）現在是 NT$ ${updated.quotedAmount.toLocaleString()}，客人簽的是 NT$ ${signed.signedAmount.toLocaleString()}，${arrow} NT$ ${Math.abs(diff).toLocaleString()}。差額請另外跟客人確認後再收款。`,
+            link: `/orders/${updated.orderId}`,
+          });
+        }
+      }
+    } catch {
+      // 通知失敗不影響存檔
+    }
 
     // best-effort：Notion 已有此單頁面時同步更新屬性（含出貨日=installDate）；失敗不阻斷存檔、不建新頁
     let notionUpdated = false;

@@ -1,11 +1,12 @@
 import { v2 as cloudinary } from "cloudinary";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 
 import { findCompanyIdentityForCase } from "@/lib/company-lookup";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { bakeSignedPdf } from "@/lib/signing-pdf";
 import { getSigningLinkByToken, updateSigningLink } from "@/lib/signing-links-sheet";
 import { appendNotification } from "@/lib/notifications-sheet";
+import { createOrder } from "@/lib/order-create";
 import { isSigningLinkExpired, type PublicSigningView } from "@/lib/signing-types";
 import type { QuoteVersionRecord } from "@/lib/types";
 
@@ -265,12 +266,37 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       signedPdfUrl,
     });
 
-    // 後台通知鈴鐺（best-effort，不影響簽署結果）
-    await appendNotification({
-      type: "quote_signed",
-      title: "報價單已線上簽署",
-      body: `${signerName || "客戶"} 已簽署 ${link.quoteId}（NT$ ${(updated.totalAmount ?? 0).toLocaleString()}）`,
-      link: "/quotes",
+    // 簽署完成即自動建立訂製訂單。客人一簽完就會匯訂金，訂單若沒開就不會進排程、
+    // 不會叫料，等於「收了錢卻沒人在做」（老闆 2026-09-29 指定要堵的洞）。
+    //
+    // 放在 after()：簽署本身已經要產 PDF、上傳 Cloudinary、寫多張表，再串上建單的
+    // 數次 Sheets 讀取有機會撞到 Vercel 函式逾時，而逾時會讓「客人簽不成」——
+    // 那比晚幾秒開單嚴重得多。改成回應送出後才跑，客人端速度完全不受影響。
+    // createOrder 內建同版本去重，與報價列表的手動開單按鈕不會重複建單。
+    const signedAmountText = `NT$ ${(updated.totalAmount ?? 0).toLocaleString()}`;
+    after(async () => {
+      let autoOrderId = "";
+      try {
+        const created = await createOrder(client, {
+          sourceType: "quote",
+          versionId: link.versionId,
+        });
+        autoOrderId = created.orderId;
+      } catch {
+        autoOrderId = "";
+      }
+      try {
+        await appendNotification({
+          type: "quote_signed",
+          title: autoOrderId ? "報價單已簽署，訂單已自動建立" : "報價單已簽署（訂單未建立）",
+          body: autoOrderId
+            ? `${signerName || "客戶"} 已簽署 ${link.quoteId}（${signedAmountText}），已自動開立訂單 ${autoOrderId}，請補上交期與排程`
+            : `${signerName || "客戶"} 已簽署 ${link.quoteId}（${signedAmountText}）。自動開單未成功，請到報價紀錄手動建立訂製訂單`,
+          link: autoOrderId ? `/orders/${autoOrderId}` : "/quotes",
+        });
+      } catch {
+        // 通知失敗不影響已完成的簽署與開單
+      }
     });
 
     return NextResponse.json({ ok: true, signedPdfUrl });

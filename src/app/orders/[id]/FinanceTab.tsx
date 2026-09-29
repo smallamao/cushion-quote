@@ -46,16 +46,21 @@ export function FinanceTab({
   const [receiptUploading, setReceiptUploading] = useState<string | null>(null);
   // 關聯報價版本的目前含稅總額（報價單事後編輯時偵測不一致用）
   const [versionTotal, setVersionTotal] = useState<number | null>(null);
+  // 客人是否線上回簽過：回簽過的版本不可再改，該金額＝客人親筆同意的金額，
+  // 與訂單金額不符時代表「收的錢和客人簽的不一樣」，語氣要比一般不同步更重。
+  const [versionSigned, setVersionSigned] = useState(false);
 
   useEffect(() => {
     if (!draft.versionId) return;
     let cancelled = false;
     fetch(`/api/sheets/versions/${encodeURIComponent(draft.versionId)}`, { cache: "no-store" })
       .then((res) => res.json())
-      .then((json: { version?: { totalAmount?: number } }) => {
-        if (!cancelled && typeof json.version?.totalAmount === "number") {
+      .then((json: { version?: { totalAmount?: number; signedBack?: boolean } }) => {
+        if (cancelled) return;
+        if (typeof json.version?.totalAmount === "number") {
           setVersionTotal(json.version.totalAmount);
         }
+        setVersionSigned(Boolean(json.version?.signedBack));
       })
       .catch(() => {});
     return () => {
@@ -64,6 +69,7 @@ export function FinanceTab({
   }, [draft.versionId]);
 
   const versionMismatch = versionTotal !== null && versionTotal !== draft.quotedAmount;
+  const versionDiff = versionTotal === null ? 0 : draft.quotedAmount - versionTotal;
 
   const purchases: MaterialPurchase[] = draft.materialPurchases ?? [];
 
@@ -128,16 +134,26 @@ export function FinanceTab({
             onChange={(e) => updateDraft("quotedAmount", Number(e.target.value) || 0)}
           />
           {versionMismatch && (
-            <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
-              <span>
-                ⚠ 關聯報價單目前為 ${versionTotal.toLocaleString()}
-              </span>
+            <div
+              className={`mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-xs ${
+                versionSigned ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800"
+              }`}
+            >
+              {versionSigned ? (
+                <span>
+                  ⚠ 客人簽署的金額是 ${versionTotal.toLocaleString()}，目前
+                  {versionDiff > 0 ? "多" : "少"} ${Math.abs(versionDiff).toLocaleString()}
+                  —— 差額請先跟客人確認再收款
+                </span>
+              ) : (
+                <span>⚠ 關聯報價單目前為 ${versionTotal.toLocaleString()}</span>
+              )}
               <button
                 type="button"
                 onClick={() => updateDraft("quotedAmount", versionTotal)}
                 className="shrink-0 font-medium underline underline-offset-2 hover:opacity-80"
               >
-                同步
+                {versionSigned ? "改回簽署金額" : "同步"}
               </button>
             </div>
           )}
