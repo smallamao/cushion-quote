@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
 import { createService, listServices } from "@/lib/after-sales-sheet";
+import { buildDispatchPath } from "@/lib/dispatch-link";
 import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
 function getSession(request: Request) {
@@ -20,7 +21,16 @@ export async function GET(request: Request) {
   }
   try {
     const services = await listServices();
-    return NextResponse.json({ ok: true, services });
+    // 一併回傳各單的派工連結路徑，讓列表「複製派工連結」不必再打一次 API
+    // （同步複製才不會被 Safari 的「必須在點擊手勢內寫剪貼簿」擋掉）。
+    // 已結案／已取消的單連結本來就停用，不必產。
+    const dispatchPaths: Record<string, string> = {};
+    for (const s of services) {
+      if (s.status === "completed" || s.status === "cancelled") continue;
+      const path = buildDispatchPath(s.serviceId);
+      if (path) dispatchPaths[s.serviceId] = path;
+    }
+    return NextResponse.json({ ok: true, services, dispatchPaths });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "服務暫時無法使用";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

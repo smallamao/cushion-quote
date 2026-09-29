@@ -41,7 +41,27 @@ export function AfterSalesListClient() {
   const router = useRouter();
   const isMobile = useIsMobile();
   const { user } = useCurrentUser();
-  const { services, loading, error, reload } = useAfterSales();
+  const { services, dispatchPaths, loading, error, reload } = useAfterSales();
+  // 列表直接複製派工連結（連結隨列表一起取回，故可同步寫剪貼簿，Safari 也不會被擋）
+  const [copiedDispatchId, setCopiedDispatchId] = useState<string | null>(null);
+  const handleCopyDispatch = (serviceId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const path = dispatchPaths[serviceId];
+    if (!path) return;
+    navigator.clipboard
+      .writeText(`${window.location.origin}${path}`)
+      .then(() => {
+        setCopiedDispatchId(serviceId);
+        setTimeout(
+          () => setCopiedDispatchId((c) => (c === serviceId ? null : c)),
+          1800,
+        );
+      })
+      .catch(() => {
+        /* 剪貼簿不可用時靜默略過（可改用詳情頁複製） */
+      });
+  };
   const { markAsRead } = useUnreadReplies();
   const isAdmin = user?.role === "admin";
 
@@ -396,7 +416,7 @@ export function AfterSalesListClient() {
                       <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700">展示品</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); e.preventDefault(); setNotifyTarget(s); }}
@@ -404,6 +424,19 @@ export function AfterSalesListClient() {
                     >
                       通知
                     </button>
+                    {dispatchPaths[s.serviceId] && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopyDispatch(s.serviceId, e)}
+                        className="rounded border border-[var(--border)] bg-white px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      >
+                        {copiedDispatchId === s.serviceId ? (
+                          <><Check className="mr-0.5 inline h-3 w-3" />已複製</>
+                        ) : (
+                          <><Copy className="mr-0.5 inline h-3 w-3" />派工</>
+                        )}
+                      </button>
+                    )}
                     {showComplete && (
                       <button
                         type="button"
@@ -570,6 +603,20 @@ export function AfterSalesListClient() {
                         <MessageSquareText className="mr-0.5 inline h-3 w-3" />
                         通知
                       </button>
+                      {dispatchPaths[s.serviceId] && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleCopyDispatch(s.serviceId, e)}
+                          title="複製派工連結（給外部師傅：電話直撥／地址導航，30 天有效）"
+                          className="mr-1.5 rounded border border-[var(--border)] bg-white px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        >
+                          {copiedDispatchId === s.serviceId ? (
+                            <><Check className="mr-0.5 inline h-3 w-3" />已複製</>
+                          ) : (
+                            <><Copy className="mr-0.5 inline h-3 w-3" />派工</>
+                          )}
+                        </button>
+                      )}
                       {showComplete && (
                         <button
                           type="button"
