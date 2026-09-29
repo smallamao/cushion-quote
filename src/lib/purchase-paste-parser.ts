@@ -17,7 +17,7 @@ import type { PurchaseProduct, PurchaseUnit } from "@/lib/types";
  * Unit aliases:
  *   y / Y / 碼          -> 碼
  *   件 / 片 / pc / pcs  -> 件
- *   只                  -> 只
+ *   只 / 支            -> 只
  *
  * The case ref (after `#`) becomes a per-line note and is also collected
  * into the order-level notes summary.
@@ -39,7 +39,8 @@ export interface ParsedPasteLine {
 const UNIT_PATTERNS: Array<{ regex: RegExp; unit: PurchaseUnit }> = [
   { regex: /^([0-9]*\.?[0-9]+)\s*(?:y|Y|碼)$/u, unit: "碼" },
   { regex: /^([0-9]*\.?[0-9]+)\s*(?:件|片|p|pc|pcs|P|PC|PCS)$/u, unit: "件" },
-  { regex: /^([0-9]*\.?[0-9]+)\s*只$/u, unit: "只" },
+  // 「支」是老闆講椅腳時的習慣說法，目錄裡椅腳 44 項單位一律是「只」→ 視為同義。
+  { regex: /^([0-9]*\.?[0-9]+)\s*(?:只|支)$/u, unit: "只" },
   { regex: /^([0-9]*\.?[0-9]+)\s*才$/u, unit: "才" },
   { regex: /^([0-9]*\.?[0-9]+)\s*小才$/u, unit: "小才" },
   { regex: /^([0-9]*\.?[0-9]+)\s*米$/u, unit: "米" },

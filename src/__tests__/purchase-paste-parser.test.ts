@@ -185,3 +185,35 @@ describe("resolveParsedLines", () => {
     expect(items[0].productId).toBe("LY9802-PS007");
   });
 });
+
+// 老闆講椅腳習慣說「支」，但採購目錄裡 44 個椅腳品項單位一律是「只」。
+// 2026-09-29：第一次貼椅腳清單時 5 行全被判「缺少數量」略過，等於整批沒建單。
+describe("椅腳的「支」＝「只」", () => {
+  it("支 解析成 只", () => {
+    const r = parsePurchasePasteLine("JB309-1H8 4支 #P6251");
+    expect(r!.productCode).toBe("JB309-1H8");
+    expect(r!.subItems).toEqual([{ qty: 4, unit: "只" }]);
+    expect(r!.caseRef).toBe("P6251");
+    expect(r!.warning).toBeUndefined();
+  });
+
+  it("只 照舊", () => {
+    expect(parsePurchasePasteLine("VAN5143-1H13 12只 #P6253")!.subItems)
+      .toEqual([{ qty: 12, unit: "只" }]);
+  });
+
+  it("支 與其他單位混用", () => {
+    expect(parsePurchasePasteLine("X1 2支+3y #P1")!.subItems)
+      .toEqual([{ qty: 2, unit: "只" }, { qty: 3, unit: "碼" }]);
+  });
+
+  it("小數也吃", () => {
+    expect(parsePurchasePasteLine("X1 1.5支")!.subItems).toEqual([{ qty: 1.5, unit: "只" }]);
+  });
+
+  it("不可誤吃「支架」這種詞", () => {
+    const r = parsePurchasePasteLine("X1 4支架");
+    expect(r!.subItems).toEqual([]);
+    expect(r!.warning).toBeTruthy();
+  });
+});
