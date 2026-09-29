@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { findServiceById } from "@/lib/after-sales-sheet";
+import { buildDispatchEvent, googleCalendarUrl } from "@/lib/dispatch-calendar";
 import { verifyDispatchToken } from "@/lib/dispatch-link";
 import type { AfterSalesStatus } from "@/lib/types";
 
@@ -99,6 +100,8 @@ export default async function DispatchPage({
     : "";
   const schedule = [fmtDate(service.scheduledDate), service.scheduledTime].filter(Boolean).join(" ");
   const statusLabel = STATUS_LABEL[service.status] ?? service.status;
+  // 行事曆事件（.ics 與 Google 共用同一份運算）；無排程日期時為 null，不顯示按鈕。
+  const calEvent = buildDispatchEvent(service);
 
   const labelStyle: React.CSSProperties = {
     fontSize: 13,
@@ -214,14 +217,30 @@ export default async function DispatchPage({
           <div style={{ marginBottom: 14 }}>
             <div style={labelStyle}>預定時間</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{schedule}</div>
-            {/* 一鍵把整張派工資訊存進手機行事曆（.ics：時間、地址、電話、問題都帶入） */}
-            {service.scheduledDate && (
-              <a
-                href={`/api/public/dispatch/${encodeURIComponent(serviceId)}/${encodeURIComponent(sig)}/ics`}
-                style={{ ...bigAction, background: "#fff7ed", color: "#c2410c" }}
-              >
-                📅 加入行事曆
-              </a>
+            {/* 一鍵把整張派工資訊存進行事曆（時間、地址、電話、問題都帶入）。
+                兩顆的差別是「存進哪個行事曆」，不是手機廠牌：
+                  .ics    → 手機內建行事曆（iPhone 點了直接跳；Android 會先下載檔案）
+                  Google  → Google 行事曆（Android 最順，iPhone 有 Google 帳號一樣可用） */}
+            {calEvent && (
+              <>
+                <a
+                  href={`/api/public/dispatch/${encodeURIComponent(serviceId)}/${encodeURIComponent(sig)}/ics`}
+                  style={{ ...bigAction, background: "#fff7ed", color: "#c2410c" }}
+                >
+                  📅 加入手機行事曆
+                </a>
+                <a
+                  href={googleCalendarUrl(calEvent)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ ...bigAction, background: "#fff7ed", color: "#c2410c" }}
+                >
+                  📅 加入 Google 行事曆
+                </a>
+                <div style={{ marginTop: 6, fontSize: 13, color: "#9ca3af", lineHeight: 1.5 }}>
+                  iPhone 建議按上面那顆；用 Google 日曆的按下面。兩顆都可以用。
+                </div>
+              </>
             )}
           </div>
         )}
