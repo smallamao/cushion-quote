@@ -62,7 +62,10 @@ export const metadata: Metadata = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  // 對外免登入頁（客戶簽署 /sign、外部師傅派工 /dispatch）不套營運後台側邊欄/頁首，裸版呈現。
+  // 對外免登入頁不套營運後台側邊欄/頁首/AI 助手，裸版呈現。
+  // 🔴 2026-09-30：漏了 /confirm（叫料確認）、/d（司機配送時段）與 /cleaning（到府清潔選日），
+  //    客人手機上會看到漢堡選單、營運系統抽屜和 AI 助手按鈕——那是給內部看的東西。
+  //    新增對外頁時務必同步加進這份清單。
   const pathname = (await headers()).get("x-pathname") ?? "";
   const bare =
     pathname === "/sign" ||
@@ -70,7 +73,11 @@ export default async function RootLayout({
     pathname.startsWith("/s/") ||
     pathname.startsWith("/w/") ||
     pathname === "/dispatch" ||
-    pathname.startsWith("/dispatch/");
+    pathname.startsWith("/dispatch/") ||
+    pathname === "/cleaning" ||
+    pathname.startsWith("/cleaning/") ||
+    pathname.startsWith("/confirm/") ||
+    pathname.startsWith("/d/");
 
   return (
     <html lang="zh-Hant" className={dmSans.variable} suppressHydrationWarning>
