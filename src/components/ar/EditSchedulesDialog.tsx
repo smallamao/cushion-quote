@@ -15,8 +15,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   SCHEDULE_PRESETS,
+  balanceLastSchedule,
   buildSchedulesFromPreset,
   isoDateNow,
+  sumScheduleAmounts,
 } from "@/lib/ar-utils";
 import type { ARRecord, ARScheduleRecord } from "@/lib/types";
 
@@ -66,8 +68,17 @@ export function EditSchedulesDialog({ open, onOpenChange, ar, schedules, onSaved
     if (built.length > 0) setDrafts(built);
   }
 
+  const balanceLast = (list: ScheduleDraft[]) => balanceLastSchedule(list, totalAmount);
+
+  // 改「非最後一期」的金額時，最後一期自動補成剩餘金額（老闆不必自己減）。
+  // 直接改最後一期則尊重輸入，只由下方合計紅字提示，並可按「自動補最後一期」。
   function updateDraft(i: number, patch: Partial<ScheduleDraft>) {
-    setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+    setDrafts((prev) => {
+      const next = prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d));
+      const isAmountChange = patch.amount !== undefined;
+      const isLast = i === next.length - 1;
+      return isAmountChange && !isLast ? balanceLast(next) : next;
+    });
   }
 
   const sum = useMemo(
@@ -131,6 +142,7 @@ export function EditSchedulesDialog({ open, onOpenChange, ar, schedules, onSaved
         <div className="space-y-3">
           <p className="text-xs text-[var(--text-secondary)]">
             重新分配這張應收帳款的分期（單號不變、不必刪除重建）。
+            改前面幾期的金額時，<span className="font-medium">最後一期會自動補成剩餘金額</span>，不必自己減。
             {received > 0 && (
               <>
                 {" "}已收 <span className="font-semibold text-green-700">NT$ {fmt(received)}</span>{" "}
@@ -211,7 +223,10 @@ export function EditSchedulesDialog({ open, onOpenChange, ar, schedules, onSaved
                         <button
                           type="button"
                           className="text-[var(--text-tertiary)] hover:text-red-500"
-                          onClick={() => setDrafts((prev) => prev.filter((_, idx) => idx !== i))}
+                          // 刪一期後，剩餘金額自動回補到最後一期，帳仍然平
+                          onClick={() =>
+                            setDrafts((prev) => balanceLast(prev.filter((_, idx) => idx !== i)))
+                          }
                           disabled={saving}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -229,10 +244,16 @@ export function EditSchedulesDialog({ open, onOpenChange, ar, schedules, onSaved
               variant="outline"
               size="sm"
               className="h-7 text-xs"
+              // 新增的那一期直接帶入目前還差的金額，不必再自己算
               onClick={() =>
                 setDrafts((prev) => [
                   ...prev,
-                  { label: `第 ${prev.length + 1} 期`, ratio: 0, amount: 0, dueDate: isoDateNow() },
+                  {
+                    label: `第 ${prev.length + 1} 期`,
+                    ratio: 0,
+                    amount: Math.max(0, totalAmount - sumScheduleAmounts(prev)),
+                    dueDate: isoDateNow(),
+                  },
                 ])
               }
               disabled={saving}
@@ -240,10 +261,24 @@ export function EditSchedulesDialog({ open, onOpenChange, ar, schedules, onSaved
               <Plus className="mr-1 h-3 w-3" />
               新增一期
             </Button>
-            <span className={`text-sm ${matches ? "text-[var(--text-secondary)]" : "font-semibold text-red-600"}`}>
-              合計 NT$ {fmt(sum)} / 應收總額 NT$ {fmt(totalAmount)}
-              {!matches && "（不符）"}
-            </span>
+            <div className="flex items-center gap-2">
+              {!matches && drafts.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setDrafts((prev) => balanceLast(prev))}
+                  disabled={saving}
+                  title={`把差額 NT$ ${fmt(totalAmount - sum)} 填進最後一期`}
+                >
+                  自動補最後一期（差 NT$ {fmt(totalAmount - sum)}）
+                </Button>
+              )}
+              <span className={`text-sm ${matches ? "text-[var(--text-secondary)]" : "font-semibold text-red-600"}`}>
+                合計 NT$ {fmt(sum)} / 應收總額 NT$ {fmt(totalAmount)}
+                {!matches && "（不符）"}
+              </span>
+            </div>
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}

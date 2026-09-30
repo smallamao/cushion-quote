@@ -351,6 +351,37 @@ function addDays(dateText: string, days: number): string {
   return base.toISOString().slice(0, 10);
 }
 
+// ===== 編輯分期：自動算尾款 =====
+
+/** 各期金額合計（可排除某一期；四捨五入到元）。 */
+export function sumScheduleAmounts(
+  list: readonly { amount: number }[],
+  excludeIdx = -1,
+): number {
+  return list.reduce(
+    (s, d, i) => (i === excludeIdx ? s : s + (Math.round(d.amount) || 0)),
+    0,
+  );
+}
+
+/**
+ * 把「最後一期」補成：應收總額 − 其餘各期合計。
+ * 供編輯分期時自動算尾款用，讓使用者只要填前面幾期。
+ * 其餘各期若已超過總額，最後一期為 0（不產生負數），
+ * 此時畫面合計仍會顯示「不符」提醒使用者調整。
+ */
+export function balanceLastSchedule<T extends { amount: number }>(
+  list: readonly T[],
+  totalAmount: number,
+): T[] {
+  const out = [...list];
+  const last = out.length - 1;
+  if (last < 0) return out;
+  const rest = sumScheduleAmounts(out, last);
+  out[last] = { ...out[last], amount: Math.max(0, Math.round(totalAmount) - rest) };
+  return out;
+}
+
 // ===== Status labels (for UI) =====
 
 export const AR_STATUS_LABEL: Record<ARStatus, string> = {
