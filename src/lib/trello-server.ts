@@ -219,8 +219,19 @@ export const SCHEDULE_DAY_FIELD = "5dbffb41d3233f81ca015792";
  * 日期。取「出貨日、排程日」較晚者，兩個都沒有就回空字串不硬編。
  * 另外一律當下重抓，老闆改了日期客人頁就跟著對，不吃建連結當下的快照。
  */
-/** 生產週長度：排程日當天起算一週（Numbers 的「日期範圍」就是這個，例 排程 10/14 → 10/14-20）。 */
-const PRODUCTION_WEEK_DAYS = 6;
+/**
+ * 告訴客人的「製作完成區間」＝生產週週一往後 3 天起算一週。
+ * 例：生產週一 10/12 → 10/15 ～ 10/21。
+ *
+ * 🔴 老闆 2026-09-30 更正兩件事：
+ *    ① 不是每筆用自己的排程日算，**整週共用同一個區間**
+ *       （同一批一起做，逐筆給不同日期沒有意義，客人之間講起來也會亂）。
+ *    ② 要往後留幾天緩衝，不能排程日當天就算完工。
+ *    原本的寫法（排程日 ~ 排程日+6，due 更晚時取 due）兩點都錯，
+ *    P6202 因此顯示成 10/12～10/26。
+ */
+const BUFFER_DAYS = 3;
+const WINDOW_DAYS = 6;
 
 function addDaysYmd(ymd: string, n: number): string {
   const t = Date.parse(`${ymd}T00:00:00Z`);
@@ -230,21 +241,29 @@ function addDaysYmd(ymd: string, n: number): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
+/** 任一天 → 所屬生產週的週一（週一為一週之始）。 */
+export function weekMonday(ymd: string): string {
+  const t = Date.parse(`${ymd}T00:00:00Z`);
+  if (!Number.isFinite(t)) return ymd;
+  const d = new Date(t);
+  const dow = d.getUTCDay();            // 0=日
+  const back = dow === 0 ? 6 : dow - 1; // 回推到週一
+  return addDaysYmd(ymd, -back);
+}
+
 /**
- * 客人看到的「預計完工日」。
+ * 客人看到的「製作完成區間」。
  *
- * 🔴 不可以只看卡片 due。2026-09-27 對帳實測：排程日在 Numbers 與 Trello 之間
- * **零筆不一致**，但出貨日有 17 筆對不上（P6260 排程 10/13、due 仍是舊的 10/03），
- * 而且兩邊都可能是舊的那一方（P6010 的 Numbers 日期範圍還停在 6/30-7/5）。
- * 唯一可信的是排程日，所以基準取「排程日那週的最後一天」＝ Numbers 日期範圍的迄日。
- *
- * due 比生產週結束還晚時才採用 due——那代表老闆刻意排得更後面，不能擅自提前承諾。
+ * 🔴 一律從**生產週的週一**算，不看各筆排程日、也不看卡片 due：
+ *    - 同一週一起生產，整週共用一個區間（老闆 2026-09-30 明確指正）
+ *    - due 長期不可信：2026-09-27 對帳實測 17 筆對不上，而且兩邊都可能是舊的那一方
+ *    - 排程日在 Numbers 與 Trello 之間零筆不一致，是唯一可信的錨點
  */
-export function pickEstimatedDate(dueYmd: string, scheduleYmd: string): string {
-  if (!scheduleYmd) return dueYmd || "";
-  const weekEnd = addDaysYmd(scheduleYmd, PRODUCTION_WEEK_DAYS);
-  if (!dueYmd) return weekEnd;
-  return dueYmd > weekEnd ? dueYmd : weekEnd;
+export function productionWindow(weekKeyOrScheduleYmd: string): { start: string; end: string } {
+  if (!weekKeyOrScheduleYmd) return { start: "", end: "" };
+  const monday = weekMonday(weekKeyOrScheduleYmd);
+  const start = addDaysYmd(monday, BUFFER_DAYS);
+  return { start, end: addDaysYmd(start, WINDOW_DAYS) };
 }
 
 export interface ProductionWindow {
@@ -263,9 +282,7 @@ export async function getCardProductionWindow(cardId: string): Promise<Productio
     fields: "due",
     customFieldItems: "true",
   });
-  const sched = toTaipeiYmd(getCustomFieldDate(card, SCHEDULE_DAY_FIELD));
-  const due = toTaipeiYmd(card.due ?? "");
-  return { start: sched, end: pickEstimatedDate(due, sched) };
+  return productionWindow(toTaipeiYmd(getCustomFieldDate(card, SCHEDULE_DAY_FIELD)));
 }
 
 // ── 司機頁需要的配送資訊 ─────────────────────────────

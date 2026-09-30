@@ -15,7 +15,7 @@ import {
   generateToken,
   rowToConfirm,
 } from "@/lib/material-confirm-sheet";
-import { candidateUrls, pickEstimatedDate, rocDateLabel, toTaipeiYmd } from "@/lib/trello-server";
+import { candidateUrls, productionWindow, rocDateLabel, toTaipeiYmd, weekMonday } from "@/lib/trello-server";
 
 describe("splitOrderCardName", () => {
   it("拆出訂單編號與客戶姓名", () => {
@@ -226,40 +226,45 @@ describe("訂單照片取圖順序", () => {
 
 // 實查 2026-10-12 那週 10 張單，5 張的出貨日比排程日早（還沒更新）。
 // 照 due 顯示會叫客人挑一個東西還沒做完的日期。
-// 2026-09-27 對帳實測：排程日在 Numbers 與 Trello 之間零筆不一致，
-// 但出貨日有 17 筆對不上，而且兩邊都可能是舊的那一方。所以基準取排程日。
-describe("客人看到的預計完工日", () => {
-  it("基準＝排程日那週的最後一天（＝Numbers 日期範圍的迄日）", () => {
-    // P6261 何姍容：排程 10/14 → Numbers 日期範圍 10/14-20
-    expect(pickEstimatedDate("", "2026-10-14")).toBe("2026-10-20");
-    expect(pickEstimatedDate("2026-10-20", "2026-10-14")).toBe("2026-10-20");
+// 老闆 2026-09-30 明確指正兩件事：整週共用一個區間、要往後留緩衝。
+// 原本每筆用自己的排程日算、due 更晚時取 due，P6202 因此顯示成 10/12～10/26，
+// 正確答案是 10/15～10/21。
+describe("製作完成區間", () => {
+  it("生產週一 10/12 → 10/15 ～ 10/21（老闆給的標準答案）", () => {
+    expect(productionWindow("2026-10-12")).toEqual({ start: "2026-10-15", end: "2026-10-21" });
   });
 
-  it("出貨日還沒更新（早於生產週結束）時一律不採用", () => {
-    // P6260 戴逸萍：排程 10/13、出貨仍是舊的 10/03 → 應給 10/19 不是 10/03
-    expect(pickEstimatedDate("2026-10-03", "2026-10-13")).toBe("2026-10-19");
-    // P6262 邱繼德
-    expect(pickEstimatedDate("2026-10-03", "2026-10-14")).toBe("2026-10-20");
-    // P6266 林志峯
-    expect(pickEstimatedDate("2026-10-10", "2026-10-15")).toBe("2026-10-21");
+  it("同一週的任何一天都得到同一個區間", () => {
+    const want = { start: "2026-10-15", end: "2026-10-21" };
+    for (const d of ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17", "2026-10-18"]) {
+      expect(productionWindow(d)).toEqual(want);
+    }
   });
 
-  it("出貨日比生產週結束更晚時採用出貨日，不擅自提前承諾", () => {
-    // P6202 黃永政：排程 10/12（週末 10/18）、出貨 10/26
-    expect(pickEstimatedDate("2026-10-26", "2026-10-12")).toBe("2026-10-26");
+  it("下一週往後推七天", () => {
+    expect(productionWindow("2026-10-19")).toEqual({ start: "2026-10-22", end: "2026-10-28" });
   });
 
-  it("跨月也要算對", () => {
-    expect(pickEstimatedDate("", "2026-10-29")).toBe("2026-11-04");
-    expect(pickEstimatedDate("", "2026-12-28")).toBe("2027-01-03");
+  it("跨月跨年都要算對", () => {
+    expect(productionWindow("2026-12-28")).toEqual({ start: "2026-12-31", end: "2027-01-06" });
   });
 
-  it("沒有排程日時才退回出貨日", () => {
-    expect(pickEstimatedDate("2026-10-20", "")).toBe("2026-10-20");
+  it("空值回空字串，不硬編日期", () => {
+    expect(productionWindow("")).toEqual({ start: "", end: "" });
+  });
+});
+
+describe("weekMonday", () => {
+  it("週一回自己", () => {
+    expect(weekMonday("2026-10-12")).toBe("2026-10-12");
   });
 
-  it("都沒有就回空字串，不硬編一個日期", () => {
-    expect(pickEstimatedDate("", "")).toBe("");
+  it("週日算前一個週一（不是隔天）", () => {
+    expect(weekMonday("2026-10-18")).toBe("2026-10-12");
+  });
+
+  it("週六算同週週一", () => {
+    expect(weekMonday("2026-10-17")).toBe("2026-10-12");
   });
 });
 
@@ -297,19 +302,6 @@ describe("司機定案：時段 → Trello 出貨日", () => {
   });
 });
 
-// 老闆現行 LINE 文案寫的是「【10/8 ～ 10/14 製作完成】」＝一段區間，不是單一天。
-describe("製作完成區間", () => {
-  it("起日＝排程日，迄日＝排程日+6", () => {
-    expect(pickEstimatedDate("", "2026-10-08")).toBe("2026-10-14");
-  });
-
-  it("客人頁顯示的區間對得上老闆訊息的寫法", () => {
-    const start = "2026-10-08";
-    const end = pickEstimatedDate("", start);
-    expect(`${start.slice(5).replace("-", "/").replace(/^0/, "")} ～ ${end.slice(5).replace("-", "/").replace(/^0/, "")}`)
-      .toBe("10/08 ～ 10/14");
-  });
-});
 
 // 客人現場還沒好卻只有「確認」「有誤」兩條路 → 他只能不回，整週叫料卡住。
 describe("延後備料狀態", () => {
