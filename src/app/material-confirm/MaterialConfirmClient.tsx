@@ -144,6 +144,25 @@ export function MaterialConfirmClient() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // 開啟時自動跳到「還沒全部確認完」的那一週。
+  // 🔴 推算週次會猜錯（叫料提前天數浮動在 11~14 天）——老闆 2026-09-30 打開停在
+  //    10/19、實際在處理 10/12，整頁紅字看不懂。改成看實際資料決定。
+  const [jumped, setJumped] = useState(false);
+  useEffect(() => {
+    if (jumped) return;
+    setJumped(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/sheets/material-confirm/active-week", { cache: "no-store" });
+        const json = (await res.json()) as { ok: boolean; weekKey?: string };
+        if (json.ok && json.weekKey) {
+          setStart(json.weekKey);
+          setEnd(addDays(json.weekKey, 5));
+        }
+      } catch { /* 失敗就用推算的預設值 */ }
+    })();
+  }, [jumped]);
+
   const notSentIds = useMemo(() => rows.filter((r) => !r.token).map((r) => r.cardId), [rows]);
   // 連結建好但還沒傳出去的
   const unsentRows = useMemo(() => rows.filter((r) => r.token && !r.notifiedAt && r.status === "sent"), [rows]);
@@ -423,21 +442,23 @@ export function MaterialConfirmClient() {
       {/* 統計 */}
       {summary && (
         <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-            <span className="font-medium">共 {summary.total} 張</span>
-            <span className="text-emerald-700">已確認 {summary.confirmed}</span>
-            <span className="text-amber-700">等回覆 {summary.sent}</span>
-            <span className="text-gray-500">未建連結 {summary.notSent}</span>
-            {summary.unsent > 0 && <span className="text-orange-700">連結未傳出 {summary.unsent}</span>}
-            {summary.scheduled > 0 && <span className="text-blue-700">配送已排定 {summary.scheduled}</span>}
-            {summary.disputed > 0 && <span className="text-red-600">回報有誤 {summary.disputed} ⚠️</span>}
-            {summary.postponed > 0 && <span className="text-amber-700">要求延後 {summary.postponed} ⏸</span>}
-            {summary.driverRejected > 0 && <span className="text-red-600">司機排不進 {summary.driverRejected} ⚠️</span>}
+          <p className="text-base font-medium">
+            這週 {summary.total} 張，已確認 <span className="text-emerald-700">{summary.confirmed}</span> 張，
+            還差 <span className="text-amber-700">{summary.total - summary.confirmed}</span> 張
+          </p>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
+            {summary.notSent > 0 && <span>· {summary.notSent} 張還沒建連結</span>}
+            {summary.unsent > 0 && <span>· {summary.unsent} 張連結建好但還沒傳給客人</span>}
+            {summary.sent - summary.unsent > 0 && <span>· {summary.sent - summary.unsent} 張已傳出，等客人回覆</span>}
+            {summary.disputed > 0 && <span className="text-red-600">· {summary.disputed} 張客戶回報有誤</span>}
+            {summary.postponed > 0 && <span className="text-amber-700">· {summary.postponed} 張要求延後</span>}
+            {summary.scheduled > 0 && <span className="text-blue-700">· {summary.scheduled} 張配送已排定</span>}
+            {summary.driverRejected > 0 && <span className="text-red-600">· {summary.driverRejected} 張司機排不進</span>}
           </div>
           {summary.staleDue > 0 && (
-            <p className="mt-2 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-800">
-              ⚠️ 有 {summary.staleDue} 張的出貨日比排程日早（還沒更新）。客人頁會改用排程日當預計完工日，
-              但建議先在 Trello 更新出貨日再發連結。
+            <p className="mt-2 text-xs text-[var(--text-secondary)]">
+              （另有 {summary.staleDue} 張的 Trello 出貨日還沒更新。不影響客人看到的完工日
+              —— 那是從排程日算的 —— 有空再補即可。）
             </p>
           )}
           <p className={`mt-3 rounded-lg px-3 py-2 text-sm font-medium ${
