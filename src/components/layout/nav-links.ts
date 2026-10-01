@@ -1,5 +1,4 @@
 import {
-  FlaskConical,
   Archive,
   BarChart3,
   Briefcase,
@@ -49,8 +48,6 @@ export const navLinks: NavLinkDef[] = [
   // ── 作業 ──
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
   { href: "/material-confirm", label: "叫料確認", icon: ClipboardCheck, roles: ["admin"], group: "operations" },
-  // 改完客人頁想自己走一次流程時用；建出來的測試單不會進看板、也不會動 Trello
-  { href: "/material-confirm/test", label: "做測試單", icon: FlaskConical, roles: ["admin"], group: "operations" },
   { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin"], group: "operations" },
   { href: "/orders", label: "訂製訂單", icon: ClipboardList, roles: ["admin"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"], group: "operations" },

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { isCustomerConfirmed } from "@/lib/material-confirm-types";
 import type { MaterialConfirmStatus, PreferredSlot } from "@/lib/material-confirm-types";
 
@@ -108,6 +109,8 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
 export function MaterialConfirmClient() {
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(() => addDays(defaultStart(), 5));
+  const { user } = useCurrentUser();
+  const isAdmin = user?.role === "admin";
   const [rows, setRows] = useState<WeekRow[]>([]);
   const [view, setView] = useState<"all" | "pending" | "done">("all");
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -313,7 +316,20 @@ export function MaterialConfirmClient() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">叫料確認看板</h1>
+      <div className="flex items-start justify-between gap-3">
+        <h1 className="text-xl font-semibold text-[var(--text-primary)]">叫料確認看板</h1>
+        {/* 低頻的測試工具：從側邊欄移到這裡（做出來的測試單就顯示在本頁，情境連貫）。
+            維持 admin 限定，與原側邊欄項目的權限一致。 */}
+        {isAdmin && (
+          <a
+            href="/material-confirm/test"
+            className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            title="建立一筆測試用的叫料確認單，可完整走過客人簽名與司機挑日流程（不會動到真實訂單）"
+          >
+            🧪 做測試單
+          </a>
+        )}
+      </div>
       <p className="mt-1 text-sm text-[var(--text-secondary)]">
         全部客戶確認後才進行組件叫料。客戶確認即為訂貨單條款的不可取消時點，系統會留存簽名與時間。
       </p>
