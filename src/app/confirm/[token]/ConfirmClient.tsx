@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SignatureModal } from "@/components/sign/SignatureModal";
 import {
   DELIVERY_PERIODS,
+  earliestDeliveryDate,
+  isNonDeliveryDay,
   type DeliveryPeriod,
   type PublicMaterialConfirmView,
 } from "@/lib/material-confirm-types";
@@ -90,12 +92,11 @@ export function ConfirmClient({ token }: { token: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  // 製作完成之後才收得到貨
-  const minDate = useMemo(() => {
-    const t = todayYmd();
-    const end = view?.estimatedDate ?? "";
-    return end && end > t ? end : t;
-  }, [view?.estimatedDate]);
+  // 可選的最早日＝製作完成區間的**起日**。理由與回歸測試見 earliestDeliveryDate。
+  const minDate = useMemo(
+    () => earliestDeliveryDate(view?.productionStart ?? "", view?.estimatedDate ?? "", todayYmd()),
+    [view?.productionStart, view?.estimatedDate],
+  );
 
   async function post(payload: Record<string, unknown>, okState: typeof done) {
     setSubmitting(true);
@@ -127,6 +128,9 @@ export function ConfirmClient({ token }: { token: string }) {
     const chosen = slots.filter((s) => s.date);
     if (chosen.length === 0 && !anytime) {
       return setError("請提供 2～3 組方便的日期時段，或勾選「隨時可配合」");
+    }
+    if (chosen.some((s) => isNonDeliveryDay(s.date))) {
+      return setError("週日沒有配送，請改選其他日期");
     }
     void post({ action: "confirm", signerName: name, signatureDataUrl: signature, slots: chosen, anytime }, "confirmed");
   }
@@ -244,6 +248,8 @@ export function ConfirmClient({ token }: { token: string }) {
         <p className="mt-1 text-sm leading-relaxed text-gray-500">
           工廠空間有限，完成後需盡快出貨。請提供 <strong>2～3 組</strong>方便的時間，
           我們會依配送路線安排，出貨前再與您確認。
+          <br />
+          <span className="text-gray-400">※ 週日沒有配送</span>
         </p>
 
         <label className="mt-3 flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-3">
@@ -259,13 +265,16 @@ export function ConfirmClient({ token }: { token: string }) {
         {!anytime && (
           <div className="mt-3 space-y-2">
             {slots.map((s, i) => (
-              <div key={i} className="flex gap-2">
+              <div key={i}>
+              <div className="flex gap-2">
                 <input
                   type="date"
                   value={s.date}
                   min={minDate}
                   onChange={(e) => setSlots((p) => p.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base"
+                  className={`flex-1 rounded-lg border px-3 py-2.5 text-base ${
+                    isNonDeliveryDay(s.date) ? "border-red-400 bg-red-50" : "border-gray-300"
+                  }`}
                 />
                 <select
                   value={s.period}
@@ -274,6 +283,10 @@ export function ConfirmClient({ token }: { token: string }) {
                 >
                   {DELIVERY_PERIODS.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
+              </div>
+              {isNonDeliveryDay(s.date) && (
+                <p className="mt-1 text-sm text-red-600">這天是週日，沒有配送，請改選其他日期</p>
+              )}
               </div>
             ))}
           </div>

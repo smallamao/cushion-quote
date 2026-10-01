@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   CONCRETE_DELIVERY_PERIODS,
+  isNonDeliveryDay,
   periodStartHour,
   type DeliveryPeriod,
   type MaterialConfirmStatus,
@@ -211,21 +212,28 @@ export function DriverBatchClient({ token }: { token: string }) {
               </p>
             ) : (
               <div className="mt-3 space-y-2">
-                {o.preferredSlots.map((s, i) => (
+                {o.preferredSlots.map((s, i) => {
+                  const sunday = isNonDeliveryDay(s.date);
+                  return (
                   <button
                     key={i}
                     type="button"
+                    disabled={sunday}
                     onClick={() => setPick((p) => ({ ...p, [o.cardId]: i }))}
                     className={`flex w-full items-center gap-3 rounded-lg border-2 px-4 py-3 text-left text-lg ${
-                      chosen === i ? "border-emerald-600 bg-emerald-50 font-semibold" : "border-gray-300"
+                      sunday ? "border-gray-200 bg-gray-100 text-gray-400"
+                      : chosen === i ? "border-emerald-600 bg-emerald-50 font-semibold" : "border-gray-300"
                     }`}
                   >
                     <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
-                      chosen === i ? "border-emerald-600 bg-emerald-600 text-white" : "border-gray-400"
-                    }`}>{chosen === i ? "✓" : ""}</span>
+                      sunday ? "border-gray-300"
+                      : chosen === i ? "border-emerald-600 bg-emerald-600 text-white" : "border-gray-400"
+                    }`}>{chosen === i && !sunday ? "✓" : ""}</span>
                     {fmtDate(s.date)}　{s.period}
+                    {sunday && <span className="ml-auto text-base">週日不配送</span>}
                   </button>
-                ))}
+                  );
+                })}
 
                 {needConcrete && (
                   <div className="rounded-lg bg-amber-50 p-3">

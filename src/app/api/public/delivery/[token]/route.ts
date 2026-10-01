@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
+  isNonDeliveryDay,
   normalizeDeliveryPeriod,
   periodStartHour,
   toDueIso,
@@ -117,6 +118,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const idx = Number(body.chosenIndex);
     const chosen = c.preferredSlots[idx];
     if (!chosen) return NextResponse.json({ ok: false, error: "請選一組時段" }, { status: 400 });
+    // 客人頁 2026-10-01 起就擋掉週日了，但在那之前存的三組裡還有週日
+    // （實查 P6259、P6262 的第二順位都是 10/25 週日）。這裡是最後一道。
+    if (isNonDeliveryDay(chosen.date)) {
+      return NextResponse.json(
+        { ok: false, error: "這天是週日沒有配送，請改選其他組或回報三組都不行" },
+        { status: 400 },
+      );
+    }
 
     // 客人選「皆可」時沒有具體時間，司機必須指定一個——否則出貨通知算不出到貨區間。
     let period: DeliveryPeriod = chosen.period;

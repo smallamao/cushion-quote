@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { findByToken, generateToken, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
+  isNonDeliveryDay,
   normalizeDeliveryPeriod,
   type PreferredSlot,
   type PublicMaterialConfirmView,
@@ -203,6 +204,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const anytime = body.anytime === true;
     if (slots.length === 0 && !anytime) {
       return NextResponse.json({ ok: false, error: "請至少選一組希望收件日期，或勾選「隨時可配合」" }, { status: 400 });
+    }
+    // 司機週日不配送。前端也擋，但擋不住開著舊頁籤的人——
+    // 一組不可能的日期流到司機那邊就是白跑一趟或臨時改期。
+    if (slots.some((s) => isNonDeliveryDay(s.date))) {
+      return NextResponse.json({ ok: false, error: "週日沒有配送，請改選其他日期" }, { status: 400 });
     }
     if (!process.env.CLOUDINARY_CLOUD_NAME) {
       return NextResponse.json({ ok: false, error: "Cloudinary 未設定" }, { status: 503 });

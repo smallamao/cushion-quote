@@ -154,3 +154,36 @@ export const GATING_DRIFT_KINDS = new Set(["date", "slot", "other"]);
 export function isGatingDrift(kind: string): boolean {
   return kind !== "due";
 }
+
+/**
+ * 司機週日不配送（2026-10-01 老闆確認）。
+ *
+ * 客人頁會擋，送出端也要擋——前端擋得住一般人，擋不住開著舊頁籤的人，
+ * 而一組不可能的日期流到司機那邊，就是白跑一趟或臨時改期。
+ *
+ * 🔴 日期字串一律用 UTC 解析再取星期：伺服器跑在 UTC，用本地時間解析
+ *    會在跨時區時整個偏一天，把週六判成週日。
+ */
+export function isNonDeliveryDay(ymd: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd ?? "");
+  if (!m) return false;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay() === 0;
+}
+
+/**
+ * 客人頁「希望收件日」可選的最早一天。
+ *
+ * 🔴 是製作完成區間的**起日**，不是結束日（2026-10-01 老闆更正）。
+ * 「10/15 ~ 10/21 製作完成」＝會在這段期間內完成，不是 10/21 才完成，所以 10/15 起就能選。
+ * 原本拿結束日當下限，客人只看得到最後一天之後，當場來問「10/19 是不行的對嗎？」
+ *
+ * 已經過了的日期不給選，所以還要再跟今天取較晚的那個。
+ */
+export function earliestDeliveryDate(
+  productionStart: string,
+  estimatedDate: string,
+  todayYmd: string,
+): string {
+  const first = productionStart || estimatedDate || "";
+  return first && first > todayYmd ? first : todayYmd;
+}

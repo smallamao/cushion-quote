@@ -9,6 +9,8 @@ import {
   splitOrderCardName,
   type MaterialConfirm,
   isGatingDrift,
+  isNonDeliveryDay,
+  earliestDeliveryDate,
 } from "@/lib/material-confirm-types";
 import {
   SHEET_HEADERS,
@@ -336,5 +338,45 @@ describe("對帳差異要不要擋住發連結", () => {
     expect(isGatingDrift("other")).toBe(true);
     expect(isGatingDrift("以後才會有的新類型")).toBe(true);
     expect(isGatingDrift("")).toBe(true);
+  });
+});
+
+describe("客人可以挑哪幾天收件", () => {
+  // 2026-10 月：10/12 一、10/18 日、10/19 一、10/21 三、10/25 日
+  it("🔴 最早可選＝製作完成區間的起日，不是結束日", () => {
+    // 2026-10-01 真實案例：客人看到「10/15 ~ 10/21 製作完成」卻只能選 10/21 之後，
+    // 跑來問「10/19 下午是不行的對嗎？」。老闆：10/15（含）之後都該能選。
+    expect(earliestDeliveryDate("2026-10-15", "2026-10-21", "2026-10-01")).toBe("2026-10-15");
+  });
+
+  it("起日已經過了就從今天算起", () => {
+    expect(earliestDeliveryDate("2026-10-15", "2026-10-21", "2026-10-18")).toBe("2026-10-18");
+  });
+
+  it("抓不到製作起日時退回完成日，再沒有就用今天", () => {
+    expect(earliestDeliveryDate("", "2026-10-21", "2026-10-01")).toBe("2026-10-21");
+    expect(earliestDeliveryDate("", "", "2026-10-01")).toBe("2026-10-01");
+  });
+
+  it("週日不配送", () => {
+    expect(isNonDeliveryDay("2026-10-18")).toBe(true);
+    expect(isNonDeliveryDay("2026-10-25")).toBe(true);
+  });
+
+  it("週一到週六都可以", () => {
+    for (const d of ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-24"]) {
+      expect(isNonDeliveryDay(d)).toBe(false);
+    }
+  });
+
+  it("空值或格式不對不要誤判成週日", () => {
+    expect(isNonDeliveryDay("")).toBe(false);
+    expect(isNonDeliveryDay("2026/10/18")).toBe(false);
+  });
+
+  it("🔴 要用 UTC 解析——伺服器跑在 UTC，用本地時間會把週六判成週日", () => {
+    // 這幾天在 UTC-x 時區用 new Date(ymd).getDay() 會整個偏一天
+    expect(isNonDeliveryDay("2026-10-17")).toBe(false);  // 週六
+    expect(isNonDeliveryDay("2026-10-18")).toBe(true);   // 週日
   });
 });

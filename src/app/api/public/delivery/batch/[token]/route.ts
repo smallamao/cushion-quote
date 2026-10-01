@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { findByDriverBatch, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
+  isNonDeliveryDay,
   normalizeDeliveryPeriod,
   periodStartHour,
   toDueIso,
@@ -96,6 +97,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
     const slot = c.preferredSlots[Number(pick.chosenIndex)];
     if (!slot) { failed.push({ orderNumber: c.orderNumber, reason: "沒選時段" }); continue; }
+    // 司機週日不配送。2026-10-01 之前存的三組裡還有週日，所以不能假設資料乾淨。
+    if (isNonDeliveryDay(slot.date)) {
+      failed.push({ orderNumber: c.orderNumber, reason: "週日不配送" });
+      continue;
+    }
 
     let period: DeliveryPeriod = slot.period;
     if (typeof pick.period === "string" && pick.period) period = normalizeDeliveryPeriod(pick.period);

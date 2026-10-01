@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   CONCRETE_DELIVERY_PERIODS,
+  isNonDeliveryDay,
   periodStartHour,
   type DeliveryPeriod,
   type MaterialConfirmStatus,
@@ -215,23 +216,32 @@ export function DriverClient({ token }: { token: string }) {
       <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
         <p className="text-lg font-semibold text-gray-800">客人希望的時間，請挑一個</p>
         <div className="mt-3 space-y-2">
-          {view.preferredSlots.map((s, i) => (
+          {/* 週日不配送。2026-10-01 之前存的三組裡還有週日（P6259、P6262 的第二順位），
+              所以這裡要畫成不能按，而不是假設資料一定乾淨。 */}
+          {view.preferredSlots.map((s, i) => {
+            const sunday = isNonDeliveryDay(s.date);
+            return (
             <button
               key={i}
               type="button"
+              disabled={sunday}
               onClick={() => { setPicked(i); setError(""); }}
               className={`flex w-full items-center gap-3 rounded-lg border-2 px-4 py-4 text-left text-lg ${
-                picked === i ? "border-emerald-600 bg-emerald-50 font-semibold" : "border-gray-300"
+                sunday ? "border-gray-200 bg-gray-100 text-gray-400"
+                : picked === i ? "border-emerald-600 bg-emerald-50 font-semibold" : "border-gray-300"
               }`}
             >
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
-                picked === i ? "border-emerald-600 bg-emerald-600 text-white" : "border-gray-400"
+                sunday ? "border-gray-300"
+                : picked === i ? "border-emerald-600 bg-emerald-600 text-white" : "border-gray-400"
               }`}>
-                {picked === i ? "✓" : ""}
+                {picked === i && !sunday ? "✓" : ""}
               </span>
               {fmtDate(s.date)}　{s.period}
+              {sunday && <span className="ml-auto text-base">週日不配送</span>}
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {needsConcrete && (
