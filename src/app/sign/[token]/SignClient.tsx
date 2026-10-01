@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { SignatureModal } from "@/components/sign/SignatureModal";
 import { DEPOSIT_PAYMENT_INFO } from "@/lib/deposit-payment";
+import { parseFaq } from "@/lib/sign-faq";
 import type { PublicSigningView } from "@/lib/signing-types";
 
 function mapError(code: string): string {
@@ -113,6 +114,12 @@ export function SignClient({ token }: { token: string }) {
   useEffect(() => {
     setInAppBrowser(/Line|FBAN|FBAV|FB_IAB|Instagram/i.test(navigator.userAgent));
   }, []);
+
+  // 🔴 必須放在所有提前 return 之前：下面有 loading / 連結無效 / 已簽署 等多個 early return，
+  //    hook 若寫在那之後，首次渲染不會執行到，React 會丟
+  //    「Rendered more hooks than during the previous render」整頁崩潰。
+  //    view 可能還是 null，用 optional chaining，parseFaq 本身吃 undefined。
+  const faqItems = useMemo(() => parseFaq(view?.faq), [view?.faq]);
 
   async function submit() {
     const name = signerName.trim();
@@ -441,6 +448,29 @@ export function SignClient({ token }: { token: string }) {
           </p>
         </div>
       </div>
+
+      {/* 常見問題：文案來自系統設定（老闆可自行編輯），沒設定就整段不出現。
+          用原生 <details> 做收合——不需 JS、手機點擊區大、無障礙也正確。 */}
+      {faqItems.length > 0 && (
+        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+          <p className="mb-1 text-sm font-semibold text-gray-800">常見問題</p>
+          <div className="divide-y divide-gray-100">
+            {faqItems.map((item, i) => (
+              <details key={i} className="group py-1">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-2.5 text-sm font-medium text-gray-700 marker:content-none hover:text-gray-900">
+                  <span>{item.q}</span>
+                  <span className="shrink-0 text-base text-gray-400 transition-transform group-open:rotate-45">
+                    ＋
+                  </span>
+                </summary>
+                <p className="whitespace-pre-wrap pb-3 pr-6 text-sm leading-relaxed text-gray-600">
+                  {item.a}
+                </p>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
       {signModalOpen && (
         <SignatureModal
           onDone={(d) => {

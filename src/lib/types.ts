@@ -338,6 +338,11 @@ export interface SystemSettings extends PricingConfig {
   companyContact: string;
   companyEmail: string;
   factoryAddress: string;
+  /**
+   * 客戶簽署頁最下方的「常見問題」文案（純文字，老闆可自行編輯）。
+   * 格式見 lib/sign-faq.ts：每則以 `---` 分隔、第一行是問題、其餘是答案。
+   */
+  signFaq: string;
 }
 
 export type ShippingStatus =

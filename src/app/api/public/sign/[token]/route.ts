@@ -2,6 +2,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { NextResponse, after } from "next/server";
 
 import { findCompanyIdentityForCase } from "@/lib/company-lookup";
+import { loadSystemSettings } from "@/lib/settings-sheet";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { bakeSignedPdf } from "@/lib/signing-pdf";
 import { getSigningLinkByToken, updateSigningLink } from "@/lib/signing-links-sheet";
@@ -87,6 +88,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     }
   }
 
+  // 常見問題文案存在系統設定，讓老闆自己改；讀不到就當作沒有，不影響簽署流程。
+  let faq = "";
+  try {
+    faq = (await loadSystemSettings()).settings.signFaq ?? "";
+  } catch {
+    /* display-only, tolerate */
+  }
+
   const view: PublicSigningView = {
     status,
     unsignedPdfUrl: link.unsignedPdfUrl,
@@ -103,6 +112,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     taxRate,
     taxId,
     invoiceTitle,
+    faq,
   };
   return NextResponse.json({ ok: true, view });
 }

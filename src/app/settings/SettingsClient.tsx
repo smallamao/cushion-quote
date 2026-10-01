@@ -413,6 +413,33 @@ export function SettingsClient() {
               </div>
             </div>
 
+            {/* 客戶簽署頁最下方的常見問題：文案放這裡讓老闆自己改，不必找工程師重新部署 */}
+            <div className="card-surface rounded-[var(--radius-lg)] lg:col-span-2">
+              <div className="border-b border-[var(--border)] px-6 py-3">
+                <span className="text-sm font-medium">簽署頁常見問題</span>
+                <span className="ml-2 text-xs text-[var(--text-secondary)]">
+                  顯示在客戶線上簽署頁最下方，可收合
+                </span>
+              </div>
+              <div className="px-6 py-4">
+                <textarea
+                  value={current.signFaq ?? ""}
+                  onChange={(e) => update({ signFaq: e.target.value })}
+                  rows={14}
+                  spellCheck={false}
+                  className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-mono text-xs leading-relaxed"
+                  placeholder={"簽了之後還可以改嗎？\n可以。在我們通知您「開始叫料」之前都還能調整。\n---\n可以開發票嗎？\n可以，簽署時勾選即可。"}
+                />
+                <div className="mt-2 rounded-[var(--radius-md)] bg-[var(--surface-2)] px-3 py-2 text-[11px] leading-relaxed text-[var(--text-secondary)]">
+                  <p className="font-medium text-[var(--text-primary)]">怎麼寫：</p>
+                  <p>· 每一則用一行 <code className="font-mono">---</code> 分隔</p>
+                  <p>· 每一則的<strong>第一行是問題</strong>，底下是答案（答案可以寫很多行）</p>
+                  <p>· 問題或答案沒寫完的那一則不會顯示給客人</p>
+                  <p>· 整欄清空＝簽署頁就不出現常見問題</p>
+                </div>
+              </div>
+            </div>
+
             <div className="card-surface rounded-[var(--radius-lg)] lg:col-span-2">
               <div className="border-b border-[var(--border)] px-6 py-3">
                 <span className="text-sm font-medium">報價範本管理</span>

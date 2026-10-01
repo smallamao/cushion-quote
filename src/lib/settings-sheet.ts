@@ -65,6 +65,8 @@ export async function loadSystemSettings(): Promise<LoadedSystemSettings> {
         companyContact: mapped.company_contact ?? DEFAULT_SETTINGS.companyContact,
         companyEmail: mapped.company_email ?? DEFAULT_SETTINGS.companyEmail,
         factoryAddress: mapped.factory_address ?? DEFAULT_SETTINGS.factoryAddress,
+        // 空字串＝老闆刻意清空（不顯示常見問題），所以用 ?? 而非 ||
+        signFaq: mapped.sign_faq ?? DEFAULT_SETTINGS.signFaq,
       },
       source: "sheets",
     };

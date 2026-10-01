@@ -30,6 +30,7 @@ const SETTINGS_MAP: Array<{ key: string; extract: (s: SystemSettings) => string 
   { key: "company_contact", extract: (s) => s.companyContact },
   { key: "company_email", extract: (s) => s.companyEmail },
   { key: "factory_address", extract: (s) => s.factoryAddress },
+  { key: "sign_faq", extract: (s) => s.signFaq ?? "" },
 ];
 
 export async function GET() {
