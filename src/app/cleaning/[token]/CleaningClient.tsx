@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const PERIODS = ["上午", "下午", "晚上", "皆可"] as const;
 type Period = (typeof PERIODS)[number];
@@ -54,6 +54,21 @@ const fmtDate = (d: string) => {
   return `${d}（${wd}）`;
 };
 
+/**
+ * 到府清潔最快可排的日期＝今天 + 2 天（委外師傅需要前置時間）。
+ *
+ * 🔴 清潔是「委外師傅」，和司機配送的規則不同：**不擋週日、不綁製作完成日**，
+ *    週六日與國定假日都能排。別把 /confirm（司機配送）那套限制搬過來。
+ *    真的喬不攏還有後續「師傅確認時段」那關把關。
+ */
+const CLEANING_LEAD_DAYS = 2;
+function earliestCleaningDate(now: Date = new Date()): string {
+  const d = new Date(now);
+  d.setDate(d.getDate() + CLEANING_LEAD_DAYS);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function CleaningClient({ token }: { token: string }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,6 +78,7 @@ export function CleaningClient({ token }: { token: string }) {
   const [err, setErr] = useState("");
 
   // customer form
+  const minDate = useMemo(() => earliestCleaningDate(), []);
   const [slots, setSlots] = useState<Slot[]>([
     { date: "", period: "皆可" },
     { date: "", period: "皆可" },
@@ -104,6 +120,11 @@ export function CleaningClient({ token }: { token: string }) {
     const chosen = slots.filter((s) => s.date);
     if (chosen.length === 0) {
       setErr("請至少選一個日期＋時段");
+      return;
+    }
+    // 前端 min 擋得住一般操作，擋不住手動輸入或舊頁籤，送出前再確認一次
+    if (chosen.some((s) => s.date < minDate)) {
+      setErr(`最快可排 ${fmtDate(minDate)} 起，請改選較晚的日期`);
       return;
     }
     setSubmitting(true);
@@ -170,13 +191,21 @@ export function CleaningClient({ token }: { token: string }) {
 
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="mb-1 text-sm font-semibold text-gray-800">方便到府的時段</p>
-            <p className="mb-3 text-xs text-gray-400">最多選 3 組，師傅會從中挑一個確認</p>
+            <p className="mb-1 text-xs text-gray-400">最多選 3 組，師傅會從中挑一個確認</p>
+            {/* 把「可以選什麼」直接寫出來——客人最常問的就是「最快哪天」「週日可以嗎」。
+                正面寫出週末假日可排，比只用 min 靜默反灰更能減少來回詢問。 */}
+            <p className="mb-3 text-xs leading-relaxed text-gray-500">
+              📅 最快可排 <strong className="text-gray-700">{fmtDate(minDate)}</strong> 起
+              <br />
+              <span className="text-gray-400">※ 週六、週日、國定假日都可以安排</span>
+            </p>
             <div className="space-y-2">
               {slots.map((s, i) => (
                 <div key={i} className="flex gap-2">
                   <input
                     type="date"
                     value={s.date}
+                    min={minDate}
                     onChange={(e) => setSlots((p) => p.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))}
                     className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   />

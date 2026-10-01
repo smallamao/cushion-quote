@@ -248,8 +248,20 @@ export function ConfirmClient({ token }: { token: string }) {
         <p className="mt-1 text-sm leading-relaxed text-gray-500">
           工廠空間有限，完成後需盡快出貨。請提供 <strong>2～3 組</strong>方便的時間，
           我們會依配送路線安排，出貨前再與您確認。
-          <br />
-          <span className="text-gray-400">※ 週日沒有配送</span>
+        </p>
+        {/* 🔴 最早可選日原本只靠 min 靜默反灰，客人看不出為什麼點不下去，
+            就會回頭問「X 號是不行的對嗎？」。這裡把日期與原因直接寫出來。 */}
+        <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-sm leading-relaxed text-gray-600">
+          📅 可選日期：<strong className="text-gray-800">{fmtDate(minDate)}</strong> 起
+          <span className="text-gray-400">　※ 週日沒有配送</span>
+          {hasWindow && (
+            <>
+              <br />
+              <span className="text-xs text-gray-400">
+                你的沙發預計 {fmtMd(view.productionStart)}～{fmtMd(view.estimatedDate)} 完成，完成後就能安排
+              </span>
+            </>
+          )}
         </p>
 
         <label className="mt-3 flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-3">
