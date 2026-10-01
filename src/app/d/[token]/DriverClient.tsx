@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   CONCRETE_DELIVERY_PERIODS,
+  holidayName,
   isNonDeliveryDay,
   periodStartHour,
   type DeliveryPeriod,
@@ -238,7 +239,9 @@ export function DriverClient({ token }: { token: string }) {
                 {picked === i && !sunday ? "✓" : ""}
               </span>
               {fmtDate(s.date)}　{s.period}
-              {sunday && <span className="ml-auto text-base">週日不配送</span>}
+              {sunday
+                ? <span className="ml-auto text-base">週日不配送</span>
+                : holidayName(s.date) && <span className="ml-auto text-base text-amber-700">{holidayName(s.date)}</span>}
             </button>
             );
           })}

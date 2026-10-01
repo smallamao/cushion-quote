@@ -11,6 +11,7 @@ import {
   isGatingDrift,
   isNonDeliveryDay,
   earliestDeliveryDate,
+  holidayName,
 } from "@/lib/material-confirm-types";
 import {
   SHEET_HEADERS,
@@ -378,5 +379,40 @@ describe("客人可以挑哪幾天收件", () => {
     // 這幾天在 UTC-x 時區用 new Date(ymd).getDay() 會整個偏一天
     expect(isNonDeliveryDay("2026-10-17")).toBe(false);  // 週六
     expect(isNonDeliveryDay("2026-10-18")).toBe(true);   // 週日
+  });
+});
+
+describe("國定假日提示", () => {
+  // 🔴 假日是「提示」不是「擋」：司機行程不固定，有些假日跑得了，
+  //    硬擋會把他其實能跑的日子也關掉（2026-10-01 老闆拍板）。
+  it("認得出國定假日並回傳名稱", () => {
+    expect(holidayName("2026-02-17")).toBe("春節");
+    expect(holidayName("2026-10-10")).toBe("國慶日");
+    expect(holidayName("2026-01-01")).toBe("開國紀念日");
+  });
+
+  it("補假也要算（最容易漏的一種）", () => {
+    expect(holidayName("2026-10-09")).toBe("補假");
+    expect(holidayName("2026-10-26")).toBe("補假");
+  });
+
+  it("平常的上班日沒有提示", () => {
+    expect(holidayName("2026-10-20")).toBe("");
+    expect(holidayName("2026-10-22")).toBe("");
+  });
+
+  it("假日不擋送出——只有週日擋", () => {
+    expect(isNonDeliveryDay("2026-10-10")).toBe(false); // 國慶日是週六，照樣可選
+    expect(isNonDeliveryDay("2026-02-17")).toBe(false); // 春節週二
+  });
+
+  it("表外的日期回空字串，不要亂提示", () => {
+    expect(holidayName("2099-01-01")).toBe("");
+    expect(holidayName("")).toBe("");
+  });
+
+  it("假日表不可以是空的（產生器壞掉要被抓到）", () => {
+    const names = ["2026-02-16", "2026-02-17", "2026-02-18"].map(holidayName);
+    expect(names.every((n) => n.length > 0)).toBe(true);
   });
 });

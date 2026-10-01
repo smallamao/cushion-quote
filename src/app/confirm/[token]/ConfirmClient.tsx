@@ -6,6 +6,7 @@ import { SignatureModal } from "@/components/sign/SignatureModal";
 import {
   DELIVERY_PERIODS,
   earliestDeliveryDate,
+  holidayName,
   isNonDeliveryDay,
   type DeliveryPeriod,
   type PublicMaterialConfirmView,
@@ -296,9 +297,14 @@ export function ConfirmClient({ token }: { token: string }) {
                   {DELIVERY_PERIODS.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
-              {isNonDeliveryDay(s.date) && (
+              {isNonDeliveryDay(s.date) ? (
                 <p className="mt-1 text-sm text-red-600">這天是週日，沒有配送，請改選其他日期</p>
-              )}
+              ) : holidayName(s.date) ? (
+                // 假日不擋，只提醒——司機行程不固定，有些假日跑得了
+                <p className="mt-1 text-sm text-amber-700">
+                  這天是{holidayName(s.date)}，配送需另外確認，建議再多給一組平日時間
+                </p>
+              ) : null}
               </div>
             ))}
           </div>

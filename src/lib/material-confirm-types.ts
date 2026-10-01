@@ -1,3 +1,5 @@
+import { TW_HOLIDAYS } from "@/lib/tw-holidays";
+
 // 叫料確認單的純型別（client 與 server 共用，不含 server-only 依賴）。
 //
 // 業務背景：訂貨單條款寫明「客戶經確認查收廠務人員叫料通知訊息後，將無法取消該筆
@@ -156,6 +158,21 @@ export function isGatingDrift(kind: string): boolean {
 }
 
 /**
+ * 「客人那一關過了沒」——叫料關卡與看板篩選的唯一判準。
+ *
+ * confirmed 之後的狀態（司機已排定、司機回報三組都不行）客人都已經確認過了；
+ * 叫料看的是「客人確認了沒」，不是司機排到日期沒有。
+ * 🔴 postponed 不算：客人明確說要延後，這筆不該跟著本週叫料。
+ *
+ * 前後端共用，避免看板顯示的「還差 N 張」與篩選出來的筆數對不起來。
+ */
+export const CUSTOMER_DONE_STATUSES = ["confirmed", "scheduled", "driver_rejected"] as const;
+
+export function isCustomerConfirmed(status: string): boolean {
+  return (CUSTOMER_DONE_STATUSES as readonly string[]).includes(status);
+}
+
+/**
  * 司機週日不配送（2026-10-01 老闆確認）。
  *
  * 客人頁會擋，送出端也要擋——前端擋得住一般人，擋不住開著舊頁籤的人，
@@ -186,4 +203,19 @@ export function earliestDeliveryDate(
 ): string {
   const first = productionStart || estimatedDate || "";
   return first && first > todayYmd ? first : todayYmd;
+}
+
+/**
+ * 這天是不是國定假日；是的話回假日名稱（「春節」「補假」…），不是回空字串。
+ *
+ * 🔴 國定假日**不硬擋**（2026-10-01 老闆拍板）：司機大哥的行程不固定，
+ *    有些假日他跑、有些不跑，硬擋會把他其實能跑的日子也關掉。
+ *    所以只顯示「需另外確認」的提示，客人照樣送得出去，由司機排車時定奪。
+ *    —— 這跟週日不同，週日是確定不跑，那個是硬擋。
+ *
+ * 表外的日期回空字串＝不提示。假日表只涵蓋到 tw-holidays.ts 標的年度，
+ * 過期時寧可少提示也不要給錯資訊；更新方式見該檔頭。
+ */
+export function holidayName(ymd: string): string {
+  return TW_HOLIDAYS[ymd] ?? "";
 }
