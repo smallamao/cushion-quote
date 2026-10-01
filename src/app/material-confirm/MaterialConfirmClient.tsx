@@ -23,6 +23,8 @@ interface WeekRow {
   createdAt: string;
   staleDue: boolean;
   driftReasons: string[];
+  /** 其中會擋住發送的那幾項（排程日／時段）；出貨日不算 */
+  blockingDriftReasons: string[];
 }
 
 interface DriftStatus {
@@ -31,7 +33,10 @@ interface DriftStatus {
   numbersSavedAt: string;
   error: string;
   totalRecords: number;
+  /** 本週會擋住發送的差異（排程日／時段） */
   weekRecords: number;
+  /** 本週只有出貨日不同的筆數 —— 顯示但不擋 */
+  weekDueRecords: number;
   ageHours: number | null;
   stale: boolean;
   numbersNewer: boolean;
@@ -414,6 +419,13 @@ export function MaterialConfirmClient() {
             {drift.checked && !drift.error && !drift.stale && drift.weekRecords === 0 &&
               "✅ 這週與 Numbers 一致，可以發給客人"}
           </p>
+          {/* 出貨日不一致不擋發送：客人頁的完工日是從排程日算的，而且客人確認後
+              Numbers 那格會被改寫成送貨日，本來就不等於 Trello 出貨日。 */}
+          {drift.checked && !drift.error && !drift.stale && drift.weekDueRecords > 0 && (
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              另有 {drift.weekDueRecords} 筆出貨日與 Trello 不同（不影響發送，客人看到的完工日是從排程日算的）
+            </p>
+          )}
           <p className="mt-1 text-xs text-[var(--text-secondary)]">
             {drift.checkedAt
               ? `本機最後對帳 ${new Date(drift.checkedAt).toLocaleString("zh-TW", { hour12: false })}`
@@ -609,9 +621,14 @@ export function MaterialConfirmClient() {
                 </p>
               )}
 
+              {/* 只有出貨日不同時用灰字：那不擋發送，印成紅的會讓人以為要先去修 */}
               {r.driftReasons.length > 0 && (
-                <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-                  🔴 與 Numbers 不一致：
+                <div className={`mt-2 rounded-lg px-3 py-2 text-sm ${
+                  r.blockingDriftReasons.length > 0
+                    ? "bg-red-50 text-red-800"
+                    : "bg-[var(--surface-2)] text-[var(--text-secondary)]"
+                }`}>
+                  {r.blockingDriftReasons.length > 0 ? "🔴 與 Numbers 不一致：" : "與 Numbers 不同（不影響發送）："}
                   {r.driftReasons.map((x, i) => <span key={i} className="ml-1">{x}</span>)}
                 </div>
               )}

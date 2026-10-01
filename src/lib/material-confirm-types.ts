@@ -134,3 +134,23 @@ export function splitOrderCardName(name: string): { orderNumber: string; custome
   if (!m) return { orderNumber: "", customerName: name.trim() };
   return { orderNumber: m[1], customerName: (m[2] ?? "").trim() };
 }
+
+/**
+ * 哪幾種對帳差異會擋住「發連結給客人」。
+ *
+ * 🔴 出貨日（kind "due"）**不算**，理由有兩個：
+ *  ① 客人頁的「預計完工」是從**排程日**推算的（排程日 ～ +6 天），不是從 Numbers 出貨欄；
+ *     排程日實測 5 週零差異，完全可信。出貨日對不上不會讓客人看到錯日期。
+ *  ② 客人確認之後，本機工具（sofa-production-system/tools/sync_confirm_to_numbers.py）
+ *     會把 Numbers 的「日期範圍」那格改寫成**送貨日**（客人挑的 / 司機定案的），
+ *     它本來就不再等於 Trello 的出貨日。拿兩個意思不同的東西比對＝製造假警報。
+ *
+ * 假警報比漏報更傷——老闆看過「一堆不一致」之後就不再信任對帳結果了。
+ * 出貨日差異照樣會列在那一筆底下讓他看到（灰字），只是不鎖按鈕。
+ */
+export const GATING_DRIFT_KINDS = new Set(["date", "slot", "other"]);
+
+/** 這筆差異會不會擋住發送。看不懂的 kind 一律當「會擋」，寧可多擋不可漏放。 */
+export function isGatingDrift(kind: string): boolean {
+  return kind !== "due";
+}

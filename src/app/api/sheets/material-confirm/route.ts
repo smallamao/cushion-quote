@@ -16,7 +16,7 @@ import {
   listConfirms,
   writeConfirm,
 } from "@/lib/material-confirm-sheet";
-import { splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
+import { isGatingDrift, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
 import { readDrift } from "@/lib/schedule-drift-sheet";
 import { getBoardCards, getCustomFieldDate, toTaipeiYmd } from "@/lib/trello-server";
 
@@ -47,6 +47,8 @@ interface WeekRow {
   staleDue: boolean;
   /** 本機對帳（Numbers vs Trello）在這筆上發現的差異說明 */
   driftReasons: string[];
+  /** 其中會擋住「發給客人」的那幾項（排程日／時段）；出貨日不算，原因見 material-confirm-types 的 GATING_DRIFT_KINDS */
+  blockingDriftReasons: string[];
 }
 
 export async function GET(request: Request) {
@@ -77,9 +79,13 @@ export async function GET(request: Request) {
   // 這時要當「不知道」而不是「沒問題」——看板會顯示尚未對帳。
   const drift = await readDrift();
   const driftByOrder = new Map<string, string[]>();
+  const blockingByOrder = new Map<string, string[]>();
   for (const r of drift?.records ?? []) {
     if (!r.orderNumber) continue;
     driftByOrder.set(r.orderNumber, [...(driftByOrder.get(r.orderNumber) ?? []), r.reason]);
+    if (isGatingDrift(r.kind)) {
+      blockingByOrder.set(r.orderNumber, [...(blockingByOrder.get(r.orderNumber) ?? []), r.reason]);
+    }
   }
 
   const rows: WeekRow[] = inWeek
@@ -107,6 +113,7 @@ export async function GET(request: Request) {
         createdAt: found?.createdAt ?? "",
         staleDue: Boolean(dueDate && scheduleDate && dueDate < scheduleDate),
         driftReasons: driftByOrder.get(orderNumber) ?? [],
+        blockingDriftReasons: blockingByOrder.get(orderNumber) ?? [],
       };
     })
     .sort((a, b) =>
@@ -142,7 +149,10 @@ export async function GET(request: Request) {
   // 否則客人會拿到錯週次、錯日期的確認單。這裡把「能不能發」變成程式判斷，
   // 不是靠人記得去跑對帳（同 [[gate-in-code-not-in-skill]]）。
   const DRIFT_MAX_AGE_HOURS = 24;
-  const weekDrift = rows.filter((r) => r.driftReasons.length > 0);
+  const weekDrift = rows.filter((r) => r.blockingDriftReasons.length > 0);
+  const weekDueDrift = rows.filter(
+    (r) => r.driftReasons.length > 0 && r.blockingDriftReasons.length === 0,
+  );
   const checkedMs = drift ? Date.parse(drift.checkedAt) : NaN;
   const ageHours = Number.isFinite(checkedMs) ? (Date.now() - checkedMs) / 3600000 : Infinity;
   // Numbers 存檔時間比對帳時間晚＝老闆改完還沒重跑對帳，結果過期
@@ -156,8 +166,10 @@ export async function GET(request: Request) {
     error: drift?.error ?? "",
     /** 整批（不只本週）的差異筆數 */
     totalRecords: drift?.records.length ?? 0,
-    /** 本週的差異筆數 */
+    /** 本週會擋住發送的差異筆數（排程日／時段） */
     weekRecords: weekDrift.length,
+    /** 本週只有出貨日不一致的筆數——會顯示但不擋發送 */
+    weekDueRecords: weekDueDrift.length,
     ageHours: Number.isFinite(ageHours) ? Math.round(ageHours * 10) / 10 : null,
     stale: !drift || numbersNewer || ageHours > DRIFT_MAX_AGE_HOURS,
     numbersNewer,

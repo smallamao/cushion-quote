@@ -8,6 +8,7 @@ import {
   toDueIso,
   splitOrderCardName,
   type MaterialConfirm,
+  isGatingDrift,
 } from "@/lib/material-confirm-types";
 import {
   SHEET_HEADERS,
@@ -315,5 +316,25 @@ describe("延後備料狀態", () => {
     const back = rowToConfirm(row);
     expect(back.status).toBe("postponed");
     expect(back.disputeNote).toBe("裝潢預計月底完成");
+  });
+});
+
+describe("對帳差異要不要擋住發連結", () => {
+  it("排程日、時段不一致要擋 —— 客人會收到錯週次的確認單", () => {
+    expect(isGatingDrift("date")).toBe(true);
+    expect(isGatingDrift("slot")).toBe(true);
+  });
+
+  it("🔴 出貨日不一致不擋", () => {
+    // 客人頁的完工日是從排程日推的；而且客人確認後本機會把 Numbers 的
+    // 「日期範圍」改寫成送貨日，本來就不等於 Trello 出貨日。
+    // 拿兩個意思不同的東西比對＝假警報，老闆會因此不再信任整個對帳。
+    expect(isGatingDrift("due")).toBe(false);
+  });
+
+  it("看不懂的差異類型一律當成會擋 —— 寧可多擋不可漏放", () => {
+    expect(isGatingDrift("other")).toBe(true);
+    expect(isGatingDrift("以後才會有的新類型")).toBe(true);
+    expect(isGatingDrift("")).toBe(true);
   });
 });
