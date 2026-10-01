@@ -16,7 +16,7 @@ import {
   listConfirms,
   writeConfirm,
 } from "@/lib/material-confirm-sheet";
-import { isGatingDrift, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
+import { isCustomerConfirmed, isGatingDrift, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
 import { readDrift } from "@/lib/schedule-drift-sheet";
 import { getBoardCards, getCustomFieldDate, toTaipeiYmd } from "@/lib/trello-server";
 
@@ -122,12 +122,9 @@ export async function GET(request: Request) {
         : a.scheduleDate.localeCompare(b.scheduleDate),
     );
 
-  // 客人已確認＝confirmed 之後的任何狀態（司機已排定、司機回報不行，客人那關都過了）。
-  // 叫料關卡看的是「客人確認了沒」，不是司機排到日期沒有。
-  // 🔴 postponed 不算——客人明確說「現在還不能進場，請延後」，這筆就不該跟著本週叫料，
-  //    老闆要先把它移出這週（改排程日）才走得下去。
-  const CUSTOMER_DONE = new Set(["confirmed", "scheduled", "driver_rejected"]);
-  const customerDone = rows.filter((r) => CUSTOMER_DONE.has(r.status)).length;
+  // 「客人那關過了沒」的判準已抽到 lib/material-confirm-types 的 isCustomerConfirmed，
+  // 與看板的篩選共用同一份定義，避免「還差 N 張」和篩選結果對不起來。
+  const customerDone = rows.filter((r) => isCustomerConfirmed(r.status)).length;
   const summary = {
     total: rows.length,
     confirmed: customerDone,

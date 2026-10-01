@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { isCustomerConfirmed } from "@/lib/material-confirm-types";
 import type { MaterialConfirmStatus, PreferredSlot } from "@/lib/material-confirm-types";
 
 interface WeekRow {
@@ -108,6 +109,7 @@ export function MaterialConfirmClient() {
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(() => addDays(defaultStart(), 5));
   const [rows, setRows] = useState<WeekRow[]>([]);
+  const [view, setView] = useState<"all" | "pending" | "done">("all");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [ready, setReady] = useState(false);
   const [drift, setDrift] = useState<DriftStatus | null>(null);
@@ -167,6 +169,16 @@ export function MaterialConfirmClient() {
       } catch { /* 失敗就用推算的預設值 */ }
     })();
   }, [jumped]);
+
+  // 看板最常要回答的是「還差哪幾張」。原本清單平鋪＋只靠狀態標籤，10 張要逐一掃。
+  // 這裡提供：未確認置頂 + 可切換只看未確認（判準與上方「還差 N 張」共用 isCustomerConfirmed）。
+  const pendingRows = useMemo(() => rows.filter((r) => !isCustomerConfirmed(r.status)), [rows]);
+  const doneRows = useMemo(() => rows.filter((r) => isCustomerConfirmed(r.status)), [rows]);
+  const visibleRows = useMemo(() => {
+    const base =
+      view === "pending" ? pendingRows : view === "done" ? doneRows : [...pendingRows, ...doneRows];
+    return base; // 未確認永遠在前，後端既有的排程日排序在各組內維持不變
+  }, [view, pendingRows, doneRows]);
 
   const notSentIds = useMemo(() => rows.filter((r) => !r.token).map((r) => r.cardId), [rows]);
   // 連結建好但還沒傳出去的
@@ -456,7 +468,21 @@ export function MaterialConfirmClient() {
         <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
           <p className="text-base font-medium">
             這週 {summary.total} 張，已確認 <span className="text-emerald-700">{summary.confirmed}</span> 張，
-            還差 <span className="text-amber-700">{summary.total - summary.confirmed}</span> 張
+            還差{" "}
+            {summary.total - summary.confirmed > 0 ? (
+              // 直接點數字就只看那幾張，不用自己在清單裡找
+              <button
+                type="button"
+                onClick={() => setView("pending")}
+                className="font-semibold text-amber-700 underline decoration-dotted underline-offset-2 hover:text-amber-800"
+                title="只看還沒確認的那幾張"
+              >
+                {summary.total - summary.confirmed}
+              </button>
+            ) : (
+              <span className="text-amber-700">0</span>
+            )}{" "}
+            張
           </p>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
             {summary.notSent > 0 && <span>· {summary.notSent} 張還沒建連結</span>}
@@ -553,6 +579,33 @@ export function MaterialConfirmClient() {
         </div>
       )}
 
+      {/* 清單篩選：一眼切到「還沒確認的那幾張」 */}
+      {rows.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {([
+            { key: "all" as const, label: `全部 ${rows.length}`, cls: "border-[var(--border)]" },
+            { key: "pending" as const, label: `⛔ 未確認 ${pendingRows.length}`, cls: "border-amber-300 text-amber-800" },
+            { key: "done" as const, label: `✅ 已確認 ${doneRows.length}`, cls: "border-emerald-300 text-emerald-800" },
+          ]).map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setView(c.key)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                view === c.key
+                  ? "border-transparent bg-[var(--text-primary)] text-[var(--surface)]"
+                  : `bg-[var(--surface)] ${c.cls}`
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+          {view === "all" && pendingRows.length > 0 && (
+            <span className="text-xs text-[var(--text-secondary)]">（未確認的已排到最前面）</span>
+          )}
+        </div>
+      )}
+
       {/* 清單 */}
       <div className="mt-4 space-y-3">
         {rows.length === 0 && !loading && (
@@ -561,11 +614,20 @@ export function MaterialConfirmClient() {
           </p>
         )}
 
-        {rows.map((r) => {
+        {visibleRows.map((r) => {
           const meta = STATUS_META[r.status] ?? STATUS_META.not_sent;
           const waited = r.status === "sent" ? daysSince(r.createdAt) : null;
+          // 未確認的用左側琥珀色粗邊標出來，掃一眼就知道是哪幾張
+          const pending = !isCustomerConfirmed(r.status);
           return (
-            <div key={r.cardId} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div
+              key={r.cardId}
+              className={`rounded-xl border bg-[var(--surface)] p-4 ${
+                pending
+                  ? "border-amber-300 border-l-4 border-l-amber-500"
+                  : "border-[var(--border)]"
+              }`}
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-semibold">{r.orderNumber} {r.customerName}</span>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${meta.cls}`}>{meta.label}</span>
