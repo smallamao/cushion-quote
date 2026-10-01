@@ -14,12 +14,14 @@ import { appendNotification } from "@/lib/notifications-sheet";
 import { findByToken, generateToken, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
   isNonDeliveryDay,
+  isTestConfirm,
   normalizeDeliveryPeriod,
+  realCardId,
   type PreferredSlot,
   type PublicMaterialConfirmView,
 } from "@/lib/material-confirm-types";
 import {
-  addCardComment,
+  addCardCommentUnlessTest,
   addCheckItem,
   ensureTodoChecklist,
   getCardProductionWindow,
@@ -67,7 +69,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   // 照片張數當下重抓——老闆常在建卡之後才補照片，用建連結當下的快照會少圖。
   let photoCount = 0;
   try {
-    photoCount = (await getCardImageAttachments(c.cardId)).length;
+    photoCount = (await getCardImageAttachments(realCardId(c.cardId))).length;
   } catch {
     /* 取不到就當 0 張，頁面會顯示「照片載入失敗」而不是整頁壞掉 */
   }
@@ -77,7 +79,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   let productionStart = "";
   let estimatedDate = "";
   try {
-    const win = await getCardProductionWindow(c.cardId);
+    const win = await getCardProductionWindow(realCardId(c.cardId));
     productionStart = win.start;
     estimatedDate = win.end;
   } catch {
@@ -138,7 +140,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         return NextResponse.json({ ok: false, error: "already_confirmed" }, { status: 409 });
       }
       await writeConfirm({ ...c, status: "disputed", disputeNote: note }, rowNumber);
-      await addCardComment(
+      await addCardCommentUnlessTest(
         c.cardId,
         `【叫料確認單】⚠️ 客戶回報內容有誤\n時間：${fmtTaipei(new Date().toISOString())}\n\n客戶描述：\n${note}\n\n※ 尚未確認，請先處理後重發確認連結。`,
       ).catch(() => {});
@@ -163,7 +165,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         { ...c, status: "postponed", disputeNote: note || "客人表示目前無法安排進場" },
         rowNumber,
       );
-      await addCardComment(
+      await addCardCommentUnlessTest(
         c.cardId,
         [
           "【叫料確認單】⏸ 客戶表示目前無法安排進場",
@@ -239,7 +241,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       ? "　隨時可配合，由我們安排"
       : slots.map((s, i) => `${i + 1}. ${fmtSlot(s)}`).join("\n") +
         (anytime ? "\n　（客人另註明：其他時間也可配合）" : "");
-    await addCardComment(
+    await addCardCommentUnlessTest(
       c.cardId,
       [
         "【叫料確認單】✅ 客戶已確認訂單內容",
@@ -252,11 +254,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         `簽名檔：${signatureUrl}`,
       ].join("\n"),
     ).catch(() => {});
-    try {
-      const checklistId = await ensureTodoChecklist(c.cardId);
-      await addCheckItem(checklistId, `${rocDateLabel()} 客戶已確認叫料內容`, true);
-    } catch {
-      /* checklist 失敗不影響確認結果 */
+    if (!isTestConfirm(c.cardId)) {
+      try {
+        const checklistId = await ensureTodoChecklist(realCardId(c.cardId));
+        await addCheckItem(checklistId, `${rocDateLabel()} 客戶已確認叫料內容`, true);
+      } catch {
+        /* checklist 失敗不影響確認結果 */
+      }
     }
 
     await appendNotification({

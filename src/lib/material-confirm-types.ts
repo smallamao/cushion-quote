@@ -219,3 +219,27 @@ export function earliestDeliveryDate(
 export function holidayName(ymd: string): string {
   return TW_HOLIDAYS[ymd] ?? "";
 }
+
+/**
+ * 測試用確認單。
+ *
+ * 老闆 2026-10-01：「測試案例那筆被我移除了，而且我測試之後不知道怎麼重製。」
+ * 他需要能隨時重做一筆來走完整流程（客人簽名 → 司機挑日），而且不可以弄髒真實訂單。
+ *
+ * 做法＝測試單的 cardId 存成 `TEST:<真卡號>`：
+ *  - 看板是用「真卡號」去對照工作表的（byCard.get(card.id)），**對不上這個前綴**，
+ *    所以測試單絕對不會蓋掉、也不會顯示在任何一週的真實訂單上。
+ *  - 照片、製作區間照樣讀得到——用 realCardId() 還原回真卡號去抓。
+ *  - 🔴 但是回寫 Trello（留言、待辦打勾、改出貨日）一律跳過，
+ *    否則測試會在真客人的卡片上留下紀錄。
+ */
+export const TEST_CARD_PREFIX = "TEST:";
+
+export function isTestConfirm(cardId: string): boolean {
+  return (cardId ?? "").startsWith(TEST_CARD_PREFIX);
+}
+
+/** `TEST:abc123` → `abc123`；本來就是真卡號就原樣回傳。 */
+export function realCardId(cardId: string): string {
+  return isTestConfirm(cardId) ? cardId.slice(TEST_CARD_PREFIX.length) : (cardId ?? "");
+}

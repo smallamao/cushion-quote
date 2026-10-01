@@ -5,6 +5,7 @@
  * 客人端的公開連結沒有帳號用不了。這裡給公開路由在伺服器端直接呼叫，
  * 卡號一律由伺服器從 token 反查，客人端永遠拿不到、也改不了。
  */
+import { isTestConfirm, realCardId } from "@/lib/material-confirm-types";
 import "server-only";
 
 const TRELLO_KEY = process.env.TRELLO_KEY?.trim();
@@ -370,4 +371,17 @@ export async function getDeliveryInfo(cardId: string): Promise<DeliveryInfo> {
 /** 設定卡片出貨日（Trello due）。 */
 export async function setCardDue(cardId: string, dueIso: string): Promise<void> {
   await trelloJson(`cards/${cardId}`, { due: dueIso }, { method: "PUT" });
+}
+
+
+/**
+ * 在卡片留言，但**測試單一律跳過**。
+ *
+ * 測試用確認單的 cardId 是 `TEST:<真卡號>`（見 material-confirm-types 的 isTestConfirm）。
+ * 老闆用它走完整流程驗收，如果照常留言就會在真客人的卡片上留下測試紀錄。
+ * 所有「客人確認／司機排定」的留言一律走這支，不要直接呼叫 addCardComment。
+ */
+export async function addCardCommentUnlessTest(cardId: string, text: string): Promise<void> {
+  if (isTestConfirm(cardId)) return;
+  await addCardComment(realCardId(cardId), text);
 }

@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 
 import { findByToken } from "@/lib/material-confirm-sheet";
+import { realCardId } from "@/lib/material-confirm-types";
 import { fetchAttachmentImage, getCardImageAttachments } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
@@ -28,7 +29,9 @@ export async function GET(
 
   let attachments;
   try {
-    attachments = await getCardImageAttachments(found.confirm.cardId);
+    // 🔴 卡號一律由 token 在伺服器端反查，絕不接受前端指定（見 trello-attachment-photo-rules）。
+    //    測試單存的是 `TEST:<真卡號>`，要還原才抓得到圖。
+    attachments = await getCardImageAttachments(realCardId(found.confirm.cardId));
   } catch {
     return new NextResponse("trello_error", { status: 502 });
   }

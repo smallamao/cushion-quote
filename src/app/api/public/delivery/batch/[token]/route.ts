@@ -11,12 +11,14 @@ import { appendNotification } from "@/lib/notifications-sheet";
 import { findByDriverBatch, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
   isNonDeliveryDay,
+  isTestConfirm,
   normalizeDeliveryPeriod,
+  realCardId,
   periodStartHour,
   toDueIso,
   type DeliveryPeriod,
 } from "@/lib/material-confirm-types";
-import { addCardComment, getDeliveryInfo, setCardDue } from "@/lib/trello-server";
+import { addCardCommentUnlessTest, getDeliveryInfo, setCardDue } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +47,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     rows.map(async ({ confirm: c }) => {
       let info = null;
       try {
-        info = await getDeliveryInfo(c.cardId);
+        info = await getDeliveryInfo(realCardId(c.cardId));
       } catch {
         /* 單筆取不到不該讓整批壞掉 */
       }
@@ -118,11 +120,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     );
     let dueWritten = true;
     try {
-      await setCardDue(c.cardId, dueIso);
+      if (!isTestConfirm(c.cardId)) await setCardDue(realCardId(c.cardId), dueIso);
     } catch {
       dueWritten = false;
     }
-    await addCardComment(
+    await addCardCommentUnlessTest(
       c.cardId,
       [
         "【配送時段】🚚 司機已確認",
@@ -138,7 +140,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const row = byCard.get(cardId);
     if (!row || row.confirm.status === "scheduled") continue;
     await writeConfirm({ ...row.confirm, status: "driver_rejected" }, row.rowNumber);
-    await addCardComment(
+    await addCardCommentUnlessTest(
       row.confirm.cardId,
       `【配送時段】⚠️ 司機回報：客人給的三組時段都無法配合\n時間：${fmtTaipei(new Date().toISOString())}\n\n※ 請直接與客人另約時間。`,
     ).catch(() => {});

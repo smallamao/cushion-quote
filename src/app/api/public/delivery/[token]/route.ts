@@ -12,14 +12,16 @@ import { appendNotification } from "@/lib/notifications-sheet";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
   isNonDeliveryDay,
+  isTestConfirm,
   normalizeDeliveryPeriod,
+  realCardId,
   periodStartHour,
   toDueIso,
   type DeliveryPeriod,
   type MaterialConfirm,
   type PreferredSlot,
 } from "@/lib/material-confirm-types";
-import { addCardComment, getDeliveryInfo, setCardDue } from "@/lib/trello-server";
+import { addCardCommentUnlessTest, getDeliveryInfo, setCardDue } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,7 +57,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
 
   let info = null;
   try {
-    info = await getDeliveryInfo(c.cardId);
+    info = await getDeliveryInfo(realCardId(c.cardId));
   } catch {
     /* 取不到就只給時段，頁面仍可用 */
   }
@@ -102,7 +104,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   try {
     if (body.reject === true) {
       await writeConfirm({ ...c, status: "driver_rejected" }, rowNumber);
-      await addCardComment(
+      await addCardCommentUnlessTest(
         c.cardId,
         `【配送時段】⚠️ 司機回報：客人給的三組時段都無法配合\n時間：${fmtTaipei(new Date().toISOString())}\n\n※ 請直接與客人另約時間。`,
       ).catch(() => {});
@@ -145,11 +147,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     // 出貨日寫回 Trello（＝card.due，出貨通知就是讀這個算到貨區間）
     let dueWritten = true;
     try {
-      await setCardDue(c.cardId, dueIso);
+      if (!isTestConfirm(c.cardId)) await setCardDue(realCardId(c.cardId), dueIso);
     } catch {
       dueWritten = false;
     }
-    await addCardComment(
+    await addCardCommentUnlessTest(
       c.cardId,
       [
         "【配送時段】🚚 司機已確認",

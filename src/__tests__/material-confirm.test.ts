@@ -12,6 +12,9 @@ import {
   isNonDeliveryDay,
   earliestDeliveryDate,
   holidayName,
+  isTestConfirm,
+  realCardId,
+  TEST_CARD_PREFIX,
 } from "@/lib/material-confirm-types";
 import {
   SHEET_HEADERS,
@@ -414,5 +417,33 @@ describe("國定假日提示", () => {
   it("假日表不可以是空的（產生器壞掉要被抓到）", () => {
     const names = ["2026-02-16", "2026-02-17", "2026-02-18"].map(holidayName);
     expect(names.every((n) => n.length > 0)).toBe(true);
+  });
+});
+
+describe("測試用確認單不可以碰到真實資料", () => {
+  const REAL = "6abccf955285ec36c06ad7d5";
+  const TEST = `${TEST_CARD_PREFIX}${REAL}`;
+
+  it("認得出哪一筆是測試單", () => {
+    expect(isTestConfirm(TEST)).toBe(true);
+    expect(isTestConfirm(REAL)).toBe(false);
+    expect(isTestConfirm("")).toBe(false);
+  });
+
+  it("還原得回真卡號（照片、製作區間才讀得到）", () => {
+    expect(realCardId(TEST)).toBe(REAL);
+    expect(realCardId(REAL)).toBe(REAL);
+  });
+
+  it("🔴 測試單的 cardId 不可以等於真卡號", () => {
+    // 看板是用真卡號去對照工作表（byCard.get(card.id)）。
+    // 一旦相等，測試單就會蓋掉那張卡真正的那一筆，老闆會看到錯的狀態。
+    expect(TEST).not.toBe(REAL);
+    expect(isTestConfirm(realCardId(TEST))).toBe(false);
+  });
+
+  it("前綴不可以是空字串（空字串會讓每一筆都變成測試單）", () => {
+    expect(TEST_CARD_PREFIX.length).toBeGreaterThan(0);
+    expect(isTestConfirm(REAL)).toBe(false);
   });
 });
