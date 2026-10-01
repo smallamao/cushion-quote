@@ -427,10 +427,10 @@ export function SettingsClient() {
                   onChange={(e) => update({ signFaq: e.target.value })}
                   rows={14}
                   spellCheck={false}
-                  className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-mono text-xs leading-relaxed"
+                  className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 font-mono text-xs leading-relaxed"
                   placeholder={"簽了之後還可以改嗎？\n可以。在我們通知您「開始叫料」之前都還能調整。\n---\n可以開發票嗎？\n可以，簽署時勾選即可。"}
                 />
-                <div className="mt-2 rounded-[var(--radius-md)] bg-[var(--surface-2)] px-3 py-2 text-[11px] leading-relaxed text-[var(--text-secondary)]">
+                <div className="mt-2 rounded-[var(--radius-md)] bg-[var(--bg-subtle)] px-3 py-2 text-[11px] leading-relaxed text-[var(--text-secondary)]">
                   <p className="font-medium text-[var(--text-primary)]">怎麼寫：</p>
                   <p>· 每一則用一行 <code className="font-mono">---</code> 分隔</p>
                   <p>· 每一則的<strong>第一行是問題</strong>，底下是答案（答案可以寫很多行）</p>

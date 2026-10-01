@@ -591,10 +591,12 @@ export function MaterialConfirmClient() {
               key={c.key}
               type="button"
               onClick={() => setView(c.key)}
+              // 🔴 選中態的字色要用 --text-inverse（白）。先前誤寫 --surface，
+              //    那個變數專案裡根本沒定義 → 字色無效、沿用深色 → 黑底黑字整顆看不見。
               className={`rounded-full border px-3 py-1 text-xs font-medium ${
                 view === c.key
-                  ? "border-transparent bg-[var(--text-primary)] text-[var(--surface)]"
-                  : `bg-[var(--surface)] ${c.cls}`
+                  ? "border-transparent bg-[var(--text-primary)] text-[var(--text-inverse)]"
+                  : `bg-[var(--bg-elevated)] ${c.cls}`
               }`}
             >
               {c.label}
