@@ -38,6 +38,14 @@ function daysSince(iso: string): number | null {
   return Math.floor((Date.now() - t) / 86_400_000);
 }
 
+/** 「10/4 21:41」：內勤要對帳，看得到確認時間比看到 ISO 字串有用。 */
+function shortTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export function OrderConfirmPanel() {
   const disclosure = useMemo(() => getOrderDisclosure(), []);
   const [open, setOpen] = useState(false);
@@ -89,17 +97,26 @@ export function OrderConfirmPanel() {
     }
   }, []);
 
+  // 🔴 每次展開都要重抓，並在展開期間每 60 秒輪詢一次。
+  //    舊版是「rows 為空才抓」，客人簽完名後重開面板仍顯示「等客人確認」——
+  //    後端其實已寫入，純粹是畫面沒更新，會讓人以為流程壞了。
   useEffect(() => {
-    if (open && rows.length === 0 && !loading) void load();
-  }, [open, rows.length, loading, load]);
+    if (!open) return;
+    void load();
+    const id = setInterval(() => void load(), 60_000);
+    return () => clearInterval(id);
+  }, [open, load]);
 
   const visible = useMemo(() => {
     const key = q.trim().toLowerCase();
-    if (!key) return rows;
-    return rows.filter((r) => r.cardName.toLowerCase().includes(key));
+    const list = key ? rows.filter((r) => r.cardName.toLowerCase().includes(key)) : rows;
+    // 已確認的要收款、叫料、下排程，是最需要動作的，置頂；接著是等客人確認。
+    const rank = (r: Row) => (r.status === "confirmed" ? 0 : r.status === "sent" ? 1 : 2);
+    return [...list].sort((a, b) => rank(a) - rank(b) || b.createdAt.localeCompare(a.createdAt));
   }, [rows, q]);
 
-  const pendingCount = rows.filter((r) => r.status !== "confirmed").length;
+  const confirmedCount = rows.filter((r) => r.status === "confirmed").length;
+  const awaitingCount = rows.filter((r) => r.status === "sent").length;
 
   async function createLink(r: Row) {
     setBusy(true);
@@ -153,9 +170,14 @@ export function OrderConfirmPanel() {
       >
         <ChevronRight className={`h-4 w-4 text-[var(--text-tertiary)] transition-transform ${open ? "rotate-90" : ""}`} />
         <span className="text-sm font-medium">🆕 線上下訂確認</span>
-        {rows.length > 0 && (
+        {confirmedCount > 0 && (
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+            ✅ {confirmedCount} 筆客人已確認
+          </span>
+        )}
+        {awaitingCount > 0 && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-            {pendingCount} 筆待確認
+            {awaitingCount} 筆等客人確認
           </span>
         )}
         <span className="ml-auto text-xs text-[var(--text-tertiary)]">
@@ -200,6 +222,7 @@ export function OrderConfirmPanel() {
                     {r.status === "confirmed" && (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-800">
                         ✅ 已確認{r.signerName ? `・${r.signerName}` : ""}
+                        {r.confirmedAt ? `・${shortTime(r.confirmedAt)}` : ""}
                       </span>
                     )}
                     {r.status === "sent" && (
@@ -235,6 +258,16 @@ export function OrderConfirmPanel() {
                       )}
                     </div>
                   </div>
+
+                  {/* 已確認之後的下一步是對帳收款，所以把備註會用到的編號與金額直接列出來 */}
+                  {r.status === "confirmed" && (
+                    <p className="mt-1.5 text-xs text-[var(--text-secondary)]">
+                      匯款備註編號 <span className="font-medium text-[var(--text-primary)]">{r.orderNo || "—"}</span>
+                      ・訂金 NT$ {r.depositAmount.toLocaleString()}
+                      {r.payByDate ? `・期限 ${r.payByDate.slice(5).replace("-", "/")}` : ""}
+                      ・待確認入帳後叫料下排程
+                    </p>
+                  )}
 
                   {editing === r.cardId && !r.token && (
                     <div className="mt-3 rounded-md bg-[var(--bg-subtle)] p-3">

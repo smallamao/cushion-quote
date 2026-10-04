@@ -149,15 +149,26 @@ export function OrderConfirmClient({ token }: { token: string }) {
       {view.photoCount > 0 && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
           <p className="mb-2 text-base font-semibold text-gray-800">訂貨單與顏色</p>
-          <p className="mb-3 text-xs text-gray-400">點圖可放大檢視</p>
-          <div className="grid grid-cols-2 gap-2">
+          <p className="mb-3 text-xs text-gray-400">點圖可放大，看清手寫細節</p>
+          {/* 🔴 單欄滿版、不固定高度：訂貨單是要「讀」的文件，之前 grid-cols-2 + h-40
+                 把手寫單縮成半版小圖，客人根本看不清字，也就無法真的核對內容。
+                 影像來源仍用 ?size=thumb——那不是縮圖，是 900px 目標寬的 preview
+                 （約 280KB），手機上夠清楚；原圖動輒 1.9MB，內嵌會拖慢整頁，
+                 留給點圖放大時再抓。改這段前請先讀 trello-server.ts 的尺寸註解。 */}
+          <div className="flex flex-col gap-3">
             {Array.from({ length: view.photoCount }).map((_, i) => (
-              <button key={i} type="button" onClick={() => setZoom(i)} className="overflow-hidden rounded-lg border border-gray-200">
+              <button
+                key={i}
+                type="button"
+                onClick={() => setZoom(i)}
+                className="block w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={`/api/public/order-confirm/${token}/photo/${i}?size=thumb`}
                   alt={`訂貨內容 ${i + 1}`}
-                  className="h-40 w-full bg-gray-50 object-contain"
+                  loading={i === 0 ? "eager" : "lazy"}
+                  className="block h-auto w-full"
                 />
               </button>
             ))}
