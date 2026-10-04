@@ -77,6 +77,7 @@ export default async function RootLayout({
     pathname === "/cleaning" ||
     pathname.startsWith("/cleaning/") ||
     pathname.startsWith("/confirm/") ||
+    pathname.startsWith("/od/") ||
     pathname.startsWith("/d/");
 
   return (

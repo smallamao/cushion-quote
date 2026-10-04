@@ -10,6 +10,9 @@ export const S_ORDER_CUSTOM_FIELDS = {
 export const TRELLO = {
   BOARD_ID: "5ccbe7e6128a5079a20f8b39",
   LISTS: {
+    // 客人填完 Google 表單後自動建卡的落點；線上下訂確認單從這裡取卡。
+    // 此時卡名多半只有客戶姓名（訂單編號是之後人工改名才補上）。
+    REQUEST: "5cf6a0115e65d9317a0ee5e8",
     ORDER: "5cefef9f9c7cca170f5b823b",
     PRODUCTION: "5ceff0069ddcad59eb4b3eba",
     WAIT_SHIPPING: "5db80ff546d13017935c55a9",

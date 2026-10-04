@@ -53,6 +53,8 @@ function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/dispatch/") ||
     // 叫料確認單：客人核對訂貨單照片＋簽名＋提供希望收件時段（token 為唯一憑證，免登入）
     pathname.startsWith("/confirm/") ||
+    // 線上下訂確認（客人簽名頁，token 為唯一憑證）
+    pathname.startsWith("/od/") ||
     // 司機配送時段確認（token 為唯一憑證，免登入）
     pathname.startsWith("/d/") ||
     pathname.startsWith("/s/") ||

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, Copy, Check, Truck, X, ChevronLeft, ChevronRight, ExternalLink, Printer, Navigation, RefreshCw, Scissors, MessageSquare, SquarePen, User, CalendarDays, CalendarClock, CalendarRange } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
+import { OrderConfirmPanel } from "@/components/order-confirm/OrderConfirmPanel";
 import { Button } from "@/components/ui/button";
 import { useActiveDrivers } from "@/hooks/useDrivers";
 import { openFloatingImages } from "@/components/layout/FloatingImageViewer";
@@ -2971,6 +2972,10 @@ export function ShippingNoticeClient() {
           </Button>
         </div>
       </div>
+
+      {/* 線上下訂確認：客人填完 Google 表單後落在 Trello「Request」的卡片，
+          在這裡產生客人確認連結。獨立元件、預設收合，不影響既有出貨作業。 */}
+      <OrderConfirmPanel />
 
       {/* 模式切換：單筆查詢 / 日總表 */}
       <div className="flex items-center gap-1 rounded-lg bg-[var(--surface-2)] p-1 w-fit">
