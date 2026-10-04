@@ -1,7 +1,7 @@
 import { v2 as cloudinary } from "cloudinary";
 import { NextResponse } from "next/server";
 
-import { DEPOSIT_PAYMENT_INFO } from "@/lib/deposit-payment";
+import { buildOrderDepositMessage } from "@/lib/order-deposit-payment";
 import { findByToken, writeOrderConfirm } from "@/lib/order-confirm-sheet";
 import {
   getOrderDisclosure,
@@ -60,7 +60,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     photoCount,
     disclosureHeader: disclosure?.header ?? "",
     disclosureItems: pickDisclosureItems(c.checkedIndexes),
-    paymentInfo: DEPOSIT_PAYMENT_INFO,
+    paymentInfo: buildOrderDepositMessage({
+      depositAmount: c.depositAmount,
+      payByDate: c.payByDate,
+      orderNo: c.orderNo,
+    }),
+    orderNo: c.orderNo,
+    payByDate: c.payByDate,
     signerName: c.signerName,
     confirmedAt: c.confirmedAt,
   };

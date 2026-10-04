@@ -57,6 +57,8 @@ export async function GET(request: Request) {
           token: c?.token ?? null,
           status: c?.status ?? null,
           depositAmount: c?.depositAmount ?? DEFAULT_DEPOSIT,
+          orderNo: c?.orderNo ?? "",
+          payByDate: c?.payByDate ?? "",
           signerName: c?.signerName ?? "",
           confirmedAt: c?.confirmedAt ?? "",
           notifiedAt: c?.notifiedAt ?? "",
@@ -110,6 +112,16 @@ export async function POST(request: Request) {
     const cardName = typeof body.cardName === "string" ? body.cardName.trim() : "";
     if (!cardId) return NextResponse.json({ ok: false, error: "缺少卡片" }, { status: 400 });
 
+    // 訂單編號必填：客人匯款備註要標這個，空的話收款端對不上帳。
+    const orderNo = typeof body.orderNo === "string" ? body.orderNo.trim() : "";
+    if (!orderNo) {
+      return NextResponse.json(
+        { ok: false, error: "請先填訂單編號（卡片名稱改成「P6275 王小明」後重新整理即可自動帶入）" },
+        { status: 400 },
+      );
+    }
+    const payByDate = typeof body.payByDate === "string" ? body.payByDate.trim() : "";
+
     const depositRaw = Number(body.depositAmount);
     const depositAmount = Number.isFinite(depositRaw) && depositRaw >= 0 ? Math.round(depositRaw) : DEFAULT_DEPOSIT;
     const checkedIndexes = Array.isArray(body.checkedIndexes)
@@ -133,6 +145,8 @@ export async function POST(request: Request) {
       createdAt: now,
       updatedAt: now,
       createdBy: session.email ?? "",
+      orderNo,
+      payByDate,
     };
     await appendOrderConfirm(confirm);
     return NextResponse.json({ ok: true, token: confirm.token });

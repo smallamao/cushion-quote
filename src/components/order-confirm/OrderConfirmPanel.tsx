@@ -5,6 +5,7 @@ import { Check, ChevronRight, Copy, Loader2, Send } from "lucide-react";
 
 import { buildPublicUrl } from "@/lib/dispatch-public-url";
 import { getOrderDisclosure } from "@/lib/order-confirm-types";
+import { splitOrderCardName } from "@/lib/material-confirm-types";
 
 /**
  * 線上下訂確認：掛在「排程出貨」頁的可收合區塊。
@@ -22,6 +23,8 @@ interface Row {
   token: string | null;
   status: "sent" | "confirmed" | null;
   depositAmount: number;
+  orderNo: string;
+  payByDate: string;
   signerName: string;
   confirmedAt: string;
   notifiedAt: string;
@@ -49,6 +52,23 @@ export function OrderConfirmPanel() {
   const [editing, setEditing] = useState<string | null>(null);
   const [deposit, setDeposit] = useState(10000);
   const [checked, setChecked] = useState<number[]>([]);
+  const [orderNo, setOrderNo] = useState("");
+  const [payBy, setPayBy] = useState("");
+
+  /** 預設匯款期限：今天 +2 天 */
+  function defaultPayBy(): string {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  /** 展開某張卡的設定：訂單編號從卡名自動帶（卡名改成「P6275 王小明」就會抓到） */
+  function openEditor(r: Row) {
+    setEditing(r.cardId);
+    setOrderNo(splitOrderCardName(r.cardName).orderNumber);
+    setPayBy(defaultPayBy());
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +114,8 @@ export function OrderConfirmPanel() {
           cardName: r.cardName,
           depositAmount: deposit,
           checkedIndexes: checked,
+          orderNo: orderNo.trim(),
+          payByDate: payBy,
         }),
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
@@ -205,7 +227,7 @@ export function OrderConfirmPanel() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => setEditing(editing === r.cardId ? null : r.cardId)}
+                          onClick={() => (editing === r.cardId ? setEditing(null) : openEditor(r))}
                           className="rounded-md border border-[var(--accent)] px-2 py-1 text-xs text-[var(--accent)] hover:bg-[var(--bg-hover)]"
                         >
                           <Send className="mr-0.5 inline h-3 w-3" />產生確認連結
@@ -216,6 +238,32 @@ export function OrderConfirmPanel() {
 
                   {editing === r.cardId && !r.token && (
                     <div className="mt-3 rounded-md bg-[var(--bg-subtle)] p-3">
+                      <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-medium text-[var(--text-secondary)]">
+                            訂單編號 <span className="text-red-600">必填</span>
+                          </label>
+                          <input
+                            value={orderNo}
+                            onChange={(e) => setOrderNo(e.target.value)}
+                            placeholder="P6275"
+                            className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-sm"
+                          />
+                          <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                            客人匯款備註要標這個；卡名改成「P6275 王小明」就會自動帶入
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[var(--text-secondary)]">匯款期限</label>
+                          <input
+                            type="date"
+                            value={payBy}
+                            onChange={(e) => setPayBy(e.target.value)}
+                            className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-sm"
+                          />
+                          <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">留空則不提期限</p>
+                        </div>
+                      </div>
                       <label className="block text-xs font-medium text-[var(--text-secondary)]">應付訂金</label>
                       <input
                         type="number"
@@ -254,7 +302,7 @@ export function OrderConfirmPanel() {
                         <button
                           type="button"
                           onClick={() => void createLink(r)}
-                          disabled={busy}
+                          disabled={busy || !orderNo.trim()}
                           className="rounded-md bg-[var(--text-primary)] px-3 py-1.5 text-xs font-medium text-[var(--text-inverse)] disabled:opacity-50"
                         >
                           {busy ? "產生中…" : "產生連結"}

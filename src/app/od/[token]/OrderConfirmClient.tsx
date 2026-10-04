@@ -106,6 +106,11 @@ export function OrderConfirmClient({ token }: { token: string }) {
   }
 
   const money = `NT$ ${view.depositAmount.toLocaleString()}`;
+  // 期限用「10/6」這種口語格式，和匯款訊息裡的寫法一致
+  const payByLabel = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(view.payByDate ?? "");
+    return m ? `${Number(m[2])}/${Number(m[3])}` : "";
+  })();
 
   if (done || view.status === "confirmed") {
     return (
@@ -114,7 +119,8 @@ export function OrderConfirmClient({ token }: { token: string }) {
           <p className="text-4xl">✅</p>
           <p className="mt-3 text-lg font-semibold text-gray-800">已收到您的確認，謝謝！</p>
           <p className="mt-2 text-sm leading-relaxed text-gray-600">
-            接下來請依下方資訊匯款訂金 <span className="font-semibold text-gray-900">{money}</span>，
+            接下來請依下方資訊匯款訂金 <span className="font-semibold text-gray-900">{money}</span>
+            {payByLabel ? <>（請於 <span className="font-semibold text-gray-900">{payByLabel}</span> 前完成）</> : null}，
             我們確認收到款項後會安排叫料與排程。
           </p>
           <div className="mt-5 whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-4 text-left text-sm leading-relaxed text-gray-700">
@@ -181,6 +187,9 @@ export function OrderConfirmClient({ token }: { token: string }) {
         <p className="text-base font-semibold text-gray-800">訂金與匯款資訊</p>
         <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-base font-semibold text-amber-900">
           應付訂金：{money}
+          {payByLabel && (
+            <span className="mt-0.5 block text-sm font-medium">請於 {payByLabel} 前匯入</span>
+          )}
         </p>
         <div className="mt-3 whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm leading-relaxed text-gray-700">
           {view.paymentInfo}

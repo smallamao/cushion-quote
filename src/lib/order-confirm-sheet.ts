@@ -15,15 +15,16 @@ import type { OrderConfirm, OrderConfirmStatus } from "@/lib/order-confirm-types
 export const SHEET = "訂單確認";
 // A token / B 卡片ID / C 卡片名稱 / D 訂金 / E 勾選條款(JSON) / F 狀態 /
 // G 簽署人 / H 簽名圖 / I 確認時間 / J IP / K 裝置 / L 傳出時間 /
-// M 建立時間 / N 更新時間 / O 建立者
-export const RANGE_FULL = `${SHEET}!A:O`;
-export const RANGE_DATA = `${SHEET}!A2:O`;
-export const ROW_RANGE = (rowNumber: number) => `${SHEET}!A${rowNumber}:O${rowNumber}`;
+// M 建立時間 / N 更新時間 / O 建立者 / P 訂單編號 / Q 匯款期限
+// ⚠️ 加欄位時這四處要一起改：RANGE 常數、單列 ROW_RANGE、HEADERS、實體 grid 欄數。
+export const RANGE_FULL = `${SHEET}!A:Q`;
+export const RANGE_DATA = `${SHEET}!A2:Q`;
+export const ROW_RANGE = (rowNumber: number) => `${SHEET}!A${rowNumber}:Q${rowNumber}`;
 
 export const HEADERS = [
   "token", "卡片ID", "卡片名稱", "訂金", "勾選條款", "狀態",
   "簽署人", "簽名圖", "確認時間", "IP", "裝置", "傳出時間",
-  "建立時間", "更新時間", "建立者",
+  "建立時間", "更新時間", "建立者", "訂單編號", "匯款期限",
 ];
 
 /** 短亂數 token（對外連結，越短越好貼）。 */
@@ -58,6 +59,8 @@ export function rowToOrderConfirm(row: string[]): OrderConfirm {
     createdAt: row[12] ?? "",
     updatedAt: row[13] ?? "",
     createdBy: row[14] ?? "",
+    orderNo: row[15] ?? "",
+    payByDate: row[16] ?? "",
   };
 }
 
@@ -78,6 +81,8 @@ export function orderConfirmToRow(c: OrderConfirm): string[] {
     c.createdAt,
     c.updatedAt,
     c.createdBy,
+    c.orderNo,
+    c.payByDate,
   ];
 }
 

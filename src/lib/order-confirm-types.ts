@@ -37,6 +37,10 @@ export interface OrderConfirm {
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+  /** 訂單編號（例 P6275）。必填——客人匯款備註要標這個，空的話收款端對不上帳。 */
+  orderNo: string;
+  /** 匯款期限 YYYY-MM-DD；空＝文案不提期限 */
+  payByDate: string;
 }
 
 /** 客人端只看得到這些——照片一律走 token 端點，不外洩 Trello 卡號與網址。 */
@@ -50,8 +54,11 @@ export interface PublicOrderConfirmView {
   disclosureHeader: string;
   /** 本單適用的告知事項條文（已依 checkedIndexes 篩選過） */
   disclosureItems: string[];
-  /** 匯款資訊（系統既有的業務確認版文案） */
+  /** 完整匯款訊息（已填入訂金、期限、訂單編號的業務確認版文案） */
   paymentInfo: string;
+  orderNo: string;
+  /** 匯款期限 YYYY-MM-DD；空＝未設定 */
+  payByDate: string;
   signerName: string;
   confirmedAt: string;
 }
