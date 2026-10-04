@@ -2973,10 +2973,6 @@ export function ShippingNoticeClient() {
         </div>
       </div>
 
-      {/* 線上下訂確認：客人填完 Google 表單後落在 Trello「Request」的卡片，
-          在這裡產生客人確認連結。獨立元件、預設收合，不影響既有出貨作業。 */}
-      <OrderConfirmPanel />
-
       {/* 模式切換：單筆查詢 / 日總表 */}
       <div className="flex items-center gap-1 rounded-lg bg-[var(--surface-2)] p-1 w-fit">
         {([["search", "單筆查詢"], ["manifest", "日總表"]] as const).map(([key, label]) => (
@@ -3300,6 +3296,12 @@ export function ShippingNoticeClient() {
           </div>
         </div>
       )}
+
+      {/* 線上下訂確認：客人填完 Google 表單後落在 Trello「Request」的卡片，
+          在這裡產生客人確認連結。
+          🔴 刻意放在頁面最下方：出貨查詢是每天用的高頻作業，下訂確認幾天才一次，
+             低頻的東西不該在手機上把高頻內容往下擠。預設收合。 */}
+      <OrderConfirmPanel />
     </div>
   );
 }
