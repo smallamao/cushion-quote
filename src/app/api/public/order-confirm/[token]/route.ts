@@ -8,7 +8,13 @@ import {
   pickDisclosureItems,
   type PublicOrderConfirmView,
 } from "@/lib/order-confirm-types";
-import { addCardComment, getCardImageAttachments } from "@/lib/trello-server";
+import { ORDER_CONFIRMED_LABEL, TRELLO } from "@/lib/trello-constants";
+import {
+  addCardComment,
+  addCardLabel,
+  ensureBoardLabel,
+  getCardImageAttachments,
+} from "@/lib/trello-server";
 
 /**
  * 線上下訂確認單的客人端 API（免登入，token 為唯一憑證）。
@@ -130,12 +136,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       rowNumber,
     );
 
-    // 回寫 Trello，讓內勤在卡片上也看得到進度（失敗不影響客人已完成的確認）
+    // 回寫 Trello，讓內勤在卡片上也看得到進度（失敗不影響客人已完成的確認）。
+    //
+    // 🔴 留言本身「不會通知老闆」——系統是用他自己的 Trello token 發文的，
+    //    Trello 從不通知你自己的動作（2026-10-04 查證）。所以另外掛一個標籤，
+    //    讓看板上肉眼就看得出哪幾張客人已經確認過了。留言留著當存證明細用。
     try {
       await addCardComment(
         c.cardId,
         `✅ 客人已線上確認下訂\n簽署人：${signerName}\n時間：${now}\n訂金：NT$ ${c.depositAmount.toLocaleString()}`,
       );
+    } catch {
+      /* best-effort */
+    }
+    try {
+      const labelId = await ensureBoardLabel(
+        TRELLO.BOARD_ID,
+        ORDER_CONFIRMED_LABEL.name,
+        ORDER_CONFIRMED_LABEL.color,
+      );
+      await addCardLabel(c.cardId, labelId);
     } catch {
       /* best-effort */
     }

@@ -166,6 +166,52 @@ export async function addCheckItem(
   );
 }
 
+interface TrelloLabel {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+/**
+ * 看板標籤是共用資源，所以一律「先依名稱完全相符尋找、找不到才建立」，
+ * 不然每次呼叫都會多生一個同名標籤，看板很快就被洗版。
+ * 記在模組層快取：Serverless 冷啟動會重查一次，成本可接受。
+ */
+const boardLabelCache = new Map<string, string>();
+
+export async function ensureBoardLabel(
+  boardId: string,
+  name: string,
+  color: string,
+): Promise<string> {
+  const cacheKey = `${boardId}:${name}`;
+  const cached = boardLabelCache.get(cacheKey);
+  if (cached) return cached;
+
+  const labels = await trelloJson<TrelloLabel[]>(`boards/${boardId}/labels`, {
+    fields: "id,name,color",
+    limit: "1000",
+  });
+  const found = (labels ?? []).find((l) => l.name === name);
+  const id =
+    found?.id ??
+    (await trelloJson<TrelloLabel>(`boards/${boardId}/labels`, { name, color }, { method: "POST" }))
+      .id;
+
+  boardLabelCache.set(cacheKey, id);
+  return id;
+}
+
+/** 把標籤掛到卡片上。重複掛同一個標籤 Trello 會回 400，那不是錯誤，視為成功。 */
+export async function addCardLabel(cardId: string, labelId: string): Promise<void> {
+  try {
+    await trelloJson(`cards/${cardId}/idLabels`, { value: labelId }, { method: "POST" });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/already on the card/i.test(msg)) throw err;
+  }
+}
+
 /** 民國年日期標籤，對齊老闆既有寫法：`115/9/26`。 */
 export function rocDateLabel(d: Date = new Date()): string {
   // 以台灣時間計算（伺服器在 UTC）

@@ -54,6 +54,18 @@ export const TRELLO = {
   },
 } as const;
 
+/**
+ * 客人在線上下訂確認頁簽完名之後掛上的標籤。
+ * 看板上原本沒有這個標籤，第一次用會由 ensureBoardLabel 自動建立，
+ * 所以這裡記的是名稱與顏色、不是 ID。顏色挑 lime：看板上 green 全被
+ * 「成交/XXX」佔滿，再用 green 會混在一起看不出來。
+ *
+ * 🔴 刻意「只加標籤、不移動卡片」：卡片要等**訂單解析**完成才會進
+ *    「Order 訂單」清單（老闆 2026-10-05 確認）。若自動移卡，看板上會
+ *    看起來已經處理完，實際上解析還沒做。要改成移卡前請先問過。
+ */
+export const ORDER_CONFIRMED_LABEL = { name: "已線上確認", color: "lime" } as const;
+
 export const LIST_NAMES: Record<string, string> = {
   [TRELLO.LISTS.ORDER]: "接單",
   [TRELLO.LISTS.PRODUCTION]: "生產中",
