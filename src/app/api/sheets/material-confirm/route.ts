@@ -204,6 +204,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, marked: n });
   }
 
+  // 退回「未傳送」——把 notifiedAt 清掉，那筆就回到批次清單。
+  //
+  // 🔴 2026-10-07 老闆踩到：測試時按過「複製 LINE 訊息」，系統就記了 notifiedAt
+  //    （複製＝準備要發了，見 copyBatchAndMark），但他其實沒傳出去。
+  //    批次清單只收 `token && !notifiedAt && status==='sent'`，那兩筆因此被排除
+  //    → 看板顯示「已傳送」、狀態也是 sent，不會進「尚未發送」那一欄
+  //    → **那兩位客人永遠收不到連結，而看板看起來一切正常。**
+  //    原本沒有任何方式退回，只能靠老闆自己記得。
+  //
+  // 為什麼不是「批次清單不看 notifiedAt」：系統無法知道他到底有沒有真的按下傳送，
+  // 那只有他知道。所以給一個明確的退回動作，不要讓程式猜。
+  // 只退「客人還沒確認」的（status === "sent"）——已確認的退回毫無意義，
+  // 還會讓看板的進度數字錯亂。
+  if (action === "unnotified") {
+    const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
+    if (tokens.length === 0) return NextResponse.json({ ok: false, error: "沒有指定要退回的項目" }, { status: 400 });
+    const all = await listConfirms();
+    let n = 0;
+    const skipped: string[] = [];
+    for (const { confirm, rowNumber } of all) {
+      if (!tokens.includes(confirm.token)) continue;
+      if (confirm.status !== "sent") { skipped.push(confirm.orderNumber); continue; }
+      if (!confirm.notifiedAt) continue;          // 本來就未傳送，不用動
+      await writeConfirm({ ...confirm, notifiedAt: "" }, rowNumber);
+      n += 1;
+    }
+    return NextResponse.json({ ok: true, reverted: n, skipped });
+  }
+
   // 司機批次：把這幾筆綁上同一個 token，司機一條連結全部處理完
   if (action === "driver_batch") {
     const ids = Array.isArray(body.cardIds) ? (body.cardIds as unknown[]).map(String).filter(Boolean) : [];

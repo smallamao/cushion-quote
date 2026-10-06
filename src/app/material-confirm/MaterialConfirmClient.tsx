@@ -209,6 +209,34 @@ export function MaterialConfirmClient() {
     }
   }
 
+  /**
+   * 退回「未傳送」——按過複製但其實沒傳出去時用（例如只是在測試）。
+   *
+   * 🔴 2026-10-07：複製就記 notifiedAt，而批次清單只收 `!notifiedAt` 的筆，
+   *    所以「測試時複製過」會讓那一筆從批次清單消失，狀態卻停在「已傳送」
+   *    ——不會出現在任何待辦欄位，那位客人就永遠收不到連結。
+   *    原本完全沒有退路，只能靠自己記得。
+   */
+  async function revertNotified(tokens: string[]) {
+    if (tokens.length === 0) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/sheets/material-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "unnotified", tokens }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string; reverted?: number };
+      if (!json.ok) { setError(json.error ?? "退回失敗"); return; }
+      await load();
+    } catch {
+      setError("退回失敗，請稍後再試");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function linkOf(r: WeekRow): string {
     return r.token ? `${origin}/confirm/${r.token}` : "";
   }
@@ -740,6 +768,16 @@ export function MaterialConfirmClient() {
                     >
                       預覽客人看到的畫面
                     </a>
+                    {r.notifiedAt && r.status === "sent" && (
+                      <button
+                        type="button" disabled={busy}
+                        onClick={() => void revertNotified(r.token ? [r.token] : [])}
+                        title="按過複製但其實沒傳出去（例如只是在測試）→ 退回未傳送，這筆會回到批次清單"
+                        className="rounded-lg border border-amber-500 px-3 py-1.5 text-xs text-amber-700 disabled:opacity-40"
+                      >
+                        ↩︎ 退回未傳送
+                      </button>
+                    )}
                     {r.driverToken && r.status !== "scheduled" && (
                       <>
                         <button
