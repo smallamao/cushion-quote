@@ -18,7 +18,7 @@ import {
 } from "@/lib/material-confirm-sheet";
 import { isCustomerConfirmed, isGatingDrift, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
 import { readDrift } from "@/lib/schedule-drift-sheet";
-import { getBoardCards, getCustomFieldDate, toTaipeiYmd } from "@/lib/trello-server";
+import { getBoardCards, getCustomFieldDate, toTaipeiYmd, productionWindow } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +28,10 @@ interface WeekRow {
   orderNumber: string;
   customerName: string;
   scheduleDate: string;   // YYYY-MM-DD（台灣）
+  /** 製作完成區間起日（＝該週週一+3）；LINE 批次傳送的 {{完工}} 用 */
+  productionStart: string;
+  /** 製作完成區間迄日（＝起日+6）*/
+  productionEnd: string;
   dueDate: string;        // YYYY-MM-DD（台灣）
   /** 尚未建連結時為 null */
   token: string | null;
@@ -99,6 +103,8 @@ export async function GET(request: Request) {
         orderNumber,
         customerName,
         scheduleDate,
+        productionStart: productionWindow(scheduleDate).start,
+        productionEnd: productionWindow(scheduleDate).end,
         dueDate,
         token: found?.token ?? null,
         notifiedAt: found?.notifiedAt ?? "",

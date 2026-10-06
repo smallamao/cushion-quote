@@ -11,6 +11,10 @@ interface WeekRow {
   orderNumber: string;
   customerName: string;
   scheduleDate: string;
+  /** 製作完成區間起日（伺服器算，＝該週週一+3）；{{完工}} 用 */
+  productionStart: string;
+  /** 製作完成區間迄日（＝起日+6）*/
+  productionEnd: string;
   dueDate: string;
   token: string | null;
   notifiedAt: string;
@@ -280,15 +284,30 @@ export function MaterialConfirmClient() {
     ].join("\n");
   }
 
+  /** 製作完成區間 → 「10/22～10/28」。給 {{完工}} 用，所以**中間不能有空白** */
+  function windowOf(r: WeekRow): string {
+    if (!r.productionStart || !r.productionEnd) return "";
+    return `${fmtMd(r.productionStart)}～${fmtMd(r.productionEnd)}`;
+  }
+
   /**
-   * 產生「LINE 批次傳送」擴充功能的訂單編號欄內容：一行一筆「編號 姓名 連結」。
-   * 擴充功能 v3.10.0 會把每行的連結代進訊息的 {{連結}}，一次發完整批，
+   * 產生「LINE 批次傳送」擴充功能的訂單編號欄內容：
+   * 一行一筆「編號 姓名 連結 完工」。
+   *
+   * 擴充功能 v3.10.0 會把每行的值代進訊息的 {{連結}}、{{完工}}，一次發完整批，
    * 不用逐筆複製貼上——也就不會把 A 的連結貼到 B 的聊天室。
+   *
+   * 🔴 2026-10-07 補第 4 欄：原本只給三欄，擴充功能擋下整批並回報
+   *    「8 筆代不出變數：缺 {{完工}}」。完工＝製作完成區間（該週週一+3 起算七天），
+   *    就是客人頁上那行「🔻 預計 10/22 ～ 10/28 製作完成 🔻」。
+   * 🔴 欄位值本身不可含空白：整行會被 `\s+ → " "` 正規化，
+   *    「10/22 ～ 10/28」會被切成三欄、把後面的欄位全部推移。
    */
   function batchListText(rows: WeekRow[]): string {
     return rows
       .filter((r) => r.token)
-      .map((r) => `${r.orderNumber} ${r.customerName} ${linkOf(r)}`.replace(/\s+/g, " ").trim())
+      .map((r) => `${r.orderNumber} ${r.customerName} ${linkOf(r)} ${windowOf(r)}`
+        .replace(/\s+/g, " ").trim())
       .join("\n");
   }
 
