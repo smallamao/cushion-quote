@@ -16,9 +16,9 @@ import {
   listConfirms,
   writeConfirm,
 } from "@/lib/material-confirm-sheet";
-import { isCustomerConfirmed, isGatingDrift, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
+import { hasFuturesFabric, isCustomerConfirmed, isGatingDrift, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
 import { readDrift } from "@/lib/schedule-drift-sheet";
-import { getBoardCards, getCustomFieldDate, toTaipeiYmd, productionWindow } from "@/lib/trello-server";
+import { getBoardCards, getCustomFieldDate, getCustomFieldText, toTaipeiYmd, productionWindow } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +32,10 @@ interface WeekRow {
   productionStart: string;
   /** 製作完成區間迄日（＝起日+6）*/
   productionEnd: string;
+  /** 色號欄原文，例「FG60213-11&LY9308A」 */
+  colorCodes: string;
+  /** 含期貨布（FG 安得利）→ 訊息與客人頁都要出告知，見 hasFuturesFabric */
+  isFutures: boolean;
   dueDate: string;        // YYYY-MM-DD（台灣）
   /** 尚未建連結時為 null */
   token: string | null;
@@ -98,6 +102,7 @@ export async function GET(request: Request) {
       const found = byCard.get(c.id);
       const scheduleDate = toTaipeiYmd(getCustomFieldDate(c, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY));
       const dueDate = toTaipeiYmd(c.due ?? "");
+      const colorCodes = getCustomFieldText(c, TRELLO.CUSTOM_FIELDS.COLOR);
       return {
         cardId: c.id,
         orderNumber,
@@ -105,6 +110,8 @@ export async function GET(request: Request) {
         scheduleDate,
         productionStart: productionWindow(scheduleDate).start,
         productionEnd: productionWindow(scheduleDate).end,
+        colorCodes,
+        isFutures: hasFuturesFabric(colorCodes),
         dueDate,
         token: found?.token ?? null,
         notifiedAt: found?.notifiedAt ?? "",

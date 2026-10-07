@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { isCustomerConfirmed } from "@/lib/material-confirm-types";
 import type { MaterialConfirmStatus, PreferredSlot } from "@/lib/material-confirm-types";
+import { FUTURES_FABRIC_NOTICE } from "@/lib/material-confirm-types";
 
 interface WeekRow {
   cardId: string;
@@ -15,6 +16,10 @@ interface WeekRow {
   productionStart: string;
   /** 製作完成區間迄日（＝起日+6）*/
   productionEnd: string;
+  /** 色號欄原文 */
+  colorCodes: string;
+  /** 含期貨布（FG 安得利）→ 訊息要附告知 */
+  isFutures: boolean;
   dueDate: string;
   token: string | null;
   notifiedAt: string;
@@ -264,6 +269,14 @@ export function MaterialConfirmClient() {
       "💡 送出確認後我們會立即備料排程，",
       "　 屆時將無法修改、取消訂單（訂金恕不退還），",
       "　 若有任何修改請在送出前一次告知。",
+      // 🔴 期貨布（FG 安得利）要在**客人確認前**就講清楚。
+      //    老闆原本是在採購階段才用 LINE 告知，那時客人早已確認叫料，
+      //    「不可更改與取消」講在後面等於沒講。同一段也會出現在客人確認頁，
+      //    納入他簽名同意的範圍（頁面留存簽名圖、時間戳與 IP）。
+      ...(r.isFutures
+        ? ["", "━━━━━━━━━━━━", `📌 期貨布料告知（您選的面料：${r.colorCodes}）`, "",
+           FUTURES_FABRIC_NOTICE]
+        : []),
     ].join("\n");
   }
 
@@ -709,6 +722,14 @@ export function MaterialConfirmClient() {
                 {waited !== null && waited >= 2 && (
                   <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
                     已等 {waited} 天，該催了
+                  </span>
+                )}
+                {r.isFutures && (
+                  <span
+                    title={`期貨布料（${r.colorCodes}）：交期依實際到料，訊息與客人確認頁都會附上告知`}
+                    className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                  >
+                    📌 期貨布
                   </span>
                 )}
                 <span className="ml-auto text-xs text-[var(--text-secondary)]">

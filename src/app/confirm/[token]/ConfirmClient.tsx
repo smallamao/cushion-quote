@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SignatureModal } from "@/components/sign/SignatureModal";
 import {
+  FUTURES_FABRIC_NOTICE,
   DELIVERY_PERIODS,
   earliestDeliveryDate,
   holidayName,
@@ -348,6 +349,20 @@ export function ConfirmClient({ token }: { token: string }) {
             </button>
           )}
         </div>
+
+        {/* 🔴 期貨布（FG 安得利）：交期長、不可改單、色差不退換。
+            放在簽名鈕之前，納入客人同意的範圍——頁面會留存簽名圖、時間戳與 IP。
+            老闆原本是在採購階段才用 LINE 告知，那時客人早已確認叫料，
+            「不可更改與取消」講在後面等於沒講（2026-10-07 P6278 FG60213-11）。 */}
+        {view.isFutures && (
+          <div className="mt-4 rounded-lg border-2 border-orange-300 bg-orange-50 p-3 text-xs leading-relaxed text-orange-900">
+            <p className="text-sm font-bold">📌 期貨布料告知</p>
+            {view.colorCodes && (
+              <p className="mt-1 font-medium">您選的面料：{view.colorCodes}</p>
+            )}
+            <p className="mt-2 whitespace-pre-line">{FUTURES_FABRIC_NOTICE}</p>
+          </div>
+        )}
 
         <div className="mt-4 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
           <p className="font-semibold">💡 重要提醒</p>

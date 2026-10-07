@@ -255,6 +255,11 @@ export function getCustomFieldDate(card: BoardCardLite, fieldId: string): string
   return v ?? "";
 }
 
+export function getCustomFieldText(card: BoardCardLite, fieldId: string): string {
+  const v = (card.customFieldItems ?? []).find((i) => i.idCustomField === fieldId)?.value?.text;
+  return v ?? "";
+}
+
 /** 排程日自訂欄位（與排程系統同一個欄位 id）。 */
 export const SCHEDULE_DAY_FIELD = "5dbffb41d3233f81ca015792";
 
@@ -331,6 +336,18 @@ export async function getCardProductionWindow(cardId: string): Promise<Productio
   });
   return productionWindow(toTaipeiYmd(getCustomFieldDate(card, SCHEDULE_DAY_FIELD)));
 }
+
+/** 該卡的色號欄原文（例「FG60213-11&LY9308A」）。客人頁判斷期貨布用。 */
+export async function getCardColorCodes(cardId: string): Promise<string> {
+  const card = await trelloJson<BoardCardLite>(`cards/${cardId}`, {
+    fields: "name",
+    customFieldItems: "true",
+  });
+  return getCustomFieldText(card, COLOR_FIELD);
+}
+
+/** 色號自訂欄位（生產看板）。 */
+export const COLOR_FIELD = "5dc009d5351ac03fd2bfa007";
 
 // ── 司機頁需要的配送資訊 ─────────────────────────────
 

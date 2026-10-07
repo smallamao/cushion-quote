@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { findByToken, generateToken, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
+  hasFuturesFabric,
   isNonDeliveryDay,
   isTestConfirm,
   normalizeDeliveryPeriod,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/material-confirm-types";
 import {
   addCardCommentUnlessTest,
+  getCardColorCodes,
   addCheckItem,
   ensureTodoChecklist,
   getCardProductionWindow,
@@ -86,6 +88,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     estimatedDate = toTaipeiYmd(c.dueDate);
   }
 
+  // 期貨布（FG 安得利）：交期長、不可改單、色差不退換。要在**簽名之前**講。
+  // 取不到色號就當一般布——寧可少講一段，也不要因為 Trello 一時讀不到而整頁壞掉。
+  let colorCodes = "";
+  try {
+    colorCodes = await getCardColorCodes(realCardId(c.cardId));
+  } catch {
+    /* 讀不到就當沒有 */
+  }
+
   const view: PublicMaterialConfirmView = {
     status: c.status,
     orderNumber: c.orderNumber,
@@ -93,6 +104,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     productionStart,
     estimatedDate,
     photoCount,
+    isFutures: hasFuturesFabric(colorCodes),
+    colorCodes,
     preferredSlots: c.preferredSlots,
     confirmedAt: c.confirmedAt,
     disputeNote: c.disputeNote,

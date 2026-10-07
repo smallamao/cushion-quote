@@ -121,6 +121,10 @@ export interface PublicMaterialConfirmView {
   estimatedDate: string;
   /** 照片張數；客人端用 /photo/{i} 逐張取圖 */
   photoCount: number;
+  /** 含期貨布（FG 安得利）→ 頁面要出告知，並納入簽名同意的範圍 */
+  isFutures: boolean;
+  /** 色號欄原文，用在告知文字裡讓客人知道是哪一款 */
+  colorCodes: string;
   preferredSlots: PreferredSlot[];
   confirmedAt: string;
   disputeNote: string;
@@ -136,6 +140,55 @@ export function splitOrderCardName(name: string): { orderNumber: string; custome
   if (!m) return { orderNumber: "", customerName: name.trim() };
   return { orderNumber: m[1], customerName: (m[2] ?? "").trim() };
 }
+
+/* ─────────────── 期貨布料（2026-10-07 老闆補充） ───────────────
+ *
+ * FG 開頭＝安得利的比利時抗污布，是**期貨商品**：要提前叫料、交期依實際到料，
+ * 而且供應商合約寫明色差不退換。老闆原本在採購階段用 LINE 口頭告知，
+ * 但那時客人早就確認過叫料了——「不可更改與取消」講在後面等於沒講。
+ *
+ * 所以改成：有 FG 色號的單，①叫料確認的 LINE 訊息就先講 ②客人確認頁再放一次，
+ * 納入他簽名同意的範圍（頁面會留存簽名圖、時間戳與 IP）。
+ * 這段是合約分界線，只放 LINE 訊息沒有簽核證據。
+ */
+
+/** 期貨布料的色號前綴。目前只有 FG（安得利）；之後有別家直接加進這個陣列。 */
+export const FUTURES_FABRIC_PREFIXES = ["FG"] as const;
+
+/** 單一色號是不是期貨布。前綴後面要接數字，避免誤判（FKM5500 不是、FG60213-11 是）。 */
+export function isFuturesFabricCode(code: string): boolean {
+  const t = (code ?? "").trim().toUpperCase();
+  return FUTURES_FABRIC_PREFIXES.some((p) => new RegExp(`^${p}\\d`).test(t));
+}
+
+/**
+ * 整筆訂單要不要出期貨告知。
+ *
+ * 🔴 跳色時**只要有一個色號是期貨就算**：那塊布一樣要提前叫、一樣不能改單，
+ *    整筆的交期與可否取消都被它決定。
+ * 色號欄的分隔寫法不一（`FG60213-11&LY9308A`、`A,B`、`A、B`），一律拆開看。
+ */
+export function hasFuturesFabric(colorCodes: string): boolean {
+  return (colorCodes ?? "")
+    .split(/[&,、\/／\s]+/)
+    .filter(Boolean)
+    .some(isFuturesFabricCode);
+}
+
+/** 期貨布料告知（老闆 2026-10-07 提供的原文，勿改字）。 */
+export const FUTURES_FABRIC_NOTICE = [
+  "這邊要跟您們告知一下",
+  "因您們選擇的面料是屬於「期貨商品」交期較長",
+  "我們這邊會需要提前叫面料",
+  "後續是無法更改與取消訂單！",
+  "",
+  "供應商的買賣合約條款有備註以下事項：",
+  "",
+  "＊樣品與商品因批次不同，有些微色差皆屬正常，僅以實際商品為主，恕無法提供退換貨服務",
+  "",
+  "而且交期也會依照實際到料",
+].join("\n");
+
 
 /**
  * 哪幾種對帳差異會擋住「發連結給客人」。
