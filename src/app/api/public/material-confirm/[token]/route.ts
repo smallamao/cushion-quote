@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { findByToken, generateToken, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
+  dueIsoFromSlot,
   hasFuturesFabric,
   isNonDeliveryDay,
   isTestConfirm,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/material-confirm-types";
 import {
   addCardCommentUnlessTest,
+  setCardDue,
   getCardColorCodes,
   addCheckItem,
   ensureTodoChecklist,
@@ -273,6 +275,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         await addCheckItem(checklistId, `${rocDateLabel()} 客戶已確認叫料內容`, true);
       } catch {
         /* checklist 失敗不影響確認結果 */
+      }
+
+      // 🔴 出貨日帶上客人的第一順位（含時段的起始時間）。
+      //    排程工作單的出貨時間欄取 card.due 的時分，所以沿用舊的 08:00 會讓
+      //    師傅與司機看到「10/23 08:00」，而客人要的是傍晚（P6272，2026-10-07）。
+      //    精度只有在這裡還完整——本機同步會把「13:00-15:00」與「15:00-17:00」
+      //    一起寫成 Numbers 的「下午」。
+      //    失敗不影響確認結果；本機的 Numbers→Trello 同步之後也會補上日期（只是時分會是舊的）。
+      const first = slots[0];
+      if (first) {
+        const dueIso = dueIsoFromSlot(first.date, first.period);
+        if (dueIso) await setCardDue(realCardId(c.cardId), dueIso).catch(() => {});
       }
     }
 

@@ -190,6 +190,47 @@ export const FUTURES_FABRIC_NOTICE = [
 ].join("\n");
 
 
+/* ───────── 時段 → Trello due 的時分（2026-10-07 老闆指定） ─────────
+ *
+ * 客人確認後，Trello 的出貨日要帶上**客人選的時段**，不是沿用舊的 08:00。
+ * 排程工作單的出貨時間欄取 card.due 的時分（schedule_work_order._extract_due_date_time），
+ * 所以 08:00 會印在單子上，但客人要的是傍晚——師傅與司機看到的是錯的。
+ *
+ * 🔴 為什麼不走 Numbers：本機 sync_confirm_to_numbers 會把
+ *    「下午 13:00-15:00」與「下午 15:00-17:00」**都寫成「下午」**
+ *    （老闆 223 筆歷史格子就是這四個詞），精度在那一步就沒了。
+ *    所以在確認當下、資料還完整的時候直接寫 Trello。
+ *
+ * 不會跟 Numbers→Trello 的自動同步打架：那支比對出貨日**只看日期**
+ *  （`start <= due <= end`），時分不同不觸發；日期真的要改時它會沿用現有時分。
+ */
+export const SLOT_START_HOUR: Record<string, number> = {
+  "上午 10:00-12:00": 10,
+  "下午 13:00-15:00": 13,
+  "下午 15:00-17:00": 15,
+  "傍晚 17:00-19:00": 17,
+  "皆可": 10,
+};
+
+/** 時段 → 當天幾點（台灣時間）。看不懂的回 null，呼叫端就不要動 due。 */
+export function slotStartHour(period: string): number | null {
+  const h = SLOT_START_HOUR[(period ?? "").trim()];
+  return typeof h === "number" ? h : null;
+}
+
+/**
+ * 「2026-10-23」＋「傍晚 17:00-19:00」→ Trello due 的 UTC ISO。
+ * 台灣 = UTC+8，所以 17:00 要寫成 09:00Z。
+ */
+export function dueIsoFromSlot(ymd: string, period: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd ?? "")) return null;
+  const h = slotStartHour(period);
+  if (h === null) return null;
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, h - 8, 0, 0)).toISOString();
+}
+
+
 /**
  * 哪幾種對帳差異會擋住「發連結給客人」。
  *
