@@ -195,6 +195,10 @@ export function MaterialConfirmClient() {
   const notSentIds = useMemo(() => rows.filter((r) => !r.token).map((r) => r.cardId), [rows]);
   // 連結建好但還沒傳出去的
   const unsentRows = useMemo(() => rows.filter((r) => r.token && !r.notifiedAt && r.status === "sent"), [rows]);
+  // 已標記「已傳送」但客人還沒確認的——複製過卻沒真的傳時（例如測試、或擴充功能擋下整批）
+  // 就卡在這個狀態：不在批次清單裡、也不在「尚未發送」裡，等於消失。
+  const markedRows = useMemo(
+    () => rows.filter((r) => r.token && r.notifiedAt && r.status === "sent"), [rows]);
   // 客人確認完、等排車的（可以交給司機）
   const readyForDriver = useMemo(() => rows.filter((r) => r.status === "confirmed"), [rows]);
 
@@ -297,29 +301,43 @@ export function MaterialConfirmClient() {
     ].join("\n");
   }
 
-  /** 製作完成區間 → 「10/22～10/28」。給 {{完工}} 用，所以**中間不能有空白** */
+  /**
+   * 製作完成區間 → 「10/22~10/28」，給批次清單的 {{完工}} 用。
+   *
+   * 🔴 **不可用 fmtMd()**：它會加星期（`10/22(四)`），而擴充功能認的是
+   *    `10/15~10/21` 這種乾淨格式，帶括號就解析不出來。
+   * 🔴 中間不可有空白——整行會被 `\s+ → " "` 正規化，有空白就被切成兩欄。
+   * 🔴 半形 `~`，不是全形 `～`（照擴充功能畫面上寫的範例）。
+   */
   function windowOf(r: WeekRow): string {
     if (!r.productionStart || !r.productionEnd) return "";
-    return `${fmtMd(r.productionStart)}～${fmtMd(r.productionEnd)}`;
+    const md = (ymdStr: string) => {
+      const d = new Date(`${ymdStr}T00:00:00Z`);
+      return Number.isNaN(d.getTime()) ? ymdStr : `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+    };
+    return `${md(r.productionStart)}~${md(r.productionEnd)}`;
   }
 
   /**
    * 產生「LINE 批次傳送」擴充功能的訂單編號欄內容：
-   * 一行一筆「編號 姓名 連結 完工」。
+   * 一行一筆「編號 姓名 完工 連結」——**順序照擴充功能自己寫的範例**：
+   *     P6261 姓名 10/15~10/21 https://連結
    *
    * 擴充功能 v3.10.0 會把每行的值代進訊息的 {{連結}}、{{完工}}，一次發完整批，
    * 不用逐筆複製貼上——也就不會把 A 的連結貼到 B 的聊天室。
    *
-   * 🔴 2026-10-07 補第 4 欄：原本只給三欄，擴充功能擋下整批並回報
+   * 🔴 2026-10-07 補完工欄：原本只給三欄，擴充功能擋下整批並回報
    *    「8 筆代不出變數：缺 {{完工}}」。完工＝製作完成區間（該週週一+3 起算七天），
    *    就是客人頁上那行「🔻 預計 10/22 ～ 10/28 製作完成 🔻」。
+   * 🔴 第一版把完工放在**連結後面**，還是被擋——擴充功能認的是
+   *    「編號 姓名 日期 連結」，日期在連結**之前**。別再調換。
    * 🔴 欄位值本身不可含空白：整行會被 `\s+ → " "` 正規化，
    *    「10/22 ～ 10/28」會被切成三欄、把後面的欄位全部推移。
    */
   function batchListText(rows: WeekRow[]): string {
     return rows
       .filter((r) => r.token)
-      .map((r) => `${r.orderNumber} ${r.customerName} ${linkOf(r)} ${windowOf(r)}`
+      .map((r) => `${r.orderNumber} ${r.customerName} ${windowOf(r)} ${linkOf(r)}`
         .replace(/\s+/g, " ").trim())
       .join("\n");
   }
@@ -480,6 +498,19 @@ export function MaterialConfirmClient() {
             className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             {copied === "batch" ? "已複製 ✓" : `📋 複製 ${unsentRows.length} 筆批次清單（貼 LINE 批次傳送）`}
+          </button>
+        )}
+        {/* 🔴 2026-10-07：複製就記 notifiedAt，但擴充功能可能整批擋下（缺變數）、
+            也可能只是在測試——那整批就一起卡在「已傳送」而實際沒傳。
+            逐列退回要按 8 次，所以這裡給一顆整批的。 */}
+        {markedRows.length > 0 && (
+          <button
+            type="button" disabled={busy}
+            title="這些是按過複製、系統記成已傳送，但你其實沒傳出去的（例如批次被擋下或只是在測試）"
+            onClick={() => void revertNotified(markedRows.map((r) => r.token).filter((t): t is string => Boolean(t)))}
+            className="rounded-lg border border-amber-500 px-3 py-2 text-sm font-medium text-amber-700 disabled:opacity-40"
+          >
+            {busy ? "處理中…" : `↩︎ 退回全部 ${markedRows.length} 筆為未傳送`}
           </button>
         )}
       </div>
