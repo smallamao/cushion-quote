@@ -16,9 +16,9 @@ import {
   listConfirms,
   writeConfirm,
 } from "@/lib/material-confirm-sheet";
-import { hasFuturesFabric, isCustomerConfirmed, isGatingDrift, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
+import { hasFuturesFabric, isCustomerConfirmed, isGatingDrift, isTestConfirm, realCardId, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
 import { readDrift } from "@/lib/schedule-drift-sheet";
-import { addCardCommentUnlessTest, getBoardCards, getCustomFieldDate, getCustomFieldText, toTaipeiYmd, productionWindow } from "@/lib/trello-server";
+import { addCardCommentUnlessTest, getBoardCards, getCardImageAttachments, getCustomFieldDate, getCustomFieldText, toTaipeiYmd, productionWindow } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -192,7 +192,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  let body: { cardIds?: unknown; weekKey?: unknown; action?: unknown; tokens?: unknown };
+  let body: { cardIds?: unknown; weekKey?: unknown; action?: unknown; tokens?: unknown; force?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -261,14 +261,32 @@ export async function POST(request: Request) {
   if (action === "reopen") {
     const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
     if (tokens.length === 0) return NextResponse.json({ ok: false, error: "沒有指定要重開的項目" }, { status: 400 });
+    const force = body.force === true;
     const all = await listConfirms();
     let n = 0;
     const skipped: string[] = [];
+    const noNewPhoto: string[] = [];
     for (const { confirm, rowNumber } of all) {
       if (!tokens.includes(confirm.token)) continue;
       if (confirm.status !== "disputed" && confirm.status !== "postponed") {
         skipped.push(`${confirm.orderNumber}（狀態是 ${confirm.status}）`);
         continue;
+      }
+
+      // 🔴 防呆：客人頁顯示那張卡的**全部**圖片附件，不會只挑最新的。
+      //    所以改訂貨單要「刪舊的、上傳新的」；只是新增一張的話，
+      //    客人會同時看到錯的與對的，而他簽的是「以訂貨單內容為準」。
+      //    這裡檢查「客人回報之後有沒有新的照片」——沒有就先問一次，不直接擋死
+      //    （有時只是改色號欄、照片本來就對）。force=true 代表老闆已經確認過。
+      if (!force && confirm.status === "disputed" && !isTestConfirm(confirm.cardId)) {
+        try {
+          const since = Date.parse(confirm.updatedAt || "");
+          const imgs = await getCardImageAttachments(realCardId(confirm.cardId));
+          const fresher = imgs.some((a) => Number.isFinite(since) && Date.parse(a.date) > since);
+          if (!fresher) { noNewPhoto.push(confirm.orderNumber); continue; }
+        } catch {
+          /* 讀不到附件就不擋——寧可讓他重發，也不要因為 Trello 一時讀不到而卡住流程 */
+        }
       }
       const was = confirm.status === "postponed" ? "客戶要求延後" : confirm.disputeNote;
       await writeConfirm(
@@ -279,6 +297,13 @@ export async function POST(request: Request) {
          was ? `原回報：${was}` : ""].filter(Boolean).join("\n"),
       ).catch(() => {});
       n += 1;
+    }
+    if (noNewPhoto.length) {
+      return NextResponse.json({
+        ok: false, needsConfirm: true, reopened: n, skipped, noNewPhoto,
+        error: `${noNewPhoto.join("、")} 在客人回報之後沒有新增過訂貨單照片。`
+          + "客人頁會顯示這張卡的全部照片——若只是新增而沒刪掉舊的，他會同時看到錯的那張。",
+      });
     }
     return NextResponse.json({ ok: true, reopened: n, skipped });
   }

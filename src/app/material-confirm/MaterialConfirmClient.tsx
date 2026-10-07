@@ -230,7 +230,8 @@ export function MaterialConfirmClient() {
    *    ——不會出現在任何待辦欄位，那位客人就永遠收不到連結。
    *    原本完全沒有退路，只能靠自己記得。
    */
-  async function postTokens(action: "unnotified" | "reopen", tokens: string[], failMsg: string) {
+  async function postTokens(action: "unnotified" | "reopen", tokens: string[], failMsg: string,
+                            force = false) {
     if (tokens.length === 0) return;
     setBusy(true);
     setError("");
@@ -238,9 +239,19 @@ export function MaterialConfirmClient() {
       const res = await fetch("/api/sheets/material-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, tokens }),
+        body: JSON.stringify({ action, tokens, ...(force ? { force: true } : {}) }),
       });
-      const json = (await res.json()) as { ok: boolean; error?: string; skipped?: string[] };
+      const json = (await res.json()) as {
+        ok: boolean; error?: string; skipped?: string[]; needsConfirm?: boolean };
+      // 🔴 防呆：客人回報之後沒換過訂貨單照片 → 先問一次再放行。
+      //    客人頁會顯示該卡**全部**照片，只新增不刪舊的話他會同時看到錯的那張。
+      if (!json.ok && json.needsConfirm) {
+        setBusy(false);
+        if (window.confirm(`${json.error}\n\n改訂貨單請「刪掉舊照片再上傳新的」。\n確定仍要重發嗎？`)) {
+          await postTokens(action, tokens, failMsg, true);
+        }
+        return;
+      }
       if (!json.ok) { setError(json.error ?? failMsg); return; }
       if (json.skipped?.length) setError(`有 ${json.skipped.length} 筆沒處理：${json.skipped.join("、")}`);
       await load();
