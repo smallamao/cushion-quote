@@ -18,7 +18,7 @@ import {
 } from "@/lib/material-confirm-sheet";
 import { hasFuturesFabric, isCustomerConfirmed, isGatingDrift, splitOrderCardName, type MaterialConfirm } from "@/lib/material-confirm-types";
 import { readDrift } from "@/lib/schedule-drift-sheet";
-import { getBoardCards, getCustomFieldDate, getCustomFieldText, toTaipeiYmd, productionWindow } from "@/lib/trello-server";
+import { addCardCommentUnlessTest, getBoardCards, getCustomFieldDate, getCustomFieldText, toTaipeiYmd, productionWindow } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -244,6 +244,43 @@ export async function POST(request: Request) {
       n += 1;
     }
     return NextResponse.json({ ok: true, reverted: n, skipped });
+  }
+
+  // 內容改好了 → 把客人放回「待確認」。
+  //
+  // 🔴 2026-10-07 發現這條路是斷的：客人按「內容有誤」後狀態變 disputed，
+  //    從此不在「尚未建連結」（已有 token）、也不在批次清單（狀態不是 sent），
+  //    而他再點同一條連結只看到「已收到您的回報」的死路。
+  //    那頁還承諾「確認後會再發一次新的連結給您」——**但系統產不出那條連結**。
+  //    實際案例：客人回報「皮革修改 原皮革改鈦金灰」，老闆改完訂貨單照片之後無路可走。
+  //
+  // 沿用原本的 token（不換新連結）：客人手上那則 LINE 還在，直接點就看得到改好的內容
+  //  ——照片是每次開頁即時向 Trello 抓的，不需要換連結才會更新。
+  // notifiedAt 一併清掉，這筆才會回到批次清單等你重發。
+  // 原本的回報內容寫進 Trello 留言留痕，不要只是清掉。
+  if (action === "reopen") {
+    const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
+    if (tokens.length === 0) return NextResponse.json({ ok: false, error: "沒有指定要重開的項目" }, { status: 400 });
+    const all = await listConfirms();
+    let n = 0;
+    const skipped: string[] = [];
+    for (const { confirm, rowNumber } of all) {
+      if (!tokens.includes(confirm.token)) continue;
+      if (confirm.status !== "disputed" && confirm.status !== "postponed") {
+        skipped.push(`${confirm.orderNumber}（狀態是 ${confirm.status}）`);
+        continue;
+      }
+      const was = confirm.status === "postponed" ? "客戶要求延後" : confirm.disputeNote;
+      await writeConfirm(
+        { ...confirm, status: "sent", notifiedAt: "", disputeNote: "" }, rowNumber);
+      await addCardCommentUnlessTest(
+        confirm.cardId,
+        ["【叫料確認單】🔄 內容已修正，重新發送確認連結",
+         was ? `原回報：${was}` : ""].filter(Boolean).join("\n"),
+      ).catch(() => {});
+      n += 1;
+    }
+    return NextResponse.json({ ok: true, reopened: n, skipped });
   }
 
   // 司機批次：把這幾筆綁上同一個 token，司機一條連結全部處理完

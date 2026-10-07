@@ -230,7 +230,7 @@ export function MaterialConfirmClient() {
    *    ——不會出現在任何待辦欄位，那位客人就永遠收不到連結。
    *    原本完全沒有退路，只能靠自己記得。
    */
-  async function revertNotified(tokens: string[]) {
+  async function postTokens(action: "unnotified" | "reopen", tokens: string[], failMsg: string) {
     if (tokens.length === 0) return;
     setBusy(true);
     setError("");
@@ -238,17 +238,29 @@ export function MaterialConfirmClient() {
       const res = await fetch("/api/sheets/material-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "unnotified", tokens }),
+        body: JSON.stringify({ action, tokens }),
       });
-      const json = (await res.json()) as { ok: boolean; error?: string; reverted?: number };
-      if (!json.ok) { setError(json.error ?? "退回失敗"); return; }
+      const json = (await res.json()) as { ok: boolean; error?: string; skipped?: string[] };
+      if (!json.ok) { setError(json.error ?? failMsg); return; }
+      if (json.skipped?.length) setError(`有 ${json.skipped.length} 筆沒處理：${json.skipped.join("、")}`);
       await load();
     } catch {
-      setError("退回失敗，請稍後再試");
+      setError(`${failMsg}，請稍後再試`);
     } finally {
       setBusy(false);
     }
   }
+
+  const revertNotified = (tokens: string[]) => postTokens("unnotified", tokens, "退回失敗");
+
+  /**
+   * 客人回報有誤／要求延後 → 內容改好後放回「待確認」。
+   *
+   * 🔴 沒有這個動作的話那筆是死路：不在「尚未建連結」、也不在批次清單，
+   *    客人點原連結只看到「已收到您的回報」。連結沿用原本那條，
+   *    照片是開頁即時抓 Trello，改完就看得到。
+   */
+  const reopenConfirm = (tokens: string[]) => postTokens("reopen", tokens, "重開失敗");
 
   function linkOf(r: WeekRow): string {
     return r.token ? `${origin}/confirm/${r.token}` : "";
@@ -794,10 +806,21 @@ export function MaterialConfirmClient() {
                 </div>
               )}
 
-              {r.status === "disputed" && (
-                <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-                  客戶回報：{r.disputeNote}
-                </p>
+              {(r.status === "disputed" || r.status === "postponed") && (
+                <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+                  <p>
+                    {r.status === "postponed" ? "客戶要求延後" : "客戶回報"}
+                    {r.disputeNote ? `：${r.disputeNote}` : ""}
+                  </p>
+                  <button
+                    type="button" disabled={busy}
+                    onClick={() => void reopenConfirm(r.token ? [r.token] : [])}
+                    title="訂貨單內容／照片已修正 → 這筆回到「待確認」，用原本那條連結重發給客人"
+                    className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                  >
+                    {busy ? "處理中…" : "✅ 內容已修正，重發給客人"}
+                  </button>
+                </div>
               )}
 
               {/* 只有出貨日不同時用灰字：那不擋發送，印成紅的會讓人以為要先去修 */}

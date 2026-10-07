@@ -185,7 +185,7 @@ export function ConfirmClient({ token }: { token: string }) {
           <p className="text-4xl">📩</p>
           <p className="mt-3 text-lg font-semibold text-gray-800">已收到您的回報</p>
           <p className="mt-2 text-sm leading-relaxed text-gray-600">
-            我們會盡快與您聯繫確認細節，確認後會再發一次新的連結給您。
+            我們會盡快與您聯繫確認細節。內容修正後，再點一次同一個連結即可確認。
           </p>
           {view.disputeNote && (
             <p className="mt-4 rounded-lg bg-gray-50 p-4 text-left text-sm text-gray-700">
