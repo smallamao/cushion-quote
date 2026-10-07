@@ -13,7 +13,7 @@ import { NextResponse } from "next/server";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { findByToken, generateToken, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
-  dueIsoFromSlot,
+  confirmDueIso,
   hasFuturesFabric,
   isNonDeliveryDay,
   isTestConfirm,
@@ -285,7 +285,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       //    失敗不影響確認結果；本機的 Numbers→Trello 同步之後也會補上日期（只是時分會是舊的）。
       const first = slots[0];
       if (first) {
-        const dueIso = dueIsoFromSlot(first.date, first.period);
+        const dueIso = confirmDueIso(first.date, first.period);
         if (dueIso) await setCardDue(realCardId(c.cardId), dueIso).catch(() => {});
       }
     }

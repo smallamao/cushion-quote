@@ -62,7 +62,7 @@ describe("文案", () => {
 
 /* ───────── 時段 → Trello due 時分（2026-10-07 P6272）───────── */
 
-import { dueIsoFromSlot, slotStartHour } from "@/lib/material-confirm-types";
+import { ANYTIME_DUE_HOUR, confirmDueIso, periodStartHour } from "@/lib/material-confirm-types";
 
 describe("時段 → Trello due", () => {
   it.each([
@@ -72,16 +72,16 @@ describe("時段 → Trello due", () => {
     ["傍晚 17:00-19:00", 17],
     ["皆可", 10],
   ])("%s → 台灣 %i 點", (period, hour) => {
-    expect(slotStartHour(period)).toBe(hour);
+    expect(period === "皆可" ? ANYTIME_DUE_HOUR : periodStartHour(period as never)).toBe(hour);
   });
 
   it("P6272 本案：10/23 傍晚 → UTC 09:00Z（＝台灣 17:00）", () => {
-    expect(dueIsoFromSlot("2026-10-23", "傍晚 17:00-19:00"))
+    expect(confirmDueIso("2026-10-23", "傍晚 17:00-19:00"))
       .toBe("2026-10-23T09:00:00.000Z");
   });
 
   it("🔴 一定要減 8 小時：少了這步 17:00 會變成隔天凌晨 01:00", () => {
-    const iso = dueIsoFromSlot("2026-10-23", "傍晚 17:00-19:00")!;
+    const iso = confirmDueIso("2026-10-23", "傍晚 17:00-19:00")!;
     const taipeiHour = new Date(Date.parse(iso) + 8 * 3600_000).getUTCHours();
     expect(taipeiHour).toBe(17);
   });
@@ -91,13 +91,13 @@ describe("時段 → Trello due", () => {
     ["2026-10-23", "下午 15:00-17:00", "2026-10-23T07:00:00.000Z"],
     ["2026-12-31", "傍晚 17:00-19:00", "2026-12-31T09:00:00.000Z"],
   ])("%s %s → %s", (ymd, period, iso) => {
-    expect(dueIsoFromSlot(ymd, period)).toBe(iso);
+    expect(confirmDueIso(ymd, period)).toBe(iso);
   });
 
   it("看不懂的時段或日期回 null——呼叫端就不要動 due，不可亂猜一個時間", () => {
-    expect(dueIsoFromSlot("2026-10-23", "晚上八點")).toBeNull();
-    expect(dueIsoFromSlot("10/23", "皆可")).toBeNull();
-    expect(dueIsoFromSlot("", "皆可")).toBeNull();
-    expect(slotStartHour("")).toBeNull();
+    expect(confirmDueIso("2026-10-23", "晚上八點")).toBeNull();
+    expect(confirmDueIso("10/23", "皆可")).toBeNull();
+    expect(confirmDueIso("", "皆可")).toBeNull();
+    expect(periodStartHour("" as never)).toBeNull();
   });
 });

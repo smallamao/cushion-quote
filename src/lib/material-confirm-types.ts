@@ -59,6 +59,29 @@ export function periodStartHour(period: DeliveryPeriod): number | null {
   }
 }
 
+/**
+ * 客人勾「皆可」時 Trello due 要用幾點（老闆 2026-10-07 指定 10:00）。
+ *
+ * 司機端**不吃這個**——他必須挑一個具體時段，所以 `periodStartHour("皆可")` 維持 null。
+ * 這裡只用在「客人已確認、司機還沒定案」那段，due 先放個合理的時間，
+ * 總比沿用舊的 08:00 好（排程工作單的出貨時間欄取的就是 card.due 的時分）。
+ */
+export const ANYTIME_DUE_HOUR = 10;
+
+/**
+ * 客人確認當下要寫進 Trello 的 due（第一順位；「皆可」用 ANYTIME_DUE_HOUR）。
+ *
+ * 🔴 與 `toDueIso` 共用同一份 `periodStartHour`，**不要另外再寫一份對照表**
+ *    ——2026-10-07 我就重複造過一次，兩份數值一樣但遲早會漂。
+ */
+export function confirmDueIso(date: string, period: string): string | null {
+  const concrete = toDueIso(date, period as DeliveryPeriod);
+  if (concrete) return concrete;
+  if ((period ?? "").trim() !== "皆可" || !date) return null;
+  const t = Date.parse(`${date}T${String(ANYTIME_DUE_HOUR).padStart(2, "0")}:00:00+08:00`);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+
 /** YYYY-MM-DD ＋ 時段 → Trello due 用的 UTC ISO（台灣 -8 小時）。 */
 export function toDueIso(date: string, period: DeliveryPeriod): string | null {
   const hour = periodStartHour(period);
@@ -188,47 +211,6 @@ export const FUTURES_FABRIC_NOTICE = [
   "",
   "而且交期也會依照實際到料",
 ].join("\n");
-
-
-/* ───────── 時段 → Trello due 的時分（2026-10-07 老闆指定） ─────────
- *
- * 客人確認後，Trello 的出貨日要帶上**客人選的時段**，不是沿用舊的 08:00。
- * 排程工作單的出貨時間欄取 card.due 的時分（schedule_work_order._extract_due_date_time），
- * 所以 08:00 會印在單子上，但客人要的是傍晚——師傅與司機看到的是錯的。
- *
- * 🔴 為什麼不走 Numbers：本機 sync_confirm_to_numbers 會把
- *    「下午 13:00-15:00」與「下午 15:00-17:00」**都寫成「下午」**
- *    （老闆 223 筆歷史格子就是這四個詞），精度在那一步就沒了。
- *    所以在確認當下、資料還完整的時候直接寫 Trello。
- *
- * 不會跟 Numbers→Trello 的自動同步打架：那支比對出貨日**只看日期**
- *  （`start <= due <= end`），時分不同不觸發；日期真的要改時它會沿用現有時分。
- */
-export const SLOT_START_HOUR: Record<string, number> = {
-  "上午 10:00-12:00": 10,
-  "下午 13:00-15:00": 13,
-  "下午 15:00-17:00": 15,
-  "傍晚 17:00-19:00": 17,
-  "皆可": 10,
-};
-
-/** 時段 → 當天幾點（台灣時間）。看不懂的回 null，呼叫端就不要動 due。 */
-export function slotStartHour(period: string): number | null {
-  const h = SLOT_START_HOUR[(period ?? "").trim()];
-  return typeof h === "number" ? h : null;
-}
-
-/**
- * 「2026-10-23」＋「傍晚 17:00-19:00」→ Trello due 的 UTC ISO。
- * 台灣 = UTC+8，所以 17:00 要寫成 09:00Z。
- */
-export function dueIsoFromSlot(ymd: string, period: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd ?? "")) return null;
-  const h = slotStartHour(period);
-  if (h === null) return null;
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d, h - 8, 0, 0)).toISOString();
-}
 
 
 /**
