@@ -72,8 +72,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
 
   // 照片張數當下重抓——老闆常在建卡之後才補照片，用建連結當下的快照會少圖。
   let photoCount = 0;
+  let photoVersion = "";
   try {
-    photoCount = (await getCardImageAttachments(realCardId(c.cardId))).length;
+    const imgs = await getCardImageAttachments(realCardId(c.cardId));
+    photoCount = imgs.length;
+    // 附件 id 串起來當版本：換過照片（新增／刪除／替換）字串就不同 → 網址跟著變
+    photoVersion = imgs.map((a) => a.id.slice(-6)).join("");
   } catch {
     /* 取不到就當 0 張，頁面會顯示「照片載入失敗」而不是整頁壞掉 */
   }
@@ -106,6 +110,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     productionStart,
     estimatedDate,
     photoCount,
+    photoVersion,
     isFutures: hasFuturesFabric(colorCodes),
     colorCodes,
     preferredSlots: c.preferredSlots,

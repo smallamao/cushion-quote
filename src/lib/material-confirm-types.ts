@@ -144,6 +144,15 @@ export interface PublicMaterialConfirmView {
   estimatedDate: string;
   /** 照片張數；客人端用 /photo/{i} 逐張取圖 */
   photoCount: number;
+  /**
+   * 照片版本指紋（全部附件 id 串起來）。
+   *
+   * 🔴 2026-10-09：`/photo/{i}` 的網址只有「第幾張」，但端點回
+   * `Cache-Control: private, max-age=3600`——老闆在 Trello 刪掉舊訂貨單、換上新的之後，
+   * 客人與他自己都還看得到**舊照片整整一小時**，而那是客人要據以簽名的東西。
+   * 把這個指紋掛在網址上，照片一換網址就變，快取自然失效（還是能快取一小時）。
+   */
+  photoVersion: string;
   /** 含期貨布（FG 安得利）→ 頁面要出告知，並納入簽名同意的範圍 */
   isFutures: boolean;
   /** 色號欄原文，用在告知文字裡讓客人知道是哪一款 */

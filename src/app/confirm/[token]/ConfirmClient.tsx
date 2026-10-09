@@ -234,7 +234,7 @@ export function ConfirmClient({ token }: { token: string }) {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={i}
-                src={`/api/public/material-confirm/${token}/photo/${i}?size=thumb`}
+                src={`/api/public/material-confirm/${token}/photo/${i}?size=thumb&v=${view.photoVersion}`}
                 alt={`訂貨單照片 ${i + 1}`}
                 onClick={() => setZoom(i)}
                 className="w-full cursor-zoom-in rounded-lg border border-gray-200"
@@ -390,7 +390,7 @@ export function ConfirmClient({ token }: { token: string }) {
       {zoom !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-2" onClick={() => setZoom(null)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`/api/public/material-confirm/${token}/photo/${zoom}`} alt={`訂貨單照片 ${zoom + 1}`}
+          <img src={`/api/public/material-confirm/${token}/photo/${zoom}?v=${view.photoVersion}`} alt={`訂貨單照片 ${zoom + 1}`}
             className="max-h-full max-w-full object-contain" />
           <button type="button" className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-lg"
             onClick={() => setZoom(null)}>✕</button>
