@@ -66,6 +66,10 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/sw.js" ||
     pathname === "/sw.js.map" ||
     pathname.startsWith("/workbox-") ||
+    // 🔴 自訂 service worker（worker/index.ts 編出來的 worker-<hash>.js）。
+    //    sw.js 會 importScripts 它，被導向登入頁的話整個 SW 安裝就失敗，
+    //    連帶 PWA 離線快取與推播一起壞掉。新增 public/ 下的 SW 資產都要補這裡。
+    pathname.startsWith("/worker-") ||
     pathname.endsWith(".png") ||
     pathname.endsWith(".jpg") ||
     pathname.endsWith(".svg") ||
@@ -185,6 +189,6 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon, logo, manifest etc.
      */
-    "/((?!_next/static|_next/image|favicon.ico|logo.png|manifest.json|sw.js|workbox-).*)",
+    "/((?!_next/static|_next/image|favicon.ico|logo.png|manifest.json|sw.js|workbox-|worker-).*)",
   ],
 };
