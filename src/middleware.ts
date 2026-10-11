@@ -98,8 +98,13 @@ const API_KEY_PATHS = new Set([
 // 不是固定字串所以另外用 regex。route 內有 timing-safe 金鑰比對（authorizeSchedulerRequest）。
 // 用途：出完採購單後把 PDF 存進 Synology 正式存檔——2026-09-22 發現本地 JPG 會遺失，
 // 單子只存在繃布系統裡，想重新拿檔案卻沒有伺服器路徑。
+// 採購單狀態更新：出完單、傳給廠商之後要標「已發送」。
+// 2026-10-11 老闆：「請幫我更改狀態為已發送」——原本只接受登入 session，
+// 排程系統拿 x-api-key 打會 401，等於每張單都要人工進後台點一次
+// （違反「要全自動不要手動步驟」）。route 內有 timing-safe 金鑰比對。
 const API_KEY_PATH_PATTERNS: RegExp[] = [
   /^\/api\/sheets\/purchases\/[^/]+\/pdf$/,
+  /^\/api\/sheets\/purchases\/[^/]+\/status$/,
 ];
 
 function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean {

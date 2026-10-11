@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { PurchaseOrderStatus } from "@/lib/types";
 
+import { authorizeSchedulerRequest } from "../../_catalog";
+
 const SHEET = "採購單";
 const RANGE_IDS = `${SHEET}!A2:A`;
 // 採購單欄序: A採購單號 B採購日期 C廠商編號 D案件編號 E案件名稱快照 F廠商快照JSON
@@ -23,6 +25,18 @@ interface RouteContext {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  // 排程系統（server-to-server）用 x-api-key 把採購單標成已發送。
+  // middleware 只確認「有帶 header」就放行，真正的 timing-safe 比對在這裡做——
+  // 🔴 少了這段，任何帶任意 header 的人都能改全部採購單的狀態。
+  //    白名單與這道鎖**必須同一次上線**（2026-09-26 只上線一半，
+  //    採購單 PDF 曾可被任意金鑰下載）。
+  // 瀏覽器（已登入、帶 cookie、不帶 x-api-key）維持原本行為，不受影響。
+  if (request.headers.get("x-api-key")) {
+    const denied = authorizeSchedulerRequest(request);
+    if (denied) {
+      return NextResponse.json({ ok: false, error: denied.error }, { status: denied.status });
+    }
+  }
   const { orderId } = await context.params;
   let body: { status?: PurchaseOrderStatus };
   try {
