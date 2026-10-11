@@ -2,7 +2,10 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { after } from "next/server";
+
 import { getSheetsClient } from "@/lib/sheets-client";
+import { sendPushToAll } from "@/lib/web-push-server";
 
 const SHEET = "通知";
 const RANGE_FULL = `${SHEET}!A:F`;
@@ -37,7 +40,27 @@ async function ensureSheet(client: SheetsClient): Promise<void> {
   }
 }
 
-/** 寫入一則後台通知（best-effort，不拋錯以免拖累呼叫端流程）。 */
+/**
+ * 推播是「順便」做的，不能讓它拖慢觸發流程：
+ * 用 after() 延到回應送出之後才跑，客人按下送出的等待時間不受影響。
+ * after() 只能在請求情境內呼叫，排程或腳本呼叫到這裡會丟錯，退回不等待的呼叫。
+ */
+function schedulePush(n: Pick<AppNotification, "type" | "title" | "body" | "link">): void {
+  const job = async () => {
+    try {
+      await sendPushToAll({ title: n.title, body: n.body, link: n.link, tag: n.type });
+    } catch {
+      /* best-effort：推播失敗不影響已寫入的通知 */
+    }
+  };
+  try {
+    after(job);
+  } catch {
+    void job();
+  }
+}
+
+/** 寫入一則後台通知（best-effort，不拋錯以免拖累呼叫端流程），並推播到已訂閱的裝置。 */
 export async function appendNotification(
   n: Pick<AppNotification, "type" | "title" | "body" | "link">,
 ): Promise<void> {
@@ -55,6 +78,8 @@ export async function appendNotification(
   } catch {
     /* best-effort */
   }
+  // 寫入失敗也照推：鈴鐺沒記到至少手機要響，不要兩邊一起沉默
+  schedulePush(n);
 }
 
 export async function listRecentNotifications(limit = 30): Promise<AppNotification[]> {

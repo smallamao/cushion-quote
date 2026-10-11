@@ -7,6 +7,7 @@ import { Bell, CheckCheck, LogOut } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUnreadReplies } from "@/hooks/useUnreadReplies";
 import { useAppNotifications } from "@/hooks/useAppNotifications";
+import { PushToggle } from "@/components/layout/PushToggle";
 
 interface PanelEntry {
   id: string;
@@ -86,6 +87,8 @@ function NotificationPanel({
           ))
         )}
       </div>
+
+      <PushToggle />
     </div>
   );
 }

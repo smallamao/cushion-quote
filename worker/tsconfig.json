@@ -1,0 +1,15 @@
+{
+  "//": "service worker 的全域環境不是 DOM，要用 webworker lib。主 tsconfig 已把 worker/ 排除，改由這份負責。檢查指令：npx tsc -p worker --noEmit",
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["esnext", "webworker"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": []
+  },
+  "include": ["index.ts"]
+}

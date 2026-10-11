@@ -33,3 +33,8 @@ Thumbs.db
 # claude code
 .claude/
 .omc/
+
+# PWA 自訂 worker 是內容雜湊檔名，每次建置會換名字，留在版控會無限累積
+# （Vercel 建置時會自己重新產生）
+public/worker-*.js
+public/worker-*.js.map
