@@ -1,6 +1,7 @@
 import { v2 as cloudinary } from "cloudinary";
 import { NextResponse } from "next/server";
 
+import { appendNotification } from "@/lib/notifications-sheet";
 import { buildOrderDepositMessage } from "@/lib/order-deposit-payment";
 import { findByToken, writeOrderConfirm } from "@/lib/order-confirm-sheet";
 import {
@@ -159,6 +160,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     } catch {
       /* best-effort */
     }
+
+    // 後台通知鈴鐺：叫料確認、出貨日、到府清潔、報價簽署都有接這一套，
+    // 線上下訂原本漏掉，確認完在後台完全看不到。link 指到面板所在的排程出貨頁。
+    await appendNotification({
+      type: "order_confirm",
+      title: `✅ ${c.orderNo || c.cardName} 客人已線上確認下訂`,
+      body: `簽署人：${signerName}・訂金 NT$ ${c.depositAmount.toLocaleString()}${
+        c.payByDate ? `・請於 ${c.payByDate.slice(5).replace("-", "/")} 前匯入` : ""
+      }`,
+      link: "/shipping-notice",
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
