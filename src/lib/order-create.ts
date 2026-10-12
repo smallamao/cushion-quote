@@ -97,6 +97,7 @@ export async function createOrder(
   let materialCode = "";
   const materialImageUrl = "";
   let initialNotes: CustomOrder["notes"] = [];
+  let initialPhotos: string[] = [];
   let orderItems: CustomOrder["items"] = [];
 
   if (input.sourceType === "quote") {
@@ -120,6 +121,11 @@ export async function createOrder(
     quotedAmount = parseFloat(versionRow[18] ?? "0") || 0;
     versionTaxRate = parseFloat(versionRow[16] ?? "0") || 0;
     const scopeDescription = versionRow[24] ?? "";
+    // 報價的對外說明附圖先當工單照片的預設值（老闆 2026-10-13：「不對再換」）。
+    // 實測 12 張單的工單照片與報價附圖全都不同——師傅要的是現場/產品照——
+    // 所以這只是省掉「空白時從頭找圖」，不是假設它就是對的圖。
+    const quoteImage = versionRow[25] ?? "";
+    if (quoteImage.startsWith("http")) initialPhotos = [quoteImage];
     initialNotes = scopeDescription
       .split("\n")
       .map((line: string) => line.trim())
@@ -271,7 +277,7 @@ export async function createOrder(
     deadline: "",
     items: orderItems,
     notes: initialNotes,
-    photos: [],
+    photos: initialPhotos,
     invoiceStatus,
     isArchived: false,
     internalNotes: "",
