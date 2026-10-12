@@ -1,15 +1,18 @@
 import type { CustomOrder, OrderStatus } from "@/lib/types";
 
 // 訂製訂單清單排序（對齊 Notion 訂製訂單看板的順序，操作起來最直覺）：
-//   1. 狀態：排程/生產中 → 待出貨 → 完成 → 取消（進行中在上、結案在下）
+//   1. 狀態：待建立內容 → 排程/生產中 → 待出貨 → 完成 → 取消（進行中在上、結案在下）
+//      待建立內容＝客人已簽核、訂單自動開出來了，但交期與排程還沒填。
+//      擺最前面是為了避免人工遺落（老闆 2026-10-12）：沒填完就不該混進生產中的單裡。
 //   2. 安裝/出貨日：無日期者排最前（尚未排期，浮上來提醒處理）→ 有日期新 → 舊
 //   3. 下單日：新 → 舊（無日期者排最後）
 //   4. 建立時間：舊 → 新（前面全平手時的穩定排序）
 const STATUS_RANK: Record<OrderStatus, number> = {
-  production: 0,
-  waiting: 1,
-  completed: 2,
-  cancelled: 3,
+  pending_setup: 0,
+  production: 1,
+  waiting: 2,
+  completed: 3,
+  cancelled: 4,
 };
 
 /** 日期字串（YYYY-MM-DD）由新到舊排序；空值一律排最後。 */

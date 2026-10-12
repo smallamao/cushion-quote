@@ -73,3 +73,26 @@ describe("compareOrders（對齊 Notion 排序）", () => {
     expect([a, b].sort(compareOrders).map((o) => o.orderNumber)).toEqual(["B", "A"]);
   });
 });
+
+describe("待建立內容（pending_setup）排最前", () => {
+  it("即使已排期，待建立內容仍排在生產中之前", () => {
+    // 排在最前是刻意的：客人已簽核但交期/排程還沒填，混進生產中的單裡就會被漏掉。
+    const pending = mk({ status: "pending_setup", installDate: "2026-01-01" });
+    const prod = mk({ status: "production", installDate: "2026-12-31" });
+    expect(compareOrders(pending, prod)).toBeLessThan(0);
+    expect(compareOrders(prod, pending)).toBeGreaterThan(0);
+  });
+
+  it("待建立內容排在所有其他狀態之前", () => {
+    const pending = mk({ status: "pending_setup" });
+    for (const s of ["production", "waiting", "completed", "cancelled"] as const) {
+      expect(compareOrders(pending, mk({ status: s }))).toBeLessThan(0);
+    }
+  });
+
+  it("同為待建立內容時，仍照安裝/出貨日與下單日往下比", () => {
+    const a = mk({ status: "pending_setup", installDate: "", orderDate: "2026-05-01" });
+    const b = mk({ status: "pending_setup", installDate: "2026-05-01", orderDate: "2026-05-01" });
+    expect(compareOrders(a, b)).toBeLessThan(0); // 無日期者仍排前
+  });
+});

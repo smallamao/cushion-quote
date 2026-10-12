@@ -31,6 +31,7 @@ import type { ARRecord, CustomOrder, OrderInvoiceStatus, OrderItemCategory, Orde
 import { compareOrders } from "@/lib/order-sort";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
+  pending_setup: { label: "待建立內容", className: "badge-deleted" },
   production: { label: "排程/生產中", className: "badge-sent" },
   waiting: { label: "待出貨", className: "badge-deleted" },
   completed: { label: "完成", className: "badge-accepted" },

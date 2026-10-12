@@ -43,6 +43,7 @@ interface Props {
 }
 
 const STATUS_OPTIONS: Array<{ value: OrderStatus; label: string }> = [
+  { value: "pending_setup", label: "待建立內容" },
   { value: "production", label: "排程/生產中" },
   { value: "waiting", label: "待出貨" },
   { value: "completed", label: "完成" },

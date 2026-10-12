@@ -253,7 +253,7 @@ export async function createOrder(
     orderTitle,
     itemCategory: (directItemCategory as OrderItemCategory) || quoteItemCategory,
     deliveryMethod: quoteDeliveryMethod,
-    status: "production",
+    status: "pending_setup",
     sourceType: input.sourceType,
     orderDate: now.slice(0, 10),
     supplierOrderDate: "",

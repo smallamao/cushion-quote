@@ -8,6 +8,7 @@ import type { CustomOrder, OrderStatus } from "@/lib/types";
 
 /** 訂單狀態的中文標籤（給模型與畫面用）。 */
 export const STATUS_LABELS: Record<OrderStatus, string> = {
+  pending_setup: "待建立內容",
   production: "排程/生產中",
   waiting: "待出貨",
   completed: "完成",

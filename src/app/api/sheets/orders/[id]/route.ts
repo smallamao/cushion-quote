@@ -100,10 +100,21 @@ export async function PUT(request: Request, context: RouteContext) {
     const sheetRow = rowIndex + 2; // +1 for header, +1 for 1-indexed sheets
     const existing = orderRowToRecord(dataRows[rowIndex]);
 
+    // 「待建立內容」是簽核自動開單的起點。交期或安裝/出貨日一填，就代表單子已經開完，
+    // 自動進入「排程/生產中」——靠人工記得改狀態一定會漏（老闆 2026-10-12 指定要自動）。
+    // 呼叫端若自己指定了 status 就尊重它，不蓋掉人的明確意圖。
+    const hasSchedule = Boolean(
+      (patch.productionDueDate ?? existing.productionDueDate) ||
+        (patch.installDate ?? existing.installDate),
+    );
+    const autoAdvanced =
+      existing.status === "pending_setup" && patch.status === undefined && hasSchedule;
+
     // Merge patch, preserving immutable fields
     const updated: CustomOrder = {
       ...existing,
       ...patch,
+      status: autoAdvanced ? "production" : (patch.status ?? existing.status),
       // These fields must never be overwritten by the caller
       orderId: existing.orderId,
       createdAt: existing.createdAt,

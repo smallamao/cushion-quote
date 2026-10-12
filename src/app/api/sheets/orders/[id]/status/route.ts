@@ -28,7 +28,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  const VALID_ORDER_STATUSES = ["production", "waiting", "completed", "cancelled"] as const;
+  const VALID_ORDER_STATUSES = ["pending_setup", "production", "waiting", "completed", "cancelled"] as const;
   if (!VALID_ORDER_STATUSES.includes(body.status as (typeof VALID_ORDER_STATUSES)[number])) {
     return NextResponse.json({ ok: false, error: "invalid status value" }, { status: 400 });
   }

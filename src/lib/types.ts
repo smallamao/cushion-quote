@@ -1224,7 +1224,7 @@ export interface BankReconRecord {
 
 // ===== 訂製訂單 (Custom Orders) =====
 
-export type OrderStatus = "production" | "waiting" | "completed" | "cancelled";
+export type OrderStatus = "pending_setup" | "production" | "waiting" | "completed" | "cancelled";
 export type OrderSourceType = "quote" | "direct";
 export type OrderDeliveryMethod = "自運" | "宅配" | "到府施工";
 export type OrderInvoiceStatus = "pending" | "issued" | "exempt";
