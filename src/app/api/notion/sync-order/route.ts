@@ -81,17 +81,31 @@ export async function POST(req: NextRequest) {
     action = "created";
   }
 
-  // 首次同步把 pageId 存回訂單（唯一鍵綁定）；之後狀態變更直接用 ID 更新，不再靠名稱比對
-  if (order.notionPageId !== notionPageId) {
-    const rowIndex = rows.findIndex((r) => r[0] === orderId);
-    if (rowIndex !== -1) {
-      await client.sheets.spreadsheets.values.update({
-        spreadsheetId: client.spreadsheetId,
-        range: `${ORDER_SHEET}!AV${rowIndex + 2}`,
-        valueInputOption: "RAW",
-        requestBody: { values: [[notionPageId]] },
-      });
+  // 推上 Notion 看板＝這張單已經開完內容，所以「待建立內容」在此自動轉「排程/生產中」。
+  //
+  // 為什麼用這個時間點而不是「填了交期」（老闆 2026-10-12 指正）：
+  // 訂製品大多是**做好才通知客人**，交期欄常常到最後才填，拿它當訊號會讓單子
+  // 一直卡在「待建立內容」。按同步是人刻意做的動作，而且本來就在流程裡，
+  // 不算新增人工步驟。交期那條保留當保底，誰先到算誰。
+  const advanceStatus = order.status === "pending_setup";
+
+  const writes: { range: string; values: string[][] }[] = [];
+  const rowIndex = rows.findIndex((r) => r[0] === orderId);
+  if (rowIndex !== -1) {
+    // 首次同步把 pageId 存回訂單（唯一鍵綁定）；之後狀態變更直接用 ID 更新，不再靠名稱比對
+    if (order.notionPageId !== notionPageId) {
+      writes.push({ range: `${ORDER_SHEET}!AV${rowIndex + 2}`, values: [[notionPageId]] });
     }
+    if (advanceStatus) {
+      // 狀態在第 9 欄（index 8）＝ I 欄
+      writes.push({ range: `${ORDER_SHEET}!I${rowIndex + 2}`, values: [["production"]] });
+    }
+  }
+  if (writes.length > 0) {
+    await client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: client.spreadsheetId,
+      requestBody: { valueInputOption: "RAW", data: writes },
+    });
   }
 
   if (jpgUrl) {
@@ -99,5 +113,13 @@ export async function POST(req: NextRequest) {
   }
 
   const notionUrl = `https://notion.so/${notionPageId.replace(/-/g, "")}`;
-  return NextResponse.json({ ok: true, action, notionPageId, notionUrl });
+  // 回傳狀態讓訂單頁即時更新，不必重新整理才看到已轉為「排程/生產中」
+  return NextResponse.json({
+    ok: true,
+    action,
+    notionPageId,
+    notionUrl,
+    status: advanceStatus ? "production" : order.status,
+    statusAdvanced: advanceStatus,
+  });
 }

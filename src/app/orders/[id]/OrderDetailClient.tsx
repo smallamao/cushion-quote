@@ -289,13 +289,30 @@ export function OrderDetailClient({ orderId }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, jpgUrl }),
       });
-      const json = (await readJson<{ ok: boolean; action?: string; notionUrl?: string; error?: string }>(res));
+      const json = await readJson<{
+        ok: boolean;
+        action?: string;
+        notionUrl?: string;
+        status?: CustomOrder["status"];
+        statusAdvanced?: boolean;
+        error?: string;
+      }>(res);
       if (!json.ok) {
         setNotionResult({ ok: false, message: json.error ?? "同步失敗" });
         return;
       }
+      // 推上看板時後端會把「待建立內容」轉成「排程/生產中」；這裡同步畫面，
+      // 否則要重新整理才看得到狀態變了。
+      if (json.statusAdvanced && json.status) {
+        const nextStatus = json.status;
+        setOrder((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+        setDraft((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+      }
       const label = json.action === "updated" ? "已更新" : "已建立";
-      setNotionResult({ ok: true, message: `Notion ${label}` });
+      setNotionResult({
+        ok: true,
+        message: json.statusAdvanced ? `Notion ${label}，狀態已轉為排程/生產中` : `Notion ${label}`,
+      });
       if (json.notionUrl) window.open(json.notionUrl, "_blank");
     } catch (err) {
       setNotionResult({ ok: false, message: err instanceof Error ? err.message : "同步失敗" });
