@@ -250,6 +250,47 @@ export async function getBoardCards(boardId: string): Promise<BoardCardLite[]> {
   });
 }
 
+export interface BoardCardWithChecklists extends BoardCardLite {
+  checklists?: Array<{
+    name: string;
+    checkItems: Array<{ name: string; state: "complete" | "incomplete" }>;
+  }>;
+}
+
+/**
+ * 整塊板的卡片，連檢查清單一起拿（一次呼叫，不要逐張打）。
+ * 沙發訂單的訂金／尾款就記在「待辦事項」清單裡，不走應收帳款——
+ * 應收帳款那套是給訂製品用的（老闆 2026-10-13 說明）。
+ */
+export async function getBoardCardsWithChecklists(
+  boardId: string,
+): Promise<BoardCardWithChecklists[]> {
+  return trelloJson<BoardCardWithChecklists[]>(`boards/${boardId}/cards`, {
+    fields: "name,due,idList",
+    checklists: "all",
+    checklist_fields: "name",
+    checkItem_fields: "name,state",
+  });
+}
+
+export interface DepositState {
+  /** 找不到訂金項目時為 null——不要拿「沒勾」當「沒收」，那是兩回事 */
+  paid: boolean | null;
+  /** 原始項目文字，內勤習慣把日期與帳號末五碼寫在裡面 */
+  text: string;
+}
+
+/** 從卡片的檢查清單判斷訂金收了沒。項目名含「訂金」即視為該項。 */
+export function readDepositState(card: BoardCardWithChecklists): DepositState {
+  for (const cl of card.checklists ?? []) {
+    for (const item of cl.checkItems ?? []) {
+      if (!item.name.includes("訂金")) continue;
+      return { paid: item.state === "complete", text: item.name };
+    }
+  }
+  return { paid: null, text: "" };
+}
+
 export function getCustomFieldDate(card: BoardCardLite, fieldId: string): string {
   const v = (card.customFieldItems ?? []).find((i) => i.idCustomField === fieldId)?.value?.date;
   return v ?? "";

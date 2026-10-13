@@ -10,7 +10,10 @@ import {
 } from "@/lib/order-confirm-sheet";
 import { defaultCheckedIndexes, type OrderConfirm } from "@/lib/order-confirm-types";
 import { TRELLO } from "@/lib/trello-constants";
-import { getBoardCards } from "@/lib/trello-server";
+import {
+  getBoardCardsWithChecklists,
+  readDepositState,
+} from "@/lib/trello-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,9 +40,11 @@ export async function GET(request: Request) {
   }
   try {
     const [cards, confirms] = await Promise.all([
-      getBoardCards(TRELLO.BOARD_ID),
+      getBoardCardsWithChecklists(TRELLO.BOARD_ID),
       listOrderConfirms(),
     ]);
+    const cardById = new Map(cards.map((c) => [c.id, c]));
+
     // 同一張卡可能重發過連結，取最新那筆為準
     const byCard = new Map<string, OrderConfirm>();
     for (const c of confirms) {
@@ -47,28 +52,46 @@ export async function GET(request: Request) {
       if (!prev || c.createdAt > prev.createdAt) byCard.set(c.cardId, c);
     }
 
-    const rows = cards
-      .filter((card) => card.idList === TRELLO.LISTS.REQUEST)
-      .map((card) => {
-        const c = byCard.get(card.id);
+    /**
+     * 🔴 追蹤清單的來源是「訂單確認表」，不是 Trello 的某個清單。
+     *    舊版只讀 Request 清單，但卡片做完訂單解析就會移到「Order 訂單」，
+     *    一移走整筆就從畫面消失——2026-10-13 實測 12 筆連結全部看不到。
+     *    發出去的連結記在表裡，所以表才是「誰在等客人」的事實來源。
+     */
+    const tracking = [...byCard.values()]
+      .map((c) => {
+        const card = cardById.get(c.cardId);
+        const deposit = card ? readDepositState(card) : { paid: null, text: "" };
         return {
-          cardId: card.id,
-          cardName: card.name,
-          token: c?.token ?? null,
-          status: c?.status ?? null,
-          depositAmount: c?.depositAmount ?? DEFAULT_DEPOSIT,
-          orderNo: c?.orderNo ?? "",
-          payByDate: c?.payByDate ?? "",
-          signerName: c?.signerName ?? "",
-          confirmedAt: c?.confirmedAt ?? "",
-          notifiedAt: c?.notifiedAt ?? "",
-          createdAt: c?.createdAt ?? "",
+          cardId: c.cardId,
+          cardName: c.cardName,
+          token: c.token,
+          status: c.status,
+          depositAmount: c.depositAmount,
+          orderNo: c.orderNo,
+          payByDate: c.payByDate,
+          signerName: c.signerName,
+          confirmedAt: c.confirmedAt,
+          notifiedAt: c.notifiedAt,
+          createdAt: c.createdAt,
+          /** 卡片還在不在板上；被刪掉時前端要標示，不要讓它看起來像正常單 */
+          cardExists: Boolean(card),
+          /** 訂金收款狀態讀 Trello「待辦事項」的勾選，系統不自己記一份 */
+          depositPaid: deposit.paid,
+          depositNote: deposit.text,
         };
-      });
+      })
+      .sort((a, b) => (b.notifiedAt || b.createdAt).localeCompare(a.notifiedAt || a.createdAt));
+
+    // 還沒發過連結的 Request 卡＝可以產生連結的對象（現場下單放著不理即可）
+    const available = cards
+      .filter((card) => card.idList === TRELLO.LISTS.REQUEST && !byCard.has(card.id))
+      .map((card) => ({ cardId: card.id, cardName: card.name }));
 
     return NextResponse.json({
       ok: true,
-      rows,
+      tracking,
+      available,
       defaultDeposit: DEFAULT_DEPOSIT,
       defaultChecked: defaultCheckedIndexes(),
     });

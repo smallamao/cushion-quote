@@ -4,6 +4,8 @@ import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
 import { listConfirms } from "@/lib/material-confirm-sheet";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { listOrderConfirms } from "@/lib/order-confirm-sheet";
+import { TRELLO } from "@/lib/trello-constants";
+import { getBoardCardsWithChecklists, readDepositState } from "@/lib/trello-server";
 
 /**
  * 每日催辦：掃出「連結已發出、客人卻還沒回應」的單，寫進通知表（並連帶推播）。
@@ -51,8 +53,21 @@ export async function GET(request: Request) {
   // ── 線上下訂確認：已發連結、客人未簽 ──────────────────
   try {
     const orders = await listOrderConfirms();
+
+    // 🔴 訂金已收就別再催了：P6283 林宏軒 10/6 就付款，只是沒走線上簽核，
+    //    狀態一直停在 sent。不排除的話，催辦會天天叫人去催一個已經付過錢的客人。
+    //    訂金狀態的事實來源是 Trello「待辦事項」的勾選（沙發線不走應收帳款）。
+    const paidCards = new Set<string>();
+    try {
+      for (const card of await getBoardCardsWithChecklists(TRELLO.BOARD_ID)) {
+        if (readDepositState(card).paid === true) paidCards.add(card.id);
+      }
+    } catch {
+      /* 讀不到就照舊全催，寧可多提醒也不要漏 */
+    }
+
     const stale = orders
-      .filter((o) => o.status === "sent")
+      .filter((o) => o.status === "sent" && !paidCards.has(o.cardId))
       .map((o) => ({ o, d: daysSince(o.notifiedAt || o.createdAt) }))
       .filter((x) => x.d !== null && x.d > REMIND_AFTER_DAYS)
       .sort((a, b) => (b.d ?? 0) - (a.d ?? 0));
