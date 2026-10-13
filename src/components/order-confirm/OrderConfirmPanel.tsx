@@ -5,6 +5,7 @@ import { Check, ChevronRight, Copy, Loader2, Send } from "lucide-react";
 
 import { buildPublicUrl } from "@/lib/dispatch-public-url";
 import { getOrderDisclosure } from "@/lib/order-confirm-types";
+import { buildOrderConfirmShareMessage } from "@/lib/order-deposit-payment";
 import { splitOrderCardName } from "@/lib/material-confirm-types";
 
 /**
@@ -149,7 +150,9 @@ export function OrderConfirmPanel() {
   function copyLink(r: Row) {
     if (!r.token) return;
     const url = buildPublicUrl(`/od/${r.token}`);
-    navigator.clipboard.writeText(url).then(() => {
+    // 複製整段說明訊息而非裸網址：客人在 LINE 只看到一串網址不知道要做什麼
+    const message = buildOrderConfirmShareMessage(url, { orderNo: r.orderNo });
+    navigator.clipboard.writeText(message).then(() => {
       setCopied(r.cardId);
       setTimeout(() => setCopied((c) => (c === r.cardId ? null : c)), 1800);
       // 複製等同要傳給客人了，順手記錄傳出時間
@@ -158,7 +161,7 @@ export function OrderConfirmPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "notified", token: r.token }),
       }).then(() => load());
-    }).catch(() => setError("瀏覽器不允許複製，請手動複製連結"));
+    }).catch(() => setError("瀏覽器不允許複製，請手動複製"));
   }
 
   return (
@@ -244,8 +247,8 @@ export function OrderConfirmPanel() {
                           className="rounded-md border border-[var(--border)] px-2 py-1 text-xs hover:bg-[var(--bg-hover)]"
                         >
                           {copied === r.cardId
-                            ? <><Check className="mr-0.5 inline h-3 w-3" />已複製</>
-                            : <><Copy className="mr-0.5 inline h-3 w-3" />複製連結</>}
+                            ? <><Check className="mr-0.5 inline h-3 w-3" />已複製訊息</>
+                            : <><Copy className="mr-0.5 inline h-3 w-3" />複製訊息</>}
                         </button>
                       ) : (
                         <button

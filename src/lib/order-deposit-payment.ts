@@ -54,3 +54,40 @@ export function buildOrderDepositMessage({
     "🔺確認無誤後再匯入訂金款項以示同意各項內容❗️",
   ].join("\n");
 }
+
+export interface OrderConfirmShareOptions {
+  /** 訂單編號，例 P6275；空的時候該句省略 */
+  orderNo: string;
+}
+
+/**
+ * 貼到 LINE 給客人的訊息。
+ *
+ * 🔴 複製的是「整段訊息」而不是裸網址：客人在 LINE 只看到一串
+ *    https://s.potatosofa.com/od/xxxx 不知道是什麼、也不一定會點，
+ *    更不知道點進去要做什麼。報價簽署的 buildSignShareMessage 就是同樣作法。
+ *
+ * 刻意不重複匯款帳號：頁面上已經完整列出（buildOrderDepositMessage），
+ * 兩邊各寫一份遲早會不一致，而這是匯款資訊，不一致等於出事。
+ */
+export function buildOrderConfirmShareMessage(
+  url: string,
+  { orderNo }: OrderConfirmShareOptions,
+): string {
+  const intro = orderNo
+    ? `這是您的訂貨內容確認單（訂單編號 ${orderNo}），煩請點開確認：`
+    : "這是您的訂貨內容確認單，煩請點開確認：";
+
+  return [
+    "感謝您下訂馬鈴薯沙發😊",
+    intro,
+    url,
+    "",
+    "① 核對「訂貨單與顏色」照片是否正確",
+    "② 看過「告知事項」",
+    "③ 確認無誤後，在頁面最下方簽名送出",
+    "④ 頁面上有訂金金額與匯款帳號，再煩請依指示匯款～",
+    "",
+    "若有任何不符合的地方，請先別簽名，直接回覆我們🙏",
+  ].join("\n");
+}
