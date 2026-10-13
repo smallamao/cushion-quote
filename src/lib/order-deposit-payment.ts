@@ -69,6 +69,10 @@ export interface OrderConfirmShareOptions {
  *
  * 刻意不重複匯款帳號：頁面上已經完整列出（buildOrderDepositMessage），
  * 兩邊各寫一份遲早會不一致，而這是匯款資訊，不一致等於出事。
+ *
+ * ⑤ 的「提供末五碼」與頁面訊息重複是刻意的（老闆 2026-10-13 要求）：
+ * 客人是在 LINE 回覆末五碼的，指示放在他要回訊息的那個地方才有用。
+ * 重複的是「指示」不是帳號本身，不一致的風險相對小。
  */
 export function buildOrderConfirmShareMessage(
   url: string,
@@ -87,6 +91,7 @@ export function buildOrderConfirmShareMessage(
     "② 看過「告知事項」",
     "③ 確認無誤後，在頁面最下方簽名送出",
     "④ 頁面上有訂金金額與匯款帳號，再煩請依指示匯款～",
+    "⑤ 匯款完成後，再麻煩以文字訊息提供帳號末五碼，方便核對帳款與後續查帳",
     "",
     "若有任何不符合的地方，請先別簽名，直接回覆我們🙏",
   ].join("\n");
