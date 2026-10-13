@@ -107,6 +107,30 @@ const API_KEY_PATH_PATTERNS: RegExp[] = [
   /^\/api\/sheets\/purchases\/[^/]+\/status$/,
 ];
 
+/**
+ * Vercel Cron 的呼叫。
+ *
+ * 🔴 2026-10-13 查出來的事故：vercel.json 從設定日起就有每日備份排程，
+ *    但 Cron 請求不帶 session cookie 也不帶 x-api-key，middleware 直接回 401，
+ *    /api/admin/backup 裡的 allowInternalCron() 永遠執行不到。
+ *    實查服務帳號 Drive：備份資料夾與備份檔都是 0 個——備份一次都沒成功過。
+ *    （CRON_SECRET 當時也沒設，等於雙重失效。）
+ *
+ * 這裡只負責「放行到 route」，真正的金鑰比對仍由各 route 自己做。
+ * 新增 Cron 路徑一定要同時加進這個集合，否則一樣會被擋在門外而且毫無聲音。
+ */
+const CRON_PATHS = new Set<string>([
+  "/api/admin/backup",
+  "/api/cron/pending-reminders",
+]);
+
+function isVercelCronRequest(request: NextRequest, pathname: string): boolean {
+  if (!CRON_PATHS.has(pathname)) return false;
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  return request.headers.get("authorization") === `Bearer ${secret}`;
+}
+
 function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean {
   const allowed = API_KEY_PATHS.has(pathname)
     || API_KEY_PATH_PATTERNS.some((re) => re.test(pathname));
@@ -153,6 +177,11 @@ export function middleware(request: NextRequest) {
 
   // 排程系統 API：帶 x-api-key 時放行到 route（route 再做真正的金鑰驗證）
   if (isSchedulerApiRequest(request, pathname)) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  // Vercel Cron：帶正確 CRON_SECRET 的 Bearer 時放行到 route
+  if (isVercelCronRequest(request, pathname)) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
