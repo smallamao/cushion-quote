@@ -182,6 +182,10 @@ export function ImageCropModal({ open, imageSrc, onClose, onConfirm }: Props) {
             zoom={zoom}
             rotation={rotation}
             aspect={aspect}
+            // react-easy-crop 預設 objectFit="contain"（整張圖塞進框內），直式照片
+            // 配正方形裁切框就會左右留黑邊，確認後黑邊會被烤進圖裡（老闆 2026-10-13 回報）。
+            // cover 會依圖片與框的長寬比自動選橫向或縱向填滿，縮放 1.0× 即保證無空白。
+            objectFit="cover"
             onCropChange={setCrop}
             onZoomChange={setZoom}
             onRotationChange={setRotation}
