@@ -164,6 +164,48 @@ export function deriveProductName(template: PurchaseProduct, newCode: string): s
  * @param now      ISO date string (YYYY-MM-DD)，用於 createdAt/updatedAt
  * @param newId    已在外部產生的唯一 ID
  */
+/**
+ * 從範本建新品時，「識別欄位」一律跟著新碼走。
+ *
+ * 🔴 這是給所有建檔路徑共用的單一事實來源。歷史上同一個坑踩過兩次，
+ *    都是因為某條路徑自己手刻 `欄位 ?? 範本的值`：
+ *    - 2026-09-14 PS-20260910-11：品名抄成範本的「BBL5 北歐輕絨貓抓布」寄給尚慶
+ *    - 2026-10-11 PS-20261011-08：GC32219 的規格殘留範本 GC75503 的「75503」
+ *      （from-agent 端點繞過 cloneProductAsNew 自己組物件）
+ *
+ *    廠商看的就是編號／名稱／規格這三欄，三者指向不同商品等於整張單在講別塊布。
+ *    新增建檔路徑請一律呼叫這支，不要再自己 `?? template.xxx`。
+ *
+ * 呼叫端明確指定的值優先；沒指定就用新碼，絕不沿用範本。
+ */
+export interface IdentityOverrides {
+  specification?: string;
+  colorCode?: string;
+  supplierProductCode?: string;
+  productName?: string;
+}
+
+export function deriveIdentityFields(
+  template: PurchaseProduct,
+  newCode: string,
+  input: IdentityOverrides = {},
+): Pick<
+  PurchaseProduct,
+  "productCode" | "specification" | "colorCode" | "supplierProductCode" | "productName"
+> {
+  const pick = (v: string | undefined) => {
+    const t = (v ?? "").trim();
+    return t === "" ? newCode : t;
+  };
+  return {
+    productCode: newCode,
+    specification: pick(input.specification),
+    colorCode: pick(input.colorCode),
+    supplierProductCode: pick(input.supplierProductCode),
+    productName: (input.productName ?? "").trim() || deriveProductName(template, newCode),
+  };
+}
+
 export function cloneProductAsNew(
   template: PurchaseProduct,
   newCode: string,
@@ -174,11 +216,7 @@ export function cloneProductAsNew(
   return {
     ...template,
     id: newId,
-    productCode: newCode,
-    colorCode: newCode,
-    specification: newCode,
-    supplierProductCode: newCode,
-    productName: deriveProductName(template, newCode),
+    ...deriveIdentityFields(template, newCode),
     notes: crossFamily
       ? `自動由 ${template.productCode} 複製建立（跨系列，品名與單價待人工確認）`
       : `自動由 ${template.productCode} 複製建立`,

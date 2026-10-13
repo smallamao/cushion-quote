@@ -14,7 +14,7 @@ import { cacheInvalidate } from "@/lib/sheets-cache";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { PurchaseProduct } from "@/lib/types";
 
-import { deriveProductName, isCrossFamilyClone } from "@/lib/purchase-from-paste";
+import { deriveIdentityFields, isCrossFamilyClone } from "@/lib/purchase-from-paste";
 
 import { authorizeSchedulerRequest } from "../../purchases/_catalog";
 
@@ -148,18 +148,26 @@ function buildProduct(
   const merged: PurchaseProduct = {
     ...base,
     id: crypto.randomUUID(),
-    productCode: input.productCode ?? base.productCode,
-    supplierProductCode: input.supplierProductCode ?? input.productCode ?? base.supplierProductCode,
-    // 🔴 建檔時品名不可整包沿用範本（2026-09-14）：呼叫端沒明講品名，就由
-    //    deriveProductName 依「同系列沿用／跨系列改用新碼」決定。
-    //    這條端點就是 PS-20260910-11 那四筆錯品名的來源——我當初只給 copyFrom
-    //    想借單價與供應商，品名卻跟著抄成「BBL5 北歐輕絨貓抓布」寄給了尚慶。
-    productName:
-      input.productName ??
-      (mode === "create" && template
-        ? deriveProductName(template, input.productCode ?? base.productCode)
-        : base.productName),
-    specification: input.specification ?? base.specification,
+    // 🔴 識別欄位（編號／名稱／規格／色號／廠商產品編號）一律走 deriveIdentityFields，
+    //    不可在這裡自己 `?? base.xxx`——那正是本檔踩過兩次的坑：
+    //    2026-09-14 品名抄成範本的「BBL5 北歐輕絨貓抓布」寄給尚慶；
+    //    2026-10-11 GC32219 的規格殘留範本 GC75503 的「75503」，又寄了一張出去。
+    //    廠商看的就是這幾欄，三者指向不同商品等於整張單在講別塊布。
+    ...(mode === "create" && template
+      ? deriveIdentityFields(template, input.productCode ?? base.productCode, {
+          specification: input.specification,
+          colorCode: input.colorCode,
+          supplierProductCode: input.supplierProductCode,
+          productName: input.productName,
+        })
+      : {
+          productCode: input.productCode ?? base.productCode,
+          supplierProductCode:
+            input.supplierProductCode ?? input.productCode ?? base.supplierProductCode,
+          productName: input.productName ?? base.productName,
+          specification: input.specification ?? base.specification,
+          colorCode: input.colorCode ?? base.colorCode,
+        }),
     category: (input.category ?? base.category) as PurchaseProduct["category"],
     unit: (input.unit ?? base.unit) as PurchaseProduct["unit"],
     supplierId: input.supplierId ?? base.supplierId,
@@ -169,7 +177,6 @@ function buildProduct(
     listPricePerCai: input.listPricePerCai ?? base.listPricePerCai,
     brand: input.brand ?? base.brand,
     series: input.series ?? base.series,
-    colorCode: input.colorCode ?? base.colorCode,
     colorName: input.colorName ?? base.colorName,
     imageUrl: input.imageUrl ?? base.imageUrl,
     // 🔴 更新既有商品時不可動備註：template 就是它自己，會寫成「由自己複製建立」
