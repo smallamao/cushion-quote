@@ -6,6 +6,7 @@ import { buildOrderDepositMessage } from "@/lib/order-deposit-payment";
 import { findByToken, writeOrderConfirm } from "@/lib/order-confirm-sheet";
 import {
   getOrderDisclosure,
+  isOrderConfirmExpired,
   pickDisclosureItems,
   type PublicOrderConfirmView,
 } from "@/lib/order-confirm-types";
@@ -50,6 +51,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const found = await findByToken(token);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const c = found.confirm;
+
+  // 🔴 過期一律空手而回：連 customerName / photoCount 都不給。
+  //    這支回應裡有完整匯款帳號與照片張數，過期後任何一項都不該再外流。
+  if (isOrderConfirmExpired(c.createdAt)) {
+    return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
+  }
 
   // 照片數量：讀卡片附件。Trello 掛掉不該讓整頁開不起來，失敗就當 0 張。
   let photoCount = 0;
@@ -100,6 +107,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const found = await findByToken(token);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const { confirm: c, rowNumber } = found;
+
+  if (isOrderConfirmExpired(c.createdAt)) {
+    return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
+  }
 
   if (c.status === "confirmed") {
     return NextResponse.json({ ok: false, error: "already_confirmed" }, { status: 409 });

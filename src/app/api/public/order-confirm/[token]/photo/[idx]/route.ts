@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 
 import { findByToken } from "@/lib/order-confirm-sheet";
+import { isOrderConfirmExpired } from "@/lib/order-confirm-types";
 import { fetchAttachmentImage, getCardImageAttachments } from "@/lib/trello-server";
 
 export const runtime = "nodejs";
@@ -21,6 +22,10 @@ export async function GET(
 
   const found = await findByToken(token);
   if (!found) return new NextResponse("not_found", { status: 404 });
+  // 訂貨單照片含客戶姓名、電話、地址，過期後不得再提供
+  if (isOrderConfirmExpired(found.confirm.createdAt)) {
+    return new NextResponse("expired", { status: 410 });
+  }
 
   const i = Number.parseInt(idx, 10);
   if (!Number.isInteger(i) || i < 0) return new NextResponse("bad_index", { status: 400 });

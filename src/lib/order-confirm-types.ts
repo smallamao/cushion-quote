@@ -101,3 +101,26 @@ export function pickDisclosureItems(checked: number[]): string[] {
   const set = new Set(checked);
   return d.items.filter((_, i) => set.has(i));
 }
+
+/**
+ * 連結存活天數。老闆 2026-10-13 拍板 90 天。
+ *
+ * 🔴 為什麼一定要有期限：這張頁面在客人簽完後仍會完整顯示匯款帳號與訂貨單照片。
+ *    訂貨單上有客戶姓名、電話、地址；帳號則是只要改過一次，舊連結就會持續
+ *    顯示錯誤帳號，回頭客照著匯會把錢匯到不存在或錯誤的戶頭——那是掉錢，不只是隱私。
+ *
+ * 90 天的依據：匯款期限是建立後 2 天，實測客人多在數分鐘到 7 天內簽完，
+ * 再保留回頭查帳號與延後備料的餘裕。其他對外流程也都有期限
+ * （報價簽署 expiresAt、派工連結 30 天），這條線原本漏掉。
+ */
+export const ORDER_CONFIRM_TTL_DAYS = 90;
+
+/** 以建立時間起算是否已超過存活期。createdAt 解析不出來時一律視為未過期，避免誤殺正常單。 */
+export function isOrderConfirmExpired(
+  createdAt: string,
+  nowMs: number = Date.now(),
+): boolean {
+  const t = Date.parse(createdAt ?? "");
+  if (!Number.isFinite(t)) return false;
+  return nowMs - t > ORDER_CONFIRM_TTL_DAYS * 86_400_000;
+}

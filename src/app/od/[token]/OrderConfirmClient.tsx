@@ -39,7 +39,8 @@ export function OrderConfirmClient({ token }: { token: string }) {
 
   const [view, setView] = useState<PublicOrderConfirmView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+  // null＝正常；"expired"＝超過存活期；"notfound"＝查無此單（含網址打錯）
+  const [loadError, setLoadError] = useState<null | "expired" | "notfound">(null);
   const [signerName, setSignerName] = useState("");
   const [signature, setSignature] = useState<string | null>(null);
   const [signOpen, setSignOpen] = useState(false);
@@ -52,15 +53,15 @@ export function OrderConfirmClient({ token }: { token: string }) {
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/public/order-confirm/${token}`);
-      const json = (await res.json()) as { ok: boolean; view?: PublicOrderConfirmView };
+      const json = (await res.json()) as { ok: boolean; error?: string; view?: PublicOrderConfirmView };
       if (!json.ok || !json.view) {
-        setLoadError(true);
+        setLoadError(json.error === "expired" ? "expired" : "notfound");
         return;
       }
       setView(json.view);
       setSignerName(json.view.customerName || "");
     } catch {
-      setLoadError(true);
+      setLoadError("notfound");
     } finally {
       setLoading(false);
     }
@@ -85,7 +86,13 @@ export function OrderConfirmClient({ token }: { token: string }) {
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (!json.ok) {
-        setError(json.error === "already_confirmed" ? "這筆訂單已經確認過了。" : (json.error ?? "送出失敗，請稍後再試"));
+        const msg =
+          json.error === "already_confirmed"
+            ? "這筆訂單已經確認過了。"
+            : json.error === "expired"
+              ? "這個連結已失效，請聯絡馬鈴薯沙發重新產生。"
+              : (json.error ?? "送出失敗，請稍後再試");
+        setError(msg);
         return;
       }
       setDone(true);
@@ -100,7 +107,14 @@ export function OrderConfirmClient({ token }: { token: string }) {
   if (loadError || !view) {
     return (
       <Shell>
-        <Notice title="找不到這筆資料" desc="連結可能已失效，請聯絡馬鈴薯沙發重新產生。" />
+        {loadError === "expired" ? (
+          <Notice
+            title="這個連結已失效"
+            desc="為了保護您的訂單資料與匯款資訊，確認連結有使用期限。請直接聯絡馬鈴薯沙發，我們會重新產生一份給您。"
+          />
+        ) : (
+          <Notice title="找不到這筆資料" desc="連結可能有誤或已失效，請聯絡馬鈴薯沙發重新產生。" />
+        )}
       </Shell>
     );
   }
