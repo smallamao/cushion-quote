@@ -98,6 +98,7 @@ export async function createOrder(
   const materialImageUrl = "";
   let initialNotes: CustomOrder["notes"] = [];
   let initialPhotos: string[] = [];
+  let lineChatUrl = "";
   let orderItems: CustomOrder["items"] = [];
 
   if (input.sourceType === "quote") {
@@ -126,6 +127,14 @@ export async function createOrder(
     // 所以這只是省掉「空白時從頭找圖」，不是假設它就是對的圖。
     const quoteImage = versionRow[25] ?? "";
     if (quoteImage.startsWith("http")) initialPhotos = [quoteImage];
+
+    // LINE 對話連結：開單後最常手動補的欄位之一（近 25 張有 16 張要貼）。
+    // 報價階段用 quote-drafter 撈客服對話時就拿得到，寫在內部備註裡（col26），
+    // 這裡直接撈出來繼承。刻意用「找 URL」而不是解析句子——網址有固定前綴，
+    // 不會因為備註怎麼寫而失準。
+    // 走這條而不是讓報價系統直連客服資料庫，是為了不把 service_role 金鑰
+    // 多複製一份到這個專案（老闆 2026-10-13 選 B 案）。
+    lineChatUrl = (versionRow[26] ?? "").match(/https:\/\/chat\.line\.biz\/\S+/)?.[0] ?? "";
     initialNotes = scopeDescription
       .split("\n")
       .map((line: string) => line.trim())
@@ -289,6 +298,7 @@ export async function createOrder(
     installAddress,
     installContactName,
     installContactPhone,
+    lineChatUrl,
   };
 
   await client.sheets.spreadsheets.values.append({
