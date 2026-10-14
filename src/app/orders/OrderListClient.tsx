@@ -459,6 +459,8 @@ export function OrderListClient() {
           o.orderTitle.toLowerCase().includes(q) ||
           o.materialCode.toLowerCase().includes(q) ||
           o.materialName.toLowerCase().includes(q) ||
+          // 客戶單號：B2B 打電話來報他們自己的採購單號時可以直接貼上搜尋
+          (o.clientPoNumber ?? "").toLowerCase().includes(q) ||
           o.items.some(
             (it) =>
               it.colorCode?.toLowerCase().includes(q) ||

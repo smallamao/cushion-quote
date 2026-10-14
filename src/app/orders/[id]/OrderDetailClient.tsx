@@ -99,6 +99,8 @@ export function OrderDetailClient({ orderId }: Props) {
   const { companies } = useCompanies();
   const { users } = useUsers();
   const isAdmin = user?.role === "admin";
+  // 客供底單是內部資料：admin 與 sales 看得到，師傅看不到（老闆 2026-10-14 指定）
+  const canSeeClientPo = user?.role === "admin" || user?.role === "sales";
 
   const [order, setOrder] = useState<CustomOrder | null>(null);
   const [draft, setDraft] = useState<CustomOrder | null>(null);
@@ -109,6 +111,7 @@ export function OrderDetailClient({ orderId }: Props) {
   const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [statusChanging, setStatusChanging] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
+  const [poUploading, setPoUploading] = useState(false);
   const [notionResult, setNotionResult] = useState<{ ok: boolean; message: string } | null>(null);
   // 關聯採購單（供財務頁計入成本 + 反查區塊顯示）；一次抓、兩處共用
   const [linkedPurchases, setLinkedPurchases] = useState<PurchaseOrder[]>([]);
@@ -856,6 +859,92 @@ export function OrderDetailClient({ orderId }: Props) {
                       placeholder="僅內部可見的備忘..."
                     />
                   </div>
+
+                  {/* 客供底單（B2B 客戶自己的採購單）——內部限定，師傅看不到。
+                      刻意不放進 photos：那個是工單照片，會印給師傅看
+                      （老闆 2026-10-14：「可以不用顯示在訂製訂單給師父看到」）。 */}
+                  {canSeeClientPo && (
+                    <div className="md:col-span-2 rounded-lg border border-dashed border-[var(--border)] p-4">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Label className="m-0">客供底單</Label>
+                        <span className="rounded bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[11px] text-[var(--text-tertiary)]">
+                          僅你與內勤可見・不印在工單
+                        </span>
+                      </div>
+
+                      <div className="mb-3 max-w-xs">
+                        <Label className="text-xs">客戶單號</Label>
+                        <Input
+                          value={draft.clientPoNumber ?? ""}
+                          onChange={(e) => updateDraft("clientPoNumber", e.target.value)}
+                          placeholder="對方的採購單號，可用來搜尋"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-start gap-2">
+                        {(draft.clientPoPhotos ?? []).map((url, i) => (
+                          <div key={`${url}-${i}`} className="relative">
+                            <a href={url} target="_blank" rel="noreferrer">
+                              <img
+                                src={url}
+                                alt={`底單 ${i + 1}`}
+                                className="h-24 w-24 rounded border object-cover"
+                              />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateDraft(
+                                  "clientPoPhotos",
+                                  (draft.clientPoPhotos ?? []).filter((_, n) => n !== i),
+                                )
+                              }
+                              className="absolute -right-1.5 -top-1.5 rounded-full bg-red-600 px-1.5 text-xs leading-5 text-white"
+                              title="移除這張"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        <label className="flex h-24 w-24 cursor-pointer items-center justify-center rounded border border-dashed border-[var(--border)] text-xs text-[var(--text-tertiary)] hover:bg-[var(--bg-subtle)]">
+                          {poUploading ? "上傳中…" : "＋ 底單照片"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            disabled={poUploading}
+                            onChange={async (e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              e.target.value = "";
+                              if (files.length === 0) return;
+                              setPoUploading(true);
+                              try {
+                                const urls: string[] = [];
+                                for (const f of files) {
+                                  const fd = new FormData();
+                                  fd.append("file", f);
+                                  fd.append("folder", "client-po");
+                                  const res = await fetch("/api/upload", { method: "POST", body: fd });
+                                  const json = (await res.json()) as { url?: string; error?: string };
+                                  if (!json.url) throw new Error(json.error ?? "上傳失敗");
+                                  urls.push(json.url);
+                                }
+                                updateDraft("clientPoPhotos", [
+                                  ...(draft.clientPoPhotos ?? []),
+                                  ...urls,
+                                ]);
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : "上傳失敗");
+                              } finally {
+                                setPoUploading(false);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
