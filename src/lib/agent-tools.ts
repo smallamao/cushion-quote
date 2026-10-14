@@ -571,7 +571,14 @@ async function handleQueryInvoices(args: Record<string, unknown>): Promise<strin
   }
 }
 
-async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
+async function executeTool(
+  name: string,
+  args: Record<string, unknown>,
+  blockedTools: ReadonlySet<string>,
+): Promise<string> {
+  // 第二道鎖：工具宣告已經過濾過，但模型仍可能憑記憶呼叫被拿掉的工具名。
+  // 開發票會真的送出到加值中心，不能只靠「沒告訴它」來防。
+  if (blockedTools.has(name)) return `此管道不提供「${name}」這個動作，請改用後台操作。`;
   if (name === "create_invoice") return handleCreateInvoice(args);
   if (name === "create_after_sales") return handleCreateAfterSales(args);
   if (name === "query_purchase_orders") return handleQueryPurchaseOrders(args);
@@ -647,16 +654,32 @@ const HISTORY_MAX_PAIRS = 6;
 const HISTORY_TTL_MS = 30 * 60 * 1000;
 const userHistories = new Map<string, { history: Content[]; ts: number }>();
 
-export async function runAgent(userMessage: string, userId?: string): Promise<string> {
+export interface RunAgentOptions {
+  /**
+   * 不開放給這個呼叫管道的工具名稱。宣告會被過濾掉，executeTool 也會再擋一次。
+   * LINE 這條路用它拿掉 create_invoice——開發票是不可逆的對外動作，
+   * 不該由一則聊天訊息觸發（2026-10-15 弱點分析）。
+   */
+  blockedTools?: readonly string[];
+}
+
+export async function runAgent(
+  userMessage: string,
+  userId?: string,
+  options?: RunAgentOptions,
+): Promise<string> {
   // Built-in command: clear conversation history
   if (/^(清除|重置|reset|clear)$/i.test(userMessage.trim())) {
     if (userId) userHistories.delete(userId);
     return "✅ 對話記憶已清除。";
   }
 
+  const blockedTools = new Set(options?.blockedTools ?? []);
+  const allowedDeclarations = functionDeclarations.filter((d) => !blockedTools.has(d.name));
+
   const model = genai.getGenerativeModel({
     model: "gemini-2.5-flash",
-    tools: [{ functionDeclarations }],
+    tools: [{ functionDeclarations: allowedDeclarations }],
     systemInstruction: SYSTEM_PROMPT,
   });
 
@@ -679,7 +702,11 @@ export async function runAgent(userMessage: string, userId?: string): Promise<st
 
     const toolResponses = await Promise.all(
       calls.map(async (call) => {
-        const toolResult = await executeTool(call.name, call.args as Record<string, unknown>);
+        const toolResult = await executeTool(
+          call.name,
+          call.args as Record<string, unknown>,
+          blockedTools,
+        );
         lastToolResult = toolResult;
         return {
           functionResponse: {
