@@ -105,6 +105,27 @@ function daysSince(iso: string): number | null {
   return Math.floor((Date.now() - t) / 86400000);
 }
 
+/** 「3 分鐘前」。老闆看絕對時間要自己心算，判斷不了資料新舊（2026-10-14）。 */
+function fmtAgo(iso: string | null | undefined, now: number): string {
+  if (!iso) return "";
+  const ms = now - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "剛剛";
+  if (min < 60) return `${min} 分鐘前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} 小時前`;
+  return `${Math.floor(hr / 24)} 天前`;
+}
+
+// 🔴 對帳實際要多久（寫死在介面上的「20 秒」是錯的，老闆照著等會看到舊資料就以為壞了）：
+//    launchd ThrottleInterval 60 秒 ＋ 腳本開頭 sleep 5（等 Synology 寫完）
+//    ＋ 同步 Trello ← Numbers、跑比對、推雲端 ≈ 3 分鐘；
+//    WatchPaths 偶爾會漏，StartInterval 600 秒保底 → 最慢約 10 分鐘。
+const DRIFT_RUN_HINT = "約 3 分鐘（WatchPaths 偶爾會漏，最慢 10 分鐘）";
+// 超過這個分鐘數就提醒「可能不是最新的」——發送前的判斷用，跟 24 小時的過期門檻是兩回事。
+const DRIFT_FRESH_MIN = 15;
+
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   not_sent:  { label: "尚未發送", cls: "bg-gray-100 text-gray-600" },
   sent:      { label: "已發送・等回覆", cls: "bg-amber-100 text-amber-800" },
@@ -162,6 +183,12 @@ export function MaterialConfirmClient() {
   }, [start, end]);
 
   useEffect(() => { void load(); }, [load]);
+  // 相對時間要會跳，不然畫面開著就一直停在同一個數字
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   // 開啟時自動跳到「還沒全部確認完」的那一週。
   // 🔴 推算週次會猜錯（叫料提前天數浮動在 11~14 天）——老闆 2026-09-30 打開停在
@@ -569,22 +596,38 @@ export function MaterialConfirmClient() {
             </p>
           )}
           <p className="mt-1 text-xs text-[var(--text-secondary)]">
-            {drift.checkedAt
-              ? `本機最後對帳 ${new Date(drift.checkedAt).toLocaleString("zh-TW", { hour12: false })}`
-              : "本機從未推送過對帳結果"}
+            {drift.checkedAt ? (
+              <>
+                本機最後對帳{" "}
+                <strong className={
+                  now - new Date(drift.checkedAt).getTime() > DRIFT_FRESH_MIN * 60000
+                    ? "text-amber-700" : ""
+                }>
+                  {fmtAgo(drift.checkedAt, now)}
+                </strong>
+                （{new Date(drift.checkedAt).toLocaleString("zh-TW", { hour12: false })}）
+              </>
+            ) : "本機從未推送過對帳結果"}
             {drift.totalRecords > 0 && `　全期間共 ${drift.totalRecords} 筆差異`}
           </p>
+          {drift.checkedAt && !drift.stale &&
+            now - new Date(drift.checkedAt).getTime() > DRIFT_FRESH_MIN * 60000 && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              ⚠️ 這份對帳是 {fmtAgo(drift.checkedAt, now)}跑的。如果之後又改過 Numbers，
+              下面的綠燈不代表現在一致 —— 存檔後等 {DRIFT_RUN_HINT}再重新整理。
+            </p>
+          )}
           {!safeToSend && (
             <p className="mt-2 rounded bg-white/70 px-3 py-2 text-xs leading-relaxed text-[var(--text-primary)]">
               {drift.weekRecords > 0 ? (
                 <>
                   請先把上面標紅的那幾筆改成一致（改 Trello 或改 Numbers 都可以）。
-                  <strong>存檔 Numbers 後約 20 秒會自動重新對帳</strong>，這裡就會跟著更新，
+                  <strong>存檔 Numbers 後會自動重新對帳（{DRIFT_RUN_HINT}）</strong>，這裡就會跟著更新，
                   「複製批次清單」也會自動解鎖 —— 你不需要另外執行什麼。
                 </>
               ) : (
                 <>
-                  對帳是<strong>存檔《馬鈴薯排程.numbers》時自動跑的</strong>（約 20 秒）。
+                  對帳是<strong>存檔《馬鈴薯排程.numbers》時自動跑的</strong>（{DRIFT_RUN_HINT}）。
                   這裡卡住通常代表你的電腦沒開機、或剛改完還沒跑完 —— 開著電腦等一下再重新整理。
                 </>
               )}
