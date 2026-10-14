@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { migrateGuard } from "@/lib/migrate-guard";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 /**
@@ -15,8 +16,10 @@ import { getSheetsClient } from "@/lib/sheets-client";
  *     (productName at C, unitPrice at H, isActive at K). Re-emit as 25-col.
  *
  * Usage:
- *   GET /api/sheets/purchase-products/migrate-to-25col?dryRun=true   (preview)
- *   GET /api/sheets/purchase-products/migrate-to-25col?dryRun=false  (apply)
+ *   GET  /api/sheets/purchase-products/migrate-to-25col   (dry-run preview, default)
+ *   POST /api/sheets/purchase-products/migrate-to-25col   (apply migration)
+ *
+ * Both require the x-init-secret header.
  */
 
 const SHEET = "採購商品";
@@ -151,9 +154,70 @@ function migrateRow(row: string[]): string[] | null {
   ];
 }
 
+/** Shared data-reading logic used by both GET (dry-run) and POST (apply). */
+async function readAndPlan(client: Awaited<ReturnType<typeof getSheetsClient>>) {
+  if (!client) throw new Error("client is null");
+  const res = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: READ_RANGE,
+  });
+  const rows = (res.data.values ?? []) as string[][];
+
+  const diagnostics: Diagnostics = {
+    total: rows.length,
+    formatCounts: {
+      "already-25col": 0,
+      "21col-broken": 0,
+      "13col-legacy": 0,
+      empty: 0,
+    },
+    samplesPerFormat: {},
+  };
+
+  const newRows: string[][] = [];
+  let lastWrittenRow = 1; // header is row 1
+
+  rows.forEach((row, idx) => {
+    const fmt = detectFormat(row);
+    diagnostics.formatCounts[fmt]++;
+
+    const sheetRow = idx + 2;
+    const after = migrateRow(row);
+
+    if (!diagnostics.samplesPerFormat[fmt]) {
+      diagnostics.samplesPerFormat[fmt] = {
+        sheetRow,
+        before: row.slice(0, 25),
+        after,
+      };
+    }
+
+    if (fmt === "already-25col") {
+      // Keep original row as-is
+      newRows.push(row.slice(0, 25));
+      lastWrittenRow = sheetRow;
+    } else if (fmt === "empty") {
+      // Skip empty rows; they'll be left blank below
+      newRows.push([]);
+    } else {
+      // Migrated
+      newRows.push(after ?? []);
+      lastWrittenRow = sheetRow;
+    }
+  });
+
+  // Trim trailing empty rows from output (no need to write blank rows back)
+  while (newRows.length > 0 && newRows[newRows.length - 1].length === 0) {
+    newRows.pop();
+  }
+
+  return { diagnostics, newRows, lastWrittenRow };
+}
+
+/** GET: dry-run preview — reads data but never writes. */
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const dryRun = searchParams.get("dryRun") !== "false"; // default to dry-run for safety
+  const denied = migrateGuard(request);
+  if (denied) return denied;
 
   const client = await getSheetsClient();
   if (!client) {
@@ -164,71 +228,36 @@ export async function GET(request: Request) {
   }
 
   try {
-    const res = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: READ_RANGE,
+    const { diagnostics, newRows, lastWrittenRow } = await readAndPlan(client);
+    return NextResponse.json({
+      ok: true,
+      dryRun: true,
+      diagnostics,
+      wouldWriteRows: newRows.length,
+      firstWriteRange: WRITE_RANGE(lastWrittenRow),
     });
-    const rows = (res.data.values ?? []) as string[][];
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
 
-    const diagnostics: Diagnostics = {
-      total: rows.length,
-      formatCounts: {
-        "already-25col": 0,
-        "21col-broken": 0,
-        "13col-legacy": 0,
-        empty: 0,
-      },
-      samplesPerFormat: {},
-    };
+/** POST: apply migration — reads data and writes back the aligned rows. */
+export async function POST(request: Request) {
+  const denied = migrateGuard(request);
+  if (denied) return denied;
 
-    const newRows: string[][] = [];
-    let lastWrittenRow = 1; // header is row 1
+  const client = await getSheetsClient();
+  if (!client) {
+    return NextResponse.json(
+      { ok: false, error: "Google Sheets 未設定" },
+      { status: 503 },
+    );
+  }
 
-    rows.forEach((row, idx) => {
-      const fmt = detectFormat(row);
-      diagnostics.formatCounts[fmt]++;
+  try {
+    const { diagnostics, newRows, lastWrittenRow } = await readAndPlan(client);
 
-      const sheetRow = idx + 2;
-      const after = migrateRow(row);
-
-      if (!diagnostics.samplesPerFormat[fmt]) {
-        diagnostics.samplesPerFormat[fmt] = {
-          sheetRow,
-          before: row.slice(0, 25),
-          after,
-        };
-      }
-
-      if (fmt === "already-25col") {
-        // Keep original row as-is
-        newRows.push(row.slice(0, 25));
-        lastWrittenRow = sheetRow;
-      } else if (fmt === "empty") {
-        // Skip empty rows; they'll be left blank below
-        newRows.push([]);
-      } else {
-        // Migrated
-        newRows.push(after ?? []);
-        lastWrittenRow = sheetRow;
-      }
-    });
-
-    // Trim trailing empty rows from output (no need to write blank rows back)
-    while (newRows.length > 0 && newRows[newRows.length - 1].length === 0) {
-      newRows.pop();
-    }
-
-    if (dryRun) {
-      return NextResponse.json({
-        ok: true,
-        dryRun: true,
-        diagnostics,
-        wouldWriteRows: newRows.length,
-        firstWriteRange: WRITE_RANGE(lastWrittenRow),
-      });
-    }
-
-    // Apply migration: write back the entire data range in one update
     if (newRows.length === 0) {
       return NextResponse.json({
         ok: true,

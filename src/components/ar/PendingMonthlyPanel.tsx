@@ -170,6 +170,28 @@ export function PendingMonthlyPanel() {
     }
   }
 
+  // 「月結待出」工作表初始化。只有 admin 打得到那支端點。
+  const [initializing, setInitializing] = useState(false);
+  const [initError, setInitError] = useState("");
+
+  async function initPendingMonthlySheet() {
+    setInitializing(true);
+    setInitError("");
+    try {
+      const res = await fetch("/api/sheets/migrate-v13", { method: "POST" });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) {
+        setInitError(json.error === "forbidden" ? "需要 admin 權限" : (json.error ?? "建立失敗"));
+        return;
+      }
+      await load();
+    } catch (err) {
+      setInitError(err instanceof Error ? err.message : "建立失敗");
+    } finally {
+      setInitializing(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-6 text-sm text-[var(--text-secondary)]">
@@ -180,13 +202,31 @@ export function PendingMonthlyPanel() {
   }
 
   if (needsMigration) {
+    // 原本這裡叫 admin 自己在瀏覽器開一次 /api/sheets/migrate-v13。那支端點用 GET
+    // 就會寫入線上試算表，而 cookie 是 SameSite=Lax——只要有人把那個網址發給
+    // 已登入的 admin 並讓他點下去，寫入就會發生。現在端點只收 POST，這裡改成
+    // 一顆真的按鈕（2026-10-15 弱點分析）。
     return (
       <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        尚未建立「月結待出」工作表。請 admin 開啟一次以下網址以初始化:
-        <br />
-        <code className="mt-1 block font-mono text-xs">
-          https://cushion-quote.vercel.app/api/sheets/migrate-v13
-        </code>
+        <p>尚未建立「月結待出」工作表。</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          disabled={initializing}
+          onClick={() => void initPendingMonthlySheet()}
+        >
+          {initializing ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              建立中…
+            </>
+          ) : (
+            "建立工作表"
+          )}
+        </Button>
+        {initError ? <p className="mt-2 text-xs text-red-700">{initError}</p> : null}
       </div>
     );
   }

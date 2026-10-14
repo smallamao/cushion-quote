@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { migrateGuard } from "@/lib/migrate-guard";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 const SHEETS = [
@@ -66,7 +67,9 @@ const SHEETS = [
   },
 ];
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = migrateGuard(request);
+  if (denied) return denied;
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });

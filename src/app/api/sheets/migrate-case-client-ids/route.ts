@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { caseRowToRecord, caseRecordToRow, getCaseRows } from "@/app/api/sheets/_v2-utils";
 import type { Channel, ClientSource, ClientType, CommissionMode } from "@/lib/types";
@@ -31,18 +31,6 @@ interface Skipped {
   caseName: string;
   clientId: string;
   reason: "already-valid";
-}
-
-function requireAdmin(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  const session = verifySession(token);
-  if (!session) return { error: "not_authenticated" as const, status: 401 };
-  if (session.role !== "admin") return { error: "forbidden" as const, status: 403 };
-  return { session };
 }
 
 function rowToCompany(row: string[]): Company {
@@ -283,11 +271,14 @@ function planMigration(
 }
 
 // GET: dry-run preview
+// 這支 migrate 端點跟其他 16 支不同：它有真正的後台 UI 在用（客戶主檔的案件
+// clientId 對應面板），而瀏覽器拿不到 INIT_SECRET，所以不走 x-init-secret，
+// 維持「admin session ＋ 寫入只走 POST」把關。cookie 是 SameSite=Lax，
+// 跨站 POST 不會帶 cookie，CSRF 這條路同樣被堵住。
+// 原本各 route 自己解析 cookie，現在統一用 lib/api-auth。
 export async function GET(request: Request) {
   const guard = requireAdmin(request);
-  if ("error" in guard) {
-    return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status });
-  }
+  if (guard.denied) return guard.denied;
 
   const client = await getSheetsClient();
   if (!client) {
@@ -317,9 +308,7 @@ export async function GET(request: Request) {
 // POST: apply a list of changes (client passes the approved subset from GET)
 export async function POST(request: Request) {
   const guard = requireAdmin(request);
-  if ("error" in guard) {
-    return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status });
-  }
+  if (guard.denied) return guard.denied;
 
   let body: { changes?: Array<{ caseId: string; newClientId: string }> };
   try {

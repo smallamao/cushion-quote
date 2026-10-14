@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { migrateGuard } from "@/lib/migrate-guard";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 // GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
@@ -13,7 +14,9 @@ const FIRST_NEW_COL = "AR";
 const LAST_NEW_COL = "AU";
 const REQUIRED_COLUMN_COUNT = 47;
 
-export async function GET() {
+export async function POST(request: Request) {
+  const denied = migrateGuard(request);
+  if (denied) return denied;
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });

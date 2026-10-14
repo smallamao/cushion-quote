@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 // GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
@@ -49,7 +50,13 @@ const HEADERS = [
 
 const SHEET_TITLE = "月結待出";
 
-export async function GET() {
+// 這兩支 migrate 端點跟其他 16 支不同：它們有真正的後台 UI 在用，而瀏覽器拿不到
+// INIT_SECRET。所以改用「admin session ＋ 只能 POST 寫入」把關：
+// cookie 是 SameSite=Lax，跨站 POST 不會帶 cookie，CSRF 這條路同樣被堵住，
+// 而寫入前一定是一個登入中的 admin 本人按下按鈕。
+export async function POST(request: Request) {
+  const denied = requireAdmin(request).denied;
+  if (denied) return denied;
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json(

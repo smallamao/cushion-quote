@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { migrateGuard } from "@/lib/migrate-guard";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 const POS_BASE_PRICES: string[][] = [
@@ -67,7 +68,9 @@ const POS_ADJ_RATES: string[][] = [
   ["LEATHER_LV3", "LEATHER_LV3", "1000", "900", "1500", "1200", "2000", "1800", "300"],
 ];
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = migrateGuard(request);
+  if (denied) return denied;
   try {
     const client = await getSheetsClient();
     if (!client) {
