@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { ImagePlus, LayoutTemplate, Loader2, Plus, Save, Trash2, X } from "lucide-react";
+import { GripVertical, ImagePlus, LayoutTemplate, Loader2, Plus, Save, Trash2, X } from "lucide-react";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +26,45 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { CustomOrder, OrderItem, OrderNote } from "@/lib/types";
+
+/**
+ * 可拖曳排序的列。品項／標題行／特殊備註共用。
+ *
+ * 用「握把」而不是整列可拖：這些列裡面都是輸入框，整列可拖會讓選取文字變成拖曳
+ * （老闆 2026-10-14 反映排序不了，但排序不能犧牲打字）。
+ * 寫法沿用報價編輯器既有的 dnd-kit 作法，不另外發明一套。
+ */
+function SortableRow({
+  id,
+  className,
+  children,
+}: {
+  id: string;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`${className} ${isDragging ? "relative z-10 opacity-90 shadow-[var(--shadow-md)]" : ""}`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        title="按住拖曳調整順序"
+        aria-label="拖曳調整順序"
+        className="mb-2 flex w-full cursor-grab items-center justify-center rounded py-0.5 text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] active:cursor-grabbing"
+      >
+        <GripVertical className="h-3.5 w-3.5 rotate-90" />
+      </button>
+      {children}
+    </div>
+  );
+}
 
 async function uploadFile(file: File): Promise<string> {
   const formData = new FormData();
@@ -69,6 +116,17 @@ export function WorkorderTab({
   const [cropOpen, setCropOpen] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [photosDragOver, setPhotosDragOver] = useState(false);
+
+  /** 拖曳結束後重排陣列。品項與備註各一份，邏輯相同只是對象不同。 */
+  function reorder<K extends "items" | "notes">(key: K, event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const list = draft[key] as { id: string }[];
+    const from = list.findIndex((x) => x.id === active.id);
+    const to = list.findIndex((x) => x.id === over.id);
+    if (from === -1 || to === -1) return;
+    updateDraft(key, arrayMove(list, from, to) as CustomOrder[K]);
+  }
 
   async function handleMaterialFile(file: File): Promise<void> {
     setMaterialUploading(true);
@@ -299,6 +357,8 @@ export function WorkorderTab({
         <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
           品項清單
         </h3>
+        <DndContext collisionDetection={closestCenter} onDragEnd={(e) => reorder("items", e)}>
+        <SortableContext items={draft.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-3">
           {draft.items.map((item: OrderItem) => {
             const isHeader = item.itemType === "header";
@@ -310,8 +370,9 @@ export function WorkorderTab({
                 ),
               );
             return (
-              <div
+              <SortableRow
                 key={item.id}
+                id={item.id}
                 className={
                   isHeader
                     ? "rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/20"
@@ -495,10 +556,12 @@ export function WorkorderTab({
                     </div>
                   </>
                 )}
-              </div>
+              </SortableRow>
             );
           })}
         </div>
+        </SortableContext>
+        </DndContext>
         <div className="mt-3 flex gap-2">
           <Button
             variant="outline"
@@ -545,12 +608,16 @@ export function WorkorderTab({
         <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
           特殊備註
         </h3>
+        <DndContext collisionDetection={closestCenter} onDragEnd={(e) => reorder("notes", e)}>
+        <SortableContext items={draft.notes.map((n) => n.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-2">
           {draft.notes.map((note: OrderNote) => (
-            <div
+            <SortableRow
               key={note.id}
-              className="flex items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3"
+              id={note.id}
+              className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3"
             >
+            <div className="flex items-start gap-2">
               <div className="flex-1">
                 <Input
                   value={note.text}
@@ -621,8 +688,11 @@ export function WorkorderTab({
                 <X className="h-4 w-4" />
               </button>
             </div>
+            </SortableRow>
           ))}
         </div>
+        </SortableContext>
+        </DndContext>
         <Button
           variant="outline"
           size="sm"
