@@ -56,7 +56,7 @@ rm deploy.sh
 
 **試算表 ID**（從網址取得）：
 ```
-https://docs.google.com/spreadsheets/d/1RSFvij68gV6KmH7AhLV61-BeQ0-rXkfwk_R0Hfc6WhU/edit
+https://docs.google.com/spreadsheets/d/你的試算表ID/edit
                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                                                   這是您的試算表 ID
 ```
@@ -85,13 +85,13 @@ cat service-account.json | jq -c
 ```bash
 # 複製此模板，填入您的實際憑證後執行
 
-export GOOGLE_SHEETS_SPREADSHEET_ID="1RSFvij68gV6KmH7AhLV61-BeQ0-rXkfwk_R0Hfc6WhU"
+export GOOGLE_SHEETS_SPREADSHEET_ID="你的試算表ID"
 
 export GOOGLE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"my-project-123","private_key_id":"abc123...","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC...\n-----END PRIVATE KEY-----\n","client_email":"my-bot@my-project-123.iam.gserviceaccount.com","client_id":"123456789","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"https://www.googleapis.com/robot/v1/metadata/x509/my-bot%40my-project-123.iam.gserviceaccount.com"}'
 
 export CLOUDINARY_CLOUD_NAME="dsk9jzq6r"
-export CLOUDINARY_API_KEY="952232719249728"
-export CLOUDINARY_API_SECRET="2uZQU3KKtaXqoFyltf8IiU6e3iA"
+export CLOUDINARY_API_KEY="你的Cloudinary_API_KEY"
+export CLOUDINARY_API_SECRET="你的Cloudinary_API_Secret"
 
 ./deploy.sh
 ```

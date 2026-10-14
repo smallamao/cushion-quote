@@ -9,7 +9,7 @@
 **GOOGLE_SHEETS_SPREADSHEET_ID**
 ```
 你的 Google Sheets 試算表 ID
-範例：1RSFvij68gV6KmH7AhLV61-BeQ0-rXkfwk_R0Hfc6WhU
+範例：你的試算表ID
 ```
 
 **GOOGLE_SERVICE_ACCOUNT_KEY**
@@ -29,13 +29,13 @@
 **CLOUDINARY_API_KEY**
 ```
 你的 Cloudinary API Key
-範例：952232719249728
+範例：你的Cloudinary_API_KEY
 ```
 
 **CLOUDINARY_API_SECRET**
 ```
 你的 Cloudinary API Secret
-範例：2uZQU3KKtaXqoFyltf8IiU6e3iA
+範例：你的Cloudinary_API_Secret
 ```
 
 ## 部署步驟

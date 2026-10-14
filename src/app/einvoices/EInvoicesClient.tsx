@@ -1153,7 +1153,7 @@ export function EInvoicesClient() {
                   size="sm"
                   className="h-6 text-xs"
                   onClick={() => {
-                    const example = "買方名稱\t統編\tEmail\t品項\t數量\t單價\t總金額\n禾琪概念家居有限公司\t85164778\tsmallamao79@gmail.com\t沙發布 5M\t1\t34650\t34650\n禾琪概念家居有限公司\t85164778\tsmallamao79@gmail.com\t抱枕布 2M\t1\t8000\t8000";
+                    const example = "買方名稱\t統編\tEmail\t品項\t數量\t單價\t總金額\n禾琪概念家居有限公司\t85164778\tbuyer@example.com\t沙發布 5M\t1\t34650\t34650\n禾琪概念家居有限公司\t85164778\tbuyer@example.com\t抱枕布 2M\t1\t8000\t8000";
                     void navigator.clipboard.writeText(example);
                     setNotice({ tone: "info", title: "範例已複製" });
                   }}

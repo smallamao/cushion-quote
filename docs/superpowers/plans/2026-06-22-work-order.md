@@ -71,7 +71,7 @@
 | AD | notes | 備忘（內部） | 客戶說急 |
 | AE | createdAt | 建立時間 ISO | 2026-06-22T10:00:00Z |
 | AF | updatedAt | 更新時間 ISO | 2026-06-22T10:00:00Z |
-| AG | createdBy | 建立者 email | smallamao79@gmail.com |
+| AG | createdBy | 建立者 email | admin@example.com |
 
 #### 計算欄位（不存 Sheets，前端計算）
 - `totalCost = materialCost + laborCost + shippingCost + otherCost`

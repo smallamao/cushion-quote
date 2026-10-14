@@ -40,7 +40,7 @@
 
 從試算表網址取得 ID：
 ```
-https://docs.google.com/spreadsheets/d/1RSFvij68gV6KmH7AhLV61-BeQ0-rXkfwk_R0Hfc6WhU/edit
+https://docs.google.com/spreadsheets/d/你的試算表ID/edit
                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                                                      這是試算表 ID
 ```

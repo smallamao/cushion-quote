@@ -47,7 +47,7 @@ vercel
 
 | 變數名稱 | 說明 | 範例值 |
 |---------|------|--------|
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | Google Sheets ID | `1RSFvij68gV6KmH7AhLV61-BeQ0-rXkfwk_R0Hfc6WhU` |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | Google Sheets ID | `你的試算表ID` |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | Service Account JSON（單行） | `{"type":"service_account",...}` |
 | `CLOUDINARY_CLOUD_NAME` | Cloudinary Cloud Name | `your-cloud-name` |
 | `CLOUDINARY_API_KEY` | Cloudinary API Key | `123456789012345` |

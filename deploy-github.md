@@ -37,11 +37,11 @@ git push -u origin main
    點擊「Environment Variables」，新增以下變數：
 
    ```
-   GOOGLE_SHEETS_SPREADSHEET_ID = 1RSFvij68gV6KmH7AhLV61-BeQ0-rXkfwk_R0Hfc6WhU
+   GOOGLE_SHEETS_SPREADSHEET_ID = 你的試算表ID
    GOOGLE_SERVICE_ACCOUNT_KEY = [從 .env.local 複製]
    CLOUDINARY_CLOUD_NAME = dsk9jzq6r
-   CLOUDINARY_API_KEY = 952232719249728
-   CLOUDINARY_API_SECRET = 2uZQU3KKtaXqoFyltf8IiU6e3iA
+   CLOUDINARY_API_KEY = 你的Cloudinary_API_KEY
+   CLOUDINARY_API_SECRET = 你的Cloudinary_API_Secret
    ```
 
    **每個變數都要選擇：Production, Preview, Development**
