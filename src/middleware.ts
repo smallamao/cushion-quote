@@ -2,37 +2,17 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { canTechnicianAccess } from "@/lib/permissions";
+import { verifySessionEdge } from "@/lib/auth-edge";
 
-// 注意:middleware 在 Edge runtime 跑,所以不能 import server-only 模組
-// 這邊需要自己做簡化版的 session 驗證 (不動用 crypto from "node:crypto")
+// middleware 在 Edge runtime 跑，不能 import server-only 模組，所以簽章驗證
+// 用 WebCrypto 另外實作一份（lib/auth-edge.ts），格式與 lib/auth.ts 完全一致。
+//
+// 🔴 2026-10-15 修補：先前這裡只把憑證 base64 解碼、看角色與到期日就放行，
+//    完全不驗簽章——任何人手寫 {"role":"admin","exp":<未來>} 轉 base64 當
+//    cookie 送出就是管理員。而 /api/sheets 底下 118 個端點只有 12 個自己驗簽，
+//    其餘 106 個全靠這道門。驗簽與否的差別在 __tests__/auth-edge.test.ts 有測。
 
 const SESSION_COOKIE_NAME = "cq_session";
-
-interface MiniSession {
-  // 任何非 admin 角色（technician / sales / 未來新增）一律套用白名單，預設拒絕
-  role: string;
-  exp: number;
-}
-
-/**
- * Edge-compatible session parser:只 decode + 檢查 exp,不驗 HMAC 簽章。
- * 真正的簽章驗證留給 API routes (在 node runtime)。
- * middleware 只做粗略守門,讓未登入的人看不到頁面。
- */
-function quickParseSession(token: string | undefined): MiniSession | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-  try {
-    const bodyStr = atob(parts[0].replace(/-/g, "+").replace(/_/g, "/"));
-    const session = JSON.parse(bodyStr) as MiniSession;
-    if (!session.role || !session.exp) return null;
-    if (session.exp < Math.floor(Date.now() / 1000)) return null;
-    return session;
-  } catch {
-    return null;
-  }
-}
 
 // 白名單來自 lib/permissions.ts（單一事實來源，與 auth.ts 共用）
 
@@ -159,7 +139,7 @@ function shortHostRewrite(request: NextRequest): NextResponse | null {
   return NextResponse.rewrite(url, { request: { headers } });
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 簽署短網域根路徑短碼 → /sign/{code}
@@ -187,7 +167,9 @@ export function middleware(request: NextRequest) {
 
   // 檢查 session
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const session = quickParseSession(token);
+  // 真正驗 HMAC 簽章。AUTH_SECRET 沒設定時 verifySessionEdge 一律回 null，
+  // 全部擋在門外——寧可大家都進不來，也不要無聲放行偽造憑證。
+  const session = await verifySessionEdge(token, process.env.AUTH_SECRET);
 
   if (!session) {
     // API 路徑回 JSON 401,方便前端 fetch 處理
