@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { buildGoogleAuthUrl, buildSignedState } from "@/lib/auth";
+import { sanitizeReturnTo } from "@/lib/permissions";
 
-function sanitizeReturnTo(raw: string | null): string {
-  if (!raw) return "/shipping-notice";
-  if (raw === "/" || /^\/[^/]/.test(raw)) return raw;
-  return "/shipping-notice";
-}
 
 /**
  * GET /api/auth/login

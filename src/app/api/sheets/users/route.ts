@@ -4,6 +4,18 @@ import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
 import type { UserRole } from "@/lib/types";
 import { createUser, listUsers, updateUser } from "@/lib/users-sheet";
 
+/**
+ * 可以指派給使用者的角色。
+ *
+ * types.ts 的 UserRole 還有 "sales"，但這套系統目前不建 sales 帳號
+ * （middleware 把 sales 與 technician 同權看待）。要支援就在這裡加。
+ */
+const ASSIGNABLE_ROLES: readonly UserRole[] = ["admin", "technician"];
+
+function isAssignableRole(role: unknown): role is UserRole {
+  return typeof role === "string" && (ASSIGNABLE_ROLES as readonly string[]).includes(role);
+}
+
 /** 從 request 讀當前 session;非 admin 回 null */
 function requireAdmin(request: Request) {
   const token = request.headers
@@ -52,7 +64,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (role !== "admin" && role !== "technician") {
+  if (!isAssignableRole(role)) {
     return NextResponse.json(
       { ok: false, error: "role 無效" },
       { status: 400 },
@@ -113,7 +125,16 @@ export async function PATCH(request: Request) {
   }> = {};
   if (body.email !== undefined) patch.email = body.email.trim().toLowerCase();
   if (body.displayName !== undefined) patch.displayName = body.displayName.trim();
-  if (body.role !== undefined) patch.role = body.role;
+  // 🔴 2026-10-15 修補：PATCH 原本不驗角色值，POST 有驗。只有 admin 打得到這支，
+  //    所以不是提權路徑，真正的風險是手滑：角色被寫成 "Admin"（大寫 A）時，
+  //    middleware 的 `session.role !== "admin"` 就認不出來，那個人下次登入會被
+  //    鎖在師傅白名單裡，而且完全看不出原因。
+  if (body.role !== undefined) {
+    if (!isAssignableRole(body.role)) {
+      return NextResponse.json({ ok: false, error: "role 無效" }, { status: 400 });
+    }
+    patch.role = body.role;
+  }
   if (body.isActive !== undefined) patch.isActive = body.isActive;
 
   try {

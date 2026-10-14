@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { canTechnicianAccess } from "@/lib/permissions";
+import { canTechnicianAccess, isPublicPath } from "@/lib/permissions";
 import { verifySessionEdge } from "@/lib/auth-edge";
 
 // middleware 在 Edge runtime 跑，不能 import server-only 模組，所以簽章驗證
@@ -14,49 +14,7 @@ import { verifySessionEdge } from "@/lib/auth-edge";
 
 const SESSION_COOKIE_NAME = "cq_session";
 
-// 白名單來自 lib/permissions.ts（單一事實來源，與 auth.ts 共用）
-
-function isPublicPath(pathname: string): boolean {
-  return (
-    pathname === "/login" ||
-    pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/linebot") ||
-    // 客戶線上簽署頁與其公開 API（token 為唯一憑證，免登入）
-    pathname === "/sign" ||
-    pathname.startsWith("/sign/") ||
-    pathname === "/cleaning" ||
-    pathname.startsWith("/cleaning/") ||
-    // 外部師傅派工單頁（簽章綁單號，免登入；驗簽在頁面 node runtime 做）
-    // /w 為現行短路徑，/dispatch 為改版前舊路徑（只做轉址）
-    pathname.startsWith("/w/") ||
-    pathname === "/dispatch" ||
-    pathname.startsWith("/dispatch/") ||
-    // 叫料確認單：客人核對訂貨單照片＋簽名＋提供希望收件時段（token 為唯一憑證，免登入）
-    pathname.startsWith("/confirm/") ||
-    // 線上下訂確認（客人簽名頁，token 為唯一憑證）
-    pathname.startsWith("/od/") ||
-    // 司機配送時段確認（token 為唯一憑證，免登入）
-    pathname.startsWith("/d/") ||
-    pathname.startsWith("/s/") ||
-    pathname.startsWith("/api/public/") ||
-    // init & migrate 改由 x-init-secret header 保護，不列為公開路徑
-    pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico" ||
-    pathname === "/logo.png" ||
-    pathname === "/sw.js" ||
-    pathname === "/sw.js.map" ||
-    pathname.startsWith("/workbox-") ||
-    // 🔴 自訂 service worker（worker/index.ts 編出來的 worker-<hash>.js）。
-    //    sw.js 會 importScripts 它，被導向登入頁的話整個 SW 安裝就失敗，
-    //    連帶 PWA 離線快取與推播一起壞掉。新增 public/ 下的 SW 資產都要補這裡。
-    pathname.startsWith("/worker-") ||
-    pathname.endsWith(".png") ||
-    pathname.endsWith(".jpg") ||
-    pathname.endsWith(".svg") ||
-    pathname.endsWith(".ico") ||
-    pathname.endsWith(".mjs")
-  );
-}
+// 白名單與公開路徑判斷都來自 lib/permissions.ts（單一事實來源，與 auth.ts 共用）
 
 function isApiPath(pathname: string): boolean {
   return pathname.startsWith("/api/");

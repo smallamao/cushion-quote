@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
 
+import { requireSession } from "@/lib/api-auth";
 import {
   defaultFolderFor,
   isAllowedMime,
+  isAllowedUploadFolder,
   isCloudinaryConfigured,
   maxBytesFor,
   uploadBufferToCloudinary,
 } from "@/lib/cloudinary-upload";
 
 export async function POST(request: Request) {
+  // 這支在師傅白名單裡（現場照片／簽名上傳），但原本整支沒讀 session。
+  // middleware 之外再驗一次。
+  const guard = requireSession(request);
+  if (guard.denied) return guard.denied;
+
   if (!isCloudinaryConfigured()) {
     return NextResponse.json({ ok: false, error: "Cloudinary 未設定" }, { status: 503 });
   }
@@ -41,6 +48,14 @@ export async function POST(request: Request) {
       typeof folderOverride === "string" && folderOverride
         ? folderOverride
         : defaultFolderFor(entry.type);
+
+    // 資料夾只能是白名單上的值，不接受前端自由指定
+    if (!isAllowedUploadFolder(folder)) {
+      return NextResponse.json(
+        { ok: false, error: `不允許的上傳目錄：${folder}` },
+        { status: 400 },
+      );
+    }
 
     const data = Buffer.from(await entry.arrayBuffer());
     const result = await uploadBufferToCloudinary(data, entry.type, folder);

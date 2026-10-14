@@ -16,6 +16,35 @@ export const CLOUDINARY_FOLDERS = {
   productImages: "product-images",
 } as const;
 
+/**
+ * `/api/upload` 允許寫入的資料夾白名單。
+ *
+ * 🔴 2026-10-15 修補：原本 folder 直接吃前端給的任意字串，任何登入者都能往
+ *    Cloudinary 的任意目錄丟檔案——資產會散落，額度也會被吃掉。
+ *    這份清單是實際清查「前端真的會傳的值 ＋ defaultFolderFor 的輸出 ＋
+ *    CLOUDINARY_FOLDERS」得出的，不是猜的。
+ *    新增上傳點時要同時補這裡，否則上傳會收到 400（故意的：寧可明確壞掉，
+ *    也不要靜默寫到別的目錄去）。
+ */
+const UPLOAD_ALLOWED_FOLDERS = new Set<string>([
+  "quote-attachments", // 報價附圖（預設）
+  "signing-unsigned", // 待簽的報價單
+  "contract-attachments", // PDF 附件（預設）
+  "after-sales-videos", // 售後影片（預設）
+  "product-images", // 商品圖
+  "after-sales-signatures", // 售後現場簽名
+  "purchase-products", // 採購商品圖
+  "work-order-pdfs", // 工單 PDF
+  "notion-workorders", // 工單圖
+  "notion-quotes", // 報價圖
+  "client-po", // 客供底單
+  "signed-contracts", // 簽好的合約
+]);
+
+export function isAllowedUploadFolder(folder: string): boolean {
+  return UPLOAD_ALLOWED_FOLDERS.has(folder);
+}
+
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // 15 MB
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50 MB (~30s @ 1080p from iPhone)
 const MAX_PDF_BYTES = 15 * 1024 * 1024;

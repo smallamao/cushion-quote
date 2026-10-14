@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
 import {
   createEquipment,
   listEquipment,
   updateEquipment,
 } from "@/lib/equipment-sheet";
+
+// 🔴 2026-10-15 修補：/api/sheets/equipment 整個前綴在師傅白名單裡（售後單要選
+//    設備型號），但白名單是前綴比對、不分方法，而這支的 POST／PATCH 原本零驗證。
+//    結果師傅直接打 API 就能新增或停用設備型號——畫面上他做不到的事。
+//    GET 維持開放（選型號要用），寫入限 admin。
 
 // GET 不讀 request → Next 會在建置時靜態化、永遠回舊快照（範本存了看不到的根因）
 export const dynamic = "force-dynamic";
@@ -15,6 +21,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
   let body: {
     modelCode?: string;
     modelName?: string;
@@ -47,6 +56,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
   let body: {
     modelCode?: string;
     modelName?: string;
