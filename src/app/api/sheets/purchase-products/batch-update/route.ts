@@ -80,6 +80,20 @@ function rowToProduct(row: string[], rowIndex: number): PurchaseProduct & { rowI
  * Batch update unit prices for multiple products
  */
 export async function POST(request: Request) {
+  // 🔒 停用中（2026-10-15）：本檔的欄位對應是錯的——更新時間常數指向 M 欄（品牌），
+  // 批量改價更會把新價格寫進 H 欄（廠商編號），導致商品永久失去廠商且無法復原。
+  // 線上資料已確認至今未被觸發（廠商編號無一筆為數字、品牌欄 878 筆全空）。
+  // 修正欄位對應並以一筆測試商品驗證寫入位置後，才可把這個旗標改回 false。
+  // 型別刻意標成 boolean 而非字面值 true：否則後面的程式會被判定為無法執行，
+  // 型別推斷連帶失效。
+  const DISABLED: boolean = true;
+  if (DISABLED) {
+    return NextResponse.json(
+      { ok: false, error: "此批次功能已暫時停用（欄位對應錯誤修正中）" },
+      { status: 503 },
+    );
+  }
+
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json(

@@ -481,6 +481,11 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* 「批量改價」暫時停用（2026-10-15）。
+              程式把新價格寫到 H 欄（廠商編號）而不是 K 欄（進價），按下去商品會
+              永久失去廠商、進價歸零，且舊值沒有任何地方留存、救不回來。
+              線上資料確認過至今未被按過（廠商編號無一筆為數字、品牌欄 878 筆全空）。
+              修好欄位對應、並用一筆測試商品驗證寫入位置正確後才可放行。
           <Button
             variant="outline"
             onClick={() => setShowBatchPrice(true)}
@@ -488,6 +493,7 @@ const payload: PurchaseProduct[] = validRows.map((r) => ({
           >
             <DollarSign className="mr-1 h-4 w-4" /> 批量改價
           </Button>
+          */}
           <Button variant="outline" onClick={openBulk}>
             <Layers className="mr-1 h-4 w-4" /> 批量新增
           </Button>
