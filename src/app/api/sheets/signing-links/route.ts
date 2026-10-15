@@ -1,20 +1,11 @@
-import { randomBytes } from "node:crypto";
-
 import { NextResponse } from "next/server";
 
 import { getSheetsClient } from "@/lib/sheets-client";
 import { createSigningLink, revokePendingLinksForVersion } from "@/lib/signing-links-sheet";
+import { generateShortCode, SHORT_CODE_LEN } from "@/lib/signing-link-code";
 import type { SigningLink } from "@/lib/signing-types";
 
 import { getVersionRows, isoNow, versionRowToRecord } from "../_v2-utils";
-
-const CODE_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ";
-function shortCode(len: number): string {
-  const bytes = randomBytes(len);
-  let out = "";
-  for (let i = 0; i < len; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
-  return out;
-}
 
 
 interface CreateBody {
@@ -66,9 +57,10 @@ export async function POST(request: Request) {
     const days = body.expiresInDays ?? 30;
     const expiresAt = days > 0 ? new Date(Date.now() + days * DAY_MS).toISOString() : "";
     const link: SigningLink = {
-      // 6 字元短碼（無易混淆字元 0/O/1/l/I）：54^6 ≈ 2.5×10^10 組合；有效期 30 天、
-      // 簽完即失效、查無此碼一律 404 不洩漏資訊，暴力猜中不具實務可行性。
-      token: shortCode(6),
+      // 10 字元短碼（無易混淆字元 0/O/1/l/I）：54^10 ≈ 2×10^17 組合（~57 bits）；
+      // 有效期 30 天、簽完即失效、查無此碼一律 404 不洩漏資訊。
+      // 舊版 6 字元短碼以字串等值比對，已發出的連結永久相容（不因版本更新失效）。
+      token: generateShortCode(SHORT_CODE_LEN),
       versionId: version.versionId,
       quoteId: version.quoteId,
       caseId: version.caseId,
