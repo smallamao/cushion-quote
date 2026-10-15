@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import crypto from "node:crypto";
-import { verifySessionEdge } from "@/lib/auth-edge";
+import { MIN_SECRET_LEN, verifySessionEdge } from "@/lib/auth-edge";
 
 // 守門程式（Edge）與 API（Node）必須對同一個憑證做出相同判斷，
 // 否則不是放行偽造憑證，就是把所有人鎖在外面。
@@ -84,5 +84,42 @@ describe("Edge 與 Node 兩邊判斷一致", () => {
       const nodeOk = nodeVerify(t) !== null;
       expect(edgeOk, `判斷不一致：${t.slice(0, 40)}…`).toBe(nodeOk);
     }
+  });
+});
+
+describe("AUTH_SECRET 強度", () => {
+  // 程式原本只檢查密鑰非空，不阻止有人把它設成 "secret" 這種短字串。
+  // 那種情況下只要一張 cookie 外流，離線就能把密鑰爆出來，然後自己簽一張
+  // admin 憑證走正門進來。
+  it("密鑰過短時一律拒絕，不論憑證本身是否有效", async () => {
+    const shortSecret = "secret";
+    expect(shortSecret.length).toBeLessThan(MIN_SECRET_LEN);
+
+    // 用那把短密鑰「正確地」簽一張憑證——簽章本身是對的
+    const body = btoa(
+      JSON.stringify({ role: "admin", exp: Math.floor(Date.now() / 1000) + 3600 }),
+    )
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(shortSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+    const sig = btoa(String.fromCharCode(...new Uint8Array(mac)))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    // 簽章正確，但密鑰太短 → 還是回 null（fail-closed）
+    expect(await verifySessionEdge(`${body}.${sig}`, shortSecret)).toBeNull();
+  });
+
+  it("剛好達到門檻的密鑰可以通行", () => {
+    expect(MIN_SECRET_LEN).toBe(32);
   });
 });

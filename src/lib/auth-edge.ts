@@ -12,6 +12,19 @@
  * 這裡用 WebCrypto 重現同一套，並以常數時間比對避免 timing 側錄。
  */
 
+import { timingSafeEqual } from "@/lib/constant-time";
+
+/**
+ * AUTH_SECRET 最低長度。短於此一律視為未設定、全部拒絕。
+ *
+ * 程式原本只檢查非空，不阻止有人把它設成 `secret` 這種短字串。那種情況下只要
+ * 一張 cookie 外流，離線就能把密鑰爆出來，然後自己簽一張 admin 憑證走正門進來。
+ *
+ * 定義在這裡（不依賴 runtime 的檔案）並由 lib/auth.ts 匯入，兩邊才不會走鐘——
+ * 門檻不一致會變成「middleware 放行但 route 拒絕」或反過來。
+ */
+export const MIN_SECRET_LEN = 32;
+
 export interface EdgeSession {
   userId?: string;
   email?: string;
@@ -36,14 +49,6 @@ function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** 常數時間比對：長度不同直接判否，長度相同則逐位元 XOR 累加，不提早跳出。 */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 /**
  * 驗證並解析 session；任何一關不過都回 null。
  * 沒設定 AUTH_SECRET 時一律回 null——寧可全部擋下，也不要無聲放行。
@@ -52,7 +57,7 @@ export async function verifySessionEdge(
   token: string | undefined | null,
   secret: string | undefined,
 ): Promise<EdgeSession | null> {
-  if (!token || !secret) return null;
+  if (!token || !secret || secret.length < MIN_SECRET_LEN) return null;
   const parts = token.split(".");
   if (parts.length !== 2) return null;
   const [body, sig] = parts;

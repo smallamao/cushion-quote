@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { timingSafeEqual } from "@/lib/constant-time";
+
 /**
  * 一次性資料搬移端點的守門函式。每個 handler 的第一行就呼叫它。
  *
@@ -34,10 +36,3 @@ export function migrateGuard(request: Request): NextResponse | null {
   return null;
 }
 
-/** 常數時間字串比對。長度不同直接回 false（長度本身不是機密）。 */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}

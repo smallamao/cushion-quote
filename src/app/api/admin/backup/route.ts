@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Readable } from "stream";
 
 import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { timingSafeEqual } from "@/lib/constant-time";
 import { getDriveClient, getSheetsClient } from "@/lib/sheets-client";
 
 const BACKUP_FOLDER_NAME = "營運系統-備份";
@@ -24,8 +25,8 @@ function allowInternalCron(request: Request): boolean {
   // CRON_SECRET. If configured, accept; otherwise fall back to auth cookie.
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
-  const provided = request.headers.get("authorization");
-  return provided === `Bearer ${secret}`;
+  const provided = request.headers.get("authorization") ?? "";
+  return timingSafeEqual(provided, `Bearer ${secret}`);
 }
 
 function isAdmin(request: Request): boolean {

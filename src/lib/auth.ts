@@ -2,10 +2,16 @@ import "server-only";
 
 import crypto from "crypto";
 
+import { MIN_SECRET_LEN } from "@/lib/auth-edge";
 import { canTechnicianAccess } from "@/lib/permissions";
 import type { Session, UserRole } from "@/lib/types";
 
 const AUTH_SECRET = process.env.AUTH_SECRET ?? "";
+if (AUTH_SECRET && AUTH_SECRET.length < MIN_SECRET_LEN) {
+  console.warn(
+    `[auth] AUTH_SECRET 長度不足 ${MIN_SECRET_LEN} 字元，視為未設定；所有登入操作將被拒絕。`,
+  );
+}
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID ?? "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? "";
 const GOOGLE_REDIRECT_URI =
@@ -20,8 +26,8 @@ export const SESSION_DURATION_DAYS = 30;
 
 /** 把資料簽名成 base64 session token */
 export function signSession(payload: Omit<Session, "iat" | "exp">): string {
-  if (!AUTH_SECRET) {
-    throw new Error("AUTH_SECRET not configured");
+  if (AUTH_SECRET.length < MIN_SECRET_LEN) {
+    throw new Error("AUTH_SECRET not configured or too short (minimum 32 characters)");
   }
   const now = Math.floor(Date.now() / 1000);
   const session: Session = {
@@ -39,7 +45,7 @@ export function signSession(payload: Omit<Session, "iat" | "exp">): string {
 
 /** 驗證並解析 session token;失敗回 null */
 export function verifySession(token: string | undefined | null): Session | null {
-  if (!token || !AUTH_SECRET) return null;
+  if (!token || AUTH_SECRET.length < MIN_SECRET_LEN) return null;
   const parts = token.split(".");
   if (parts.length !== 2) return null;
   const [body, sig] = parts;
@@ -152,7 +158,7 @@ export async function exchangeGoogleCode(
  * 不再依賴 cookie 傳遞 state，避免跨站 redirect 遺失 cookie 的問題。
  */
 export function buildSignedState(returnTo: string): string {
-  if (!AUTH_SECRET) throw new Error("AUTH_SECRET not configured");
+  if (AUTH_SECRET.length < MIN_SECRET_LEN) throw new Error("AUTH_SECRET not configured or too short (minimum 32 characters)");
   const nonce = crypto.randomBytes(16).toString("base64url");
   const ts = Math.floor(Date.now() / 1000);
   const sig = crypto
@@ -172,7 +178,7 @@ const STATE_MAX_AGE_SECONDS = 600; // 10 分鐘
 export function verifySignedState(
   stateParam: string,
 ): { returnTo: string } | null {
-  if (!AUTH_SECRET) return null;
+  if (AUTH_SECRET.length < MIN_SECRET_LEN) return null;
   try {
     const decoded = JSON.parse(
       Buffer.from(stateParam, "base64url").toString("utf-8"),

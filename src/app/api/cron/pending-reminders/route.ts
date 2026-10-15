@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { timingSafeEqual } from "@/lib/constant-time";
 import { listConfirms } from "@/lib/material-confirm-sheet";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { listOrderConfirms } from "@/lib/order-confirm-sheet";
@@ -33,7 +34,8 @@ function daysSince(iso: string): number | null {
 /** Vercel Cron 帶 Bearer CRON_SECRET；手動觸發則走 admin session。 */
 function authorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
-  if (secret && request.headers.get("authorization") === `Bearer ${secret}`) return true;
+  const authHeader = request.headers.get("authorization") ?? "";
+  if (secret && timingSafeEqual(authHeader, `Bearer ${secret}`)) return true;
   const token = request.headers
     .get("cookie")
     ?.split(";")

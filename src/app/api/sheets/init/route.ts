@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { timingSafeEqual } from "@/lib/constant-time";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 const SHEET_DEFINITIONS = [
@@ -390,7 +391,8 @@ const DEFAULT_LABOR_ROWS = [
 
 export async function POST(request: Request) {
   const secret = process.env.INIT_SECRET?.trim();
-  if (!secret || request.headers.get("x-init-secret") !== secret) {
+  const provided = (request.headers.get("x-init-secret") ?? "").trim();
+  if (!secret || !timingSafeEqual(provided, secret)) {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 
