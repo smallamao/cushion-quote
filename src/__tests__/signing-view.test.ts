@@ -55,11 +55,15 @@ describe("buildPublicSigningView — 撤銷／過期不可再回傳資料", () =
     assertNoPii(view as unknown as Record<string, unknown>);
   });
 
-  it("已簽署：只給下載已簽文件所需的最小集合", () => {
+  it("已簽署：只給下載已簽文件所需的最小集合，且不含合約網址", () => {
     const view = buildPublicSigningView({ status: "signed", ...FULL });
     expect(view.status).toBe("signed");
-    // 客人要能下載自己簽好的那份
-    expect(view.signedPdfUrl).toBe(FULL.signedPdfUrl);
+    // 🔴 合約網址不可以送到瀏覽器——客人走我們自己的 /download 代理就好。
+    //    網址一旦進到瀏覽器就會進歷史紀錄、被轉傳、被擴充套件讀到。
+    expect(view.signedPdfUrl).toBe("");
+    expect(JSON.stringify(view)).not.toContain("signed.pdf");
+    // 用一個旗標讓前端知道「已經簽好、可以下載了」
+    expect(view.hasSignedPdf).toBe(true);
     expect(view.quoteId).toBe(FULL.quoteId);
     // 但預填用的個資與未簽文件都不該再給
     expect(view.contactPhone ?? "").toBe("");

@@ -55,4 +55,10 @@ export interface PublicSigningView {
   taxId?: string;
   /** 發票抬頭預設值（＝客戶主檔公司名稱）；客人仍可改 */
   invoiceTitle?: string;
+  /**
+   * 已經有簽好的合約可以下載。
+   * 刻意只給布林值而不給網址——合約網址不送進瀏覽器，下載一律走
+   * /api/public/sign/{token}/download 代理（2026-10-15）。
+   */
+  hasSignedPdf?: boolean;
 }

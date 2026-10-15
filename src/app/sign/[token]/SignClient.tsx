@@ -72,7 +72,7 @@ export function SignClient({ token }: { token: string }) {
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [justSigned, setJustSigned] = useState(false);
   const [signModalOpen, setSignModalOpen] = useState(false);
   const [inAppBrowser, setInAppBrowser] = useState(false);
 
@@ -149,9 +149,11 @@ export function SignClient({ token }: { token: string }) {
           invoiceTitle: invoiceTitleV,
         }),
       });
-      const json = (await res.json()) as { ok: boolean; signedPdfUrl?: string; error?: string };
-      if (!json.ok || !json.signedPdfUrl) throw new Error(mapError(json.error ?? ""));
-      setSignedUrl(json.signedPdfUrl);
+      const json = (await res.json()) as { ok: boolean; signed?: boolean; error?: string };
+      if (!json.ok || !json.signed) throw new Error(mapError(json.error ?? ""));
+      // 伺服器不再回合約網址（網址進了瀏覽器就會留在歷史紀錄、被轉傳）。
+      // 這裡只記「簽好了」，下載按鈕走 /download 代理。
+      setJustSigned(true);
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : mapError(""));
     } finally {
@@ -175,8 +177,8 @@ export function SignClient({ token }: { token: string }) {
     );
   }
 
-  const doneUrl = signedUrl ?? (view.status === "signed" ? view.signedPdfUrl : null);
-  if (doneUrl) {
+  const showDone = justSigned || (view.status === "signed" && view.hasSignedPdf);
+  if (showDone) {
     return (
       <Shell>
         <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">

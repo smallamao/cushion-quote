@@ -11,7 +11,7 @@ import type { PublicSigningView, SigningLinkStatus } from "@/lib/signing-types";
  *
  * 規則（預設拒絕，不是預設放行）：
  *   - pending  → 完整內容。客人要填訂貨人資訊與發票欄位，這些預填是刻意的設計。
- *   - signed   → 只給 quoteId 與已簽 PDF，讓客人回頭下載自己那份。
+ *   - signed   → 只給 quoteId 與「有合約可下載」的旗標，不給網址本身。
  *                預填用的個資與「未簽」文件都不再需要，一律不給。
  *   - 其他（expired／revoked／未知狀態）→ 只給狀態。
  */
@@ -71,10 +71,13 @@ export function buildPublicSigningView(input: SigningViewInput): PublicSigningVi
   }
 
   if (input.status === "signed") {
+    // 合約網址不送進瀏覽器：進了瀏覽器就會留在歷史紀錄、被轉傳、被擴充套件讀到，
+    // 而 Cloudinary 的網址一旦流出就永遠有效。客人走 /download 代理，
+    // 那支會驗 token 與狀態。
     return {
       ...emptyView(input.status),
       quoteId: input.quoteId,
-      signedPdfUrl: input.signedPdfUrl,
+      hasSignedPdf: Boolean(input.signedPdfUrl),
     };
   }
 

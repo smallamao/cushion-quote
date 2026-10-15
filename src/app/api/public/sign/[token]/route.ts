@@ -139,6 +139,13 @@ async function uploadSignedPdf(bytes: Uint8Array, quoteId: string): Promise<stri
       {
         resource_type: "raw",
         folder: "signed-contracts",
+        // 🔴 2026-10-15：改用 authenticated 遞送。先前上傳的是 public——
+        //    網址即通行證，任何人拿到就能永久下載客人簽好的合約，而我們這端
+        //    無法撤銷。實測匿名抓一份真實合約得到 HTTP 200／1.9MB。
+        //    authenticated 的未簽章網址會被 Cloudinary 擋下（實測 401）。
+        //    ⚠️ 免費方案不支援 update_access_mode，既有的 33 份改不了，
+        //    只有新簽的合約受此保護（老闆 2026-10-15 選定方案 A）。
+        type: "authenticated",
         // 不帶 .pdf 副檔名：Cloudinary 預設封鎖 .pdf raw 遞送（回 401）。
         // 下載改走本站 /download 代理，補上正確檔名與 application/pdf。
         public_id: `signed_${quoteId}_${Date.now()}`,
@@ -312,7 +319,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       }
     });
 
-    return NextResponse.json({ ok: true, signedPdfUrl });
+    // 不把合約網址回給瀏覽器，只回「簽好了」。下載走 /download 代理。
+    return NextResponse.json({ ok: true, signed: true });
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : "unknown" },
