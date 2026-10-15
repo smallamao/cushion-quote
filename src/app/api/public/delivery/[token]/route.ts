@@ -8,6 +8,8 @@
  */
 import { NextResponse } from "next/server";
 
+import { isPublicLinkExpired } from "@/lib/public-link-expiry";
+
 import { appendNotification } from "@/lib/notifications-sheet";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
@@ -53,6 +55,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const found = await findByDriverToken(token);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // 🔴 2026-10-16：這類客人／司機連結原本沒有任何過期機制，發出去就永久有效。
+  //    過期一律回 410 且不回傳內容（見 lib/public-link-expiry.ts）。
+  if (isPublicLinkExpired(found.confirm.createdAt)) {
+    return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
+  }
   const c = found.confirm;
 
   let info = null;
@@ -80,6 +87,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const found = await findByDriverToken(token);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // 🔴 2026-10-16：這類客人／司機連結原本沒有任何過期機制，發出去就永久有效。
+  //    過期一律回 410 且不回傳內容（見 lib/public-link-expiry.ts）。
+  if (isPublicLinkExpired(found.confirm.createdAt)) {
+    return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
+  }
   const { confirm: c, rowNumber } = found;
 
   let body: Record<string, unknown>;

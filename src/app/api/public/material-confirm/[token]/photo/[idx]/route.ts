@@ -9,6 +9,8 @@
  */
 import { NextResponse } from "next/server";
 
+import { isPublicLinkExpired } from "@/lib/public-link-expiry";
+
 import { findByToken } from "@/lib/material-confirm-sheet";
 import { realCardId } from "@/lib/material-confirm-types";
 import { fetchAttachmentImage, getCardImageAttachments } from "@/lib/trello-server";
@@ -23,6 +25,11 @@ export async function GET(
 
   const found = await findByToken(token);
   if (!found) return new NextResponse("not_found", { status: 404 });
+  // 🔴 2026-10-16：這類客人／司機連結原本沒有任何過期機制，發出去就永久有效。
+  //    過期一律回 410 且不回傳內容（見 lib/public-link-expiry.ts）。
+  if (isPublicLinkExpired(found.confirm.createdAt)) {
+    return new NextResponse("expired", { status: 410 });
+  }
 
   const i = Number.parseInt(idx, 10);
   if (!Number.isInteger(i) || i < 0) return new NextResponse("bad_index", { status: 400 });

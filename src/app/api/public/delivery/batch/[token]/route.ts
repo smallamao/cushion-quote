@@ -7,6 +7,8 @@
  */
 import { NextResponse } from "next/server";
 
+import { isPublicLinkExpired } from "@/lib/public-link-expiry";
+
 import { appendNotification } from "@/lib/notifications-sheet";
 import { findByDriverBatch, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
@@ -42,6 +44,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const rows = await findByDriverBatch(token);
   if (rows.length === 0) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // 🔴 2026-10-16：司機批次連結原本永久有效。整批裡只要有一筆超過期限就擋下，
+  //    不逐筆過濾——批次連結是一個整體，部分失效會讓司機看到半套資料更混亂。
+  if (rows.some(({ confirm }) => isPublicLinkExpired(confirm.createdAt))) {
+    return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
+  }
 
   const orders = await Promise.all(
     rows.map(async ({ confirm: c }) => {
@@ -71,6 +78,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const rows = await findByDriverBatch(token);
   if (rows.length === 0) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // 🔴 2026-10-16：司機批次連結原本永久有效。整批裡只要有一筆超過期限就擋下，
+  //    不逐筆過濾——批次連結是一個整體，部分失效會讓司機看到半套資料更混亂。
+  if (rows.some(({ confirm }) => isPublicLinkExpired(confirm.createdAt))) {
+    return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
+  }
 
   let body: { picks?: unknown; rejects?: unknown };
   try {

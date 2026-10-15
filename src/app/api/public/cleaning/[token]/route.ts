@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { isPublicLinkExpired } from "@/lib/public-link-expiry";
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import { findServiceById, updateService } from "@/lib/after-sales-sheet";
 import { appendNotification } from "@/lib/notifications-sheet";
@@ -48,6 +50,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const found = await locate(token);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // 🔴 2026-10-16：這類客人／司機連結原本沒有任何過期機制，發出去就永久有效。
+  //    過期一律回 410 且不回傳內容（見 lib/public-link-expiry.ts）。
+  if (isPublicLinkExpired(found.session.createdAt)) {
+    return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
+  }
   const { session, role } = found;
   const service = await findServiceById(session.serviceId);
 
@@ -89,6 +96,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const found = await locate(token);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // 🔴 2026-10-16：這類客人／司機連結原本沒有任何過期機制，發出去就永久有效。
+  //    過期一律回 410 且不回傳內容（見 lib/public-link-expiry.ts）。
+  if (isPublicLinkExpired(found.session.createdAt)) {
+    return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
+  }
   const { session, rowNumber, role } = found;
 
   let body: Record<string, unknown>;
