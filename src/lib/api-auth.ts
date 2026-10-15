@@ -33,6 +33,34 @@ export function getSession(request: Request): Session | null {
 export type Guard = { session: Session; denied?: never } | { denied: NextResponse; session?: never };
 
 /**
+ * agent（報價腳本、排程系統）的身分：用 x-api-key 認，不走 cookie session。
+ *
+ * 為什麼需要：from-agent 端點收到請求後，會用 internalRequest() 自己組一個
+ * Request 去呼叫 /api/sheets/cases 等內部路由。那個合成的 Request 沒有 cookie，
+ * 2026-10-15 的安全稽核替這些路由補上 requireAdmin 之後，整支 from-agent 就全掛了
+ * （建單回「建立案件失敗：not_authenticated」）。
+ *
+ * 身分刻意不是「某個人」：email 標成 agent@internal，操作日誌才看得出是腳本動的，
+ * 不會被誤記在某個員工頭上。agent 也不在使用者表裡，所以不走在職狀態那套檢查。
+ */
+const AGENT_SESSION: Session = {
+  userId: "agent",
+  email: "agent@internal",
+  displayName: "報價代理",
+  role: "admin",
+  iat: 0,
+  exp: 0,
+};
+
+function getAgentSession(request: Request): Session | null {
+  const configured = process.env.AGENT_API_KEY?.trim();
+  if (!configured) return null;
+  const provided = request.headers.get("x-api-key")?.trim();
+  if (!provided || provided !== configured) return null;
+  return AGENT_SESSION;
+}
+
+/**
  * 要求已登入，並且這個帳號「現在」還是在職狀態。未登入或已停用回 401。
  *
  * 🔴 2026-10-15 弱點分析第 2 項：憑證有效期 30 天，而簽發後系統再也不去查這個人
@@ -51,6 +79,10 @@ export type Guard = { session: Session; denied?: never } | { denied: NextRespons
  *     殘留風險只有「剛被停用的人」，而且只在 Sheets 故障期間。
  */
 export async function requireSession(request: Request): Promise<Guard> {
+  // agent 先判：它沒有 cookie，也不在使用者表裡，不該走下面的在職狀態檢查
+  const agent = getAgentSession(request);
+  if (agent) return { session: agent };
+
   const session = getSession(request);
   if (!session) {
     return {

@@ -162,3 +162,45 @@ describe("denyIfNotAssignee — 水平越權", () => {
     expect(denyIfNotAssignee(session({ role: "technician", displayName: " 阿明 " }), "阿明 ")).toBeNull();
   });
 });
+
+describe("agent 身分 — x-api-key（2026-10-15 安全稽核後補）", () => {
+  function agentReq(key?: string): Request {
+    return new Request("https://x.test/api/sheets/cases", {
+      headers: key ? { "x-api-key": key } : {},
+    });
+  }
+
+  it("帶正確的 x-api-key 就放行，不需要 cookie", async () => {
+    vi.stubEnv("AGENT_API_KEY", "secret-key");
+    const guard = await requireAdmin(agentReq("secret-key"));
+    expect(guard.denied).toBeUndefined();
+    expect(guard.session?.email).toBe("agent@internal");
+    expect(guard.session?.role).toBe("admin");
+    vi.unstubAllEnvs();
+  });
+
+  it("agent 不查使用者表（它不在表裡，查了會被判 account_not_found）", async () => {
+    vi.stubEnv("AGENT_API_KEY", "secret-key");
+    getUserStatus.mockResolvedValue({ unavailable: false, status: undefined });
+    const guard = await requireAdmin(agentReq("secret-key"));
+    expect(guard.denied).toBeUndefined();
+    expect(getUserStatus).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+
+  it("key 不對就擋掉，不會退回成一般 session", async () => {
+    vi.stubEnv("AGENT_API_KEY", "secret-key");
+    verifySession.mockReturnValue(null);
+    const guard = await requireAdmin(agentReq("wrong-key"));
+    expect(guard.denied?.status).toBe(401);
+    vi.unstubAllEnvs();
+  });
+
+  it("AGENT_API_KEY 沒設定時，x-api-key 一律無效", async () => {
+    vi.stubEnv("AGENT_API_KEY", "");
+    verifySession.mockReturnValue(null);
+    const guard = await requireAdmin(agentReq("any-key"));
+    expect(guard.denied?.status).toBe(401);
+    vi.unstubAllEnvs();
+  });
+});

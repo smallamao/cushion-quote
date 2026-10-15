@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import type {
   CaseRecord,
@@ -82,6 +84,13 @@ function copyLinesToVersion(
 }
 
 export async function GET(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = await requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const { searchParams } = new URL(request.url);
   const quoteId = searchParams.get("quoteId")?.trim() ?? "";
   const clientId = searchParams.get("clientId")?.trim() ?? "";
@@ -139,6 +148,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = await requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const payload = (await request.json()) as CreateVersionPayload & { action?: CreateVersionAction };
   if (!payload.action) {
     return NextResponse.json({ ok: false, error: "action is required" }, { status: 400 });
@@ -156,9 +172,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: false, error: "basedOnVersionId is required" }, { status: 400 });
       }
 
-      const [versionRows, lineRows] = await Promise.all([
+      const [versionRows, lineRows, quoteRows] = await Promise.all([
         getVersionRows(client),
         getVersionLineRows(client),
+        getQuoteRows(client),
       ]);
 
       const baseRowIndex = versionRows.findIndex((row) => row[0] === basedOnVersionId);
@@ -171,9 +188,18 @@ export async function POST(request: Request) {
       const now = isoNow();
       const today = isoDateNow();
 
+      // 方案名稱是快照欄，但新版本要吃「報價」當下的名字，不能沿用舊版本的舊名字。
+      // 否則老闆改了報價名稱、再開一版，舊名字就被複製回來，看起來像「改了又跳回去」
+      // （2026-10-14 S1062 陳宥亨實例：報價名稱已改成「臥榻墊」，新版本仍是舊的長名字）。
+      // 這欄不可留空：散客依慣例不填案件名稱，order-create 會拿它當訂單的「訂製內容」。
+      const currentQuote = quoteRows
+        .map(quoteRowToRecord)
+        .find((quote) => quote.quoteId === baseVersion.quoteId);
+
       const draft: QuoteVersionRecord = normalizeVersionUpdate(
         {
           ...baseVersion,
+          quoteNameSnapshot: currentQuote?.quoteName || baseVersion.quoteNameSnapshot,
           versionId,
           versionNo,
           basedOnVersionId,
@@ -585,6 +611,13 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = await requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const payload = (await request.json()) as Partial<QuoteVersionRecord> & { versionId?: string };
   const versionId = payload.versionId?.trim() ?? "";
   if (!versionId) {

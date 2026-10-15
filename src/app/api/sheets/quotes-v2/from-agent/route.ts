@@ -189,10 +189,18 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * 轉呼叫內部路由。必須帶上 x-api-key：這些路由在 2026-10-15 的安全稽核後都加了
+ * requireAdmin，而合成的 Request 沒有 cookie，不帶 key 會被擋成 not_authenticated。
+ * 本端點入口已驗過同一把 key，這裡是把已驗證的身分往下傳，不是繞過檢查。
+ */
 function internalRequest(path: string, body: unknown, method: "POST" | "PATCH" | "PUT" = "POST"): Request {
   return new Request(`http://internal${path}`, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.AGENT_API_KEY?.trim() ?? "",
+    },
     body: JSON.stringify(body),
   });
 }
