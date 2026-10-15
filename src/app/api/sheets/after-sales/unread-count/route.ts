@@ -4,16 +4,11 @@ import { NextResponse } from "next/server";
 // 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用實作，停用與降權立刻生效。
 
 import { getActiveSession } from "@/lib/api-auth";
+import { listServices } from "@/lib/after-sales-sheet";
 import { getSheetsClient } from "@/lib/sheets-client";
+import { selectUnreadReplies } from "@/lib/unread-replies";
 import { findUserByEmail, updateUser } from "@/lib/users-sheet";
 
-
-interface UnreadItem {
-  serviceId: string;
-  author: string;
-  content: string;
-  occurredAt: string;
-}
 
 /** GET — 回傳未讀回覆數 + 最新 20 筆未讀明細 */
 export async function GET(request: Request) {
@@ -53,20 +48,34 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, unreadCount: 0, items: [] });
   }
 
-  // row: [0]=replyId [1]=serviceId [2]=occurredAt [3]=author [4]=content [5]=attachments [6]=createdAt
-  const unreadItems: UnreadItem[] = [];
-  for (const row of replyRows) {
-    const occurredAt = row[2] ?? "";
-    const author = row[3] ?? "";
-    if (occurredAt > lastRead && author !== session.displayName) {
-      unreadItems.push({
-        serviceId: row[1] ?? "",
-        author,
-        content: (row[4] ?? "").slice(0, 80),
-        occurredAt,
-      });
+  // 🔴 2026-10-15 第二輪稽核：原本只比對「時間 > 上次已讀」與「作者不是自己」，
+  //    完全沒有比對這張單是不是你的——師傅因此看得到所有單的回覆前 80 字，
+  //    包含其他師傅的案子與客人對話。非 admin 要先算出自己被指派的單號。
+  const isAdmin = session.role === "admin";
+  let assignedServiceIds: Set<string> = new Set();
+  if (!isAdmin) {
+    const me = session.displayName.trim();
+    if (!me) {
+      // 拿不到自己的名字就無法判斷歸屬，一律回空——不可退化成「全部看得到」
+      return NextResponse.json({ ok: true, unreadCount: 0, items: [] });
+    }
+    try {
+      const services = await listServices();
+      assignedServiceIds = new Set(
+        services.filter((sv) => (sv.assignedTo ?? "").trim() === me).map((sv) => sv.serviceId),
+      );
+    } catch {
+      return NextResponse.json({ ok: true, unreadCount: 0, items: [] });
     }
   }
+
+  // row: [0]=replyId [1]=serviceId [2]=occurredAt [3]=author [4]=content [5]=attachments [6]=createdAt
+  const unreadItems = selectUnreadReplies(replyRows, {
+    lastRead,
+    displayName: session.displayName,
+    isAdmin,
+    assignedServiceIds,
+  });
 
   // 按時間倒序，最多回傳 20 筆
   unreadItems.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));

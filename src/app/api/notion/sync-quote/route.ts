@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+
+import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { versionRowToRecord } from "@/app/api/sheets/_v2-utils";
 import { classifyQuoteCategory } from "@/lib/quote-category";
@@ -91,6 +93,14 @@ async function upsertImageBlock(pageId: string, imageUrl: string): Promise<void>
 }
 
 export async function POST(req: NextRequest) {
+  // 🔴 2026-10-15 第二輪稽核：/api/sheets 以外的端點在第一輪被整批漏掉——
+  //    我的掃描範圍只做了 /api/sheets/**。這些端點一樣碰公司憑證與營運資料
+  //    （Trello／Notion 金鑰、舊系統代理、司機電話、AI 助理工具），
+  //    而且同樣只靠 middleware 那一道門。route 層再驗一次。
+  const guard = await requireAdmin(req);
+  if (guard.denied) return guard.denied;
+
+
   const { versionId, jpgUrl, clientName: clientNameOverride } = (await req.json()) as { versionId: string; jpgUrl?: string; clientName?: string };
   if (!versionId) return NextResponse.json({ ok: false, error: "versionId required" }, { status: 400 });
 

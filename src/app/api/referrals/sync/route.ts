@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 export const maxDuration = 70;
 
 import { getSheetsClient } from "@/lib/sheets-client";
@@ -10,7 +12,15 @@ import {
 } from "@/lib/referral-utils";
 import { getReferrerRows, writeReferrerRows } from "../_sheets-utils";
 
-export async function POST() {
+export async function POST(request: Request) {
+  // 🔴 2026-10-15 第二輪稽核：/api/sheets 以外的端點在第一輪被整批漏掉——
+  //    我的掃描範圍只做了 /api/sheets/**。這些端點一樣碰公司憑證與營運資料
+  //    （Trello／Notion 金鑰、舊系統代理、司機電話、AI 助理工具），
+  //    而且同樣只靠 middleware 那一道門。route 層再驗一次。
+  const guard = await requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const legacyUrl = process.env.LEGACY_API_URL;
   if (!legacyUrl) {
     return NextResponse.json({ ok: false, error: "LEGACY_API_URL 未設定" }, { status: 503 });

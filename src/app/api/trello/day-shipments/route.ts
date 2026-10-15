@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import type { CustomFieldItem, TrelloCard } from "@/lib/trello-helpers";
 
 const TRELLO_KEY = process.env.TRELLO_KEY?.trim();
@@ -97,6 +99,14 @@ async function fetchCustomFieldsBatch(
 // 回傳指定日（台北時區）due 到期的全部卡片＋各卡 custom fields。
 // 分組、訊息組裝都在前端做（重用 trello-helpers 的既有解析）。
 export async function GET(req: NextRequest) {
+  // 🔴 2026-10-15 第二輪稽核：/api/sheets 以外的端點在第一輪被整批漏掉——
+  //    我的掃描範圍只做了 /api/sheets/**。這些端點一樣碰公司憑證與營運資料
+  //    （Trello／Notion 金鑰、舊系統代理、司機電話、AI 助理工具），
+  //    而且同樣只靠 middleware 那一道門。route 層再驗一次。
+  const guard = await requireAdmin(req);
+  if (guard.denied) return guard.denied;
+
+
   if (!TRELLO_KEY || !TRELLO_TOKEN) {
     return NextResponse.json({ ok: false, error: "Trello 未設定" }, { status: 503 });
   }

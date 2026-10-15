@@ -97,6 +97,33 @@ export interface FetchedImage {
   contentType: string;
 }
 
+/**
+ * 這個網址能不能帶上公司的 Trello 憑證。
+ *
+ * 🔴 2026-10-15 第二輪稽核：原本的判斷是「只要不是 S3 就附上 Authorization」，
+ *    也就是預設給、只排除一個已知例外。但 Trello 卡片的附件可以是**任意連結**，
+ *    指向誰的主機都行——只要有人在板上加一個連到自己伺服器的附件，公司的
+ *    TRELLO_KEY／TRELLO_TOKEN 就會跟著送過去，對方從 access log 就撿得到。
+ *
+ *    改成白名單：預設不給，只有 Trello 自家網域才給。
+ *    用 URL 解析後比對 hostname，不是字串 includes——`api.trello.com.evil.com`
+ *    這種後綴偽裝用 includes 會過。
+ */
+const TRELLO_CREDENTIAL_HOSTS = ["trello.com"] as const;
+
+export function shouldSendTrelloCredentials(rawUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  // 憑證不走明文
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  return TRELLO_CREDENTIAL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+}
+
 /** 取單一附件的圖檔位元組。逐一嘗試候選網址，全部失敗才回 null。 */
 export async function fetchAttachmentImage(
   a: TrelloAttachmentLite,
@@ -110,11 +137,11 @@ export async function fetchAttachmentImage(
     } catch {
       continue;
     }
-    // S3 預簽網址帶 Authorization 會被 S3 拒絕
-    const isS3 = parsed.hostname.includes("s3.amazonaws.com");
-    const headers: Record<string, string> = isS3
-      ? {}
-      : { Authorization: `OAuth oauth_consumer_key="${TRELLO_KEY}", oauth_token="${TRELLO_TOKEN}"` };
+    // 預設不給憑證；只有 Trello 自家網域才附上。
+    // （S3 預簽網址本來就不該帶 Authorization，會被 S3 拒絕——白名單順便涵蓋。）
+    const headers: Record<string, string> = shouldSendTrelloCredentials(parsed.toString())
+      ? { Authorization: `OAuth oauth_consumer_key="${TRELLO_KEY}", oauth_token="${TRELLO_TOKEN}"` }
+      : {};
     try {
       const res = await fetch(parsed.toString(), { cache: "no-store", headers });
       if (!res.ok) continue;

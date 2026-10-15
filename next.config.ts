@@ -63,6 +63,27 @@ const nextConfig: NextConfig = {
 
 const withPWAConfig = withPWA({
   dest: "public",
+  // 🔴 2026-10-15 第二輪稽核 H06：沒有自訂 runtimeCaching 時，next-pwa 會套用它的
+  //    預設清單，而預設清單裡有一條把**所有同源 /api/ 的 GET 回應**用 NetworkFirst
+  //    快取 24 小時（cacheName: "apis"）。等於客戶姓名、電話、地址、金額這些回應
+  //    會留在瀏覽器裡一整天：登出只清 cookie、不清 service worker 快取，
+  //    所以換人用同一台電腦、或裝置遺失時，離線也讀得到。
+  //
+  //    extendDefaultRuntimeCaching 會用 cacheName 比對來覆蓋同名的預設規則，
+  //    所以這裡只換掉 "apis" 這一條，其餘離線行為（靜態資源、字型、圖片）不動。
+  //    API 一律走網路，不留快取。
+  extendDefaultRuntimeCaching: true,
+  workboxOptions: {
+    runtimeCaching: [
+      {
+        urlPattern: ({ sameOrigin, url: { pathname } }) =>
+          sameOrigin && pathname.startsWith("/api/"),
+        handler: "NetworkOnly",
+        method: "GET",
+        options: { cacheName: "apis" },
+      },
+    ],
+  },
   // 不要快取前端導覽的 HTML/JS：導覽走網路 → 永遠取得引用最新 chunk 的頁面，
   // 避免部署後舊 service worker 服務到已移除的舊 chunk 而造成 client-side exception。
   // （cacheOnFrontEndNav / aggressiveFrontEndNavCaching 預設皆為 false；
