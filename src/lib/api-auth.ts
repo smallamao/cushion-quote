@@ -53,3 +53,25 @@ export function requireAdmin(request: Request): Guard {
   }
   return guard;
 }
+
+/**
+ * 非 admin 時要求「這張單是指派給你的」。通過回 null，否則回 404。
+ *
+ * 🔴 2026-10-15 修補：售後單的端點原本只檢查「有沒有登入」，不檢查「這張單是不是
+ *    你的」。任何一個師傅帳號因此等於整份客戶名冊的讀取權限（姓名、地址、電話），
+ *    而且能把同事的單標成已完工，派工進度表就不可信了。
+ *
+ * 刻意回 404 而不是 403：403 等於確認「這個單號存在、只是不給你看」，
+ * 會讓人可以逐號試出單號總量。師傅點自己的單永遠不會走到這裡。
+ */
+export function denyIfNotAssignee(
+  session: Session,
+  assignedTo: string | null | undefined,
+): NextResponse | null {
+  if (session.role === "admin") return null;
+  const owner = (assignedTo ?? "").trim();
+  const me = session.displayName.trim();
+  // owner 為空（未指派）時也擋：未指派的單不屬於任何師傅
+  if (owner && me && owner === me) return null;
+  return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+}

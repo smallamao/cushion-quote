@@ -1003,13 +1003,16 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
         <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">
           派工 / 維修記錄
         </h2>
-        {mode === "edit" && meta?.serviceId && draft.issueCategories?.includes("到府清潔") && (
+        {/* 這兩段是「產生給客人／外部師傅的連結」，限內勤。對師傅不只是唯讀，
+            而是整段不渲染——那些連結免登入就能看客戶電話地址，而師傅拿到可以
+            轉傳給任何人。後端對應的端點也已限 admin（2026-10-15 弱點分析）。 */}
+        {!readOnly && mode === "edit" && meta?.serviceId && draft.issueCategories?.includes("到府清潔") && (
           <div className="mb-4">
             <CleaningSlotSection serviceId={meta.serviceId} />
           </div>
         )}
         {/* 派工連結：清潔與修復都適用，任何狀態都能給外部師傅（電話直撥／地址導航）。 */}
-        {mode === "edit" && meta?.serviceId && (
+        {!readOnly && mode === "edit" && meta?.serviceId && (
           <div className="mb-4">
             <DispatchLinkSection serviceId={meta.serviceId} />
           </div>

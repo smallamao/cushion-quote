@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { createService } from "@/lib/after-sales-sheet";
 import {
@@ -15,7 +16,13 @@ export const dynamic = "force-dynamic";
 // POST /api/sheets/after-sales/quick-cleaning
 // 一鍵：建立空白到府清潔服務單 + 媒合 session，回傳客人選時段連結 token。
 // 客人於連結填姓名/地址/電話/時段，內勤零登打。
-export async function POST() {
+// 🔴 2026-10-15 修補：這支原本整支沒讀 session。`/api/sheets/after-sales` 整個
+//    前綴在師傅白名單裡，所以任何登入者都打得到；middleware 一有疏漏就是全開。
+//    這是「內勤產給客人／外部師傅的連結」的動作，限 admin。
+export async function POST(request: Request) {
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });

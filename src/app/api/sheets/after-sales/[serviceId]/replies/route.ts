@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
-import { createReply, listReplies } from "@/lib/after-sales-sheet";
+import { denyIfNotAssignee, requireSession } from "@/lib/api-auth";
+import { createReply, findServiceById, listReplies } from "@/lib/after-sales-sheet";
 
-function getSession(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  return verifySession(token);
+// 維修記錄裡有客戶的對話與現場狀況。跟主單一樣，非 admin 只能看自己被指派的單。
+async function guardService(request: Request, serviceId: string) {
+  const guard = requireSession(request);
+  if (guard.denied) return guard;
+  if (guard.session.role === "admin") return guard;
+  const service = await findServiceById(serviceId);
+  if (!service) {
+    return { denied: NextResponse.json({ ok: false, error: "not_found" }, { status: 404 }) };
+  }
+  const notMine = denyIfNotAssignee(guard.session, service.assignedTo);
+  if (notMine) return { denied: notMine };
+  return guard;
 }
 
 interface RouteContext {
@@ -17,21 +22,18 @@ interface RouteContext {
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const session = getSession(request);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
-  }
   const { serviceId } = await context.params;
+  const guard = await guardService(request, serviceId);
+  if (guard.denied) return guard.denied;
   const replies = await listReplies(serviceId);
   return NextResponse.json({ ok: true, replies });
 }
 
 export async function POST(request: Request, context: RouteContext) {
-  const session = getSession(request);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
-  }
   const { serviceId } = await context.params;
+  const guard = await guardService(request, serviceId);
+  if (guard.denied) return guard.denied;
+  const { session } = guard;
 
   let body: { content?: string; attachments?: string[]; occurredAt?: string };
   try {

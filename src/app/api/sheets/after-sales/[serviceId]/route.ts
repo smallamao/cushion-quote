@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { denyIfNotAssignee, requireSession } from "@/lib/api-auth";
 import {
   deleteService,
   findServiceById,
@@ -10,24 +10,13 @@ import {
 import { filterTechnicianPatch } from "@/lib/schedule-utils";
 import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
-function getSession(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  return verifySession(token);
-}
-
 interface RouteContext {
   params: Promise<{ serviceId: string }>;
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const session = getSession(request);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
-  }
+  const guard = requireSession(request);
+  if (guard.denied) return guard.denied;
   const { serviceId } = await context.params;
   try {
     const [service, replies] = await Promise.all([
@@ -37,6 +26,11 @@ export async function GET(request: Request, context: RouteContext) {
     if (!service) {
       return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     }
+  // 🔴 2026-10-15 修補：原本只檢查「有沒有登入」，不檢查「這張單是不是你的」。
+    //    任何 serviceId 都讀得到——別人的單、別人客戶的電話地址。
+    const notMine = denyIfNotAssignee(guard.session, service.assignedTo);
+    if (notMine) return notMine;
+
     return NextResponse.json({ ok: true, service, replies });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "服務暫時無法使用";
@@ -45,10 +39,9 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const session = getSession(request);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
-  }
+  const guard = requireSession(request);
+  if (guard.denied) return guard.denied;
+  const { session } = guard;
   const { serviceId } = await context.params;
 
   interface PatchBody {
@@ -90,6 +83,18 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   }
 
+  if (session.role !== "admin") {
+  // 🔴 2026-10-15 修補：原本只檢查「有沒有登入」，不檢查「這張單是不是你的」。
+    //    filterTechnicianPatch 限制了「可改哪些欄位」，但完全沒限制「可改哪一張單」，
+    //    所以師傅能把同事的單標成已完工，派工進度表就不可信了。
+    const existing = await findServiceById(serviceId);
+    if (!existing) {
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    }
+    const notMine = denyIfNotAssignee(session, existing.assignedTo);
+    if (notMine) return notMine;
+  }
+
   if (session.role === "technician") {
     const check = filterTechnicianPatch(body as Record<string, unknown>);
     if (!check.ok) {
@@ -117,10 +122,9 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 // DELETE /api/sheets/after-sales/[serviceId] — 實體刪除（僅 admin，供清除測試/建錯的單）
 export async function DELETE(request: Request, context: RouteContext) {
-  const session = getSession(request);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
-  }
+  const guard = requireSession(request);
+  if (guard.denied) return guard.denied;
+  const { session } = guard;
   if (session.role !== "admin") {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }

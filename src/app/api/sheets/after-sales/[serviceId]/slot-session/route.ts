@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { findServiceById } from "@/lib/after-sales-sheet";
 import {
@@ -12,10 +13,16 @@ import {
 } from "@/lib/cleaning-slots-sheet";
 import type { CleaningSlotSession } from "@/lib/types";
 
+// 🔴 2026-10-15 修補：這支原本整支沒讀 session。`/api/sheets/after-sales` 整個
+//    前綴在師傅白名單裡，所以任何登入者都打得到；middleware 一有疏漏就是全開。
+//    這是「內勤產給客人／外部師傅的連結」的動作，限 admin。
 export const dynamic = "force-dynamic";
 
 // GET /api/sheets/after-sales/[serviceId]/slot-session → 現有媒合 session（最新一筆），無則 null
-export async function GET(_req: Request, { params }: { params: Promise<{ serviceId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ serviceId: string }> }) {
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
   const { serviceId } = await params;
   const client = await getSheetsClient();
   if (!client) return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
@@ -35,7 +42,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ service
 
 // POST /api/sheets/after-sales/[serviceId]/slot-session
 // 建立（或取回）到府清潔時段媒合 session，回傳客人選時段連結的 token。
-export async function POST(_req: Request, { params }: { params: Promise<{ serviceId: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ serviceId: string }> }) {
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
   const { serviceId } = await params;
 
   const client = await getSheetsClient();

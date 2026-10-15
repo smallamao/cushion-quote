@@ -134,3 +134,28 @@ export function sanitizeReturnTo(raw: string | null): string {
   if (parsed.origin !== "https://placeholder.invalid") return RETURN_TO_FALLBACK;
   return parsed.pathname + parsed.search;
 }
+
+/**
+ * 免登入、且網址裡的 token 就是唯一憑證的路徑。這些要掛速率限制。
+ *
+ * 🔴 2026-10-15 弱點分析：公開端點完全沒有猜測次數限制。客戶簽署短碼原本只有
+ *    6 碼（約 34 bits），要猜中「隨便一張還沒簽的單」難度跟當下有幾張有效連結
+ *    成反比——沒有速率限制的話，用機器跑幾週是做得到的。短碼已加長到 10 碼，
+ *    這裡再加一道次數限制。
+ *
+ * 不含 /api/auth（登入流程本身），也不含 /_next 與靜態資產。
+ */
+const RATE_LIMITED_PUBLIC_PREFIXES = [
+  "/api/public/",
+  "/sign/",
+  "/s/",
+  "/confirm/",
+  "/od/",
+  "/d/",
+  "/cleaning/",
+  "/w/",
+] as const;
+
+export function isRateLimitedPublicPath(pathname: string): boolean {
+  return RATE_LIMITED_PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+}

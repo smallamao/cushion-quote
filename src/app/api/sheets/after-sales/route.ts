@@ -1,34 +1,40 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 import { createService, listServices } from "@/lib/after-sales-sheet";
 import { buildDispatchPath } from "@/lib/dispatch-link";
 import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
-function getSession(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  return verifySession(token);
-}
-
 export async function GET(request: Request) {
-  const session = getSession(request);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
-  }
+  const guard = requireSession(request);
+  if (guard.denied) return guard.denied;
+  const { session } = guard;
+  const isAdmin = session.role === "admin";
+
   try {
-    const services = await listServices();
+    const all = await listServices();
+    // 🔴 2026-10-15 修補：原本不分角色一律回傳全部售後單。任何一個師傅帳號
+    //    因此等於整份客戶名冊（姓名、地址、電話）的讀取權限。
+    //    前端本來就只顯示自己的（MyScheduleClient 的 isAdmin || assignedTo === myName），
+    //    這裡只是把同一條規則搬到伺服器端真正執行。
+    const me = session.displayName.trim();
+    const services = isAdmin
+      ? all
+      : all.filter((s) => me && (s.assignedTo ?? "").trim() === me);
+
     // 一併回傳各單的派工連結路徑，讓列表「複製派工連結」不必再打一次 API
     // （同步複製才不會被 Safari 的「必須在點擊手勢內寫剪貼簿」擋掉）。
     // 已結案／已取消的單連結本來就停用，不必產。
+    //
+    // 🔴 只給 admin：派工連結是「免登入就能看客戶電話地址」的網址，
+    //    師傅拿到可以轉傳給任何人。
     const dispatchPaths: Record<string, string> = {};
-    for (const s of services) {
-      if (s.status === "completed" || s.status === "cancelled") continue;
-      const path = buildDispatchPath(s.serviceId);
-      if (path) dispatchPaths[s.serviceId] = path;
+    if (isAdmin) {
+      for (const s of services) {
+        if (s.status === "completed" || s.status === "cancelled") continue;
+        const path = buildDispatchPath(s.serviceId);
+        if (path) dispatchPaths[s.serviceId] = path;
+      }
     }
     return NextResponse.json({ ok: true, services, dispatchPaths });
   } catch (err) {
@@ -38,10 +44,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = getSession(request);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
-  }
+  const guard = requireSession(request);
+  if (guard.denied) return guard.denied;
+  const { session } = guard;
   if (session.role === "technician") {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }

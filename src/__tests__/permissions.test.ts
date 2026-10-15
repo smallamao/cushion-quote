@@ -5,6 +5,7 @@ import {
   canTechnicianAccess,
   isAdminOnly,
   isPublicPath,
+  isRateLimitedPublicPath,
   sanitizeReturnTo,
 } from "@/lib/permissions";
 
@@ -185,5 +186,46 @@ describe("sanitizeReturnTo — 登入後轉址", () => {
 
   it("不把 hash 帶過去（hash 不會送到伺服器，留著只會混淆）", () => {
     expect(sanitizeReturnTo("/orders#top")).toBe("/orders");
+  });
+});
+
+describe("isRateLimitedPublicPath — 公開端點限流範圍", () => {
+  // token 就是唯一憑證的路徑，沒有次數限制等於開放無限次猜測
+  const limited = [
+    "/api/public/sign/abc",
+    "/api/public/order-confirm/abcdef",
+    "/api/public/material-confirm/xyz/photo/0",
+    "/api/public/delivery/batch/abc",
+    "/sign/abc123",
+    "/s/aB3dE9xYz0",
+    "/confirm/abcdefghi",
+    "/od/abcdef",
+    "/d/abcdefghi",
+    "/cleaning/abcdefghi",
+    "/w/SV-0001/deadbeefcafe",
+  ];
+
+  it.each(limited)("要限流：%s", (path) => {
+    expect(isRateLimitedPublicPath(path)).toBe(true);
+    // 這些必須同時是公開路徑，否則限流判斷永遠不會被執行到
+    expect(isPublicPath(path)).toBe(true);
+  });
+
+  // 登入流程與靜態資產不能被限流——擋住登入比被猜密碼更糟
+  const notLimited = [
+    "/login",
+    "/api/auth/login",
+    "/api/auth/callback/google",
+    "/logo.png",
+    "/icon-192.png",
+    "/pdf.min.mjs",
+    "/sw.js",
+    "/_next/static/chunks/main.js",
+    "/api/sheets/orders",
+    "/orders",
+  ];
+
+  it.each(notLimited)("不限流：%s", (path) => {
+    expect(isRateLimitedPublicPath(path)).toBe(false);
   });
 });
