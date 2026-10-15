@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { requireAdmin } from "@/lib/api-auth";
 
@@ -499,6 +500,13 @@ export async function DELETE(request: Request, context: RouteContext) {
       requestBody: { requests },
     });
 
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "delete",
+      targetType: "purchase",
+      targetId: orderId,
+      summary: `連帶刪除 ${itemDataIndices.length} 筆明細`,
+    });
     return NextResponse.json({ ok: true, deletedItems: itemDataIndices.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

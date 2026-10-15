@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { EINVOICE_SHEET } from "@/lib/einvoice-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
@@ -104,6 +105,13 @@ export async function DELETE(request: Request) {
       });
     }
 
+    appendAuditLog({
+      actor: session.email,
+      action: "delete",
+      targetType: "einvoice",
+      targetId: invoiceId,
+      summary: undefined,
+    });
     return NextResponse.json({ ok: true, invoiceId });
   } catch (err) {
     return NextResponse.json(

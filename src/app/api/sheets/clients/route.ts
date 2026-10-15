@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { requireAdmin } from "@/lib/api-auth";
 
@@ -299,6 +300,14 @@ export async function DELETE(request: Request) {
 
   try {
     const result = await hardDeleteClients(sheetsClient, ids);
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "delete",
+      targetType: "client",
+      // 批次刪除：把所有 id 記在一筆，才看得出當次刪了哪些
+      targetId: ids.join(","),
+      summary: `批次刪除 ${ids.length} 筆客戶`,
+    });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

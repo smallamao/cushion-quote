@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
@@ -179,6 +180,17 @@ export async function PUT(request: Request, context: RouteContext) {
       // Notion 同步失敗不影響主流程
     }
 
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "update",
+      targetType: "order",
+      targetId: updated.orderId,
+      // 金額改動單獨標出來——客人只同意過簽署當下那個金額
+      summary:
+        updated.quotedAmount !== existing.quotedAmount
+          ? `金額 ${existing.quotedAmount} → ${updated.quotedAmount}`
+          : `狀態 ${existing.status} → ${updated.status}`,
+    });
     return NextResponse.json({ ok: true, notionUpdated });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
@@ -240,6 +252,13 @@ export async function DELETE(request: Request, context: RouteContext) {
       },
     });
 
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "delete",
+      targetType: "order",
+      targetId: orderId,
+      summary: undefined,
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { requireAdmin } from "@/lib/api-auth";
 
@@ -308,6 +309,15 @@ export async function DELETE(request: Request) {
       },
     });
 
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "delete",
+      targetType: "case",
+      targetId: caseId,
+      summary:
+        `連帶刪除 ${quoteIndicesToDelete.length} 張報價、` +
+        `${versionIndicesToDelete.length} 個版本、${lineIndicesToDelete.length} 筆明細`,
+    });
     return NextResponse.json({
       ok: true,
       deleted: {

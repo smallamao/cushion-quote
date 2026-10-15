@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { requireAdmin } from "@/lib/api-auth";
 
@@ -114,6 +115,12 @@ export async function PATCH(request: Request, context: RouteContext) {
       requestBody: { values: [arRecordToRow(updated)] },
     });
 
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "update",
+      targetType: "ar",
+      targetId: arId,
+    });
     return NextResponse.json({ ok: true, ar: updated });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
@@ -210,6 +217,13 @@ export async function DELETE(request: Request, context: RouteContext) {
       requestBody: { requests },
     });
 
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "delete",
+      targetType: "ar",
+      targetId: arId,
+      summary: `連帶刪除 ${scheduleSheetRows.length} 筆收款排程`,
+    });
     return NextResponse.json({ ok: true, deletedSchedules: scheduleSheetRows.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

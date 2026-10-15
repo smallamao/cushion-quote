@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { requireAdmin } from "@/lib/api-auth";
 
@@ -71,6 +72,15 @@ export async function PUT(request: Request) {
       requestBody: { values },
     });
 
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "update",
+      targetType: "settings",
+      targetId: "system",
+      // 全域定價一改，之後每一張報價都跟著變。這支是整組覆寫（SETTINGS_MAP 全部
+      // 重寫一遍），所以記下寫入後的實際值，才看得出那次把什麼改成什麼。
+      summary: values.map(([k, v]) => `${k}=${v}`).join("、"),
+    });
     return NextResponse.json({ ok: true, source: "sheets" as const });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

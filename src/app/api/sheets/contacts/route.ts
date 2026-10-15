@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { requireAdmin } from "@/lib/api-auth";
 
@@ -224,6 +225,13 @@ export async function DELETE(request: Request) {
       range: `聯絡人!A${sheetRow}:M${sheetRow}`,
     });
 
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "delete",
+      targetType: "contact",
+      targetId: id,
+      summary: undefined,
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";

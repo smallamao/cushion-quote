@@ -1,5 +1,16 @@
 import { NextResponse } from "next/server";
 
+import { requireSession } from "@/lib/api-auth";
+
+// 🔴 2026-10-15 修補：這支 catch-all 代理原本整支沒驗身分，只比對路徑前綴。
+//    它會自己補上公司的 TRELLO_KEY／TRELLO_TOKEN 再把 Trello 的回應原封不動吐回來，
+//    所以等於「任何能打到這個路徑的人都能用公司的 Trello 金鑰」。
+//    配上當時 middleware 的副檔名漏洞（網址結尾加 .png 就免登入），外人不用帳號
+//    密碼就能抓訂單板卡片上的附件——訂單照片、客人提供的圖、報價單截圖。
+//    副檔名那個洞已經修掉，這裡再補 route 層驗證，不要只靠 middleware。
+//    旁邊的 attachment-proxy 本來就有驗 session，但 catch-all 這條路繞過它，
+//    那道防護等於白做。
+
 const TRELLO_KEY = process.env.TRELLO_KEY?.trim();
 const TRELLO_TOKEN = process.env.TRELLO_TOKEN?.trim();
 const TRELLO_BASE = "https://api.trello.com/1";
@@ -53,6 +64,9 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
+  const guard = await requireSession(req);
+  if (guard.denied) return guard.denied;
+
   const { path } = await params;
   const joined = path.join("/");
   if (!isAllowed(joined, ALLOWED_GET_PREFIXES)) return forbidden();
@@ -67,6 +81,9 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
+  const guard = await requireSession(req);
+  if (guard.denied) return guard.denied;
+
   const { path } = await params;
   const joined = path.join("/");
   if (!isAllowed(joined, ALLOWED_PUT_PREFIXES)) return forbidden();
@@ -86,6 +103,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
+  const guard = await requireSession(req);
+  if (guard.denied) return guard.denied;
+
   const { path } = await params;
   const joined = path.join("/");
   if (!isAllowed(joined, ALLOWED_POST_PREFIXES)) return forbidden();
@@ -105,6 +125,9 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
+  const guard = await requireSession(req);
+  if (guard.denied) return guard.denied;
+
   const { path } = await params;
   const joined = path.join("/");
   if (!isAllowed(joined, ALLOWED_DELETE_PREFIXES)) return forbidden();

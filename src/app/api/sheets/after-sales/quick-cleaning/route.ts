@@ -52,7 +52,8 @@ export async function POST(request: Request) {
       completionPhotos: [],
       serviceType: "client",
       issueCategories: ["到府清潔"],
-      createdBy: "",
+      // 原本寫空字串——「誰建的」查不出來，而這張表的 createdBy 本來就是為此而存在
+      createdBy: guard.session.email,
     };
     const service = await createService({ service: shell });
     if (!service) {

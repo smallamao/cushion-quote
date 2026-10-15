@@ -215,7 +215,8 @@ export async function POST(request: Request) {
       notes: payload.notes ?? "",
       createdAt: now,
       updatedAt: now,
-      createdBy: "",
+      // 原本寫空字串——「誰建的」查不出來，而這張表的 createdBy 本來就是為此而存在
+      createdBy: guard.session.email,
     };
 
     // Append AR record

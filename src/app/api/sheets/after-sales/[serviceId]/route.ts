@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 import { denyIfNotAssignee, requireSession } from "@/lib/api-auth";
 import {
@@ -134,6 +135,13 @@ export async function DELETE(request: Request, context: RouteContext) {
     if (!done) {
       return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     }
+    appendAuditLog({
+      actor: guard.session.email,
+      action: "delete",
+      targetType: "after_sales",
+      targetId: serviceId,
+      summary: undefined,
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "刪除失敗";

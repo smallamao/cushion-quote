@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appendAuditLog } from "@/lib/audit-log";
 
 // 2026-10-15：原本自己解析 cookie 只驗簽章，不查這個帳號現在還在不在職——
 // 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用實作，停用與降權立刻生效。
@@ -110,6 +111,18 @@ export async function DELETE(request: Request) {
     result.push({ sheet: s.name, deleted: toDelete.length, rows: deletedIds });
   }
 
+  // dryRun 不改任何資料，不必記錄
+  if (!dryRun) {
+    appendAuditLog({
+      actor: session.email,
+      action: "delete",
+      targetType: "case_cleanup",
+      targetId: caseId,
+      summary:
+        `只保留 ${keepQuoteId}，刪除 ` +
+        result.map((r) => `${r.sheet} ${r.deleted} 筆`).join("、"),
+    });
+  }
   return NextResponse.json({
     ok: true,
     dryRun,
