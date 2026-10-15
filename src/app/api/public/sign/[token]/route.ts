@@ -8,6 +8,7 @@ import { bakeSignedPdf } from "@/lib/signing-pdf";
 import { getSigningLinkByToken, updateSigningLink } from "@/lib/signing-links-sheet";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { createOrder } from "@/lib/order-create";
+import { buildPublicSigningView } from "@/lib/signing-view";
 import { isSigningLinkExpired, type PublicSigningView } from "@/lib/signing-types";
 import type { QuoteVersionRecord } from "@/lib/types";
 
@@ -96,24 +97,26 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     /* display-only, tolerate */
   }
 
-  const view: PublicSigningView = {
+  // 依狀態決定給多少。撤銷／過期只回狀態，不再吐客戶資料與文件網址
+  // （2026-10-15 第二輪稽核 H01）。規則與理由見 lib/signing-view.ts。
+  const view = buildPublicSigningView({
     status,
     unsignedPdfUrl: link.unsignedPdfUrl,
     unsignedImageUrl: link.unsignedImageUrl,
     quoteId: link.quoteId,
+    signedPdfUrl: link.signedPdfUrl,
+    expiresAt: link.expiresAt,
     clientName,
     contactName,
-    total,
-    expiresAt: link.expiresAt,
-    signedPdfUrl: link.signedPdfUrl,
     contactPhone,
     contactAddress,
+    total,
     subtotal,
     taxRate,
     taxId,
     invoiceTitle,
     faq,
-  };
+  });
   return NextResponse.json({ ok: true, view });
 }
 

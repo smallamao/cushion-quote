@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { getActiveSession } from "@/lib/api-auth";
+
+// 2026-10-15 第二輪稽核：這裡原本直接呼叫 verifySession，只驗簽章、不查帳號現況，
+// 繞過了「停用／刪除／降權立刻生效」那套檢查。改走 lib/api-auth 的共用實作。
 
 export async function GET(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  const session = verifySession(token);
+  // 回給前端的身分，角色以使用者表為準——否則降權之後畫面還會長得像 admin。
+  const session = await getActiveSession(request);
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }

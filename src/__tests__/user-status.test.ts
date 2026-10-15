@@ -33,7 +33,7 @@ afterEach(() => {
 describe("getUserStatus", () => {
   it("在職帳號查得到，角色來自使用者表", async () => {
     listUsers.mockResolvedValue([user({ email: "a@example.com", role: "technician" })]);
-    expect(await getUserStatus("a@example.com")).toEqual({
+    expect((await getUserStatus("a@example.com")).status).toEqual({
       isActive: true,
       role: "technician",
       displayName: "老闆",
@@ -42,18 +42,33 @@ describe("getUserStatus", () => {
 
   it("email 大小寫與空白不影響比對", async () => {
     listUsers.mockResolvedValue([user({ email: "a@example.com" })]);
-    expect(await getUserStatus("  A@Example.COM  ")).not.toBeNull();
+    expect((await getUserStatus("  A@Example.COM  ")).status).toBeDefined();
   });
 
   it("停用帳號回報 isActive=false（呼叫端據此拒絕）", async () => {
     listUsers.mockResolvedValue([user({ email: "gone@example.com", isActive: false })]);
-    const status = await getUserStatus("gone@example.com");
-    expect(status?.isActive).toBe(false);
+    const r = await getUserStatus("gone@example.com");
+    expect(r.status?.isActive).toBe(false);
   });
 
-  it("表上沒有這個人回 null（帳號被刪掉就該進不來）", async () => {
+  it("表上沒有這個人 → found:false（帳號被刪掉就該進不來）", async () => {
     listUsers.mockResolvedValue([user({ email: "a@example.com" })]);
-    expect(await getUserStatus("stranger@example.com")).toBeNull();
+    const r = await getUserStatus("stranger@example.com");
+    expect(r.unavailable).toBe(false); // 表讀得到
+    expect(r.status).toBeUndefined(); // 但沒有這個人
+  });
+
+  it("「查不到人」與「表讀不到」必須分得出來", async () => {
+    // 這兩種情況原本都回 null，呼叫端無從分辨，結果是被刪掉的帳號照樣放行。
+    listUsers.mockResolvedValue([user({ email: "a@example.com" })]);
+    const missing = await getUserStatus("stranger@example.com");
+
+    clearUserStatusCache();
+    listUsers.mockResolvedValue([]); // Sheets 故障
+    const broken = await getUserStatus("stranger@example.com");
+
+    expect(missing.unavailable).toBe(false);
+    expect(broken.unavailable).toBe(true);
   });
 
   it("60 秒內只讀一次試算表（Sheets 有讀取配額）", async () => {
@@ -67,35 +82,36 @@ describe("getUserStatus", () => {
   it("快取過期後會重讀，降權立刻生效", async () => {
     vi.useFakeTimers();
     listUsers.mockResolvedValue([user({ email: "a@example.com", role: "admin" })]);
-    expect((await getUserStatus("a@example.com"))?.role).toBe("admin");
+    expect((await getUserStatus("a@example.com")).status?.role).toBe("admin");
 
     // 老闆把他降成技師
     listUsers.mockResolvedValue([user({ email: "a@example.com", role: "technician" })]);
     vi.advanceTimersByTime(61 * 1000);
-    expect((await getUserStatus("a@example.com"))?.role).toBe("technician");
+    expect((await getUserStatus("a@example.com")).status?.role).toBe("technician");
     expect(listUsers).toHaveBeenCalledTimes(2);
   });
 
   it("讀取失敗時沿用上一次快取，不會把全公司踢出去", async () => {
     vi.useFakeTimers();
     listUsers.mockResolvedValue([user({ email: "a@example.com" })]);
-    expect(await getUserStatus("a@example.com")).not.toBeNull();
+    expect((await getUserStatus("a@example.com")).status).toBeDefined();
 
     // Sheets 故障：listUsers 自己 catch 掉後回空陣列
     listUsers.mockResolvedValue([]);
     vi.advanceTimersByTime(61 * 1000);
-    expect(await getUserStatus("a@example.com")).not.toBeNull();
+    expect((await getUserStatus("a@example.com")).status).toBeDefined();
   });
 
-  it("讀取失敗且無快取時回 null（呼叫端自行決定，見 api-auth 註解）", async () => {
+  it("讀取失敗且無快取 → unavailable:true（呼叫端據此放行，見 api-auth 註解）", async () => {
     listUsers.mockResolvedValue([]);
-    expect(await getUserStatus("a@example.com")).toBeNull();
+    const r = await getUserStatus("a@example.com");
+    expect(r.unavailable).toBe(true);
   });
 
   it("空 email 不去讀試算表", async () => {
     listUsers.mockResolvedValue([user({})]);
-    expect(await getUserStatus("")).toBeNull();
-    expect(await getUserStatus("   ")).toBeNull();
+    expect((await getUserStatus("")).status).toBeUndefined();
+    expect((await getUserStatus("   ")).status).toBeUndefined();
     expect(listUsers).not.toHaveBeenCalled();
   });
 });

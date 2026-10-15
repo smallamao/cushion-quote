@@ -42,8 +42,9 @@ export type Guard = { session: Session; denied?: never } | { denied: NextRespons
  *    現在每次驗證都查一次使用者表（60 秒快取），並且**用表上的角色覆蓋憑證裡的
  *    角色**——降權才會立刻生效，而不是等 30 天。
  *
- * 查不到這個 email 時的處理（刻意分兩種）：
- *   - 使用者表讀得到，但表上沒有這個人 → 拒絕。帳號被刪掉就該進不來。
+ * 查不到這個 email 時的處理（刻意分兩種——2026-10-15 第二輪稽核抓到，原本兩種
+ * 都回 null、都放行，等於帳號刪掉還能用；註解寫了一套、程式做的是另一套）：
+ *   - 使用者表讀得到，但表上沒有這個人 → 拒絕。帳號被刪掉、email 被改掉就該進不來。
  *   - 使用者表整個讀不到（Sheets 故障且無快取）→ 放行，並在 log 留下記錄。
  *     理由：middleware 已經驗過 HMAC 簽章，這個人確實曾經正常登入過；
  *     這時候拒絕等於「Google 打嗝 = 全公司停工」，代價不對等。
@@ -57,15 +58,27 @@ export async function requireSession(request: Request): Promise<Guard> {
     };
   }
 
-  const status = await getUserStatus(session.email);
-  if (status && !status.isActive) {
+  const lookup = await getUserStatus(session.email);
+
+  // Sheets 整個讀不到（且無快取）→ 沿用憑證放行。middleware 已驗過 HMAC 簽章，
+  // 這人確實正常登入過；這時拒絕等於「Google 打嗝 = 全公司停工」，代價不對等。
+  if (lookup.unavailable) return { session };
+
+  // 表讀得到但沒有這個人 → 拒絕。帳號被刪掉、或 email 被改掉，就該進不來。
+  if (!lookup.status) {
+    return {
+      denied: NextResponse.json({ ok: false, error: "account_not_found" }, { status: 401 }),
+    };
+  }
+
+  if (!lookup.status.isActive) {
     return {
       denied: NextResponse.json({ ok: false, error: "account_disabled" }, { status: 401 }),
     };
   }
 
   // 角色以使用者表為準，不信憑證裡的值
-  return { session: status ? { ...session, role: status.role } : session };
+  return { session: { ...session, role: lookup.status.role } };
 }
 
 /** 要求 admin。未登入／已停用回 401，角色不符回 403。角色取自使用者表。 */

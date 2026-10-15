@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { getActiveSession } from "@/lib/api-auth";
 import { timingSafeEqual } from "@/lib/constant-time";
 import { listConfirms } from "@/lib/material-confirm-sheet";
 import { appendNotification } from "@/lib/notifications-sheet";
@@ -32,21 +32,18 @@ function daysSince(iso: string): number | null {
 }
 
 /** Vercel Cron 帶 Bearer CRON_SECRET；手動觸發則走 admin session。 */
-function authorized(request: Request): boolean {
+async function authorized(request: Request): Promise<boolean> {
   const secret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization") ?? "";
   if (secret && timingSafeEqual(authHeader, `Bearer ${secret}`)) return true;
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  const session = verifySession(token);
-  return !!session && session.role === "admin";
+  // 手動觸發走 admin session。用 getActiveSession 而不是 verifySession，
+  // 才會一併查帳號現況（2026-10-15 第二輪稽核）。
+  const session = await getActiveSession(request);
+  return session?.role === "admin";
 }
 
 export async function GET(request: Request) {
-  if (!authorized(request)) {
+  if (!(await authorized(request))) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
 

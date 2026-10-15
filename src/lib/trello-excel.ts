@@ -59,7 +59,27 @@ function rocYearMonth(date: Date): string {
 
 // ── SVG chart generators ──────────────────────────────────
 
-function svgBar(data: PivotChartPoint[], w = 500, h = 200): string {
+/**
+ * 把文字跳脫成可安全放進 SVG／XML 的形式。
+ *
+ * 🔴 2026-10-15 第二輪稽核 D01：通路名稱、商品編號等業務欄位原本直接字串拼接
+ *    進 SVG 的 <text>，而那份 SVG 會交給 sharp 轉 PNG。業務欄位能改變 SVG 結構
+ *    這件事本身就不該成立；加上 sharp 0.34.5 有高風險影像公告（是否真能被利用
+ *    尚未驗證），沒有理由把未跳脫的文字送進影像解析器。
+ *    順帶修掉一個一般性 bug：一個叫「A&B」的通路本來就會讓整張圖產不出來。
+ *
+ * & 必須第一個換，否則會把自己換出來的實體再換一次。
+ */
+export function escapeXml(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+export function svgBar(data: PivotChartPoint[], w = 500, h = 200): string {
   if (data.length === 0) return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="white"/></svg>`;
 
   const padL = 28, padB = 48, padT = 18, padR = 8;
@@ -80,7 +100,7 @@ function svgBar(data: PivotChartPoint[], w = 500, h = 200): string {
     return [
       `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${color}" rx="2"/>`,
       `<text x="${cx.toFixed(1)}" y="${(y - 3).toFixed(1)}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">${d.count}</text>`,
-      `<text x="${cx.toFixed(1)}" y="${ly}" text-anchor="end" font-family="Arial" font-size="9" fill="#555" transform="rotate(-40 ${cx.toFixed(1)} ${ly})">${d.productCode}</text>`,
+      `<text x="${cx.toFixed(1)}" y="${ly}" text-anchor="end" font-family="Arial" font-size="9" fill="#555" transform="rotate(-40 ${cx.toFixed(1)} ${ly})">${escapeXml(d.productCode)}</text>`,
     ].join("");
   }).join("");
 
@@ -92,7 +112,7 @@ ${bars}
 </svg>`;
 }
 
-function svgDonut(data: SourceChartPoint[], size = 280): string {
+export function svgDonut(data: SourceChartPoint[], size = 280): string {
   const total = data.reduce((s, d) => s + d.count, 0);
   if (total === 0 || data.length === 0) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" fill="white"/><text x="${size / 2}" y="${size / 2}" text-anchor="middle" font-family="Arial" font-size="12" fill="#999">No data</text></svg>`;
@@ -137,7 +157,7 @@ function svgDonut(data: SourceChartPoint[], size = 280): string {
     const ly = 20 + i * 18;
     const color = PALETTE[i % PALETTE.length];
     const label = d.channel.length > 14 ? d.channel.slice(0, 14) + "…" : d.channel;
-    return `<rect x="${legendX}" y="${ly}" width="10" height="10" fill="${color}" rx="2"/><text x="${legendX + 14}" y="${ly + 9}" font-family="Arial" font-size="10" fill="#444">${label} (${d.count})</text>`;
+    return `<rect x="${legendX}" y="${ly}" width="10" height="10" fill="${color}" rx="2"/><text x="${legendX + 14}" y="${ly + 9}" font-family="Arial" font-size="10" fill="#444">${escapeXml(label)} (${d.count})</text>`;
   }).join("");
 
   const totalW = size + (data.length > 0 ? 160 : 0);

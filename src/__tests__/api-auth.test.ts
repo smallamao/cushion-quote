@@ -3,9 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Session, UserRole } from "@/lib/types";
 
 const verifySession = vi.hoisted(() => vi.fn<(t?: string | null) => Session | null>());
-const getUserStatus = vi.hoisted(() =>
-  vi.fn<(e: string) => Promise<{ isActive: boolean; role: UserRole; displayName: string } | null>>(),
-);
+type Lookup = { unavailable: boolean; status?: { isActive: boolean; role: UserRole; displayName: string } };
+const getUserStatus = vi.hoisted(() => vi.fn<(e: string) => Promise<Lookup>>());
 
 vi.mock("@/lib/auth", () => ({ SESSION_COOKIE_NAME: "cq_session", verifySession }));
 vi.mock("@/lib/user-status", () => ({ getUserStatus }));
@@ -35,7 +34,7 @@ function session(over: Partial<Session> = {}): Session {
 beforeEach(() => {
   verifySession.mockReset();
   getUserStatus.mockReset();
-  getUserStatus.mockResolvedValue({ isActive: true, role: "admin", displayName: "老闆" });
+  getUserStatus.mockResolvedValue({ unavailable: false, status: { isActive: true, role: "admin", displayName: "老闆" } });
 });
 
 describe("getSession — cookie 解析", () => {
@@ -71,21 +70,37 @@ describe("requireSession — 在職檢查", () => {
 
   it("已停用帳號回 401，即使憑證本身有效", async () => {
     verifySession.mockReturnValue(session());
-    getUserStatus.mockResolvedValue({ isActive: false, role: "admin", displayName: "老闆" });
+    getUserStatus.mockResolvedValue({ unavailable: false, status: { isActive: false, role: "admin", displayName: "老闆" } });
     const guard = await requireSession(req("cq_session=ok"));
     expect(guard.denied?.status).toBe(401);
   });
 
   it("角色以使用者表為準，不信憑證裡的值（降權立刻生效）", async () => {
     verifySession.mockReturnValue(session({ role: "admin" }));
-    getUserStatus.mockResolvedValue({ isActive: true, role: "technician", displayName: "老闆" });
+    getUserStatus.mockResolvedValue({ unavailable: false, status: { isActive: true, role: "technician", displayName: "老闆" } });
     const guard = await requireSession(req("cq_session=ok"));
     expect(guard.session?.role).toBe("technician");
   });
 
-  it("使用者表查不到時沿用憑證（Sheets 故障不等於全公司停工）", async () => {
+  it("帳號已從使用者表刪除 → 401（表讀得到，只是沒有這個人）", async () => {
+    // 🔴 第二輪稽核抓到的缺陷：原本這裡期望「放行」，等於用測試把 bug 寫死。
+    //    被刪掉的帳號能繼續用，前一天修的「停用立刻生效」在刪除這條路上沒生效。
     verifySession.mockReturnValue(session({ role: "admin" }));
-    getUserStatus.mockResolvedValue(null);
+    getUserStatus.mockResolvedValue({ unavailable: false });
+    const guard = await requireSession(req("cq_session=ok"));
+    expect(guard.denied?.status).toBe(401);
+  });
+
+  it("憑證裡沒有 email → 401（無法歸戶就不放行）", async () => {
+    verifySession.mockReturnValue(session({ email: "" }));
+    getUserStatus.mockResolvedValue({ unavailable: false });
+    const guard = await requireSession(req("cq_session=ok"));
+    expect(guard.denied?.status).toBe(401);
+  });
+
+  it("Sheets 整個讀不到時沿用憑證（故障不等於全公司停工）", async () => {
+    verifySession.mockReturnValue(session({ role: "admin" }));
+    getUserStatus.mockResolvedValue({ unavailable: true });
     const guard = await requireSession(req("cq_session=ok"));
     expect(guard.denied).toBeUndefined();
     expect(guard.session?.role).toBe("admin");
@@ -101,14 +116,14 @@ describe("requireAdmin", () => {
 
   it("技師回 403", async () => {
     verifySession.mockReturnValue(session({ role: "technician" }));
-    getUserStatus.mockResolvedValue({ isActive: true, role: "technician", displayName: "師傅" });
+    getUserStatus.mockResolvedValue({ unavailable: false, status: { isActive: true, role: "technician", displayName: "師傅" } });
     const guard = await requireAdmin(req("cq_session=ok"));
     expect(guard.denied?.status).toBe(403);
   });
 
   it("憑證寫 admin 但表上已降為技師 → 403", async () => {
     verifySession.mockReturnValue(session({ role: "admin" }));
-    getUserStatus.mockResolvedValue({ isActive: true, role: "technician", displayName: "師傅" });
+    getUserStatus.mockResolvedValue({ unavailable: false, status: { isActive: true, role: "technician", displayName: "師傅" } });
     const guard = await requireAdmin(req("cq_session=ok"));
     expect(guard.denied?.status).toBe(403);
   });

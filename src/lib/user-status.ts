@@ -28,6 +28,22 @@ export interface UserStatus {
   displayName: string;
 }
 
+/**
+ * 查詢結果。刻意把「查不到這個人」和「整張表讀不到」分成兩種，不能都回 null。
+ *
+ * 🔴 2026-10-15 第二輪稽核抓到的缺陷：原本兩種情況都回 null，呼叫端無從分辨，
+ *    而 api-auth 對 null 的處理是「放行」——結果是**帳號被刪掉之後照樣進得來**，
+ *    等於前一天才修好的「停用立刻生效」在「刪除」這條路上完全沒生效。
+ *    註解當時寫的是「表上沒有這個人 → 拒絕」，但程式做不到，是我寫錯。
+ */
+export type UserLookup =
+  /** 表讀得到，而且找到這個人 */
+  | { unavailable: false; status: UserStatus }
+  /** 表讀得到，但表上沒有這個人 → 呼叫端應拒絕 */
+  | { unavailable: false; status?: undefined }
+  /** 整張表讀不到（Sheets 故障且無快取）→ 呼叫端自行決定，目前是放行 */
+  | { unavailable: true; status?: undefined };
+
 let cache: { at: number; byEmail: Map<string, UserStatus> } | null = null;
 
 async function refresh(): Promise<Map<string, UserStatus> | null> {
@@ -44,31 +60,35 @@ async function refresh(): Promise<Map<string, UserStatus> | null> {
   return byEmail;
 }
 
-/**
- * 查這個 email 現在的狀態。
- *
- * 回 null 代表「查不到」——可能是 Sheets 讀取失敗，也可能這個 email 真的不在表上。
- * 呼叫端要自己決定怎麼處理（見 api-auth 的註解）。
- */
-export async function getUserStatus(email: string): Promise<UserStatus | null> {
+/** 查這個 email 現在的狀態。永遠不丟錯；呼叫端要同時處理三種結果。 */
+export async function getUserStatus(email: string): Promise<UserLookup> {
   const key = email.trim().toLowerCase();
-  if (!key) return null;
+  // 憑證裡沒有 email 等於無法歸戶，當成「查不到這個人」處理（拒絕），
+  // 不要當成「表讀不到」（放行）。
+  if (!key) return { unavailable: false };
 
   if (cache && Date.now() - cache.at < TTL_MS) {
-    return cache.byEmail.get(key) ?? null;
+    const hit = cache.byEmail.get(key);
+    return hit ? { unavailable: false, status: hit } : { unavailable: false };
   }
 
   const fresh = await refresh();
-  if (fresh) return fresh.get(key) ?? null;
+  if (fresh) {
+    const hit = fresh.get(key);
+    return hit ? { unavailable: false, status: hit } : { unavailable: false };
+  }
 
   // 讀取失敗：用上一次成功的快取（stale-while-error）。
   // 寧可用 60 秒前的資料，也不要因為 Google 打嗝就讓所有人斷線。
+  // 快取裡找不到這個人時仍算「查得到表」——快取就是表的副本，
+  // 副本裡沒有他，代表他上次讀取時就不在表上了。
   if (cache) {
     console.warn("[user-status] 使用者表讀取失敗，沿用上一次快取");
-    return cache.byEmail.get(key) ?? null;
+    const hit = cache.byEmail.get(key);
+    return hit ? { unavailable: false, status: hit } : { unavailable: false };
   }
   console.warn("[user-status] 使用者表讀取失敗且無快取可用");
-  return null;
+  return { unavailable: true };
 }
 
 /** 測試用：清掉快取 */
