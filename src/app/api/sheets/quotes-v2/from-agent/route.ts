@@ -259,9 +259,16 @@ async function syncToNotion(versionId: string, clientName: string): Promise<Noti
       console.error(`[from-agent] 報價圖產生失敗 ${versionId}:`, err instanceof Error ? err.message : err);
       jpgUrl = undefined;
     }
+    // 🔴 2026-10-15：notion/sync-quote 在安全稽核後也需要身分（原本整支沒驗）。
+    //    這個合成請求沒有 cookie，所以要跟其他 internalRequest 一樣帶上 x-api-key，
+    //    否則整段 Notion 同步會靜默收到 401 —— 而且因為失敗被包成
+    //    「不擋流程」，報價照樣建得出來，只是 Notion 永遠沒有資料，很難發現。
     const req = new NextRequest("http://internal/api/notion/sync-quote", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.AGENT_API_KEY?.trim() ?? "",
+      },
       body: JSON.stringify({ versionId, clientName: clientName || undefined, jpgUrl }),
     });
     const res = await syncNotionHandler(req);

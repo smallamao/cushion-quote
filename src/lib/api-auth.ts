@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { timingSafeEqual } from "@/lib/constant-time";
 import { getUserStatus } from "@/lib/user-status";
 import type { Session } from "@/lib/types";
 
@@ -56,7 +57,8 @@ function getAgentSession(request: Request): Session | null {
   const configured = process.env.AGENT_API_KEY?.trim();
   if (!configured) return null;
   const provided = request.headers.get("x-api-key")?.trim();
-  if (!provided || provided !== configured) return null;
+  // 常數時間比對，與本專案其他金鑰檢查一致（lib/constant-time.ts）
+  if (!provided || !timingSafeEqual(provided, configured)) return null;
   return AGENT_SESSION;
 }
 
