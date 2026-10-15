@@ -38,3 +38,9 @@ Thumbs.db
 # （Vercel 建置時會自己重新產生）
 public/worker-*.js
 public/worker-*.js.map
+
+# 不該進版控的本機產物（2026-10-15 弱點分析：這些在 .gitignore 規則加入前就被追蹤了，
+# 已用 git rm --cached 移出索引，本機檔案保留）
+server.log
+tsconfig.tsbuildinfo
+.playwright-mcp/
