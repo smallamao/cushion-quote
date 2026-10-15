@@ -6,6 +6,7 @@ import { Readable } from "stream";
 
 import { getActiveSession } from "@/lib/api-auth";
 import { timingSafeEqual } from "@/lib/constant-time";
+import { appendNotification } from "@/lib/notifications-sheet";
 import { getDriveClient, getSheetsClient } from "@/lib/sheets-client";
 
 const BACKUP_FOLDER_NAME = "營運系統-備份";
@@ -181,6 +182,35 @@ async function runBackup(): Promise<{
   };
 }
 
+/**
+ * 備份失敗一定要讓人看到。
+ *
+ * 🔴 2026-10-15：實查服務帳號的 Drive——「營運系統-備份」資料夾在 10-13 建立成功，
+ *    但裡面 0 個檔案。進一步用 drive.about.get 查，服務帳號的 storageQuota limit
+ *    是 0；試上傳 12 bytes 直接被拒，Google 的錯誤訊息是
+ *      "Service Accounts do not have storage quota."
+ *    也就是說：資料夾建得起來（資料夾不佔空間），檔案永遠上傳不上去。
+ *    這個備份從設定以來一次都沒成功，而且照現在的設計永遠不會成功。
+ *
+ *    修好儲存位置之前，至少不能再「安靜地失敗」——這正是老闆記錄過的
+ *    「排程有跑不等於有產出」。失敗就寫一筆通知到後台。
+ */
+async function notifyBackupFailure(detail: string): Promise<void> {
+  try {
+    await appendNotification({
+      type: "backup_failed",
+      title: "每日備份失敗",
+      body:
+        `${new Date().toISOString().slice(0, 16).replace("T", " ")} 的備份沒有產出檔案。` +
+        `原因：${detail}。` +
+        `備份是誤刪或資料被改壞時唯一的救援手段，請盡快處理。`,
+      link: "/settings",
+    });
+  } catch {
+    // 通知失敗不能再讓整個端點爆掉
+  }
+}
+
 export async function GET(request: Request) {
   // Allow either an authenticated admin user or the Vercel Cron secret.
   if (!allowInternalCron(request) && !await isAdmin(request)) {
@@ -193,6 +223,7 @@ export async function GET(request: Request) {
   try {
     const result = await runBackup();
     if (!result.ok) {
+      await notifyBackupFailure(result.error ?? "unknown");
       return NextResponse.json(
         { ok: false, error: result.error },
         { status: result.status ?? 500 },
@@ -201,6 +232,7 @@ export async function GET(request: Request) {
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
+    await notifyBackupFailure(message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
