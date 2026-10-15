@@ -19,7 +19,7 @@ async function getEInvoiceSheetId(client: Awaited<ReturnType<typeof getSheetsCli
 }
 
 export async function DELETE(request: Request) {
-  const session = getSession(request as unknown as Request);
+  const session = await getSession(request as unknown as Request);
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }

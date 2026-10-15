@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 
 // GET /api/sheets/after-sales/[serviceId]/slot-session → 現有媒合 session（最新一筆），無則 null
 export async function GET(request: Request, { params }: { params: Promise<{ serviceId: string }> }) {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
 
   const { serviceId } = await params;
@@ -43,7 +43,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ serv
 // POST /api/sheets/after-sales/[serviceId]/slot-session
 // 建立（或取回）到府清潔時段媒合 session，回傳客人選時段連結的 token。
 export async function POST(request: Request, { params }: { params: Promise<{ serviceId: string }> }) {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
 
   const { serviceId } = await params;

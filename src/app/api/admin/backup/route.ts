@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+
+// 2026-10-15：原本自己解析 cookie 只驗簽章，不查這個帳號現在還在不在職——
+// 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用守門，停用與降權立刻生效。
 import { Readable } from "stream";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { getActiveSession } from "@/lib/api-auth";
 import { timingSafeEqual } from "@/lib/constant-time";
 import { getDriveClient, getSheetsClient } from "@/lib/sheets-client";
 
@@ -29,14 +32,9 @@ function allowInternalCron(request: Request): boolean {
   return timingSafeEqual(provided, `Bearer ${secret}`);
 }
 
-function isAdmin(request: Request): boolean {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  const session = verifySession(token);
-  return !!session && session.role === "admin";
+async function isAdmin(request: Request): Promise<boolean> {
+  const session = await getActiveSession(request);
+  return session?.role === "admin";
 }
 
 async function getOrCreateBackupFolder(
@@ -185,7 +183,7 @@ async function runBackup(): Promise<{
 
 export async function GET(request: Request) {
   // Allow either an authenticated admin user or the Vercel Cron secret.
-  if (!allowInternalCron(request) && !isAdmin(request)) {
+  if (!allowInternalCron(request) && !await isAdmin(request)) {
     return NextResponse.json(
       { ok: false, error: "unauthorized" },
       { status: 401 },

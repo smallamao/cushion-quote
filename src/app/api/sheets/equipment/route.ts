@@ -21,7 +21,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
 
   let body: {
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
 
   let body: {

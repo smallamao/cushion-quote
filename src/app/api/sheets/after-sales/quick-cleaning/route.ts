@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 //    前綴在師傅白名單裡，所以任何登入者都打得到；middleware 一有疏漏就是全開。
 //    這是「內勤產給客人／外部師傅的連結」的動作，限 admin。
 export async function POST(request: Request) {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
 
   const client = await getSheetsClient();

@@ -36,7 +36,7 @@ interface BatchImportRequest {
  * 從前端接收發票資料陣列，寫入電子發票紀錄表
  */
 export async function POST(request: Request) {
-  const session = getSession(request as unknown as Request);
+  const session = await getSession(request as unknown as Request);
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }

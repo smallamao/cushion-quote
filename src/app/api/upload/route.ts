@@ -13,7 +13,7 @@ import {
 export async function POST(request: Request) {
   // 這支在師傅白名單裡（現場照片／簽名上傳），但原本整支沒讀 session。
   // middleware 之外再驗一次。
-  const guard = requireSession(request);
+  const guard = await requireSession(request);
   if (guard.denied) return guard.denied;
 
   if (!isCloudinaryConfigured()) {

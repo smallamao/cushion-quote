@@ -6,7 +6,7 @@ import { buildDispatchPath } from "@/lib/dispatch-link";
 import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
 export async function GET(request: Request) {
-  const guard = requireSession(request);
+  const guard = await requireSession(request);
   if (guard.denied) return guard.denied;
   const { session } = guard;
   const isAdmin = session.role === "admin";
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = requireSession(request);
+  const guard = await requireSession(request);
   if (guard.denied) return guard.denied;
   const { session } = guard;
   if (session.role === "technician") {

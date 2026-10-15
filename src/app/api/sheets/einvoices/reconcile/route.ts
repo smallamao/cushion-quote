@@ -63,7 +63,7 @@ function normalizeRecoveredItems(value: unknown): Array<{
 }
 
 export async function POST(request: Request) {
-  const session = getSession(request);
+  const session = await getSession(request);
   if (!session) return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   if (session.role !== "admin") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 

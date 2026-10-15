@@ -3,7 +3,7 @@ import { getSheetsClient } from "@/lib/sheets-client";
 import { getSession } from "../_auth";
 
 export async function GET(request: Request) {
-  const session = getSession(request);
+  const session = await getSession(request);
   if (!session || session.role !== "admin") return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const client = await getSheetsClient();

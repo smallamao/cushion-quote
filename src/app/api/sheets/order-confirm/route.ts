@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+// 2026-10-15：原本自己解析 cookie 只驗簽章，不查這個帳號現在還在不在職——
+// 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用實作，停用與降權立刻生效。
+
+import { getActiveSession } from "@/lib/api-auth";
 import {
   appendOrderConfirm,
   findByToken,
@@ -18,14 +21,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function getSession(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  return verifySession(token);
-}
 
 /** 預設訂金：線上下訂大多為 10,000（老闆 2026-10-04 確認），產生連結時可逐單修改。 */
 const DEFAULT_DEPOSIT = 10000;
@@ -35,7 +30,7 @@ const DEFAULT_DEPOSIT = 10000;
  * 回傳 Trello「Request」清單的卡片，併上各卡已建立的下訂確認狀態。
  */
 export async function GET(request: Request) {
-  if (!getSession(request)) {
+  if (!await getActiveSession(request)) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
   try {
@@ -107,7 +102,7 @@ export async function GET(request: Request) {
  *  { action: "notified", token }                                        → 標記已把連結傳給客人
  */
 export async function POST(request: Request) {
-  const session = getSession(request);
+  const session = await getActiveSession(request);
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }

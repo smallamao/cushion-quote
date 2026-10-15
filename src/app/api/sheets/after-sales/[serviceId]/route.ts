@@ -15,7 +15,7 @@ interface RouteContext {
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const guard = requireSession(request);
+  const guard = await requireSession(request);
   if (guard.denied) return guard.denied;
   const { serviceId } = await context.params;
   try {
@@ -39,7 +39,7 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const guard = requireSession(request);
+  const guard = await requireSession(request);
   if (guard.denied) return guard.denied;
   const { session } = guard;
   const { serviceId } = await context.params;
@@ -122,7 +122,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 // DELETE /api/sheets/after-sales/[serviceId] — 實體刪除（僅 admin，供清除測試/建錯的單）
 export async function DELETE(request: Request, context: RouteContext) {
-  const guard = requireSession(request);
+  const guard = await requireSession(request);
   if (guard.denied) return guard.denied;
   const { session } = guard;
   if (session.role !== "admin") {

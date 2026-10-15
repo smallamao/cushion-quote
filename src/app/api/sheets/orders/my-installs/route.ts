@@ -15,7 +15,7 @@ import { ORDER_RANGE_DATA, orderRowToRecord } from "@/lib/order-utils";
 //    整份客戶名冊的讀取權限：姓名、安裝地址、聯絡電話。
 //    現在非 admin 一律用自己的 displayName 過濾，不接受前端指定。
 export async function GET(request: Request) {
-  const guard = requireSession(request);
+  const guard = await requireSession(request);
   if (guard.denied) return guard.denied;
   const { session } = guard;
 

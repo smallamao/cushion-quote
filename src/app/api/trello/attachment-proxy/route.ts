@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+// 2026-10-15：原本自己解析 cookie 只驗簽章，不查這個帳號現在還在不在職——
+// 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用實作，停用與降權立刻生效。
+
+import { getActiveSession } from "@/lib/api-auth";
 
 const TRELLO_KEY = process.env.TRELLO_KEY;
 const TRELLO_TOKEN = process.env.TRELLO_TOKEN;
@@ -11,17 +14,9 @@ const ALLOWED_HOSTS = [
   "attachments.trello.com",
 ];
 
-function getSession(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  return verifySession(token);
-}
 
 export async function GET(request: Request) {
-  const session = getSession(request);
+  const session = await getActiveSession(request);
   if (!session) return new NextResponse("not_authenticated", { status: 401 });
 
   const { searchParams } = new URL(request.url);

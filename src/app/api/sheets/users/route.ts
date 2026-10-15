@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { requireAdmin } from "@/lib/api-auth";
 import type { UserRole } from "@/lib/types";
 import { createUser, listUsers, updateUser } from "@/lib/users-sheet";
 
@@ -16,39 +16,16 @@ function isAssignableRole(role: unknown): role is UserRole {
   return typeof role === "string" && (ASSIGNABLE_ROLES as readonly string[]).includes(role);
 }
 
-/** 從 request 讀當前 session;非 admin 回 null */
-function requireAdmin(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  const session = verifySession(token);
-  if (!session) return { error: "not_authenticated" as const, status: 401 };
-  if (session.role !== "admin") return { error: "forbidden" as const, status: 403 };
-  return { session };
-}
-
 export async function GET(request: Request) {
-  const guard = requireAdmin(request);
-  if ("error" in guard) {
-    return NextResponse.json(
-      { ok: false, error: guard.error },
-      { status: guard.status },
-    );
-  }
+  const guard = await requireAdmin(request);
+  if (guard.denied) return guard.denied;
   const users = await listUsers();
   return NextResponse.json({ ok: true, users });
 }
 
 export async function POST(request: Request) {
-  const guard = requireAdmin(request);
-  if ("error" in guard) {
-    return NextResponse.json(
-      { ok: false, error: guard.error },
-      { status: guard.status },
-    );
-  }
+  const guard = await requireAdmin(request);
+  if (guard.denied) return guard.denied;
   let body: { email?: string; displayName?: string; role?: UserRole };
   try {
     body = await request.json();
@@ -80,13 +57,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const guard = requireAdmin(request);
-  if ("error" in guard) {
-    return NextResponse.json(
-      { ok: false, error: guard.error },
-      { status: guard.status },
-    );
-  }
+  const guard = await requireAdmin(request);
+  if (guard.denied) return guard.denied;
   let body: {
     userId?: string;
     email?: string;

@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // GET /api/sheets/after-sales/[serviceId]/dispatch-link
 // 回傳給外部師傅的派工單站內路徑（前端自行接上 origin 組完整網址）。
 export async function GET(request: Request, { params }: { params: Promise<{ serviceId: string }> }) {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
 
   const { serviceId } = await params;

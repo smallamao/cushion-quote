@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+// 2026-10-15：原本自己解析 cookie 只驗簽章，不查這個帳號現在還在不在職——
+// 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用實作，停用與降權立刻生效。
+
+import { getActiveSession } from "@/lib/api-auth";
 import {
   deletePushSubscription,
   listPushSubscriptions,
@@ -17,17 +20,9 @@ import { isPushConfigured, sendPushToAll } from "@/lib/web-push-server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function getSession(request: Request) {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  return verifySession(token);
-}
 
 export async function GET(request: Request) {
-  if (!getSession(request)) {
+  if (!await getActiveSession(request)) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
   const subs = await listPushSubscriptions();
@@ -41,7 +36,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!getSession(request)) {
+  if (!await getActiveSession(request)) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
   if (!isPushConfigured()) {
@@ -86,7 +81,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!getSession(request)) {
+  if (!await getActiveSession(request)) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }
   let body: Record<string, unknown>;

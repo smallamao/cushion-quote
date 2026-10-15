@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+import { getUserStatus } from "@/lib/user-status";
 import type { Session } from "@/lib/types";
 
 // API route 層的身分驗證「單一事實來源」。
@@ -31,20 +32,45 @@ export function getSession(request: Request): Session | null {
 
 export type Guard = { session: Session; denied?: never } | { denied: NextResponse; session?: never };
 
-/** 要求已登入。未登入回 401。 */
-export function requireSession(request: Request): Guard {
+/**
+ * 要求已登入，並且這個帳號「現在」還是在職狀態。未登入或已停用回 401。
+ *
+ * 🔴 2026-10-15 弱點分析第 2 項：憑證有效期 30 天，而簽發後系統再也不去查這個人
+ *    還在不在職、角色有沒有變。師傅離職、老闆按下「停用」之後，他手機裡那張憑證
+ *    照樣能登入最長 30 天，看得到客戶姓名電話地址。
+ *
+ *    現在每次驗證都查一次使用者表（60 秒快取），並且**用表上的角色覆蓋憑證裡的
+ *    角色**——降權才會立刻生效，而不是等 30 天。
+ *
+ * 查不到這個 email 時的處理（刻意分兩種）：
+ *   - 使用者表讀得到，但表上沒有這個人 → 拒絕。帳號被刪掉就該進不來。
+ *   - 使用者表整個讀不到（Sheets 故障且無快取）→ 放行，並在 log 留下記錄。
+ *     理由：middleware 已經驗過 HMAC 簽章，這個人確實曾經正常登入過；
+ *     這時候拒絕等於「Google 打嗝 = 全公司停工」，代價不對等。
+ *     殘留風險只有「剛被停用的人」，而且只在 Sheets 故障期間。
+ */
+export async function requireSession(request: Request): Promise<Guard> {
   const session = getSession(request);
   if (!session) {
     return {
       denied: NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 }),
     };
   }
-  return { session };
+
+  const status = await getUserStatus(session.email);
+  if (status && !status.isActive) {
+    return {
+      denied: NextResponse.json({ ok: false, error: "account_disabled" }, { status: 401 }),
+    };
+  }
+
+  // 角色以使用者表為準，不信憑證裡的值
+  return { session: status ? { ...session, role: status.role } : session };
 }
 
-/** 要求 admin。未登入回 401，角色不符回 403。 */
-export function requireAdmin(request: Request): Guard {
-  const guard = requireSession(request);
+/** 要求 admin。未登入／已停用回 401，角色不符回 403。角色取自使用者表。 */
+export async function requireAdmin(request: Request): Promise<Guard> {
+  const guard = await requireSession(request);
   if (guard.denied) return guard;
   if (guard.session.role !== "admin") {
     return {
@@ -74,4 +100,13 @@ export function denyIfNotAssignee(
   // owner 為空（未指派）時也擋：未指派的單不屬於任何師傅
   if (owner && me && owner === me) return null;
   return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+}
+
+/**
+ * 取得「現在仍然有效」的 session：驗簽章 ＋ 查使用者表的在職狀態，角色以表為準。
+ * 已停用或表上查不到這個人時回 null。給那些自己判斷角色、不想用 Guard 的呼叫端用。
+ */
+export async function getActiveSession(request: Request): Promise<Session | null> {
+  const guard = await requireSession(request);
+  return guard.denied ? null : guard.session;
 }

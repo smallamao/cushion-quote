@@ -6,7 +6,7 @@ import { getSession } from "../_auth";
 import { getEInvoiceRows } from "../_shared";
 
 export async function POST(request: Request) {
-  const session = getSession(request as unknown as Request);
+  const session = await getSession(request as unknown as Request);
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }

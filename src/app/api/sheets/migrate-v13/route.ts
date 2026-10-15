@@ -55,8 +55,8 @@ const SHEET_TITLE = "月結待出";
 // cookie 是 SameSite=Lax，跨站 POST 不會帶 cookie，CSRF 這條路同樣被堵住，
 // 而寫入前一定是一個登入中的 admin 本人按下按鈕。
 export async function POST(request: Request) {
-  const denied = requireAdmin(request).denied;
-  if (denied) return denied;
+  const guard = await requireAdmin(request);
+  if (guard.denied) return guard.denied;
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json(

@@ -645,7 +645,7 @@ export async function GET(
 ) {
   const { invoiceId } = await params;
   const autoprint = new URL(request.url).searchParams.get("autoprint") === "1";
-  const session = getSession(request);
+  const session = await getSession(request);
   if (!session) return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
   if (session.role !== "admin") return NextResponse.json({ error: "forbidden" }, { status: 403 });
 

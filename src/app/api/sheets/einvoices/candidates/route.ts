@@ -6,7 +6,7 @@ import { getSession } from "../_auth";
 import { buildEInvoiceCandidates } from "../_shared";
 
 export async function GET(request: Request) {
-  const session = getSession(request);
+  const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }

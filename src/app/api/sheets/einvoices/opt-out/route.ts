@@ -9,7 +9,7 @@ const OPT_OUT_SHEET = "電子發票不開清單";
 const OPT_OUT_RANGE = `${OPT_OUT_SHEET}!A:A`;
 
 export async function POST(request: Request) {
-  const session = getSession(request as unknown as Request);
+  const session = await getSession(request as unknown as Request);
   if (!session) {
     return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
   }

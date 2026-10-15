@@ -5,7 +5,7 @@ import { createReply, findServiceById, listReplies } from "@/lib/after-sales-she
 
 // 維修記錄裡有客戶的對話與現場狀況。跟主單一樣，非 admin 只能看自己被指派的單。
 async function guardService(request: Request, serviceId: string) {
-  const guard = requireSession(request);
+  const guard = await requireSession(request);
   if (guard.denied) return guard;
   if (guard.session.role === "admin") return guard;
   const service = await findServiceById(serviceId);

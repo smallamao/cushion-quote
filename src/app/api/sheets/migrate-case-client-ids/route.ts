@@ -277,7 +277,7 @@ function planMigration(
 // 跨站 POST 不會帶 cookie，CSRF 這條路同樣被堵住。
 // 原本各 route 自己解析 cookie，現在統一用 lib/api-auth。
 export async function GET(request: Request) {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
 
   const client = await getSheetsClient();
@@ -307,7 +307,7 @@ export async function GET(request: Request) {
 
 // POST: apply a list of changes (client passes the approved subset from GET)
 export async function POST(request: Request) {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
 
   let body: { changes?: Array<{ caseId: string; newClientId: string }> };

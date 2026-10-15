@@ -1,22 +1,20 @@
 import { NextResponse } from "next/server";
 
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
+// 2026-10-15：原本自己解析 cookie 只驗簽章，不查這個帳號現在還在不在職——
+// 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用守門，停用與降權立刻生效。
+
+import { getActiveSession } from "@/lib/api-auth";
 import { getDriveClient } from "@/lib/sheets-client";
 
 const BACKUP_FOLDER_NAME = "營運系統-備份";
 
-function isAdmin(request: Request): boolean {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .find((c) => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  const session = verifySession(token);
-  return !!session && session.role === "admin";
+async function isAdmin(request: Request): Promise<boolean> {
+  const session = await getActiveSession(request);
+  return session?.role === "admin";
 }
 
 export async function GET(request: Request) {
-  if (!isAdmin(request)) {
+  if (!await isAdmin(request)) {
     return NextResponse.json(
       { ok: false, error: "unauthorized" },
       { status: 401 },
