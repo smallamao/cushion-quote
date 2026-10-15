@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import {
   AR_RANGE_DATA,
@@ -41,6 +43,13 @@ interface ScheduleInput {
 //   → 訂金自動變成已收清、尾款待收）。
 // 總已收金額不變，所以帳目不會跑掉；沖銷調整額一併帶到最後一期。
 export async function PUT(request: Request, context: RouteContext) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const { arId } = await context.params;
   const body = (await request.json()) as { schedules?: ScheduleInput[] };
   const input = body.schedules ?? [];

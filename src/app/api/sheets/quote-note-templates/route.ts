@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import { QUOTE_NOTE_TEMPLATES, type QuoteNoteTemplate } from "@/lib/quote-note-templates";
 
@@ -12,7 +14,14 @@ const RANGE_DATA = `${SHEET}!A2:B100`;
 // GET /api/sheets/quote-note-templates
 // 讀取自助管理的補充說明底稿；分頁不存在或為空時回傳程式內建預設
 // （首次儲存時 PUT 會自動建立分頁）。
-export async function GET() {
+export async function GET(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const client = await getSheetsClient();
   if (!client) {
     return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
@@ -43,6 +52,13 @@ export async function GET() {
 // PUT /api/sheets/quote-note-templates
 // Body: { templates: { name, lines[] }[] } — 整份取代（底稿數量小，全量寫入最單純）
 export async function PUT(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   let body: { templates?: QuoteNoteTemplate[] };
   try {
     body = (await request.json()) as { templates?: QuoteNoteTemplate[] };

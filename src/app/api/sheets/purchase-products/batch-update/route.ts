@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import type { PurchaseProduct } from "@/lib/types";
 import {
@@ -80,6 +82,13 @@ function rowToProduct(row: string[], rowIndex: number): PurchaseProduct & { rowI
  * Batch update unit prices for multiple products
  */
 export async function POST(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   // 🔒 停用中（2026-10-15）：本檔的欄位對應是錯的——更新時間常數指向 M 欄（品牌），
   // 批量改價更會把新價格寫進 H 欄（廠商編號），導致商品永久失去廠商且無法復原。
   // 線上資料已確認至今未被觸發（廠商編號無一筆為數字、品牌欄 878 筆全空）。

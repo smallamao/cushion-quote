@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { ORDER_RANGE_IDS, ORDER_SHEET, isoNow } from "@/lib/order-utils";
 
@@ -6,6 +8,13 @@ import { ORDER_RANGE_IDS, ORDER_SHEET, isoNow } from "@/lib/order-utils";
 // Body: { orderIds: string[], paidDate: string }  — paidDate 傳空字串＝取消收款標記
 // 請款對帳單「標記已收款」用：只寫收款日（AN）與更新時間（AF），不動整列其他欄位。
 export async function POST(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const body = (await request.json()) as { orderIds?: string[]; paidDate?: string };
   const orderIds = (body.orderIds ?? []).filter(Boolean);
   const paidDate = body.paidDate ?? "";

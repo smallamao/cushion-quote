@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { ORDER_RANGE_DATA, orderRowToRecord } from "@/lib/order-utils";
 import { createOrder, OrderCreateError, type CreateOrderInput } from "@/lib/order-create";
@@ -13,6 +15,13 @@ import type { CustomOrder, OrderStatus } from "@/lib/types";
 //   ?q=               search in clientName | orderNumber | orderTitle (case-insensitive)
 //   ?archived=true|false  filter by isArchived (default: non-archived only when absent)
 export async function GET(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const { searchParams } = new URL(request.url);
   const caseId = searchParams.get("caseId")?.trim() ?? "";
   const status = (searchParams.get("status")?.trim() ?? "") as OrderStatus | "";
@@ -75,6 +84,13 @@ export async function GET(request: Request) {
 //
 // 實作在 @/lib/order-create，與「客人簽署完成自動開單」共用同一份邏輯。
 export async function POST(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const body = (await request.json()) as CreateOrderInput;
 
   if (!body.sourceType) {

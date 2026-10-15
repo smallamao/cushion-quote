@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import { findCompanyIdentityForCase } from "@/lib/company-lookup";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { deriveOptionMeta } from "@/lib/quote-options";
@@ -44,9 +46,16 @@ function normalizeVersion(record: QuoteVersionRecord, now: string): QuoteVersion
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ versionId: string }> },
 ) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const { versionId } = await params;
 
   const client = await getSheetsClient();
@@ -85,6 +94,13 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ versionId: string }> },
 ) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const { versionId } = await params;
   const payload = (await request.json()) as PutVersionPayload;
 
@@ -208,6 +224,13 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ versionId: string }> },
 ) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const { versionId } = await params;
   const payload = (await request.json()) as VersionPatchPayload;
 

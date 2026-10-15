@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+import { requireAdmin } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
 import {
   BANK_RECON_RANGE_DATA,
@@ -12,6 +14,13 @@ import type { BankReconRecord } from "@/lib/types";
 
 // GET /api/sheets/bank-recon?month=YYYY-MM
 export async function GET(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const { searchParams } = new URL(request.url);
   const month = searchParams.get("month")?.trim() ?? "";
 
@@ -41,6 +50,13 @@ export async function GET(request: Request) {
 // Body: { entries: Array<{ txId, txDate, amount, description, memo, caseId, caseNameSnapshot, clientNameSnapshot, paymentType }> }
 // Dedup by txId (skip if already exists)
 export async function POST(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const body = (await request.json()) as {
     entries: Array<{
       txId: string;

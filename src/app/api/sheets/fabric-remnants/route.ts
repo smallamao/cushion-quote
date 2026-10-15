@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import {
   RANGE_DATA,
@@ -15,6 +17,13 @@ export const dynamic = "force-dynamic";
 
 // GET /api/sheets/fabric-remnants[?includeInactive=true]
 export async function GET(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const { searchParams } = new URL(request.url);
   const includeInactive = searchParams.get("includeInactive") === "true";
 
@@ -40,6 +49,13 @@ export async function GET(request: Request) {
 
 // POST /api/sheets/fabric-remnants — 新增一塊裁剩
 export async function POST(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const body = (await request.json()) as Partial<FabricRemnant>;
 
   if (!body.productId?.trim()) {
@@ -91,6 +107,13 @@ export async function POST(request: Request) {
 
 // PATCH /api/sheets/fabric-remnants — 修改一塊（改長度/位置…），或軟刪 isActive:false
 export async function PATCH(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const body = (await request.json()) as Partial<FabricRemnant> & { id?: string };
   const id = body.id?.trim();
   if (!id) {

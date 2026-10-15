@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import { createSigningLink, revokePendingLinksForVersion } from "@/lib/signing-links-sheet";
 import { generateShortCode, SHORT_CODE_LEN } from "@/lib/signing-link-code";
@@ -18,6 +20,13 @@ interface CreateBody {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function POST(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   const body = (await request.json()) as CreateBody;
   if (!body?.versionId || !body?.unsignedPdfUrl) {
     return NextResponse.json({ ok: false, error: "缺少 versionId 或 unsignedPdfUrl" }, { status: 400 });

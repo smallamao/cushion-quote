@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/api-auth";
+
 import { getSheetsClient } from "@/lib/sheets-client";
 import {
   AR_RANGE_DATA,
@@ -26,6 +28,13 @@ interface FromOrdersPayload {
 // 無報價 B2B 合併請款：勾選多張訂製訂單 → 建立一張 AR（單期全額）。
 // AR 以 relatedOrderIds 記住涵蓋的訂單，收款狀態由此對回訂單列表。
 export async function POST(request: Request) {
+  // route 層再驗一次身分。middleware 已經把這條路徑限制在 admin，這裡是第二道鎖：
+  // /api/sheets 底下多數端點原本只靠 middleware 那一道門，而 Next.js 近期就有三個
+  // middleware bypass 的公告——一道門倒了不該等於全部資料大開（2026-10-15 弱點分析）。
+  const guard = requireAdmin(request);
+  if (guard.denied) return guard.denied;
+
+
   let payload: FromOrdersPayload;
   try {
     payload = (await request.json()) as FromOrdersPayload;
