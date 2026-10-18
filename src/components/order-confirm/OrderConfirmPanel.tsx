@@ -69,6 +69,7 @@ export function OrderConfirmPanel() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [showDone, setShowDone] = useState(false);
 
   const [editing, setEditing] = useState<string | null>(null);
   const [deposit, setDeposit] = useState(10000);
@@ -122,8 +123,25 @@ export function OrderConfirmPanel() {
   const key = q.trim().toLowerCase();
   const match = (s: string) => !key || s.toLowerCase().includes(key);
 
+  /**
+   * 「已完成」＝訂金已收。收到錢之後走叫料排程，確認連結的任務就結束了。
+   *
+   * 刻意不要求「已簽核」：P6283 林宏軒訂金早就付了，只是沒走線上簽核流程，
+   * 若要求簽核他會永遠卡在清單上，但他根本不是待辦。這跟上面 waitingCount
+   * 的判準一致——兩邊都以「收到錢沒」為準，不要各用一套。
+   *
+   * 🔴 只認 depositPaid === true。讀不到訂金狀態（null，例如卡片被刪或沒有
+   *    待辦清單）一律不算完成——不可以把「讀不到」當成「已收款」收起來，
+   *    那會讓真正沒收到錢的單從畫面上消失。
+   */
+  const isDone = (r: Tracking) => r.depositPaid === true;
+  const doneCount = tracking.filter(isDone).length;
+
   const visibleTracking = useMemo(() => {
-    const list = tracking.filter((r) => match(`${r.cardName} ${r.orderNo}`));
+    // 有在搜尋時連已完成的一起找，免得打了名字卻說找不到
+    const list = tracking
+      .filter((r) => match(`${r.cardName} ${r.orderNo}`))
+      .filter((r) => showDone || key !== "" || !isDone(r));
     // 最需要動作的排前面。訂金已收＝實質成交，不管簽了沒都不是待辦
     const rank = (r: Tracking) =>
       r.depositPaid === true ? 3 : r.status === "sent" ? 0 : r.depositPaid === false ? 1 : 2;
@@ -133,7 +151,7 @@ export function OrderConfirmPanel() {
         (b.notifiedAt || b.createdAt).localeCompare(a.notifiedAt || a.createdAt),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracking, key]);
+  }, [tracking, key, showDone]);
 
   const visibleAvailable = useMemo(
     () => available.filter((a) => match(a.cardName)),
@@ -246,7 +264,11 @@ export function OrderConfirmPanel() {
           <div className="mt-2 space-y-2">
             {!loading && visibleTracking.length === 0 && (
               <p className="py-3 text-center text-sm text-[var(--text-secondary)]">
-                {tracking.length === 0 ? "還沒有發出任何確認連結。" : "沒有符合的項目。"}
+                {tracking.length === 0
+                  ? "還沒有發出任何確認連結。"
+                  : doneCount > 0 && !showDone && key === ""
+                    ? "目前沒有待處理的項目 🎉"
+                    : "沒有符合的項目。"}
               </p>
             )}
 
@@ -317,6 +339,18 @@ export function OrderConfirmPanel() {
               );
             })}
           </div>
+
+          {doneCount > 0 && key === "" && (
+            <button
+              type="button"
+              onClick={() => setShowDone((v) => !v)}
+              className="mt-2 w-full rounded-md border border-dashed border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+            >
+              {showDone
+                ? `收合已完成（${doneCount} 筆）`
+                : `顯示已完成的 ${doneCount} 筆（訂金已收）`}
+            </button>
+          )}
 
           {/* ── 可產生連結：Request 清單中還沒發過的卡 ───────────── */}
           <p className="mt-5 text-xs font-semibold text-[var(--text-secondary)]">
