@@ -17,6 +17,7 @@ import { findByToken, generateToken, writeConfirm } from "@/lib/material-confirm
 import {
   confirmDueIso,
   hasFuturesFabric,
+  earliestDeliveryDate,
   isNonDeliveryDay,
   isTestConfirm,
   normalizeDeliveryPeriod,
@@ -243,6 +244,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     // 一組不可能的日期流到司機那邊就是白跑一趟或臨時改期。
     if (slots.some((s) => isNonDeliveryDay(s.date))) {
       return NextResponse.json({ ok: false, error: "週日沒有配送，請改選其他日期" }, { status: 400 });
+    }
+
+    // 🔴 最早可收件日也要在伺服器端驗一次，理由同上面的週日。
+    //    前端只靠 <input min>，那是瀏覽器提示：擋不住舊頁籤、也擋不住
+    //    「頁面載入當下讀不到製作區間」——那時 earliestDeliveryDate 會退回「今天」。
+    //    2026-10-09 P6273 陳素霞就是這樣選到確認當天，比製作起日早了 10 天；
+    //    沙發還沒做好，那個日期不可能出貨，司機就是白跑一趟。
+    //    這裡重抓製作區間再算一次，用的是跟前端同一支函式，兩邊不會各算各的。
+    const todayTw = toTaipeiYmd(new Date().toISOString());
+    let minAllowed = todayTw;
+    try {
+      const win = await getCardProductionWindow(realCardId(c.cardId));
+      minAllowed = earliestDeliveryDate(win.start, win.end, todayTw);
+    } catch {
+      /* 讀不到製作區間就退守「不得早於今天」，至少擋掉過去的日期 */
+    }
+    const tooEarly = slots.filter((s) => s.date < minAllowed);
+    if (tooEarly.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `${tooEarly.map((s) => s.date).join("、")} 早於可安排的最快日期（${minAllowed}）。`
+            + "您的沙發尚未製作完成，請改選該日之後的時間。",
+        },
+        { status: 400 },
+      );
     }
     if (!process.env.CLOUDINARY_CLOUD_NAME) {
       return NextResponse.json({ ok: false, error: "Cloudinary 未設定" }, { status: 503 });
