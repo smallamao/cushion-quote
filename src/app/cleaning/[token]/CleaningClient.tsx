@@ -76,6 +76,10 @@ export function CleaningClient({ token }: { token: string }) {
   const [done, setDone] = useState<null | "customer" | "confirmed" | "rejected">(null);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
+  // 師傅端：先選哪一組日期，再指定具體時段（客人可能填「皆可」）
+  const [pickedIdx, setPickedIdx] = useState<number | null>(null);
+  const [pickedPeriod, setPickedPeriod] = useState<"" | "上午" | "下午" | "晚上">("");
+  const [timeNote, setTimeNote] = useState("");
 
   // customer form
   const minDate = useMemo(() => earliestCleaningDate(), []);
@@ -145,7 +149,11 @@ export function CleaningClient({ token }: { token: string }) {
     }
   }
 
-  async function techAct(payload: { chosenIndex: number } | { reject: true }) {
+  async function techAct(
+    payload:
+      | { chosenIndex: number; period: "上午" | "下午" | "晚上" | ""; timeNote: string }
+      | { reject: true },
+  ) {
     setSubmitting(true);
     setErr("");
     try {
@@ -264,18 +272,46 @@ export function CleaningClient({ token }: { token: string }) {
           {v.issue && <p className="mt-1 text-gray-500">{v.issue}</p>}
         </div>
 
+        {/* 🔴 2026-10-19：原本點一下就直接確認，不帶時間——客人填「皆可」時確認結果
+            還是「皆可」，等於排了一個不能執行的時間（實際踩到：師傅說「週四 13:00 後」，
+            系統沒地方存）。現在先選日期，再指定上午／下午／晚上，並可補一句備註。 */}
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <p className="mb-1 text-sm font-semibold text-gray-800">客人方便的時段</p>
-          <p className="mb-3 text-xs text-gray-400">點一個您可以的時段確認</p>
+          <p className="mb-3 text-xs text-gray-400">先選一個日期，再指定您方便的時段</p>
           <div className="space-y-2">
             {v.proposedSlots.map((s, i) => (
-              <button key={i} type="button" onClick={() => void techAct({ chosenIndex: i })} disabled={submitting}
-                className="flex w-full items-center justify-between rounded-lg border-2 border-gray-200 px-4 py-3 text-left text-sm font-medium hover:border-emerald-500 hover:bg-emerald-50 disabled:opacity-40">
+              <button key={i} type="button" onClick={() => { setPickedIdx(i); setPickedPeriod(s.period === "皆可" ? "" : s.period); }} disabled={submitting}
+                className={`flex w-full items-center justify-between rounded-lg border-2 px-4 py-3 text-left text-sm font-medium disabled:opacity-40 ${pickedIdx === i ? "border-emerald-500 bg-emerald-50" : "border-gray-200 hover:border-emerald-300"}`}>
                 <span>{fmtDate(s.date)}　{s.period}</span>
-                <span className="text-emerald-600">選這個 ›</span>
+                <span className="text-emerald-600">{pickedIdx === i ? "已選 ✓" : "選這個 ›"}</span>
               </button>
             ))}
           </div>
+
+          {pickedIdx !== null && (
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              <p className="mb-2 text-sm font-semibold text-gray-800">您方便的時段</p>
+              <div className="flex gap-2">
+                {(["上午", "下午", "晚上"] as const).map((pd) => (
+                  <button key={pd} type="button" onClick={() => setPickedPeriod(pd)} disabled={submitting}
+                    className={`flex-1 rounded-lg border-2 px-3 py-2.5 text-sm font-medium disabled:opacity-40 ${pickedPeriod === pd ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-600 hover:border-emerald-300"}`}>
+                    {pd}
+                  </button>
+                ))}
+              </div>
+
+              <label className="mt-3 mb-1 block text-xs font-medium text-gray-500">時間補充（選填）</label>
+              <input value={timeNote} onChange={(e) => setTimeNote(e.target.value)} maxLength={24}
+                placeholder="例：13:00 後、需提前 30 分通知"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm" />
+
+              <button type="button" disabled={submitting || !pickedPeriod}
+                onClick={() => void techAct({ chosenIndex: pickedIdx, period: pickedPeriod, timeNote })}
+                className="mt-3 w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">
+                {submitting ? "送出中…" : pickedPeriod ? `確認 ${fmtDate(v.proposedSlots[pickedIdx].date)} ${pickedPeriod}` : "請先選上午／下午／晚上"}
+              </button>
+            </div>
+          )}
         </div>
 
         {err && <p className="text-sm text-red-600">{err}</p>}

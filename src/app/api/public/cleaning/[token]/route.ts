@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { isPublicLinkExpired } from "@/lib/public-link-expiry";
+import {
+  composeScheduledTime,
+  isCleaningLinkExpired,
+  isConfirmablePeriod,
+} from "@/lib/cleaning-schedule";
 
 import { getSheetsClient } from "@/lib/sheets-client";
 import { findServiceById, updateService } from "@/lib/after-sales-sheet";
@@ -50,9 +54,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const found = await locate(token);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  // 🔴 2026-10-16：這類客人／司機連結原本沒有任何過期機制，發出去就永久有效。
-  //    過期一律回 410 且不回傳內容（見 lib/public-link-expiry.ts）。
-  if (isPublicLinkExpired(found.session.createdAt)) {
+  // 🔴 2026-10-16：這類連結原本沒有任何過期機制，發出去就永久有效。
+  // 🔴 2026-10-19：媒合完成（客人送出＋師傅確認）後再 7 天失效——媒合成功代表這兩條
+  //    連結任務結束，但要留緩衝讓師傅到府當天還拿得到地址電話。
+  //    過期一律回 410 且不回傳內容（規則見 lib/cleaning-schedule.ts）。
+  if (isCleaningLinkExpired(found.session)) {
     return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
   }
   const { session, role } = found;
@@ -96,9 +102,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const found = await locate(token);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  // 🔴 2026-10-16：這類客人／司機連結原本沒有任何過期機制，發出去就永久有效。
-  //    過期一律回 410 且不回傳內容（見 lib/public-link-expiry.ts）。
-  if (isPublicLinkExpired(found.session.createdAt)) {
+  // 🔴 2026-10-16：這類連結原本沒有任何過期機制，發出去就永久有效。
+  // 🔴 2026-10-19：媒合完成（客人送出＋師傅確認）後再 7 天失效——媒合成功代表這兩條
+  //    連結任務結束，但要留緩衝讓師傅到府當天還拿得到地址電話。
+  //    過期一律回 410 且不回傳內容（規則見 lib/cleaning-schedule.ts）。
+  if (isCleaningLinkExpired(found.session)) {
     return NextResponse.json({ ok: false, error: "expired" }, { status: 410 });
   }
   const { session, rowNumber, role } = found;
@@ -172,7 +180,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (!chosen) {
       return NextResponse.json({ ok: false, error: "請選一個時段" }, { status: 400 });
     }
-    const period = typeof body.period === "string" && body.period ? normalizePeriod(body.period) : chosen.period;
+    // 🔴 2026-10-19：師傅原本只能點客人給的那一格，送出時不帶時間——客人填「皆可」
+    //    （而那是最自然的回答）時，確認結果就還是「皆可」，等於確認了一個不能執行的
+    //    時間，售後單 scheduledTime 也是空的。實際踩到：師傅說「週四 13:00 後」，
+    //    系統沒有地方存得下。現在要求他指定具體時段，並可補一句備註。
+    const period = normalizePeriod(
+      typeof body.period === "string" && body.period ? body.period : chosen.period,
+    );
+    if (!isConfirmablePeriod(period)) {
+      return NextResponse.json(
+        { ok: false, error: "請指定上午／下午／晚上，「皆可」無法當作確認結果" },
+        { status: 400 },
+      );
+    }
+    const timeNote = typeof body.timeNote === "string" ? body.timeNote : "";
     await writeSession(
       { ...session, status: "confirmed", confirmedDate: chosen.date, confirmedPeriod: period },
       rowNumber,
@@ -180,7 +201,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     // 精準寫回售後服務單：預定日期/時段、狀態→已排程；地址/電話僅在客人有填時才覆蓋。
     const patch: Parameters<typeof updateService>[1] = {
       scheduledDate: chosen.date,
-      scheduledTime: period,
+      scheduledTime: composeScheduledTime(period, timeNote),
       status: "scheduled",
     };
     if (session.customerAddress) patch.deliveryAddress = session.customerAddress;
@@ -189,10 +210,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     await appendNotification({
       type: "cleaning_slot",
       title: "師傅已確認清潔時段",
-      body: `已排定 ${chosen.date} ${period}，記得通知客人`,
+      body: `已排定 ${chosen.date} ${composeScheduledTime(period, timeNote)}，記得通知客人`,
       link: `/after-sales/${session.serviceId}`,
     });
-    return NextResponse.json({ ok: true, confirmed: { date: chosen.date, period } });
+    return NextResponse.json({
+      ok: true,
+      confirmed: { date: chosen.date, period, scheduledTime: composeScheduledTime(period, timeNote) },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
