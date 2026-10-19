@@ -159,3 +159,46 @@ const RATE_LIMITED_PUBLIC_PREFIXES = [
 export function isRateLimitedPublicPath(pathname: string): boolean {
   return RATE_LIMITED_PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 伺服器對伺服器（x-api-key）可以觸及的端點白名單
+//
+// 從 middleware.ts 搬過來，目的是讓它能被表格測試覆蓋——這份清單決定
+// 「拿著 agent／排程金鑰的人能碰到哪些端點」，是實打實的安全邊界，
+// 不該是一份沒有任何測試在守的 Set。
+//
+// middleware 只確認「路徑在清單上且有帶 x-api-key」就放行到 route，
+// 真正的金鑰比對在 route 內做（常數時間）。所以列進來不等於不設防，
+// 但**沒列進來的一律打不到**，這是刻意的預設拒絕。
+// ─────────────────────────────────────────────────────────────────────────────
+
+const API_KEY_PATHS = new Set<string>([
+  "/api/sheets/purchases/from-paste", // 排程系統：用布量貼上
+  "/api/sheets/quotes-v2/from-agent", // 對話 agent：建報價草稿
+  "/api/sheets/products/lookup", // 排程系統：建單前查目錄／供應商
+  "/api/sheets/products/from-agent", // 排程系統：補建缺少的採購商品
+  "/api/sheets/schedule-drift", // 排程系統：推送 Numbers vs Trello 對帳結果
+  // 2026-10-19 老闆指定加入：客人在 LINE 問到府清潔時，直接從對話建單＋產生
+  // 選時段連結，不必有人進後台按按鈕（「要全自動不要手動步驟」）。
+  // 這是刻意放寬——拿到 agent 金鑰的人因此能建立清潔服務單與客人連結。
+  // 不是提升權限等級（那把金鑰本來就能建報價、案件、版本），是多一個端點。
+  "/api/sheets/after-sales/quick-cleaning",
+  // 2026-10-19：到府清潔有兩條路，兩條最後都要跑「客人選時段→師傅確認」的媒合。
+  //   外部客戶 → quick-cleaning 開空白單，客人自己填姓名／地址／電話
+  //   自己客戶 → 從排程出貨查到客戶編號（P開頭）拿到既有資料，直接開完整的單
+  // 後者需要這支 POST 才能帶著客戶資料建單，不然又要人工重打一次。
+  "/api/sheets/after-sales",
+]);
+
+// 路徑帶單號的用 regex（/api/sheets/purchases/PS-20260922-05/pdf）
+const API_KEY_PATH_PATTERNS: readonly RegExp[] = [
+  /^\/api\/sheets\/purchases\/[^/]+\/pdf$/,
+  /^\/api\/sheets\/purchases\/[^/]+\/status$/,
+  // 既有售後單要產生「客人選時段」連結（媒合流程的起點）
+  /^\/api\/sheets\/after-sales\/[^/]+\/slot-session$/,
+];
+
+/** 這個路徑允許用 x-api-key 觸及嗎（真正的金鑰驗證在 route 內做）。 */
+export function isApiKeyPath(pathname: string): boolean {
+  return API_KEY_PATHS.has(pathname) || API_KEY_PATH_PATTERNS.some((re) => re.test(pathname));
+}

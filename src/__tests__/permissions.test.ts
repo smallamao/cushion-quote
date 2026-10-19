@@ -4,6 +4,7 @@ import {
   RETURN_TO_FALLBACK,
   canTechnicianAccess,
   isAdminOnly,
+  isApiKeyPath,
   isPublicPath,
   isRateLimitedPublicPath,
   sanitizeReturnTo,
@@ -227,5 +228,55 @@ describe("isRateLimitedPublicPath — 公開端點限流範圍", () => {
 
   it.each(notLimited)("不限流：%s", (path) => {
     expect(isRateLimitedPublicPath(path)).toBe(false);
+  });
+});
+
+describe("isApiKeyPath — server-to-server 白名單", () => {
+  // 這份清單決定「拿著 agent／排程金鑰的人能碰到哪些端點」，是實打實的安全邊界。
+  // 2026-10-19 為了到府清潔自動化放寬了 3 條，所以更需要測試守著。
+  const allowed = [
+    "/api/sheets/purchases/from-paste",
+    "/api/sheets/quotes-v2/from-agent",
+    "/api/sheets/products/lookup",
+    "/api/sheets/products/from-agent",
+    "/api/sheets/schedule-drift",
+    "/api/sheets/purchases/PS-20260922-05/pdf",
+    "/api/sheets/purchases/PS-20260922-05/status",
+    "/api/sheets/after-sales/quick-cleaning",
+    "/api/sheets/after-sales",
+    "/api/sheets/after-sales/AS-20261019-01/slot-session",
+  ];
+
+  it.each(allowed)("允許：%s", (p) => {
+    expect(isApiKeyPath(p)).toBe(true);
+  });
+
+  // 沒列進去的一律打不到——這是刻意的預設拒絕
+  const denied = [
+    "/api/sheets/orders",
+    "/api/sheets/settings",
+    "/api/sheets/clients",
+    "/api/sheets/users",
+    "/api/sheets/versions",
+    "/api/sheets/einvoices",
+    "/api/sheets/after-sales/AS-1", // 單張售後單的讀寫不開放
+    "/api/sheets/after-sales/AS-1/dispatch-link", // 免登入看客戶電話地址的連結
+    "/api/sheets/after-sales/AS-1/replies",
+    "/api/sheets/purchases/PS-1/receive", // 收貨不開放
+    "/api/sheets/purchases",
+    "/api/admin/backup",
+    "/api/trello/cards/x",
+    "/",
+  ];
+
+  it.each(denied)("拒絕：%s", (p) => {
+    expect(isApiKeyPath(p)).toBe(false);
+  });
+
+  it("路徑比對要精確，不能被前綴或後綴矇混", () => {
+    expect(isApiKeyPath("/api/sheets/after-sales/quick-cleaning/x")).toBe(false);
+    expect(isApiKeyPath("/api/sheets/after-sales-evil")).toBe(false);
+    expect(isApiKeyPath("/api/sheets/purchases/a/b/pdf")).toBe(false);
+    expect(isApiKeyPath("/api/sheets/after-sales/a/b/slot-session")).toBe(false);
   });
 });

@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import {
   canTechnicianAccess,
+  isApiKeyPath,
   isPublicPath,
   isRateLimitedPublicPath,
 } from "@/lib/permissions";
@@ -30,26 +31,8 @@ function isApiPath(pathname: string): boolean {
 // middleware 只確認帶有 x-api-key header 才放行；真正的金鑰比對（timing-safe）
 // 由該 route 在 node runtime 執行。範圍刻意收得極窄：僅此路徑、僅在帶 header 時。
 // 帶 x-api-key 的 server-to-server 端點（各 route 自行做 timing-safe 金鑰比對）
-const API_KEY_PATHS = new Set([
-  "/api/sheets/purchases/from-paste",   // 排程系統：用布量貼上
-  "/api/sheets/quotes-v2/from-agent",   // 對話 agent：建報價草稿
-  "/api/sheets/products/lookup",        // 排程系統：建單前查目錄／供應商
-  "/api/sheets/products/from-agent",    // 排程系統：補建缺少的採購商品（copyFrom 指定範本）
-  "/api/sheets/schedule-drift",         // 排程系統：推送 Numbers vs Trello 對帳結果
-]);
+// x-api-key 白名單已搬到 lib/permissions.ts（isApiKeyPath），那裡有表格測試在守。
 
-// 採購單 PDF 取回：路徑帶單號（/api/sheets/purchases/PS-20260922-05/pdf），
-// 不是固定字串所以另外用 regex。route 內有 timing-safe 金鑰比對（authorizeSchedulerRequest）。
-// 用途：出完採購單後把 PDF 存進 Synology 正式存檔——2026-09-22 發現本地 JPG 會遺失，
-// 單子只存在繃布系統裡，想重新拿檔案卻沒有伺服器路徑。
-// 採購單狀態更新：出完單、傳給廠商之後要標「已發送」。
-// 2026-10-11 老闆：「請幫我更改狀態為已發送」——原本只接受登入 session，
-// 排程系統拿 x-api-key 打會 401，等於每張單都要人工進後台點一次
-// （違反「要全自動不要手動步驟」）。route 內有 timing-safe 金鑰比對。
-const API_KEY_PATH_PATTERNS: RegExp[] = [
-  /^\/api\/sheets\/purchases\/[^/]+\/pdf$/,
-  /^\/api\/sheets\/purchases\/[^/]+\/status$/,
-];
 
 /**
  * Vercel Cron 的呼叫。
@@ -76,9 +59,7 @@ function isVercelCronRequest(request: NextRequest, pathname: string): boolean {
 }
 
 function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean {
-  const allowed = API_KEY_PATHS.has(pathname)
-    || API_KEY_PATH_PATTERNS.some((re) => re.test(pathname));
-  if (!allowed) return false;
+  if (!isApiKeyPath(pathname)) return false;
   const apiKey = request.headers.get("x-api-key");
   return Boolean(apiKey && apiKey.trim().length > 0);
 }
