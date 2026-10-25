@@ -40,13 +40,17 @@ describe("sign-faq 解析", () => {
     expect(out[0].a).toBe("寬 100 --- 120 公分都可以");
   });
 
-  it("預設文案本身可被正確解析（5 則，皆有問有答）", () => {
+  it("預設文案本身可被正確解析（6 則，皆有問有答）", () => {
     const out = parseFaq(DEFAULT_SETTINGS.signFaq);
-    expect(out).toHaveLength(5);
+    // 則數固定住，是為了擋「少打一行 --- 害兩則黏成一則」這種改錯字就壞掉的狀況
+    expect(out).toHaveLength(6);
     for (const item of out) {
       expect(item.q.length).toBeGreaterThan(0);
       expect(item.a.length).toBeGreaterThan(0);
     }
-    expect(out[0].q).toContain("還可以改");
+    // 第一則要先回答「我正在簽什麼」——客人站在簽名頁上最先想知道的事
+    expect(out[0].q).toContain("這份簽署代表什麼");
+    // 運費各張報價不一樣（含收送／另計／加購同車免運），這一則必須在（老闆 2026-10-25 要求）
+    expect(out.some((item) => item.q.includes("運費"))).toBe(true);
   });
 });
