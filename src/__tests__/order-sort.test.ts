@@ -37,7 +37,7 @@ describe("cmpInstallDate（安裝/出貨日：無日期排最前）", () => {
   });
 });
 
-describe("compareOrders（對齊 Notion 排序）", () => {
+describe("compareOrders（狀態分組排序）", () => {
   it("狀態分組 → 無安裝日在前→有安裝日新舊 → 下單日新舊 → 建立時間舊新", () => {
     const orders = [
       mk({ orderNumber: "C1", status: "completed", installDate: "2026-07-20" }),
@@ -52,6 +52,8 @@ describe("compareOrders（對齊 Notion 排序）", () => {
     ];
     const sorted = [...orders].sort(compareOrders).map((o) => o.orderNumber);
     expect(sorted).toEqual([
+      // 待出貨排在生產中之前（老闆 2026-10-25）：快要出貨的最需要盯
+      "W1",
       // production：先「無安裝日」者（依下單日新→舊、再建立時間舊→新），
       "P_order21",
       "P_order12",
@@ -60,8 +62,7 @@ describe("compareOrders（對齊 Notion 排序）", () => {
       // 再「有安裝日」者，新→舊
       "P_install24",
       "P_install22",
-      // 其餘狀態依序在後
-      "W1",
+      // 結案狀態在最後
       "C1",
       "X1",
     ]);
@@ -71,6 +72,21 @@ describe("compareOrders（對齊 Notion 排序）", () => {
     const a = mk({ orderNumber: "A", installDate: "2026-07-24", orderDate: "2026-07-01" });
     const b = mk({ orderNumber: "B", installDate: "2026-07-24", orderDate: "2026-07-05" });
     expect([a, b].sort(compareOrders).map((o) => o.orderNumber)).toEqual(["B", "A"]);
+  });
+});
+
+describe("待出貨排在排程/生產中之前（老闆 2026-10-25）", () => {
+  it("即使生產中的那筆出貨日更近，待出貨仍排在前面", () => {
+    const waiting = mk({ status: "waiting", installDate: "2026-12-31" });
+    const prod = mk({ status: "production", installDate: "2026-01-01" });
+    expect(compareOrders(waiting, prod)).toBeLessThan(0);
+    expect(compareOrders(prod, waiting)).toBeGreaterThan(0);
+  });
+
+  it("整體順序：待建立內容 → 待出貨 → 排程/生產中 → 完成 → 取消", () => {
+    const seq = ["pending_setup", "waiting", "production", "completed", "cancelled"] as const;
+    const sorted = [...seq].reverse().map((s) => mk({ status: s })).sort(compareOrders);
+    expect(sorted.map((o) => o.status)).toEqual([...seq]);
   });
 });
 
