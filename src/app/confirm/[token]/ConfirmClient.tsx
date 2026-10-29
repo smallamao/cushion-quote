@@ -128,8 +128,14 @@ export function ConfirmClient({ token }: { token: string }) {
     if (!name) return setError("請填寫您的姓名");
     if (!signature) return setError("請先簽名");
     const chosen = slots.filter((s) => s.date);
-    if (chosen.length === 0 && !anytime) {
-      return setError("請提供 2～3 組方便的日期時段，或勾選「隨時可配合」");
+    // 🔴 強制三組（老闆 2026-10-29）：只填一組的客人會把那天當成「一定出貨」，
+    //    實際出貨日要等排車才定得下來。給三組才有調度空間，也才不會產生誤解。
+    if (!anytime && chosen.length < 3) {
+      return setError("請完整填寫三組方便的日期時段，或勾選「隨時可配合」");
+    }
+    // 三組填同一天等於沒給選擇，擋掉
+    if (!anytime && new Set(chosen.map((s) => s.date)).size < chosen.length) {
+      return setError("三組請填不同的日期，才方便我們安排配送路線");
     }
     if (chosen.some((s) => isNonDeliveryDay(s.date))) {
       return setError("週日沒有配送，請改選其他日期");
@@ -248,8 +254,10 @@ export function ConfirmClient({ token }: { token: string }) {
       <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
         <p className="text-base font-semibold text-gray-800">② 可以進沙發的日期與時段</p>
         <p className="mt-1 text-sm leading-relaxed text-gray-500">
-          工廠空間有限，完成後需盡快出貨。請提供 <strong>2～3 組</strong>方便的時間，
-          我們會依配送路線安排，出貨前再與您確認。
+          工廠空間有限，完成後需盡快出貨。請完整提供 <strong>三組</strong>方便的時間
+          （不同日期），我們會依配送路線安排。
+          <strong className="text-gray-700">這三組是您方便的時間，不是確定的出貨日</strong>
+          ——實際日期要等排車後才能確定，屆時會再與您聯繫。
         </p>
         {/* 🔴 最早可選日原本只靠 min 靜默反灰，客人看不出為什麼點不下去，
             就會回頭問「X 號是不行的對嗎？」。這裡把日期與原因直接寫出來。 */}
@@ -280,6 +288,12 @@ export function ConfirmClient({ token }: { token: string }) {
           <div className="mt-3 space-y-2">
             {slots.map((s, i) => (
               <div key={i}>
+              {/* 三組都要填，所以每組都標號並標「必填」——只放一個總說明，
+                  客人容易以為填一組就好（2026-10-29 實際發生過） */}
+              <p className="mb-1 text-sm font-medium text-gray-600">
+                第 {i + 1} 組
+                {!s.date && <span className="ml-1 text-red-500">必填</span>}
+              </p>
               <div className="flex gap-2">
                 <input
                   type="date"

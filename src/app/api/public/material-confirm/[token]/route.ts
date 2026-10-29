@@ -237,8 +237,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       .map((s) => ({ date: s.date as string, period: normalizeDeliveryPeriod(s.period) }));
     // 「隨時可配合」＝整段期間都行、由我們安排，這時不需要填日期
     const anytime = body.anytime === true;
-    if (slots.length === 0 && !anytime) {
-      return NextResponse.json({ ok: false, error: "請至少選一組希望收件日期，或勾選「隨時可配合」" }, { status: 400 });
+    // 🔴 強制三組（老闆 2026-10-29）。前端也擋，但同樣擋不住開著舊頁籤的人——
+    //    理由與下面的週日、最早可收件日一致：不可能的資料流進來，排車時才發現就太晚。
+    //    只填一組的客人會把那天當成「一定出貨」，實際日期要等排車才定得下來。
+    if (!anytime && slots.length < 3) {
+      return NextResponse.json(
+        { ok: false, error: "請完整填寫三組方便的日期時段，或勾選「隨時可配合」" },
+        { status: 400 },
+      );
+    }
+    if (!anytime && new Set(slots.map((s) => s.date)).size < slots.length) {
+      return NextResponse.json(
+        { ok: false, error: "三組請填不同的日期，才方便我們安排配送路線" },
+        { status: 400 },
+      );
     }
     // 司機週日不配送。前端也擋，但擋不住開著舊頁籤的人——
     // 一組不可能的日期流到司機那邊就是白跑一趟或臨時改期。
