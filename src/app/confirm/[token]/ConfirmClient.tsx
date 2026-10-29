@@ -154,17 +154,30 @@ export function ConfirmClient({ token }: { token: string }) {
         <div className="rounded-xl border border-emerald-200 bg-white p-8 text-center">
           <p className="text-4xl">✅</p>
           <p className="mt-3 text-lg font-semibold text-gray-800">已收到您的確認，謝謝！</p>
+          {/* 🔴 客人常把自己選的時段當成「已經約好」，真正配送日卻要等排車才定得下來。
+              所以這裡不講「依您提供的時間安排配送」（聽起來像照辦），
+              改成明講「希望時段／可能排到第 2 或第 3 組」，並把後果講清楚：
+              沒收到通知前先別安排搬家裝潢。（老闆 2026-10-29 回報）*/}
           <p className="mt-2 text-sm leading-relaxed text-gray-600">
-            我們會立即備料排程，並依您提供的時間安排配送，出貨前會再與您聯繫確定日期。
+            我們會立即備料排程。您提供的是
+            <strong className="text-gray-800">三組希望時段</strong>，
+            實際配送日要依排車結果決定——
+            <strong className="text-gray-800">有可能安排到第 2 或第 3 組</strong>。
+            確定之後我們會再與您聯繫。
           </p>
           {view.preferredSlots.length > 0 && (
             <div className="mt-5 rounded-lg bg-gray-50 p-4 text-left">
-              <p className="mb-2 text-xs font-medium text-gray-500">您提供的時間</p>
+              <p className="mb-2 text-xs font-medium text-gray-500">您提供的希望時段（供我們排車參考）</p>
               {view.preferredSlots.map((s, i) => (
-                <p key={i} className="text-sm text-gray-800">{fmtDate(s.date)}　{s.period}</p>
+                <p key={i} className="text-sm text-gray-800">
+                  <span className="text-gray-400">{i + 1}.</span> {fmtDate(s.date)}　{s.period}
+                </p>
               ))}
             </div>
           )}
+          <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2.5 text-left text-sm leading-relaxed text-amber-900">
+            ⚠️ 收到我們的配送確認通知之前，請先不要安排搬家、裝潢或其他需要配合的事項。
+          </p>
         </div>
       </Shell>
     );
@@ -381,6 +394,7 @@ export function ConfirmClient({ token }: { token: string }) {
         <div className="mt-4 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
           <p className="font-semibold">💡 重要提醒</p>
           <p className="mt-1">• 送出後我們會立即備料排程</p>
+          <p>• 您選的三組是<strong>希望時段</strong>，實際配送日以排車結果為準，可能排到第 2 或第 3 組</p>
           <p>• 送出後將<strong>無法修改、取消訂單</strong>（訂金恕不退還）</p>
           <p>• 若有任何修改，請務必在送出前一次告知</p>
         </div>
