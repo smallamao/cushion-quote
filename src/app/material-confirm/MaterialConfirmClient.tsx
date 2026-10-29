@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { buildMaterialAckMessage } from "@/lib/material-ack-message";
 import { isCustomerConfirmed } from "@/lib/material-confirm-types";
 import type { MaterialConfirmStatus, PreferredSlot } from "@/lib/material-confirm-types";
 import { FUTURES_FABRIC_NOTICE } from "@/lib/material-confirm-types";
@@ -857,6 +858,14 @@ export function MaterialConfirmClient() {
                       ))}
                     </>
                   )}
+                  {/* 客人常把預選當成已排定，確認完就回一則講清楚，留在 LINE 對話裡當依據 */}
+                  <button
+                    type="button"
+                    onClick={() => void copy(buildMaterialAckMessage({ slots: r.preferredSlots, fmtDate: fmtMd }), `ack-${r.cardId}`)}
+                    className="ml-2 rounded-lg border border-[var(--border)] px-2.5 py-1 text-xs hover:bg-[var(--bg-hover)]"
+                  >
+                    {copied === `ack-${r.cardId}` ? "已複製 ✓" : "複製回覆客人"}
+                  </button>
                 </div>
               )}
 
