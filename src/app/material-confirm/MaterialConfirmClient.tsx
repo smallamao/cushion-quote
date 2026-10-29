@@ -135,6 +135,8 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   postponed: { label: "客戶要求延後備料", cls: "bg-amber-100 text-amber-800" },
   scheduled: { label: "配送已排定", cls: "bg-blue-100 text-blue-800" },
   driver_rejected: { label: "司機三組都不行", cls: "bg-red-100 text-red-700" },
+  cancelled: { label: "客戶取消訂單", cls: "bg-gray-200 text-gray-700" },
+  confirmed_offline: { label: "線下已確認・無簽名存證", cls: "bg-emerald-50 text-emerald-700" },
 };
 
 export function MaterialConfirmClient() {
@@ -291,6 +293,36 @@ export function MaterialConfirmClient() {
   }
 
   const revertNotified = (tokens: string[]) => postTokens("unnotified", tokens, "退回失敗");
+
+  /**
+   * 把系統外發生的事記進來：客人打電話說延單／取消／口頭已確認。
+   *
+   * 🔴 沒有這個入口之前，這些單只能一直掛在「已發送・等回覆」，
+   *    催辦天天發假警報（2026-10-29 實查 6 筆，沒有一筆真的在等客人）。
+   *    線下確認刻意不記成 confirmed——那個狀態代表有簽名圖與 IP 可存證。
+   */
+  async function markStaffStatus(r: WeekRow, status: string, label: string) {
+    if (!r.token) return;
+    const note = window.prompt(`標記為「${label}」\n可補充說明（可留空）：`, "");
+    if (note === null) return;                       // 按取消就不做
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/sheets/material-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "staff_status", tokens: [r.token], status, note }),
+      });
+      const j = (await res.json()) as { ok: boolean; error?: string; skipped?: string[] };
+      if (!j.ok) { setError(j.error ?? "標記失敗"); return; }
+      if (j.skipped?.length) setError(`已略過：${j.skipped.join("、")}`);
+      await load();
+    } catch {
+      setError("標記失敗，請稍後再試");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   /**
    * 客人回報有誤／要求延後 → 內容改好後放回「待確認」。
@@ -933,6 +965,30 @@ export function MaterialConfirmClient() {
                     >
                       預覽客人看到的畫面
                     </a>
+                    {/* 客人用電話／LINE 跟你講的事，要有地方記回系統，
+                        否則這張單會一直掛在「等回覆」，催辦天天發假警報 */}
+                    <button
+                      type="button" disabled={busy}
+                      onClick={() => void markStaffStatus(r, "confirmed_offline", "線下已確認")}
+                      title="客人已用電話或 LINE 確認，但沒有在系統上簽名（不會留下簽名存證）"
+                      className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs text-emerald-700 disabled:opacity-40"
+                    >
+                      線下已確認
+                    </button>
+                    <button
+                      type="button" disabled={busy}
+                      onClick={() => void markStaffStatus(r, "postponed", "客人延單")}
+                      className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs text-amber-700 disabled:opacity-40"
+                    >
+                      客人延單
+                    </button>
+                    <button
+                      type="button" disabled={busy}
+                      onClick={() => void markStaffStatus(r, "cancelled", "客人取消訂單")}
+                      className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-40"
+                    >
+                      客人取消
+                    </button>
                     {r.notifiedAt && r.status === "sent" && (
                       <button
                         type="button" disabled={busy}

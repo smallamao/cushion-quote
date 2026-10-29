@@ -208,7 +208,10 @@ export async function POST(request: Request) {
   if (guard.denied) return guard.denied;
 
 
-  let body: { cardIds?: unknown; weekKey?: unknown; action?: unknown; tokens?: unknown; force?: unknown };
+  let body: {
+    cardIds?: unknown; weekKey?: unknown; action?: unknown; tokens?: unknown; force?: unknown;
+    status?: unknown; note?: unknown;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -274,6 +277,58 @@ export async function POST(request: Request) {
   //  ——照片是每次開頁即時向 Trello 抓的，不需要換連結才會更新。
   // notifiedAt 一併清掉，這筆才會回到批次清單等你重發。
   // 原本的回報內容寫進 Trello 留言留痕，不要只是清掉。
+  /**
+   * 內勤把「系統外發生的事」記進來：客人打電話說延單／取消／口頭已確認。
+   *
+   * 🔴 2026-10-29 查出 6 筆卡在 sent 的單，沒有一筆真的在等客人
+   *    （3 筆延單、1 筆取消、2 筆線下已確認），催辦卻天天發假警報——
+   *    因為內勤本來就沒有任何方法把這些現實寫回系統。
+   *
+   * confirmed_offline 刻意不等於 confirmed：後者有簽名圖與 IP 可存證，
+   * 口頭同意沒有，混在一起會稀釋整個簽核流程的法律價值。
+   */
+  if (action === "staff_status") {
+    const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
+    const next = typeof body.status === "string" ? body.status : "";
+    const note = typeof body.note === "string" ? body.note.trim() : "";
+    const ALLOWED: Record<string, { label: string; comment: string }> = {
+      postponed: { label: "客戶要求延後備料", comment: "⏸ 內勤標記：客人要求延後備料" },
+      cancelled: { label: "客戶取消訂單", comment: "✖️ 內勤標記：客人取消訂單" },
+      confirmed_offline: {
+        label: "線下已確認（無簽名存證）",
+        comment: "✅ 內勤標記：客人已於系統外（電話／LINE）確認，無簽名存證",
+      },
+    };
+    if (tokens.length === 0) {
+      return NextResponse.json({ ok: false, error: "沒有指定要標記的項目" }, { status: 400 });
+    }
+    if (!ALLOWED[next]) {
+      return NextResponse.json({ ok: false, error: "不支援的狀態" }, { status: 400 });
+    }
+
+    const all = await listConfirms();
+    let n = 0;
+    const skipped: string[] = [];
+    for (const { confirm, rowNumber } of all) {
+      if (!tokens.includes(confirm.token)) continue;
+      // 已經簽名確認的不可被內勤覆蓋——那是客人留下的存證，不是內勤的判斷
+      if (confirm.status === "confirmed" || confirm.status === "scheduled") {
+        skipped.push(`${confirm.orderNumber}（已有客人簽名，不覆蓋）`);
+        continue;
+      }
+      await writeConfirm(
+        { ...confirm, status: next as typeof confirm.status, disputeNote: note || ALLOWED[next].label },
+        rowNumber,
+      );
+      await addCardCommentUnlessTest(
+        confirm.cardId,
+        [ALLOWED[next].comment, note ? `說明：${note}` : ""].filter(Boolean).join("\n"),
+      ).catch(() => {});
+      n += 1;
+    }
+    return NextResponse.json({ ok: true, updated: n, skipped });
+  }
+
   if (action === "reopen") {
     const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
     if (tokens.length === 0) return NextResponse.json({ ok: false, error: "沒有指定要重開的項目" }, { status: 400 });

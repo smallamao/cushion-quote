@@ -42,7 +42,19 @@ export type MaterialConfirmStatus =
   | "disputed"        // 客人回報內容有誤，等廠務處理
   | "postponed"       // 客人現場還不能進場，要求延後備料
   | "scheduled"       // 司機已從三組挑定一組
-  | "driver_rejected"; // 司機三組都不行，要另外跟客人喬
+  | "driver_rejected" // 司機三組都不行，要另外跟客人喬
+  // ── 以下兩個由內勤標記，不是客人在連結上操作的 ──────────────
+  | "cancelled"        // 客人取消訂單
+  | "confirmed_offline"; // 客人用電話／LINE 口頭確認，沒有在系統上簽名
+
+/**
+ * 🔴 confirmed 與 confirmed_offline 刻意分開（老闆 2026-10-29）。
+ *
+ * confirmed ＝ 客人在系統上簽了名，留有簽名圖、IP、時間戳，可以當存證。
+ * 老闆當初選簽名就是因為「簽名比較有法律效力」。若把口頭同意也記成 confirmed，
+ * 存證資料裡會混進一批沒有簽名的空殼，整個簽核流程的法律價值就被稀釋。
+ * 分開記，看板才能標出「線下確認、無簽名存證」，讓人決定要不要補簽。
+ */
 
 /**
  * 時段的起始整點（台灣時間）。Trello 的 due 存的是「到貨區間的開始」，
@@ -251,7 +263,19 @@ export function isGatingDrift(kind: string): boolean {
  *
  * 前後端共用，避免看板顯示的「還差 N 張」與篩選出來的筆數對不起來。
  */
-export const CUSTOMER_DONE_STATUSES = ["confirmed", "scheduled", "driver_rejected"] as const;
+/**
+ * 「客人那邊已經有結論」的狀態——不再需要等他回覆，也不該再催。
+ * 包含 cancelled 與 confirmed_offline：前者沒有要做了，後者已經答應了，
+ * 兩者都不是待辦。2026-10-29 查出 6 筆卡在 sent 的單沒有一筆真的在等客人，
+ * 催辦卻天天發假警報，就是因為沒有地方記錄這些現實。
+ */
+export const CUSTOMER_DONE_STATUSES = [
+  "confirmed",
+  "scheduled",
+  "driver_rejected",
+  "confirmed_offline",
+  "cancelled",
+] as const;
 
 export function isCustomerConfirmed(status: string): boolean {
   return (CUSTOMER_DONE_STATUSES as readonly string[]).includes(status);
