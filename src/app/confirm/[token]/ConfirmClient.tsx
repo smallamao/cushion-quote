@@ -161,7 +161,10 @@ export function ConfirmClient({ token }: { token: string }) {
           <p className="mt-2 text-sm leading-relaxed text-gray-600">
             我們會立即備料排程。您提供的是
             <strong className="text-gray-800">三組希望時段</strong>，
-            實際配送日要依排車結果決定——
+            實際配送日要依排車結果決定。
+            {/* 斷行是刻意的（老闆 2026-10-29）：「可能排到第 2 或第 3 組」是整段最
+                容易被略過、卻最需要看到的一句，擠在同一行裡會被當成補充說明滑過去。 */}
+            <br />
             <strong className="text-gray-800">有可能安排到第 2 或第 3 組</strong>。
             確定之後我們會再與您聯繫。
           </p>
