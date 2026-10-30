@@ -31,7 +31,9 @@ import type { ARRecord, CustomOrder, OrderInvoiceStatus, OrderItemCategory, Orde
 import { compareOrders } from "@/lib/order-sort";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
-  pending_setup: { label: "待建立內容", className: "badge-deleted" },
+  // 紅色不是「出錯」，是「卡住」：客人已簽核、單子自動開出來了，但交期與排程沒人填，
+  // 後面整條流程都動不了。跟「待出貨」共用橘色時這種單會被滑過去（CA-202608-010 掛了兩個月）。
+  pending_setup: { label: "待建立內容", className: "badge-rejected" },
   production: { label: "排程/生產中", className: "badge-sent" },
   waiting: { label: "待出貨", className: "badge-deleted" },
   completed: { label: "完成", className: "badge-accepted" },
