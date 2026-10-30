@@ -11,7 +11,7 @@ import {
   pdf,
 } from "@react-pdf/renderer";
 
-import { deriveOptionLabels, multiOptionNote } from "@/lib/quote-options";
+import { deltaOptionNote, deriveOptionPresentation, multiOptionNote } from "@/lib/quote-options";
 
 import type { Channel, FlexQuoteItem, SystemSettings } from "@/lib/types";
 
@@ -144,6 +144,23 @@ const s = StyleSheet.create({
   optionBannerTitle: { fontSize: 10, fontWeight: 700, color: C.black },
   optionBannerText: { fontSize: 8.5, color: C.dark, marginTop: 2 },
 
+  /* 分組標題列：把「這幾案擇一」與「這幾項可加買」講在表格裡面，
+     而不是只放在表格上方——客人讀的是數字那一區 */
+  tGroupRow: {
+    flexDirection: "row" as const,
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    backgroundColor: C.headerBg,
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.border,
+  },
+  tGroupMark: { fontSize: 8, fontWeight: 700, color: C.accent },
+  tGroupText: { fontSize: 8, fontWeight: 700, color: C.dark, flex: 1 },
+  /* 差額（升級 +$X）：唯一需要搶眼的數字，用主色 */
+  deltaText: { fontSize: 8.5, fontWeight: 700, color: C.accent, textAlign: "right" as const },
+  dashText: { fontSize: 8.5, color: C.light, textAlign: "right" as const },
+
   colIdx: { width: 24 },
   /* 印「方案一／加購」時項次欄要放得下三個全形字 */
   colIdxLabel: { width: 42 },
@@ -203,6 +220,54 @@ const s = StyleSheet.create({
   },
   totalValue: { width: 100, textAlign: "right", fontSize: 8.5 },
   multiOptionNote: { fontSize: 8.5, color: C.muted, textAlign: "right" },
+
+  /* 差額呈現時的合計區：標籤要放得下「改選方案二」「加購 升級進階面料」，比一般合計寬 */
+  optTotalRow: {
+    flexDirection: "row" as const,
+    justifyContent: "flex-end" as const,
+    width: 250,
+    marginBottom: 2.5,
+  },
+  optTotalLabel: {
+    width: 150,
+    textAlign: "right" as const,
+    fontSize: 8.5,
+    color: C.muted,
+    paddingRight: 10,
+  },
+  optTotalValue: { width: 100, textAlign: "right" as const, fontSize: 8.5 },
+  optTotalValueUp: {
+    width: 100,
+    textAlign: "right" as const,
+    fontSize: 8.5,
+    fontWeight: 700,
+    color: C.accent,
+  },
+  optGrandRow: {
+    flexDirection: "row" as const,
+    justifyContent: "flex-end" as const,
+    width: 250,
+    paddingTop: 5,
+    borderTopWidth: 1.5,
+    borderTopColor: C.black,
+    marginTop: 3,
+    marginBottom: 4,
+  },
+  optGrandLabel: {
+    width: 150,
+    textAlign: "right" as const,
+    fontSize: 10,
+    fontWeight: 700,
+    color: C.black,
+    paddingRight: 10,
+  },
+  optGrandValue: {
+    width: 100,
+    textAlign: "right" as const,
+    fontSize: 13,
+    fontWeight: 700,
+    color: C.black,
+  },
   grandRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -352,20 +417,44 @@ export function QuotePDFDocument(props: QuotePDFProps) {
   const validUntil = validUntilProp && validUntilProp.trim() ? validUntilProp : addDays(quoteDate, validityDays);
   const quoteProjectName = formatQuoteProjectName(projectName, quoteName);
 
-  // 項次欄：多檔品項印「方案一／方案二」、加價選項印「加購」，避免被讀成兩樣商品
-  const optionLabels = deriveOptionLabels(
+  // 項次欄印「方案一／方案二／加購」，並算出各方案與最低檔的差額。
+  // 同一組方案只印最低那檔的絕對金額，其餘印「升級 +$X」——詳見 quote-options.ts。
+  const presentation = deriveOptionPresentation(
     items.map((i) => ({
       itemName: i.name,
       spec: i.spec,
       lineAmount: i.amount,
+      unitPrice: i.unitPrice,
+      qty: i.qty,
       isCostItem: i.isCostItem,
     })),
   );
-  const idxCol = optionLabels.some(Boolean) ? s.colIdxLabel : s.colIdx;
+  const optionRows = presentation.rows;
+  const idxCol = optionRows.some((r) => r.label) ? s.colIdxLabel : s.colIdx;
+  // 全部方案組都改用差額呈現時，分組標題列已經把話講完，不必再放表格上方的粗框警語；
+  // 價差過大而維持絕對金額的那類仍然需要它
+  const showOptionBanner = multiOption && presentation.hasAbsoluteGroup;
   // 沒有加購行時不要提「加購」，免得客人回頭找一個不存在的項目
-  const optionBannerText = optionLabels.includes("加購")
+  const optionBannerText = presentation.hasAddon
     ? "下列各方案為替代方案，金額不需相加；標示「加購」者為可另外加選的項目。"
     : "下列各方案為替代方案，請挑選其中一案，金額不需相加。";
+
+  /* 多方案原本整張單不顯示合計（那會是各方案相加的假數字）。改用差額呈現後
+     紙上只剩一個絕對金額，「最低方案合計」是真數字，客人終於有一個能拿去
+     做決定的總額——所以只在所有方案組都用差額時才恢復顯示。 */
+  const showBaseTotals = multiOption && presentation.canShowBaseTotal;
+  const upgradeRows = optionRows.filter(
+    (r) => r.kind === "tier" && r.useDelta && !r.isBase && r.deltaAmount > 0,
+  );
+  const addonTotalRows = items
+    .map((item, idx) => ({ item, row: optionRows[idx] }))
+    .filter(({ row }) => row.kind === "addon");
+  const baseTotalLabel = presentation.rows.find((r) => r.kind === "tier" && r.isBase)?.label;
+  /* 合計含了運費這類一般品項，不講清楚客人會以為只是方案本身的價錢 */
+  const baseTotalExtras = items
+    .filter((item, idx) => optionRows[idx].kind === "normal" && !item.isCostItem)
+    .map((item) => item.name.split("\n")[0].trim())
+    .filter(Boolean);
 
   const visibleItems = items.filter((i) => !i.isCostItem);
   const itemsWithImg = visibleItems.filter((i) => i.imageUrl).length;
@@ -460,8 +549,8 @@ export function QuotePDFDocument(props: QuotePDFProps) {
           </View>
         </View>
 
-        {multiOption ? (
-          /* 客人會把兩檔金額相加（S987 加成 $41,000 後放棄），開頭先講清楚是擇一 */
+        {showOptionBanner ? (
+          /* 價差過大而維持絕對金額的方案組：金額欄仍有兩個絕對金額，警語照舊要放 */
           <View style={s.optionBanner}>
             <Text style={s.optionBannerMark}>◆</Text>
             <View style={s.optionBannerBody}>
@@ -480,10 +569,52 @@ export function QuotePDFDocument(props: QuotePDFProps) {
             <Text style={[s.tHeadText, s.colPrice]}>單價</Text>
             <Text style={[s.tHeadText, s.colAmount]}>金額</Text>
           </View>
-          {items.map((item, idx) => (
+          {items.flatMap((item, idx) => {
+            const row = optionRows[idx];
+            const nodes = [];
+
+            /* 分組標題列：把「這幾案擇一」「這幾項可加買」講在數字旁邊。
+               警語放表格上方已經失效兩次，客人讀的是金額那一區。 */
+            if (row.groupStart && row.kind === "tier") {
+              nodes.push(
+                <View key={`${item.id}-grp`} style={s.tGroupRow} wrap={false}>
+                  <Text style={s.tGroupMark}>◆</Text>
+                  <Text style={s.tGroupText}>
+                    {row.useDelta
+                      ? `以下 ${row.groupSize} 案為同一件商品的不同等級，請擇一；` +
+                        `${row.baseLabel ?? "最低方案"}以外只標示差額，金額不需相加`
+                      : `以下 ${row.groupSize} 案為替代方案，請擇一，金額不需相加`}
+                  </Text>
+                </View>,
+              );
+            }
+            if (row.groupStart && row.kind === "addon") {
+              nodes.push(
+                <View key={`${item.id}-grp`} style={s.tGroupRow} wrap={false}>
+                  <Text style={s.tGroupMark}>＋</Text>
+                  <Text style={s.tGroupText}>以下為可另外加買的項目，金額需另計</Text>
+                </View>,
+              );
+            }
+
+            /* 差額呈現：同組只有基準檔印絕對金額，其餘印「升級 +$X」，
+               讓紙上只剩一個絕對金額可讀。 */
+            const showDelta = row.kind === "tier" && row.useDelta && !row.isBase;
+            const priceCell = showDelta
+              ? row.deltaUnitPrice !== null && item.qty > 1
+                ? `+${fmtCurrency(row.deltaUnitPrice)}`
+                : "—"
+              : fmtCurrency(item.unitPrice);
+            const amountCell = showDelta
+              ? row.deltaAmount === 0
+                ? "同價"
+                : `升級 +${fmtCurrency(row.deltaAmount)}`
+              : fmtCurrency(item.amount);
+
+            nodes.push(
             <View key={item.id} style={s.tRow} wrap={false}>
-              {optionLabels[idx] ? (
-                <Text style={[s.optionLabel, idxCol]}>{optionLabels[idx]}</Text>
+              {row.label ? (
+                <Text style={[s.optionLabel, idxCol]}>{row.label}</Text>
               ) : (
                 <Text style={[s.tCell, idxCol]}>{idx + 1}</Text>
               )}
@@ -506,10 +637,17 @@ export function QuotePDFDocument(props: QuotePDFProps) {
                 ) : null}
               </View>
               <Text style={[s.tCellR, s.colQty]}>{item.qty} {item.unit}</Text>
-              <Text style={[s.tCellR, s.colPrice]}>{fmtCurrency(item.unitPrice)}</Text>
-              <Text style={[s.tCellR, s.colAmount]}>{fmtCurrency(item.amount)}</Text>
-            </View>
-          ))}
+              <Text style={[showDelta && priceCell === "—" ? s.dashText : s.tCellR, s.colPrice]}>
+                {priceCell}
+              </Text>
+              <Text style={[showDelta ? s.deltaText : s.tCellR, s.colAmount]}>
+                {amountCell}
+              </Text>
+            </View>,
+            );
+
+            return nodes;
+          })}
         </View>
 
         {description.trim() || descriptionImageUrl ? (
@@ -527,10 +665,38 @@ export function QuotePDFDocument(props: QuotePDFProps) {
         ) : null}
 
         {multiOption ? (
-          /* 多方案：合計是所有方案相加的假數字，會嚇到客人；只留一句請擇一 */
-          <View style={s.totalsBlock}>
-            <Text style={s.multiOptionNote}>{multiOptionNote(includeTax, settings.taxRate)}</Text>
-          </View>
+          /* 多方案：各方案相加是假數字，不可顯示合計。改用差額呈現後只剩一個
+             絕對金額，「最低方案合計」才是真的，這時才列出來。 */
+          showBaseTotals ? (
+            <View style={s.totalsBlock}>
+              <View style={s.optGrandRow}>
+                <Text style={s.optGrandLabel}>
+                  {baseTotalLabel ?? "最低方案"}合計
+                  {baseTotalExtras.length ? `（含${baseTotalExtras.join("、")}）` : ""}
+                </Text>
+                <Text style={s.optGrandValue}>{fmtCurrency(presentation.baseTotal)}</Text>
+              </View>
+              {upgradeRows.map((r) => (
+                <View key={`up-${r.label}`} style={s.optTotalRow}>
+                  <Text style={s.optTotalLabel}>改選{r.label}</Text>
+                  <Text style={s.optTotalValueUp}>+{fmtCurrency(r.deltaAmount)}</Text>
+                </View>
+              ))}
+              {addonTotalRows.map(({ item }) => (
+                <View key={`addon-${item.id}`} style={s.optTotalRow}>
+                  <Text style={s.optTotalLabel}>
+                    加購 {item.name.split("\n")[0].replace(/^加購[｜|]\s*/, "").trim()}
+                  </Text>
+                  <Text style={s.optTotalValue}>+{fmtCurrency(item.amount)}</Text>
+                </View>
+              ))}
+              <Text style={s.multiOptionNote}>{deltaOptionNote(includeTax, settings.taxRate)}</Text>
+            </View>
+          ) : (
+            <View style={s.totalsBlock}>
+              <Text style={s.multiOptionNote}>{multiOptionNote(includeTax, settings.taxRate)}</Text>
+            </View>
+          )
         ) : (
           <View style={s.totalsBlock}>
             <View style={s.totalRow}>
