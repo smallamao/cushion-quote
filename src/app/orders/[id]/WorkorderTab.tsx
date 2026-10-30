@@ -92,8 +92,12 @@ function fmtDateTime(iso: string): string {
 interface WorkorderTabProps {
   draft: CustomOrder;
   updateDraft: <K extends keyof CustomOrder>(key: K, value: CustomOrder[K]) => void;
-  /** 產生 PDF 後把最新網址／時間同步回父層的 order+draft（不影響「未儲存」狀態） */
-  onWorkOrderPdfSaved: (url: string, updatedAt: string) => void;
+  /**
+   * 產生 PDF 後把最新網址／時間同步回父層的 order+draft（不影響「未儲存」狀態）。
+   * materialImageUrl＝這份工單實際印出來的那張布樣圖（裁切後的），一起回寫才能讓
+   * 同步到 Notion 的工單圖跟 PDF 長得一樣。
+   */
+  onWorkOrderPdfSaved: (url: string, updatedAt: string, materialImageUrl?: string) => void;
   onSave: () => Promise<void>;
   saving: boolean;
   isDirty: boolean;
@@ -155,7 +159,11 @@ export function WorkorderTab({
   }
 
   // 產生後在背景上傳＋存回訂單記錄，取代舊工單；失敗不影響已顯示的預覽
-  async function persistPdf(blob: Blob) {
+  //
+  // materialImageUrl 要一起回寫：裁切過的布樣圖原本只活在這一次渲染裡，訂單記錄
+  // 仍是未裁切的原圖，於是同步到 Notion 的工單圖跟這份 PDF 長得不一樣
+  // （S1087 2026-10-30），而且每次重產工單都要重裁一遍。
+  async function persistPdf(blob: Blob, materialImageUrl?: string) {
     try {
       const fd = new FormData();
       fd.append("file", new File([blob], `工單-${draft.orderNumber || draft.orderId}.pdf`, { type: "application/pdf" }));
@@ -167,11 +175,19 @@ export function WorkorderTab({
       const patchRes = await fetch(`/api/sheets/orders/${draft.orderId}/workorder-pdf`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: upJson.url }),
+        body: JSON.stringify({ url: upJson.url, materialImageUrl }),
       });
-      const patchJson = (await patchRes.json()) as { ok: boolean; workOrderPdfUpdatedAt?: string };
+      const patchJson = (await patchRes.json()) as {
+        ok: boolean;
+        workOrderPdfUpdatedAt?: string;
+        materialImageUrl?: string;
+      };
       if (patchJson.ok) {
-        onWorkOrderPdfSaved(upJson.url, patchJson.workOrderPdfUpdatedAt ?? new Date().toISOString());
+        onWorkOrderPdfSaved(
+          upJson.url,
+          patchJson.workOrderPdfUpdatedAt ?? new Date().toISOString(),
+          patchJson.materialImageUrl,
+        );
       }
     } catch {
       // 非阻斷：預覽已可用，僅「已存工單」紀錄未更新
@@ -181,14 +197,14 @@ export function WorkorderTab({
   async function generatePdfWithImage(imageUrl: string) {
     setPdfLoading(true);
     try {
-      const orderForPdf = imageUrl !== draft.materialImageUrl
-        ? { ...draft, materialImageUrl: imageUrl }
-        : draft;
+      // 裁切後網址會變；空字串＝這張單本來就沒有布樣圖，不可拿去蓋掉既有的
+      const croppedUrl = imageUrl.trim() && imageUrl !== draft.materialImageUrl ? imageUrl : "";
+      const orderForPdf = croppedUrl ? { ...draft, materialImageUrl: croppedUrl } : draft;
       const { generateWorkOrderPdfBlob } = await import("@/components/pdf/WorkOrderPDF");
       const blob = await generateWorkOrderPdfBlob({ order: orderForPdf });
       setPdfBlob(blob);
       setPdfOpen(true);
-      void persistPdf(blob);
+      void persistPdf(blob, croppedUrl || undefined);
     } catch (err) {
       alert(err instanceof Error ? err.message : "PDF 生成失敗");
     } finally {

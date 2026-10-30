@@ -1001,9 +1001,15 @@ export function OrderDetailClient({ orderId }: Props) {
           <WorkorderTab
             draft={draft}
             updateDraft={updateDraft}
-            onWorkOrderPdfSaved={(url, updatedAt) => {
-              setOrder((prev) => (prev ? { ...prev, workOrderPdfUrl: url, workOrderPdfUpdatedAt: updatedAt } : prev));
-              setDraft((prev) => (prev ? { ...prev, workOrderPdfUrl: url, workOrderPdfUpdatedAt: updatedAt } : prev));
+            onWorkOrderPdfSaved={(url, updatedAt, materialImageUrl) => {
+              // order 與 draft 要套一樣的值，否則會被當成「未儲存的變更」
+              const patch = {
+                workOrderPdfUrl: url,
+                workOrderPdfUpdatedAt: updatedAt,
+                ...(materialImageUrl ? { materialImageUrl } : {}),
+              };
+              setOrder((prev) => (prev ? { ...prev, ...patch } : prev));
+              setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
             }}
             onSave={handleSave}
             saving={saving}

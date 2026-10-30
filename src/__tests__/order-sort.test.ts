@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compareOrders, cmpDateDesc, cmpInstallDate } from "@/lib/order-sort";
+import { resolveWorkOrderMaterialImage } from "@/lib/order-utils";
 import type { CustomOrder } from "@/lib/types";
 
 function mk(o: Partial<CustomOrder>): CustomOrder {
@@ -110,5 +111,29 @@ describe("待建立內容（pending_setup）排最前", () => {
     const a = mk({ status: "pending_setup", installDate: "", orderDate: "2026-05-01" });
     const b = mk({ status: "pending_setup", installDate: "2026-05-01", orderDate: "2026-05-01" });
     expect(compareOrders(a, b)).toBeLessThan(0); // 無日期者仍排前
+  });
+});
+
+describe("resolveWorkOrderMaterialImage", () => {
+  const cropped = "https://res.cloudinary.com/x/image/upload/v2/work-order-swatch/cropped.jpg";
+  const original = "https://res.cloudinary.com/x/image/upload/v1/quote-attachments/original.jpg";
+
+  it("帶了裁切圖就用裁切圖（PDF 印什麼、訂單就存什麼）", () => {
+    expect(resolveWorkOrderMaterialImage(cropped, original)).toBe(cropped);
+  });
+
+  it("沒帶值時沿用既有的，不可洗掉", () => {
+    expect(resolveWorkOrderMaterialImage(undefined, original)).toBe(original);
+    expect(resolveWorkOrderMaterialImage(null, original)).toBe(original);
+  });
+
+  it("空字串／空白也不可洗掉——沒有布樣圖的單也會走這條路", () => {
+    expect(resolveWorkOrderMaterialImage("", original)).toBe(original);
+    expect(resolveWorkOrderMaterialImage("   ", original)).toBe(original);
+  });
+
+  it("本來就沒有圖時回空字串", () => {
+    expect(resolveWorkOrderMaterialImage("", "")).toBe("");
+    expect(resolveWorkOrderMaterialImage(undefined, undefined)).toBe("");
   });
 });

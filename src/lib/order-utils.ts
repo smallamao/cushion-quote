@@ -190,3 +190,20 @@ export function generateOrderId(
   const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
   return `${prefix}${String(next).padStart(3, "0")}`;
 }
+
+/**
+ * 存工單 PDF 時要寫回訂單的布樣圖網址。
+ *
+ * 產生工單前會跳裁切視窗讓操作員框布樣，印出來的是裁切圖；這張圖以前不回寫訂單，
+ * 導致同步到 Notion 的工單圖（吃訂單記錄）跟 PDF 長得不一樣（S1087 2026-10-30）。
+ *
+ * 🔴 沒帶值或空字串一律沿用既有的，不可拿空值蓋掉——沒有布樣圖的單也會走這條路，
+ * 真的覆寫下去等於把訂單上的布樣圖洗掉。
+ */
+export function resolveWorkOrderMaterialImage(
+  incoming: string | undefined | null,
+  existing: string | undefined | null,
+): string {
+  const next = (incoming ?? "").trim();
+  return next || (existing ?? "").trim();
+}
