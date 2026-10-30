@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 
 import { getActiveSession } from "@/lib/api-auth";
 import { timingSafeEqual } from "@/lib/constant-time";
-import { listConfirms } from "@/lib/material-confirm-sheet";
+import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
+import { isCustomerConfirmed } from "@/lib/material-confirm-types";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { listOrderConfirms } from "@/lib/order-confirm-sheet";
 import { TRELLO } from "@/lib/trello-constants";
-import { getBoardCardsWithChecklists, readDepositState } from "@/lib/trello-server";
+import {
+  addCardCommentUnlessTest,
+  getBoardCardsWithChecklists,
+  readDepositState,
+} from "@/lib/trello-server";
 
 /**
  * 每日催辦：掃出「連結已發出、客人卻還沒回應」的單，寫進通知表（並連帶推播）。
@@ -57,6 +62,43 @@ export async function GET(request: Request) {
   }
 
   const sent: string[] = [];
+
+  /**
+   * Trello 卡片進了「Fail 作廢」→ 叫料確認單自動標成取消。
+   *
+   * 🔴 為什麼要自動（老闆 2026-10-31）：作廢是在 Trello 做的，不該要人再進系統
+   *    點第二次。而且 P6274 黃淑雯證明了「要人去點」根本做不到——卡片作廢時
+   *    排程日期欄被清空，看板是用那個欄位篩選的，於是這張單在**任何週**都
+   *    篩不出來。畫面上找不到的東西，不可能靠人工處理。
+   *
+   * 只動還沒結案的單；confirmed／scheduled 不碰——那是客人簽名的存證，
+   * 不是作業狀態，不該被排程自動改寫。
+   */
+  const autoCancelled: string[] = [];
+  try {
+    const cards = await getBoardCardsWithChecklists(TRELLO.BOARD_ID);
+    const failedCardIds = new Set(
+      cards.filter((c) => c.idList === TRELLO.LISTS.FAILED).map((c) => c.id),
+    );
+    if (failedCardIds.size > 0) {
+      for (const { confirm, rowNumber } of await listConfirms()) {
+        if (!failedCardIds.has(confirm.cardId)) continue;
+        if (confirm.status === "cancelled") continue;
+        if (isCustomerConfirmed(confirm.status)) continue; // 已有簽名存證，不覆蓋
+        await writeConfirm(
+          { ...confirm, status: "cancelled", disputeNote: "卡片已移到「Fail 作廢」，系統自動標記取消" },
+          rowNumber,
+        );
+        await addCardCommentUnlessTest(
+          confirm.cardId,
+          "✖️ 系統自動標記：卡片已在「Fail 作廢」，叫料確認單同步標為取消",
+        ).catch(() => {});
+        autoCancelled.push(confirm.orderNumber);
+      }
+    }
+  } catch {
+    /* 讀不到就跳過，不影響後面的催辦 */
+  }
 
   // ── 線上下訂確認：已發連結、客人未簽 ──────────────────
   try {
@@ -152,5 +194,10 @@ export async function GET(request: Request) {
     /* best-effort */
   }
 
-  return NextResponse.json({ ok: true, remindedCount: sent.length, items: sent });
+  return NextResponse.json({
+    ok: true,
+    remindedCount: sent.length,
+    items: sent,
+    autoCancelled,
+  });
 }
