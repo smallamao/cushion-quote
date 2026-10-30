@@ -127,6 +127,12 @@ const DRIFT_RUN_HINT = "約 3 分鐘（WatchPaths 偶爾會漏，最慢 10 分�
 // 超過這個分鐘數就提醒「可能不是最新的」——發送前的判斷用，跟 24 小時的過期門檻是兩回事。
 const DRIFT_FRESH_MIN = 15;
 
+interface OutsideRow {
+  cardId: string; token: string; orderNumber: string; customerName: string;
+  status: string; weekKey: string; dueDate: string;
+  notifiedAt: string; createdAt: string; disputeNote: string;
+}
+
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   not_sent:  { label: "尚未發送", cls: "bg-gray-100 text-gray-600" },
   sent:      { label: "已發送・等回覆", cls: "bg-amber-100 text-amber-800" },
@@ -145,6 +151,8 @@ export function MaterialConfirmClient() {
   const { user } = useCurrentUser();
   const isAdmin = user?.role === "admin";
   const [rows, setRows] = useState<WeekRow[]>([]);
+  /** 不在目前檢視週、但還沒處理完的單——看板用排程日篩週別，這些會整個消失 */
+  const [outside, setOutside] = useState<OutsideRow[]>([]);
   const [view, setView] = useState<"all" | "pending" | "done">("all");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [ready, setReady] = useState(false);
@@ -167,13 +175,15 @@ export function MaterialConfirmClient() {
       const json = (await res.json()) as {
         ok: boolean; error?: string; rows?: WeekRow[]; summary?: Summary;
         readyForMaterialCall?: boolean; driftStatus?: DriftStatus; safeToSend?: boolean;
+        outsideWeek?: OutsideRow[];
       };
       if (!json.ok) {
         setError(json.error ?? "讀取失敗");
-        setRows([]); setSummary(null); setReady(false); setDrift(null); setSafeToSend(false);
+        setRows([]); setOutside([]); setSummary(null); setReady(false); setDrift(null); setSafeToSend(false);
         return;
       }
       setRows(json.rows ?? []);
+      setOutside(json.outsideWeek ?? []);
       setSummary(json.summary ?? null);
       setReady(Boolean(json.readyForMaterialCall));
       setDrift(json.driftStatus ?? null);
@@ -301,8 +311,8 @@ export function MaterialConfirmClient() {
    *    催辦天天發假警報（2026-10-29 實查 6 筆，沒有一筆真的在等客人）。
    *    線下確認刻意不記成 confirmed——那個狀態代表有簽名圖與 IP 可存證。
    */
-  async function markStaffStatus(r: WeekRow, status: string, label: string) {
-    if (!r.token) return;
+  async function markStaffStatus(token: string | null, status: string, label: string) {
+    if (!token) return;
     const note = window.prompt(`標記為「${label}」\n可補充說明（可留空）：`, "");
     if (note === null) return;                       // 按取消就不做
     setBusy(true);
@@ -311,7 +321,7 @@ export function MaterialConfirmClient() {
       const res = await fetch("/api/sheets/material-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "staff_status", tokens: [r.token], status, note }),
+        body: JSON.stringify({ action: "staff_status", tokens: [token as string], status, note }),
       });
       const j = (await res.json()) as { ok: boolean; error?: string; skipped?: string[] };
       if (!j.ok) { setError(j.error ?? "標記失敗"); return; }
@@ -502,6 +512,73 @@ export function MaterialConfirmClient() {
       <p className="mt-1 text-sm text-[var(--text-secondary)]">
         全部客戶確認後才進行組件叫料。客戶確認即為訂貨單條款的不可取消時點，系統會留存簽名與時間。
       </p>
+
+      {/* 🔴 不在本週、但還沒處理完的單。看板用 Trello 排程日篩週別，所以這些在
+          畫面上完全消失——2026-10-31 實查 6 筆待處理有 5 筆看不到，兩筆躺了 33 天。
+          放在最上面且不受週別影響，卡住的東西才藏不住。 */}
+      {outside.length > 0 && (
+        <div className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3">
+          <p className="text-sm font-semibold text-red-800">
+            ⚠️ 不在本週、但還沒處理完（{outside.length} 筆）
+          </p>
+          <p className="mt-0.5 text-xs text-red-700">
+            這些單的排程日不在目前檢視區間，平常在畫面上看不到。
+          </p>
+          <div className="mt-2 space-y-2">
+            {outside.map((o) => {
+              const waited = daysSince(o.notifiedAt || o.createdAt);
+              return (
+                <div key={o.cardId} className="rounded-lg border border-red-200 bg-white p-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-[var(--text-primary)]">
+                      {o.orderNumber} {o.customerName}
+                    </span>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_META[o.status]?.cls ?? "bg-gray-100 text-gray-600"}`}>
+                      {o.status === "sent" && !o.notifiedAt
+                        ? "連結還沒傳給客人"
+                        : STATUS_META[o.status]?.label ?? o.status}
+                    </span>
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      生產週 {o.weekKey || "—"}
+                      {waited !== null ? `・已 ${waited} 天` : ""}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                      type="button" disabled={busy}
+                      onClick={() => { setStart(o.weekKey); setEnd(addDays(o.weekKey, 5)); }}
+                      className="rounded-lg border border-[var(--border)] px-2.5 py-1 text-xs disabled:opacity-40"
+                    >
+                      跳到那一週
+                    </button>
+                    <button
+                      type="button" disabled={busy}
+                      onClick={() => void markStaffStatus(o.token, "confirmed_offline", "線下已確認")}
+                      className="rounded-lg border border-emerald-300 px-2.5 py-1 text-xs text-emerald-700 disabled:opacity-40"
+                    >
+                      線下已確認
+                    </button>
+                    <button
+                      type="button" disabled={busy}
+                      onClick={() => void markStaffStatus(o.token, "postponed", "客人延單")}
+                      className="rounded-lg border border-amber-300 px-2.5 py-1 text-xs text-amber-700 disabled:opacity-40"
+                    >
+                      客人延單
+                    </button>
+                    <button
+                      type="button" disabled={busy}
+                      onClick={() => void markStaffStatus(o.token, "cancelled", "客人取消訂單")}
+                      className="rounded-lg border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--text-secondary)] disabled:opacity-40"
+                    >
+                      客人取消
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 操作步驟 */}
       <ol className="mt-4 grid gap-2 sm:grid-cols-3">
@@ -969,7 +1046,7 @@ export function MaterialConfirmClient() {
                         否則這張單會一直掛在「等回覆」，催辦天天發假警報 */}
                     <button
                       type="button" disabled={busy}
-                      onClick={() => void markStaffStatus(r, "confirmed_offline", "線下已確認")}
+                      onClick={() => void markStaffStatus(r.token, "confirmed_offline", "線下已確認")}
                       title="客人已用電話或 LINE 確認，但沒有在系統上簽名（不會留下簽名存證）"
                       className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs text-emerald-700 disabled:opacity-40"
                     >
@@ -977,14 +1054,14 @@ export function MaterialConfirmClient() {
                     </button>
                     <button
                       type="button" disabled={busy}
-                      onClick={() => void markStaffStatus(r, "postponed", "客人延單")}
+                      onClick={() => void markStaffStatus(r.token, "postponed", "客人延單")}
                       className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs text-amber-700 disabled:opacity-40"
                     >
                       客人延單
                     </button>
                     <button
                       type="button" disabled={busy}
-                      onClick={() => void markStaffStatus(r, "cancelled", "客人取消訂單")}
+                      onClick={() => void markStaffStatus(r.token, "cancelled", "客人取消訂單")}
                       className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-40"
                     >
                       客人取消

@@ -197,7 +197,39 @@ export async function GET(request: Request) {
   const safeToSend =
     driftStatus.checked && !driftStatus.stale && !driftStatus.error && driftStatus.weekRecords === 0;
 
-  return NextResponse.json({ ok: true, rows, summary, readyForMaterialCall, driftStatus, safeToSend });
+  /**
+   * 不在目前檢視週、但還沒處理完的單。
+   *
+   * 🔴 看板是用 Trello「排程」日期欄位篩週別，所以一張單只要排程日不在
+   *    選取區間——或那個欄位被清空（卡片作廢時就會）——畫面上就完全消失。
+   *    2026-10-31 實查：6 筆待處理的單有 5 筆在預設畫面上看不到，
+   *    其中兩筆已經躺了 33 天。它們不是沒人注意，是沒機會被看到。
+   *
+   * 所以這一區不看週別，只問「還需不需要有人動作」。
+   * postponed 不列入：那是刻意暫停，之後由人重新發，不該一直佔版面。
+   */
+  const shownCardIds = new Set(rows.map((r) => r.cardId));
+  const needsAction = new Set(["sent", "disputed"]);
+  const outsideWeek = existing
+    .map(({ confirm }) => confirm)
+    .filter((c) => !shownCardIds.has(c.cardId) && needsAction.has(c.status))
+    .map((c) => ({
+      cardId: c.cardId,
+      token: c.token,
+      orderNumber: c.orderNumber,
+      customerName: c.customerName,
+      status: c.status,
+      weekKey: c.weekKey,
+      dueDate: c.dueDate,
+      notifiedAt: c.notifiedAt,
+      createdAt: c.createdAt,
+      disputeNote: c.disputeNote,
+    }))
+    .sort((a, b) => (a.weekKey || "").localeCompare(b.weekKey || ""));
+
+  return NextResponse.json({
+    ok: true, rows, summary, readyForMaterialCall, driftStatus, safeToSend, outsideWeek,
+  });
 }
 
 export async function POST(request: Request) {
