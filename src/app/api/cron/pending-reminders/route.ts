@@ -25,6 +25,15 @@ export const dynamic = "force-dynamic";
 /** 超過幾天沒回應就開始每天提醒。匯款期限是建立後 2 天，所以第 3 天起就該跟。 */
 const REMIND_AFTER_DAYS = 2;
 
+/** ISO → 台灣時區 YYYY-MM-DD，用來跟「今天」比大小。 */
+function twYmd(iso: string): string {
+  const t = Date.parse(iso ?? "");
+  if (!Number.isFinite(t)) return "";
+  const tw = new Date(t + 8 * 60 * 60 * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${tw.getUTCFullYear()}-${p(tw.getUTCMonth() + 1)}-${p(tw.getUTCDate())}`;
+}
+
 function daysSince(iso: string): number | null {
   const t = Date.parse(iso ?? "");
   if (!Number.isFinite(t)) return null;
@@ -72,13 +81,19 @@ export async function GET(request: Request) {
       .sort((a, b) => (b.d ?? 0) - (a.d ?? 0));
 
     for (const { o, d } of stale) {
+      // 同樣要分「沒發出去」與「客人沒回」——動作完全不同
+      const sentOut = Boolean(o.notifiedAt);
       await appendNotification({
-        type: "order_confirm_pending",
-        title: `⏰ ${o.orderNo || o.cardName} 客人還沒確認下訂`,
-        body: `已等 ${d} 天・訂金 NT$ ${o.depositAmount.toLocaleString()}，建議主動聯絡`,
+        type: sentOut ? "order_confirm_pending" : "order_confirm_unsent",
+        title: sentOut
+          ? `⏰ ${o.orderNo || o.cardName} 客人還沒確認下訂`
+          : `⚠️ ${o.orderNo || o.cardName} 下訂連結還沒傳給客人`,
+        body: sentOut
+          ? `已傳送 ${d} 天無回覆・訂金 NT$ ${o.depositAmount.toLocaleString()}，建議主動聯絡`
+          : `已建立 ${d} 天還沒發出，請到排程出貨頁複製訊息傳給客人`,
         link: "/shipping-notice",
       });
-      sent.push(`order:${o.orderNo || o.cardName}:${d}d`);
+      sent.push(`${sentOut ? "order" : "order-unsent"}:${o.orderNo || o.cardName}:${d}d`);
     }
   } catch {
     /* 一邊掛掉不影響另一邊 */
@@ -87,21 +102,51 @@ export async function GET(request: Request) {
   // ── 叫料確認：已發連結、客人未確認 ────────────────────
   try {
     const rows = await listConfirms();
-    const stale = rows
-      .map(({ confirm }) => confirm)
-      .filter((c) => c.status === "sent")
-      .map((c) => ({ c, d: daysSince(c.notifiedAt || c.createdAt) }))
-      .filter((x) => x.d !== null && x.d > REMIND_AFTER_DAYS)
-      .sort((a, b) => (b.d ?? 0) - (a.d ?? 0));
+    /**
+     * 🔴 三種情境要分開講（老闆 2026-10-29／30）：
+     *   1. 出貨日已過卻還沒確認 → 硬期限已突破，嚴重度跟「等很久」差一個量級
+     *   2. 連結建好了但沒傳出去 → 要「你」去按複製傳給客人
+     *   3. 已傳出、客人沒回     → 才是去 LINE 催客人
+     * 原本三者一律寫「客人還沒確認叫料」，實查 6 筆有一半根本沒發出去，
+     * 等於把人導向錯誤的動作。做錯方向就是白忙。
+     */
+    const today = twYmd(new Date().toISOString());
+    const pending = rows.map(({ confirm }) => confirm).filter((c) => c.status === "sent");
 
-    for (const { c, d } of stale) {
-      await appendNotification({
-        type: "material_confirm_pending",
-        title: `⏰ ${c.orderNumber} 客人還沒確認叫料`,
-        body: `${c.customerName}・已等 ${d} 天，建議主動聯絡`,
-        link: "/material-confirm",
-      });
-      sent.push(`material:${c.orderNumber}:${d}d`);
+    for (const c of pending) {
+      const sentOut = Boolean(c.notifiedAt);
+      const due = twYmd(c.dueDate);
+      const overdue = due !== "" && due < today;
+      const d = daysSince(sentOut ? c.notifiedAt : c.createdAt);
+
+      // 出貨日已過就立刻喊，不等 REMIND_AFTER_DAYS——那已經是遲到，不是等待
+      if (!overdue && (d === null || d <= REMIND_AFTER_DAYS)) continue;
+
+      if (overdue) {
+        await appendNotification({
+          type: "material_confirm_overdue",
+          title: `🚨 ${c.orderNumber} 出貨日已過，叫料確認還沒完成`,
+          body: `${c.customerName}・預計出貨 ${due}${sentOut ? `，已傳送 ${d} 天無回覆` : "，連結尚未傳給客人"}`,
+          link: "/material-confirm",
+        });
+        sent.push(`material-overdue:${c.orderNumber}`);
+      } else if (!sentOut) {
+        await appendNotification({
+          type: "material_confirm_unsent",
+          title: `⚠️ ${c.orderNumber} 確認連結還沒傳給客人`,
+          body: `${c.customerName}・已建立 ${d} 天還沒發出，請到看板複製訊息傳給客人`,
+          link: "/material-confirm",
+        });
+        sent.push(`material-unsent:${c.orderNumber}:${d}d`);
+      } else {
+        await appendNotification({
+          type: "material_confirm_pending",
+          title: `⏰ ${c.orderNumber} 客人還沒確認叫料`,
+          body: `${c.customerName}・已傳送 ${d} 天無回覆，建議主動聯絡`,
+          link: "/material-confirm",
+        });
+        sent.push(`material:${c.orderNumber}:${d}d`);
+      }
     }
   } catch {
     /* best-effort */
