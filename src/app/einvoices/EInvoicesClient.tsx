@@ -67,6 +67,10 @@ interface SnackbarState {
 // 偶發超量時由伺服器端配額重試補上。
 const BATCH_ISSUE_INTERVAL_MS = 4000;
 
+// 與伺服器 batch-delete 規則一致：只有草稿與失敗紀錄可刪
+const DELETABLE_INVOICE_STATUSES: ReadonlySet<EInvoiceRecord["status"]> = new Set(["draft", "failed"]);
+const NOT_DELETABLE_HINT = "已開立的發票不能刪除；待確認請按 ✓ 確認";
+
 interface BatchIssueDuplicate {
   candidateId: string;
   buyerName: string;
@@ -277,6 +281,14 @@ export function EInvoicesClient() {
   const selectedCandidates = useMemo(
     () => candidates.filter((candidate) => selectedIds.includes(candidate.candidateId)),
     [candidates, selectedIds],
+  );
+
+  // 勾選同時給「批次下載」（只取已開立）與「刪除」（只取草稿／失敗）使用，刪除只送可刪的那幾筆
+  const deletableSelectedIds = useMemo(
+    () => invoices
+      .filter((inv) => historySelectedIds.has(inv.invoiceId) && DELETABLE_INVOICE_STATUSES.has(inv.status))
+      .map((inv) => inv.invoiceId),
+    [invoices, historySelectedIds],
   );
 
   const filteredInvoices = useMemo(() => {
@@ -845,7 +857,7 @@ export function EInvoicesClient() {
   }
 
   async function handleBatchDelete() {
-    if (historySelectedIds.size === 0) return;
+    if (deletableSelectedIds.length === 0) return;
     setConfirmDeleteBatch(true);
   }
 
@@ -856,7 +868,7 @@ export function EInvoicesClient() {
       const res = await fetch("/api/sheets/einvoices/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoiceIds: Array.from(historySelectedIds) }),
+        body: JSON.stringify({ invoiceIds: deletableSelectedIds }),
       });
       const data = (await res.json()) as { ok: boolean; deleted?: number; message?: string; error?: string };
       if (data.ok) {
@@ -1289,11 +1301,12 @@ export function EInvoicesClient() {
               <Button
                 size="sm"
                 variant="destructive"
-                disabled={batchDeleting || batchDownloading}
+                disabled={batchDeleting || batchDownloading || deletableSelectedIds.length === 0}
+                title={deletableSelectedIds.length < historySelectedIds.size ? `只會刪除草稿／失敗紀錄。${NOT_DELETABLE_HINT}` : undefined}
                 onClick={() => void handleBatchDelete()}
               >
                 {batchDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                刪除選取
+                刪除選取（{deletableSelectedIds.length}）
               </Button>
               <button
                 type="button"
@@ -1471,6 +1484,7 @@ export function EInvoicesClient() {
                       className="shrink-0"
                       checked={historySelectedIds.has(invoice.invoiceId)}
                       onCheckedChange={() => toggleHistorySelect(invoice.invoiceId)}
+                      title={DELETABLE_INVOICE_STATUSES.has(invoice.status) ? undefined : `可勾選批次下載；${NOT_DELETABLE_HINT}`}
                     />
                     <span className="font-medium text-[var(--text-primary)]">{invoice.invoiceId}</span>
                     <span className={`ml-auto inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${INVOICE_STATUS_CLASS[invoice.status] ?? "bg-slate-100 text-slate-700"}`}>
@@ -1713,7 +1727,10 @@ export function EInvoicesClient() {
           <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
             <h2 className="mb-1 text-sm font-semibold">確認刪除</h2>
             <p className="mb-4 text-xs text-[var(--text-secondary)]">
-              確定刪除選取的 {historySelectedIds.size} 筆記錄？此操作無法復原。
+              確定刪除選取中的 {deletableSelectedIds.length} 筆草稿／失敗記錄？此操作無法復原。
+              {historySelectedIds.size > deletableSelectedIds.length
+                ? `另外 ${historySelectedIds.size - deletableSelectedIds.length} 筆已開立／待確認的不會刪除（${NOT_DELETABLE_HINT}）。`
+                : ""}
             </p>
             <div className="flex justify-end gap-2">
               <button
