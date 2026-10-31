@@ -7,6 +7,7 @@ import {
   eInvoiceEventRowToRecord,
   eInvoiceRecordToRow,
   eInvoiceRowToRecord,
+  findPossibleDuplicateInvoices,
   generateEInvoiceEventId,
   generateEInvoiceId,
   isInvoiceExemptTaxRate,
@@ -197,5 +198,36 @@ describe("resolveIssueErrorOutcome", () => {
     const outcome = resolveIssueErrorOutcome({ success: false, code: "" }, "write error");
     expect(outcome.status).toBe("failed");
     expect(outcome.providerIssued).toBe(false);
+  });
+});
+
+describe("findPossibleDuplicateInvoices", () => {
+  const now = new Date("2026-10-31T12:00:00+08:00");
+
+  it("同買方（去空白）＋同金額＋60 天內的有效發票視為可能重複", () => {
+    const records = [
+      makeInvoiceRecord({ invoiceId: "A", buyerName: " 王小明 ", totalAmount: 5000, invoiceDate: "2026-10-20", status: "issued" }),
+      makeInvoiceRecord({ invoiceId: "B", buyerName: "王小明", totalAmount: 5000, invoiceDate: "2026-10-30", status: "needs_review" }),
+      makeInvoiceRecord({ invoiceId: "C", buyerName: "王小明", totalAmount: 5000, invoiceDate: "2026-10-30", status: "draft" }),
+      makeInvoiceRecord({ invoiceId: "D", buyerName: "王小明", totalAmount: 5000, invoiceDate: "2026-10-30", status: "issuing" }),
+    ];
+    const result = findPossibleDuplicateInvoices({ buyerName: "王小明", totalAmount: 5000 }, records, now);
+    expect(result.map((r) => r.invoiceId)).toEqual(["A", "B", "C", "D"]);
+  });
+
+  it("排除失敗、作廢、金額不同、買方不同、超過 60 天的紀錄", () => {
+    const records = [
+      makeInvoiceRecord({ invoiceId: "failed", buyerName: "王小明", totalAmount: 5000, invoiceDate: "2026-10-30", status: "failed" }),
+      makeInvoiceRecord({ invoiceId: "cancelled", buyerName: "王小明", totalAmount: 5000, invoiceDate: "2026-10-30", status: "cancelled" }),
+      makeInvoiceRecord({ invoiceId: "amount", buyerName: "王小明", totalAmount: 5001, invoiceDate: "2026-10-30", status: "issued" }),
+      makeInvoiceRecord({ invoiceId: "buyer", buyerName: "王大明", totalAmount: 5000, invoiceDate: "2026-10-30", status: "issued" }),
+      makeInvoiceRecord({ invoiceId: "old", buyerName: "王小明", totalAmount: 5000, invoiceDate: "2026-08-01", status: "issued" }),
+    ];
+    expect(findPossibleDuplicateInvoices({ buyerName: "王小明", totalAmount: 5000 }, records, now)).toEqual([]);
+  });
+
+  it("買方名稱空白時不比對", () => {
+    const records = [makeInvoiceRecord({ buyerName: "", totalAmount: 5000, invoiceDate: "2026-10-30", status: "issued" })];
+    expect(findPossibleDuplicateInvoices({ buyerName: "  ", totalAmount: 5000 }, records, now)).toEqual([]);
   });
 });

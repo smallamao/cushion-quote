@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ARRecord, EInvoiceCandidate, EInvoiceRecord } from "@/lib/types";
+import { findPossibleDuplicateInvoices } from "@/lib/einvoice-utils";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -65,6 +66,12 @@ interface SnackbarState {
 // 每張本身要跑數秒（建草稿＋Giveme＋寫回），再加間隔 4 秒，實際約每分鐘 7～8 張（≈40 次寫入）；
 // 偶發超量時由伺服器端配額重試補上。
 const BATCH_ISSUE_INTERVAL_MS = 4000;
+
+interface BatchIssueDuplicate {
+  candidateId: string;
+  buyerName: string;
+  matches: EInvoiceRecord[];
+}
 
 interface CandidateDraftSnapshot {
   candidate: EInvoiceCandidate;
@@ -191,7 +198,7 @@ export function EInvoicesClient() {
   const [confirmDeleteBatch, setConfirmDeleteBatch] = useState(false);
   const [confirmDeleteFailed, setConfirmDeleteFailed] = useState(false);
   const [expandedCandidateIds, setExpandedCandidateIds] = useState<Set<string>>(new Set());
-  const [batchIssueConfirm, setBatchIssueConfirm] = useState<{ candidates: EInvoiceCandidate[] } | null>(null);
+  const [batchIssueConfirm, setBatchIssueConfirm] = useState<{ candidates: EInvoiceCandidate[]; duplicates: BatchIssueDuplicate[] } | null>(null);
 
   const [snackbar, setSnackbar] = useState<SnackbarState | null>(null);
   const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
@@ -651,7 +658,16 @@ export function EInvoicesClient() {
       setNotice({ tone: "info", title: "請至少勾選一筆待開資料" });
       return;
     }
-    setBatchIssueConfirm({ candidates: selectedCandidates });
+    // 手動貼上的來源編號每次都不同，伺服器的同來源防呆擋不到；改用「同買方＋同金額＋近 60 天」提醒
+    const duplicates = selectedCandidates.flatMap((candidate) => {
+      const draft = drafts[candidate.candidateId] ?? buildDefaultDraft(candidate);
+      const matches = findPossibleDuplicateInvoices(
+        { buyerName: draft.buyerName, totalAmount: draft.totalAmount ?? candidate.totalAmount },
+        invoices,
+      );
+      return matches.length > 0 ? [{ candidateId: candidate.candidateId, buyerName: draft.buyerName, matches }] : [];
+    });
+    setBatchIssueConfirm({ candidates: selectedCandidates, duplicates });
   }
 
   async function executeBatchIssue(candidatesToIssue: EInvoiceCandidate[]) {
@@ -1785,6 +1801,22 @@ export function EInvoicesClient() {
             <DialogTitle>確認批次開立電子發票</DialogTitle>
           </DialogHeader>
           <div className="px-6 py-4">
+            {(batchIssueConfirm?.duplicates.length ?? 0) > 0 && (
+              <div className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="font-medium">可能重複開立：以下買方近 60 天已有相同金額的發票</div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {batchIssueConfirm?.duplicates.map((dup) => (
+                    <li key={dup.candidateId}>
+                      {dup.buyerName}：
+                      {dup.matches
+                        .map((m) => `${m.providerInvoiceNo || m.invoiceId}（${INVOICE_STATUS_LABEL[m.status] ?? m.status}，${m.invoiceDate} ${formatCurrency(m.totalAmount)}）`)
+                        .join("、")}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-1">確定不是重複再按「仍要開立」，否則請取消並取消勾選。</div>
+              </div>
+            )}
             <div className="overflow-x-auto rounded border border-[var(--border)]">
               <table className="w-full text-xs">
                 <thead className="bg-[var(--surface-muted)]">
@@ -1827,7 +1859,7 @@ export function EInvoicesClient() {
               disabled={issuing}
             >
               {issuing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-              確認開立
+              {(batchIssueConfirm?.duplicates.length ?? 0) > 0 ? "仍要開立" : "確認開立"}
             </Button>
           </DialogFooter>
         </DialogContent>

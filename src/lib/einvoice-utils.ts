@@ -272,3 +272,24 @@ export function resolveIssueErrorOutcome(
   }
   return { status: "failed", providerIssued: false, errorMessage, warning: "" };
 }
+
+const DUPLICATE_ACTIVE_STATUSES: ReadonlySet<EInvoiceRecord["status"]> = new Set(["draft", "issuing", "issued", "needs_review"]);
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** 批次開立前找「同買方＋同金額＋近期」的有效發票，提醒可能重複開立 */
+export function findPossibleDuplicateInvoices(
+  target: { buyerName: string; totalAmount: number },
+  records: EInvoiceRecord[],
+  now: Date = new Date(),
+  windowDays = 60,
+): EInvoiceRecord[] {
+  const buyerName = target.buyerName.trim();
+  if (!buyerName) return [];
+  const cutoff = new Date(now.getTime() - windowDays * DAY_MS).toISOString().slice(0, 10);
+  return records.filter((record) =>
+    DUPLICATE_ACTIVE_STATUSES.has(record.status) &&
+    record.buyerName.trim() === buyerName &&
+    Math.round(record.totalAmount) === Math.round(target.totalAmount) &&
+    (record.invoiceDate || record.createdAt).slice(0, 10) >= cutoff,
+  );
+}
