@@ -1871,6 +1871,9 @@ export function QuoteEditor() {
       contactNameSnapshot: contactName,
       clientPhoneSnapshot: phone,
       projectNameSnapshot: projectName,
+      // 其他快照都跟著編輯器欄位走，方案名稱原本漏掉——結果是每次存檔都把舊快照
+      // 原封寫回，清空方案名稱後清單與 PDF 仍顯示舊名字（老闆 2026-10-31 回報）
+      quoteNameSnapshot: quoteName.trim(),
       projectAddressSnapshot: address,
       channelSnapshot: channel,
       updatedAt: new Date().toISOString(),
@@ -1899,8 +1902,11 @@ export function QuoteEditor() {
         });
         if (!response.ok) throw new Error("版本更新失敗");
 
-        // Update quote name if provided
-        if (quoteName && quoteId) {
+        // 總是送 quoteName（含空字串）：清空欄位＝清掉方案名稱。
+        // 原本寫成 `if (quoteName && quoteId)`，清空後是空字串、falsy，整個 PATCH
+        // 根本不會送出，報價記錄維持舊名字，重開編輯器又看到它（老闆 2026-10-31 回報）。
+        // 下方案場名稱早就處理過同一個坑，這裡漏掉。
+        if (quoteId) {
           await fetch("/api/sheets/quotes-v2", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },

@@ -191,7 +191,10 @@ export async function POST(request: Request) {
       // 方案名稱是快照欄，但新版本要吃「報價」當下的名字，不能沿用舊版本的舊名字。
       // 否則老闆改了報價名稱、再開一版，舊名字就被複製回來，看起來像「改了又跳回去」
       // （2026-10-14 S1062 陳宥亨實例：報價名稱已改成「臥榻墊」，新版本仍是舊的長名字）。
-      // 這欄不可留空：散客依慣例不填案件名稱，order-create 會拿它當訂單的「訂製內容」。
+      //
+      // 2026-10-31：空字串也要照吃。原本寫成 `currentQuote?.quoteName || baseVersion…`，
+      // 清空方案名稱後會退回舊快照，等於清不掉。留空的後果（散客訂單「訂製內容」變空白）
+      // 改由 order-create 退到第一個品項名稱來擋，不再靠這裡硬留著舊名字。
       const currentQuote = quoteRows
         .map(quoteRowToRecord)
         .find((quote) => quote.quoteId === baseVersion.quoteId);
@@ -199,7 +202,7 @@ export async function POST(request: Request) {
       const draft: QuoteVersionRecord = normalizeVersionUpdate(
         {
           ...baseVersion,
-          quoteNameSnapshot: currentQuote?.quoteName || baseVersion.quoteNameSnapshot,
+          quoteNameSnapshot: currentQuote ? currentQuote.quoteName : baseVersion.quoteNameSnapshot,
           versionId,
           versionNo,
           basedOnVersionId,

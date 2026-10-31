@@ -207,3 +207,35 @@ export function resolveWorkOrderMaterialImage(
   const next = (incoming ?? "").trim();
   return next || (existing ?? "").trim();
 }
+
+/** 算訂單「訂製內容」時只需要明細的這幾個欄位 */
+export interface OrderTitleLineLike {
+  itemName?: string;
+  lineNo?: number;
+  showOnQuote?: boolean;
+  isCostItem?: boolean;
+}
+
+/**
+ * 訂單的「訂製內容」：案件名稱 → 方案名稱 → 第一個對外品項名稱。
+ *
+ * 散客依慣例不填案件名稱，所以退到方案名稱；2026-10-31 起方案名稱也可以被清空
+ * （老闆清了就是真的要清掉），所以再加第三層退路，否則工單開起來看不出要做什麼。
+ * 取品項名稱的第一行即可——品名後面幾行是尺寸與件別說明。
+ */
+export function resolveOrderTitle(
+  caseName: string | undefined | null,
+  quoteNameSnapshot: string | undefined | null,
+  lines: OrderTitleLineLike[] = [],
+): string {
+  const fromCase = (caseName ?? "").trim();
+  if (fromCase) return fromCase;
+
+  const fromQuote = (quoteNameSnapshot ?? "").trim();
+  if (fromQuote) return fromQuote;
+
+  const firstVisible = lines
+    .filter((l) => l.showOnQuote !== false && !l.isCostItem)
+    .sort((a, b) => (a.lineNo ?? 0) - (b.lineNo ?? 0))[0];
+  return (firstVisible?.itemName ?? "").split("\n")[0].trim();
+}

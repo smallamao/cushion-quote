@@ -9,6 +9,7 @@ import {
   isoNow,
   todayDateStr,
   orderRecordToRow,
+  resolveOrderTitle,
 } from "@/lib/order-utils";
 import { lineRowToRecord } from "@/app/api/sheets/_v2-utils";
 import { classifyOrderCategory, inferDeliveryMethod } from "@/lib/order-category";
@@ -157,9 +158,7 @@ export async function createOrder(
     const caseRows = (caseRes.data.values ?? []) as string[][];
     const caseRow = caseRows.find((r) => r[0] === caseId);
     orderNumber = caseId;
-    // 訂製內容取案件名稱；散客依慣例不填案件名稱，退回方案名稱（col42），
-    // 否則訂單的「訂製內容」是空白，工單開起來看不出要做什麼。
-    orderTitle = (caseRow?.[1] || versionRow[42]) ?? "";
+    // 訂製內容：案件名稱 → 方案名稱（col42）→ 第一個對外品項名稱（第 3 步補上）
     clientId = caseRow?.[2] ?? "";
     // 訂貨人／現場資訊帶入：
     // 只有「客人有線上簽署」(signedBack col43=TRUE) 時，才優先取簽署時回寫於
@@ -185,6 +184,11 @@ export async function createOrder(
     const lineRecords = ((lineRes.data.values ?? []) as string[][])
       .filter((r) => r[1] === versionId)
       .map(lineRowToRecord);
+
+    // 案件名稱與方案名稱都留空時的最後退路：取第一個對外品項的名稱第一行。
+    // 2026-10-31 起方案名稱可以被清空（清了就是真的清掉），所以這條退路必須存在，
+    // 否則散客的訂單「訂製內容」會是空白，工單開起來看不出要做什麼。
+    orderTitle = resolveOrderTitle(caseRow?.[1], versionRow[42], lineRecords);
 
     // 4. 讀材質資料庫，建 id→{name, code} 對照（給訂單主布料＋各品項色號）
     const materialNameById = new Map<string, string>();

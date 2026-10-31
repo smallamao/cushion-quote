@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compareOrders, cmpDateDesc, cmpInstallDate } from "@/lib/order-sort";
-import { resolveWorkOrderMaterialImage } from "@/lib/order-utils";
+import { resolveOrderTitle, resolveWorkOrderMaterialImage } from "@/lib/order-utils";
 import type { CustomOrder } from "@/lib/types";
 
 function mk(o: Partial<CustomOrder>): CustomOrder {
@@ -135,5 +135,48 @@ describe("resolveWorkOrderMaterialImage", () => {
   it("本來就沒有圖時回空字串", () => {
     expect(resolveWorkOrderMaterialImage("", "")).toBe("");
     expect(resolveWorkOrderMaterialImage(undefined, undefined)).toBe("");
+  });
+});
+
+describe("resolveOrderTitle", () => {
+  const lines = [
+    { itemName: "送件運費\n（基隆・單程）", lineNo: 3 },
+    { itemName: "訂製坐背墊\n坐墊 W66 x D60 x 10cm * 兩片", lineNo: 1 },
+    { itemName: "內部工本", lineNo: 2, isCostItem: true },
+  ];
+
+  it("有案件名稱就用案件名稱", () => {
+    expect(resolveOrderTitle("林宅客廳沙發", "方案A", lines)).toBe("林宅客廳沙發");
+  });
+
+  it("散客沒有案件名稱時退到方案名稱", () => {
+    expect(resolveOrderTitle("", "訂製臥榻墊", lines)).toBe("訂製臥榻墊");
+    expect(resolveOrderTitle(undefined, "訂製臥榻墊", lines)).toBe("訂製臥榻墊");
+  });
+
+  it("方案名稱也被清空時，退到第一個對外品項的名稱第一行", () => {
+    expect(resolveOrderTitle("", "", lines)).toBe("訂製坐背墊");
+  });
+
+  it("只用空白填的欄位視同留空", () => {
+    expect(resolveOrderTitle("   ", "  ", lines)).toBe("訂製坐背墊");
+  });
+
+  it("依 lineNo 取第一筆，不是依陣列順序", () => {
+    expect(resolveOrderTitle("", "", lines)).not.toBe("送件運費");
+  });
+
+  it("跳過工本費與不顯示於報價單的明細", () => {
+    const hidden = [
+      { itemName: "內部工本", lineNo: 1, isCostItem: true },
+      { itemName: "不印這行", lineNo: 2, showOnQuote: false },
+      { itemName: "訂製坐墊", lineNo: 3 },
+    ];
+    expect(resolveOrderTitle("", "", hidden)).toBe("訂製坐墊");
+  });
+
+  it("連明細都沒有時回空字串，不丟例外", () => {
+    expect(resolveOrderTitle("", "", [])).toBe("");
+    expect(resolveOrderTitle("", "", undefined)).toBe("");
   });
 });
