@@ -8,7 +8,9 @@ import { CleaningSlotSection } from "@/components/after-sales/CleaningSlotSectio
 import { DispatchLinkSection } from "@/components/after-sales/DispatchLinkSection";
 import {
   ArrowLeft,
+  ClipboardList,
   Eye,
+  FileImage,
   ImagePlus,
   Loader2,
   MessageSquarePlus,
@@ -35,6 +37,8 @@ import {
   generateAfterSalesPdfBlob,
 } from "@/components/pdf/AfterSalesPDF";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
+import { buildDispatchNoteText } from "@/lib/dispatch-note";
+import { buildDispatchUrl } from "@/lib/dispatch-public-url";
 import { SignaturePad } from "@/components/after-sales/SignaturePad";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useEquipment } from "@/hooks/useEquipment";
@@ -158,6 +162,9 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [jpgBusy, setJpgBusy] = useState(false);
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteCopied, setNoteCopied] = useState(false);
 
   // Paste-to-parse state (create mode only)
   const [pasteText, setPasteText] = useState("");
@@ -217,6 +224,73 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
       };
     });
     setPasteMatched(result.matchedFields);
+  }
+
+  /** 畫面上的草稿 ＋ 這張單的 meta，組成完整服務單（PDF／JPG／記事本文案共用） */
+  function currentService(): AfterSalesService | null {
+    if (!meta) return null;
+    return {
+      ...draft,
+      serviceId: meta.serviceId,
+      createdAt: meta.createdAt,
+      updatedAt: meta.updatedAt,
+      createdBy: meta.createdBy,
+    };
+  }
+
+  /**
+   * 老闆 2026-10-31：原本要「預覽 PDF → 下載 → 自己轉 JPG」才能貼進 LINE 記事本。
+   * 這顆直接給 JPG。
+   */
+  async function handleDownloadJpg() {
+    const service = currentService();
+    if (!service) return;
+    setJpgBusy(true);
+    try {
+      const { generateAfterSalesJpgBlob, buildAfterSalesJpgFileName } = await import(
+        "@/components/pdf/AfterSalesPDF"
+      );
+      const blob = await generateAfterSalesJpgBlob({ service, replies, settings });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = buildAfterSalesJpgFileName(service);
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "JPG 生成失敗");
+    } finally {
+      setJpgBusy(false);
+    }
+  }
+
+  /**
+   * 整段派工文案＋派工連結一次複製好，貼進 LINE 記事本一次就完成
+   * （原本要複製文字、再回頭複製一次連結）。
+   */
+  async function handleCopyNote() {
+    const service = currentService();
+    if (!service) return;
+    setNoteBusy(true);
+    try {
+      let dispatchUrl = "";
+      try {
+        const res = await fetch(`/api/sheets/after-sales/${service.serviceId}/dispatch-link`, {
+          cache: "no-store",
+        });
+        const json = (await res.json()) as { ok?: boolean; path?: string; url?: string };
+        dispatchUrl = json.url || (json.path ? buildDispatchUrl(json.path) : "");
+      } catch {
+        // 連結拿不到就只複製文字，不要整顆按鈕失敗
+      }
+      await navigator.clipboard.writeText(buildDispatchNoteText(service, dispatchUrl));
+      setNoteCopied(true);
+      setTimeout(() => setNoteCopied(false), 1800);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "複製失敗");
+    } finally {
+      setNoteBusy(false);
+    }
   }
 
   async function handlePreviewPdf() {
@@ -568,10 +642,22 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
         </div>
         <div className="flex items-center gap-2">
           {mode === "edit" && (
-            <Button variant="outline" onClick={handlePreviewPdf}>
-              <Eye className="mr-1 h-4 w-4" />
-              預覽 PDF
-            </Button>
+            <>
+              <Button variant="outline" onClick={handlePreviewPdf}>
+                <Eye className="mr-1 h-4 w-4" />
+                預覽 PDF
+              </Button>
+              {/* 這兩顆是為了「貼進 LINE 記事本」而生（老闆 2026-10-31）：
+                  原本要自己把 PDF 轉 JPG、再把文字和派工連結分兩次複製。 */}
+              <Button variant="outline" onClick={() => void handleDownloadJpg()} disabled={jpgBusy}>
+                {jpgBusy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileImage className="mr-1 h-4 w-4" />}
+                派工單 JPG
+              </Button>
+              <Button variant="outline" onClick={() => void handleCopyNote()} disabled={noteBusy}>
+                {noteBusy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ClipboardList className="mr-1 h-4 w-4" />}
+                {noteCopied ? "已複製記事本" : "複製記事本"}
+              </Button>
+            </>
           )}
           {!readOnly && (
             <Button onClick={handleSave} disabled={saving}>

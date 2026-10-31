@@ -410,3 +410,68 @@ export async function generateAfterSalesPdfBlob(
 ): Promise<Blob> {
   return pdf(<AfterSalesDocument {...props} />).toBlob();
 }
+
+/**
+ * 瀏覽器端：把售後服務單第 1 頁轉成 JPEG。
+ *
+ * 老闆 2026-10-31：原本要「預覽 PDF → 下載 → 自己轉 JPG」才能貼進 LINE 記事本，
+ * 同一份資料手工搬好幾次。報價單與訂製工單早就有這支，就這張漏了。
+ */
+export async function generateAfterSalesJpgBlob(
+  props: AfterSalesPDFProps,
+  options: { quality?: number; scale?: number } = {},
+): Promise<Blob> {
+  const { quality = 0.92, scale = 2 } = options;
+
+  const pdfBlob = await generateAfterSalesPdfBlob(props);
+  const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+
+  interface AsPdfjsLib {
+    GlobalWorkerOptions: { workerSrc: string };
+    getDocument(params: { data: Uint8Array }): {
+      promise: Promise<{
+        getPage(n: number): Promise<{
+          getViewport(p: { scale: number }): { width: number; height: number };
+          render(p: {
+            canvasContext: CanvasRenderingContext2D;
+            viewport: { width: number; height: number };
+            canvas: HTMLCanvasElement;
+          }): { promise: Promise<void> };
+        }>;
+      }>;
+    };
+  }
+  // @ts-expect-error runtime import from public/, bypasses webpack
+  const pdfjs = (await import(/* webpackIgnore: true */ "/pdf.min.mjs")) as AsPdfjsLib;
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+  const pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(pdfArrayBuffer) }).promise;
+  const page = await pdfDoc.getPage(1);
+  const viewport = page.getViewport({ scale });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas 2d context not available");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("canvas toBlob failed"));
+      },
+      "image/jpeg",
+      quality,
+    );
+  });
+}
+
+/** JPG 檔名：沿用 PDF 的命名，只換副檔名 */
+export function buildAfterSalesJpgFileName(service: AfterSalesService): string {
+  return buildAfterSalesPdfFileName(service).replace(/\.pdf$/i, ".jpg");
+}
