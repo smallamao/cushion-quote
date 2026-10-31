@@ -49,6 +49,7 @@ export const navLinks: NavLinkDef[] = [
   // ── 作業 ──
   { href: "/purchases", label: "採購單", icon: ShoppingCart, roles: ["admin"], group: "operations" },
   { href: "/material-confirm", label: "叫料確認", icon: ClipboardCheck, roles: ["admin"], group: "operations" },
+  { href: "/dispatch-plan", label: "排車視圖", icon: ClipboardCheck, roles: ["admin"], group: "operations" },
   { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin"], group: "operations" },
   { href: "/orders", label: "訂製訂單", icon: ClipboardList, roles: ["admin"], group: "operations" },
   { href: "/production-orders", label: "生產訂單", icon: Factory, roles: ["craftsman"], group: "operations" },
