@@ -158,3 +158,10 @@ export function resolveIssuingUpdate(
   }
   return { ok: false, reason: "invalid", error: "unknown action" };
 }
+
+const ISSUE_RESULT_ERROR_CODES: ReadonlySet<string> = new Set(Object.values(EINVOICE_ERROR_CODE));
+
+/** needs_review 的原因是「開立結果」而不是「稅型待確認」 */
+export function isIssueResultReview(record: EInvoiceRecord): boolean {
+  return record.status === "needs_review" && ISSUE_RESULT_ERROR_CODES.has(record.errorCode);
+}

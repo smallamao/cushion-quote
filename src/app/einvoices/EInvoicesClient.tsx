@@ -6,6 +6,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ARRecord, EInvoiceCandidate, EInvoiceRecord } from "@/lib/types";
 import { findPossibleDuplicateInvoices } from "@/lib/einvoice-utils";
+import {
+  EINVOICE_ERROR_CODE,
+  STALE_ISSUING_LABEL,
+  classifyIssueResponse,
+  isIssueResultReview,
+  needsIssueResolution,
+  type IssueResponseClass,
+} from "@/lib/einvoice-issue";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -43,6 +51,8 @@ interface BatchIssueItemResult {
   invoiceId?: string;
   providerInvoiceNo?: string;
   invoiceRecord?: EInvoiceRecord;
+  /** 送出開立階段的判讀；unknown 代表 Giveme 可能已開出，絕不可重試 */
+  issueOutcome?: IssueResponseClass["kind"];
 }
 
 interface BatchIssueReport {
@@ -75,6 +85,22 @@ interface BatchIssueDuplicate {
   candidateId: string;
   buyerName: string;
   matches: EInvoiceRecord[];
+}
+
+/** 呼叫開立 API 並判讀結果；連線中斷、504、非 JSON 一律歸為「結果未知」 */
+async function postIssue(invoiceId: string, body: Record<string, unknown>): Promise<{ result: IssueResponseClass; invoice?: EInvoiceRecord }> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/sheets/einvoices/${encodeURIComponent(invoiceId)}/issue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    return { result: classifyIssueResponse({ networkError: err instanceof Error ? err.message : "連線中斷" }) };
+  }
+  const payload = (await response.json().catch(() => ({}))) as { invoice?: EInvoiceRecord };
+  return { result: classifyIssueResponse({ httpStatus: response.status, payload }), invoice: payload.invoice };
 }
 
 interface CandidateDraftSnapshot {
@@ -129,17 +155,6 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-function buildUnknownErrorDetail(payload: unknown, fallback: string): string {
-  if (!payload || typeof payload !== "object") return fallback;
-  const message = extractErrorMessage(payload, "");
-  if (message) return message;
-  try {
-    return JSON.stringify(payload);
-  } catch {
-    return fallback;
-  }
-}
-
 function noticeClassName(tone: NoticeState["tone"]): string {
   switch (tone) {
     case "success":
@@ -192,6 +207,9 @@ export function EInvoicesClient() {
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatusFilter, setHistoryStatusFilter] = useState<string>("all");
   const [confirmReviewTarget, setConfirmReviewTarget] = useState<EInvoiceRecord | null>(null);
+  const [resolveTarget, setResolveTarget] = useState<{ invoice: EInvoiceRecord; action: "mark_issued" | "mark_failed" } | null>(null);
+  const [resolveInvoiceNo, setResolveInvoiceNo] = useState("");
+  const [resolving, setResolving] = useState(false);
   const [confirmReviewForm, setConfirmReviewForm] = useState<{ taxType: 0 | 1 | 2 | 4; notes: string }>({
     taxType: 0,
     notes: "",
@@ -536,61 +554,36 @@ export function EInvoicesClient() {
         };
       }
 
-      try {
-        const issueResponse = await fetch(`/api/sheets/einvoices/${encodeURIComponent(createPayload.invoice.invoiceId)}/issue`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ invoiceRecord: createPayload.invoice }),
-        });
-        const issuePayload = (await issueResponse.json().catch(() => ({}))) as { invoice?: EInvoiceRecord; error?: string; warning?: string; provider?: { msg?: string } };
-        if (!issueResponse.ok) {
-          const issuedNo = issuePayload.invoice?.providerInvoiceNo ?? "";
-          const failDetail = buildUnknownErrorDetail(issuePayload, `${displayName} 開立失敗`);
-          return {
-            candidateId: candidate.candidateId,
-            displayName,
-            success: false,
-            stage: "issue",
-            invoiceId: createPayload.invoice.invoiceId,
-            providerInvoiceNo: issuedNo || undefined,
-            // 已拿到發票號碼代表 Giveme 很可能已開出，重開會重複開票
-            detail: issuedNo
-              ? `Giveme 可能已開立（發票號碼 ${issuedNo}），請勿重試；請到開票歷史按同步確認。\n${failDetail}`
-              : failDetail,
-          };
-        }
-
-        const finalInvoiceNo = issuePayload.invoice?.providerInvoiceNo ?? "";
-        const finalRecord: EInvoiceRecord = issuePayload.invoice ?? {
-          ...createPayload.invoice,
-          status: "issued",
-          providerInvoiceNo: finalInvoiceNo,
-          updatedAt: new Date().toISOString(),
-        };
-        return {
-          candidateId: candidate.candidateId,
-          displayName,
-          success: true,
-          stage: "issue",
-          invoiceId: finalRecord.invoiceId,
-          providerInvoiceNo: finalInvoiceNo,
-          invoiceRecord: finalRecord,
-          detail: [
-            finalInvoiceNo ? `已成功送出，發票號碼 ${finalInvoiceNo}` : "已成功送出 Giveme",
-            issuePayload.warning ?? "",
-          ].filter(Boolean).join("\n"),
-        };
-      } catch (err) {
-        return {
-          candidateId: candidate.candidateId,
-          displayName,
-          success: false,
-          stage: "issue",
-          invoiceId: createPayload.invoice.invoiceId,
-          // 連線中斷時不知道 Giveme 是否已開出，不能直接重開
-          detail: `${err instanceof Error ? err.message : `${displayName} 開立失敗`}\n結果未知：Giveme 可能已開立，請先到開票歷史確認，勿直接重開。`,
-        };
+      const { result, invoice } = await postIssue(createPayload.invoice.invoiceId, {});
+      const base = {
+        candidateId: candidate.candidateId,
+        displayName,
+        stage: "issue" as const,
+        invoiceId: createPayload.invoice.invoiceId,
+        providerInvoiceNo: invoice?.providerInvoiceNo || undefined,
+        issueOutcome: result.kind,
+      };
+      if (result.kind !== "issued") {
+        // not_sent 可到開票歷史對草稿重新開立；unknown 不可重開；provider_failed 修正資料後再開
+        return { ...base, success: false, invoiceRecord: invoice, detail: result.message };
       }
+      const finalInvoiceNo = invoice?.providerInvoiceNo ?? "";
+      const finalRecord: EInvoiceRecord = invoice ?? {
+        ...createPayload.invoice,
+        status: "issued",
+        providerInvoiceNo: finalInvoiceNo,
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        ...base,
+        success: true,
+        invoiceId: finalRecord.invoiceId,
+        invoiceRecord: finalRecord,
+        detail: [
+          finalInvoiceNo ? `已成功送出，發票號碼 ${finalInvoiceNo}` : "已成功送出 Giveme",
+          result.warning,
+        ].filter(Boolean).join("\n"),
+      };
     } catch (err) {
       return {
         candidateId: candidate.candidateId,
@@ -641,17 +634,15 @@ export function EInvoicesClient() {
         throw new Error(createPayload.error ?? "建立草稿失敗");
       }
       const invoiceId = createPayload.invoice.invoiceId;
-      const issueRes = await fetch(`/api/sheets/einvoices/${encodeURIComponent(invoiceId)}/issue`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoiceDate: quickCreateForm.invoiceDate }),
-      });
-      const issuePayload = (await issueRes.json().catch(() => ({}))) as { ok?: boolean; invoice?: EInvoiceRecord; error?: string; warning?: string; provider?: { msg?: string } };
-      if (!issueRes.ok) {
-        throw new Error(buildUnknownErrorDetail(issuePayload, "送出開立失敗"));
+      const { result, invoice } = await postIssue(invoiceId, { invoiceDate: quickCreateForm.invoiceDate });
+      if (result.kind !== "issued") {
+        setNotice({ tone: "error", title: result.kind === "unknown" ? "開立結果未知" : "快速開立失敗", detail: result.message });
+        setQuickCreateOpen(false);
+        await load({ preserveFeedback: true });
+        return;
       }
-      const no = issuePayload.invoice?.providerInvoiceNo ?? "";
-      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : "已送出 Giveme", detail: issuePayload.warning });
+      const no = invoice?.providerInvoiceNo ?? "";
+      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : "已送出 Giveme", detail: result.warning || undefined });
       setSnackbar({ message: "電子發票已開立", invoiceId });
       setTimeout(() => setSnackbar(null), 3000);
       setQuickCreateOpen(false);
@@ -772,20 +763,15 @@ export function EInvoicesClient() {
   async function handleIssue(invoiceId: string, dateOverride?: string) {
     setSyncingInvoiceId(invoiceId);
     try {
-      const body = dateOverride ? { invoiceDate: dateOverride } : {};
-      const response = await fetch(`/api/sheets/einvoices/${encodeURIComponent(invoiceId)}/issue`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { invoice?: EInvoiceRecord; error?: string; warning?: string; provider?: { msg?: string } };
-      if (!response.ok) {
-        throw new Error(buildUnknownErrorDetail(payload, "開立失敗"));
+      const { result, invoice } = await postIssue(invoiceId, dateOverride ? { invoiceDate: dateOverride } : {});
+      if (result.kind !== "issued") {
+        setNotice({ tone: "error", title: result.kind === "unknown" ? "開立結果未知" : "開立失敗", detail: result.message });
+        await load({ preserveFeedback: true });
+        return;
       }
-      const no = (payload.invoice as EInvoiceRecord | undefined)?.providerInvoiceNo;
-      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : `${invoiceId} 已送出 Giveme`, detail: payload.warning });
-      const issuedInvoiceId = (payload.invoice as EInvoiceRecord | undefined)?.invoiceId ?? invoiceId;
-      setSnackbar({ message: "電子發票已開立", invoiceId: issuedInvoiceId });
+      const no = invoice?.providerInvoiceNo;
+      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : `${invoiceId} 已送出 Giveme`, detail: result.warning || undefined });
+      setSnackbar({ message: "電子發票已開立", invoiceId: invoice?.invoiceId ?? invoiceId });
       setTimeout(() => setSnackbar(null), 3000);
       await load({ preserveFeedback: true });
     } catch (err) {
@@ -854,6 +840,36 @@ export function EInvoicesClient() {
       if (allSelected) return new Set();
       return new Set(visibleInvoices.map((inv) => inv.invoiceId));
     });
+  }
+
+  async function submitResolveIssuing() {
+    if (!resolveTarget) return;
+    setResolving(true);
+    try {
+      const res = await fetch(`/api/sheets/einvoices/${encodeURIComponent(resolveTarget.invoice.invoiceId)}/resolve-issuing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: resolveTarget.action, providerInvoiceNo: resolveInvoiceNo }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        setNotice({ tone: "error", title: "處理失敗", detail: data.error ?? `HTTP ${res.status}` });
+        return;
+      }
+      setNotice({
+        tone: "success",
+        title: resolveTarget.action === "mark_issued"
+          ? `${resolveTarget.invoice.invoiceId} 已標記為已開立，可按同步向 giveme 核對`
+          : `${resolveTarget.invoice.invoiceId} 已改為失敗，可重新開立`,
+      });
+      setResolveTarget(null);
+      setResolveInvoiceNo("");
+      await load({ preserveFeedback: true });
+    } catch (err) {
+      setNotice({ tone: "error", title: "處理失敗", detail: err instanceof Error ? err.message : "連線失敗" });
+    } finally {
+      setResolving(false);
+    }
   }
 
   async function handleBatchDelete() {
@@ -1028,9 +1044,13 @@ export function EInvoicesClient() {
                       {item.providerInvoiceNo ? ` / 發票號碼：${item.providerInvoiceNo}` : ""}
                     </div>
                   </div>
-                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${item.success ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                    {item.success ? "成功" : "失敗"}
-                  </span>
+                  {item.issueOutcome === "unknown" ? (
+                    <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">結果未知・勿重開</span>
+                  ) : (
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${item.success ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                      {item.success ? "成功" : "失敗"}
+                    </span>
+                  )}
                 </div>
                 <div className={`mt-2 whitespace-pre-wrap text-xs ${item.success ? "text-emerald-800" : "text-red-700"}`}>
                   {item.detail}
@@ -1446,14 +1466,22 @@ export function EInvoicesClient() {
           </div>
 
           <div className="space-y-3">
-            {filteredInvoices.some((inv) => inv.status === "needs_review") && (
+            {filteredInvoices.some((inv) => isIssueResultReview(inv) || needsIssueResolution(inv)) && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs">
+                <span className="font-medium text-red-900">
+                  {filteredInvoices.filter((inv) => isIssueResultReview(inv) || needsIssueResolution(inv)).length} 筆發票開立結果需人工確認
+                </span>
+                <span className="ml-1 text-red-700">Giveme 可能已開立，請勿重開；請到 giveme 後台查詢後依各筆說明處理。</span>
+              </div>
+            )}
+            {filteredInvoices.some((inv) => inv.status === "needs_review" && !isIssueResultReview(inv)) && (
               <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs">
                 <svg xmlns="http://www.w3.org/2000/svg" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <div className="flex-1">
                   <span className="font-medium text-amber-900">
-                    {filteredInvoices.filter((inv) => inv.status === "needs_review").length} 筆發票需人工確認稅型
+                    {filteredInvoices.filter((inv) => inv.status === "needs_review" && !isIssueResultReview(inv)).length} 筆發票需人工確認稅型
                   </span>
                   <span className="ml-1 text-amber-700">請點擊各筆記錄旁的確認按鈕，核對稅率後標記為已開立。</span>
                 </div>
@@ -1526,9 +1554,22 @@ export function EInvoicesClient() {
                   {invoice.errorMessage ? (
                     <div className="text-xs text-red-600">{invoice.errorMessage}</div>
                   ) : null}
+                  {needsIssueResolution(invoice) ? (
+                    <div className="space-y-1.5 rounded border border-red-200 bg-red-50 p-2 text-xs">
+                      <div className="font-medium text-red-800">{STALE_ISSUING_LABEL}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => { setResolveInvoiceNo(""); setResolveTarget({ invoice, action: "mark_issued" }); }}>
+                          已開立（輸入發票號碼）
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setResolveTarget({ invoice, action: "mark_failed" })}>
+                          確認 giveme 沒開出，改為失敗
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                   {/* 操作按鈕列 */}
                   <div className="flex items-center gap-1 pt-1">
-                    {invoice.status === "needs_review" && (
+                    {invoice.status === "needs_review" && invoice.errorCode !== EINVOICE_ERROR_CODE.providerUnknown && (
                       <button
                         type="button"
                         title="確認稅率後標記為已開立"
@@ -1789,6 +1830,41 @@ export function EInvoicesClient() {
           </div>
         </div>
       )}
+
+      {/* 開立結果不明的人工處理 */}
+      <Dialog open={resolveTarget !== null} onOpenChange={(open) => { if (!open) setResolveTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{resolveTarget?.action === "mark_issued" ? "giveme 已開立：填入發票號碼" : "確認 giveme 沒有開出？"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 px-1 py-2 text-xs">
+            <div className="text-[var(--text-secondary)]">
+              {resolveTarget?.invoice.invoiceId}・{resolveTarget?.invoice.buyerName}・{formatCurrency(resolveTarget?.invoice.totalAmount ?? 0)}
+            </div>
+            {resolveTarget?.action === "mark_issued" ? (
+              <div className="space-y-1">
+                <Label className="text-xs">發票號碼（giveme 後台查到的號碼）</Label>
+                <Input value={resolveInvoiceNo} onChange={(e) => setResolveInvoiceNo(e.target.value)} placeholder="AB12345678" />
+              </div>
+            ) : (
+              <div className="rounded border border-red-200 bg-red-50 p-2 text-red-800">
+                請先在 giveme 後台確認這張沒有開出。改為失敗後可以重新開立，若其實已開出會重複開票。
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResolveTarget(null)}>取消</Button>
+            <Button
+              variant={resolveTarget?.action === "mark_failed" ? "destructive" : "default"}
+              disabled={resolving || (resolveTarget?.action === "mark_issued" && !resolveInvoiceNo.trim())}
+              onClick={() => void submitResolveIssuing()}
+            >
+              {resolving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              {resolveTarget?.action === "mark_issued" ? "標記為已開立" : "確認改為失敗"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 批次開立進度視窗 */}
       {batchProgress && (

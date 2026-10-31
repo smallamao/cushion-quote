@@ -8,6 +8,7 @@ import {
   buildIssuedWriteFailedRecord,
   classifyIssueResponse,
   isIssuableStatus,
+  isIssueResultReview,
   needsIssueResolution,
   resolveIssuingUpdate,
 } from "@/lib/einvoice-issue";
@@ -146,5 +147,14 @@ describe("resolveIssuingUpdate", () => {
 
   it("不認得的動作 → 拒絕", () => {
     expect(resolveIssuingUpdate(stale, { action: "nope" } as never, now).ok).toBe(false);
+  });
+});
+
+describe("isIssueResultReview", () => {
+  it("開立結果類的待確認（回應不明、已開立但寫入失敗）與稅型待確認分開", () => {
+    expect(isIssueResultReview(makeRecord({ status: "needs_review", errorCode: EINVOICE_ERROR_CODE.providerUnknown }))).toBe(true);
+    expect(isIssueResultReview(makeRecord({ status: "needs_review", errorCode: EINVOICE_ERROR_CODE.issuedRecordWriteFailed }))).toBe(true);
+    expect(isIssueResultReview(makeRecord({ status: "needs_review", errorCode: "" }))).toBe(false);
+    expect(isIssueResultReview(makeRecord({ status: "issued", errorCode: EINVOICE_ERROR_CODE.providerUnknown }))).toBe(false);
   });
 });
