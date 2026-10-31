@@ -4,6 +4,7 @@ import {
   composeScheduledTime,
   isCleaningLinkExpired,
   isConfirmablePeriod,
+  validateProposedSlots,
 } from "@/lib/cleaning-schedule";
 
 // 🔴 2026-10-19 實際踩到：Fiona 三個時段填「10/21 上午、10/21 下午、10/22 皆可」，
@@ -106,5 +107,45 @@ describe("isCleaningLinkExpired — 媒合完成後七天失效", () => {
     const noDate = { ...base, confirmedDate: "", status: "confirmed" as const };
     expect(isCleaningLinkExpired(noDate, NOW)).toBe(false);
     expect(isCleaningLinkExpired(noDate, NOW + 8 * DAY)).toBe(true);
+  });
+});
+
+describe("validateProposedSlots", () => {
+  const d = (date: string) => ({ date });
+
+  it("三組不同日期：通過", () => {
+    expect(validateProposedSlots([d("2026-11-03"), d("2026-11-04"), d("2026-11-05")])).toBeNull();
+  });
+
+  it("只填一組：擋下（老闆 2026-10-31：客人只選一組後續很困擾）", () => {
+    expect(validateProposedSlots([d("2026-11-03")])).toBe("請完整填寫三組方便的日期時段");
+  });
+
+  it("只填兩組：一樣擋下", () => {
+    expect(validateProposedSlots([d("2026-11-03"), d("2026-11-04")])).toBe("請完整填寫三組方便的日期時段");
+  });
+
+  it("空白日期不算一組", () => {
+    expect(validateProposedSlots([d("2026-11-03"), d(""), d("2026-11-05")])).toBe(
+      "請完整填寫三組方便的日期時段",
+    );
+  });
+
+  it("三組填同一天：等於沒給選擇，擋下", () => {
+    expect(validateProposedSlots([d("2026-11-03"), d("2026-11-03"), d("2026-11-03")])).toBe(
+      "三組請填不同的日期，師傅才有得選",
+    );
+  });
+
+  it("其中兩組重複：也擋下", () => {
+    expect(validateProposedSlots([d("2026-11-03"), d("2026-11-03"), d("2026-11-05")])).toBe(
+      "三組請填不同的日期，師傅才有得選",
+    );
+  });
+
+  it("超過三組且日期互異：通過（API 會先截成三組）", () => {
+    expect(
+      validateProposedSlots([d("2026-11-03"), d("2026-11-04"), d("2026-11-05"), d("2026-11-06")]),
+    ).toBeNull();
   });
 });

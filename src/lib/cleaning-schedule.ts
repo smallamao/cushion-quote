@@ -74,3 +74,28 @@ export function isCleaningLinkExpired(
   const from = Math.max(...candidates);
   return nowMs - from > CONFIRMED_LINK_TTL_DAYS * DAY_MS;
 }
+
+/** 客人必須提供的時段組數 */
+export const REQUIRED_SLOT_COUNT = 3;
+
+/**
+ * 檢查客人送出的「方便到府時段」。回傳錯誤訊息，通過則回 null。
+ *
+ * 🔴 強制三組（老闆 2026-10-31）：只選一組的客人會把那天當成「師傅一定會到」，
+ * 師傅排不進去就得重發連結、重新溝通一輪，溝通成本全回到內勤身上。
+ * 叫料確認那條流程 2026-10-29 已經改成強制三組，清潔這條當時漏掉。
+ *
+ * 前端與 API 共用同一份規則：前端擋一般操作，API 擋開著舊頁籤或手動送請求的人，
+ * 兩邊訊息也因此一致。
+ */
+export function validateProposedSlots(slots: { date: string }[]): string | null {
+  const filled = slots.filter((s) => s.date);
+  if (filled.length < REQUIRED_SLOT_COUNT) {
+    return `請完整填寫${REQUIRED_SLOT_COUNT === 3 ? "三" : REQUIRED_SLOT_COUNT}組方便的日期時段`;
+  }
+  // 三組填同一天等於沒給選擇
+  if (new Set(filled.map((s) => s.date)).size < filled.length) {
+    return "三組請填不同的日期，師傅才有得選";
+  }
+  return null;
+}

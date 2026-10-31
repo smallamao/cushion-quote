@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { validateProposedSlots } from "@/lib/cleaning-schedule";
+
 const PERIODS = ["上午", "下午", "晚上", "皆可"] as const;
 type Period = (typeof PERIODS)[number];
 type Slot = { date: string; period: Period };
@@ -122,8 +124,10 @@ export function CleaningClient({ token }: { token: string }) {
 
   async function submitCustomer() {
     const chosen = slots.filter((s) => s.date);
-    if (chosen.length === 0) {
-      setErr("請至少選一個日期＋時段");
+    // 規則與 API 共用（lib/cleaning-schedule.ts），訊息因此一致
+    const slotError = validateProposedSlots(chosen);
+    if (slotError) {
+      setErr(slotError);
       return;
     }
     // 前端 min 擋得住一般操作，擋不住手動輸入或舊頁籤，送出前再確認一次
@@ -199,7 +203,12 @@ export function CleaningClient({ token }: { token: string }) {
 
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="mb-1 text-sm font-semibold text-gray-800">方便到府的時段</p>
-            <p className="mb-1 text-xs text-gray-400">最多選 3 組，師傅會從中挑一個確認</p>
+            {/* 🔴 強制三組（老闆 2026-10-31）：只給一組的客人會把那天當成「師傅一定會到」，
+                師傅排不進去就得重發連結、重新溝通一輪，溝通成本全回到內勤身上。 */}
+            <p className="mb-1 text-xs text-gray-500">
+              請完整填寫 <strong className="text-gray-700">三組</strong>方便的時間（不同日期），
+              師傅會從中挑一個確認
+            </p>
             {/* 把「可以選什麼」直接寫出來——客人最常問的就是「最快哪天」「週日可以嗎」。
                 正面寫出週末假日可排，比只用 min 靜默反灰更能減少來回詢問。 */}
             <p className="mb-3 text-xs leading-relaxed text-gray-500">
@@ -209,7 +218,14 @@ export function CleaningClient({ token }: { token: string }) {
             </p>
             <div className="space-y-2">
               {slots.map((s, i) => (
-                <div key={i} className="flex gap-2">
+                <div key={i}>
+                  {/* 三組都要填，所以每組各自標號並標「必填」——只放一個總說明，
+                      客人容易以為填一組就好（叫料那邊 2026-10-29 實際發生過） */}
+                  <p className="mb-1 text-sm font-medium text-gray-600">
+                    第 {i + 1} 組
+                    {!s.date && <span className="ml-1 text-red-500">必填</span>}
+                  </p>
+                  <div className="flex gap-2">
                   <input
                     type="date"
                     value={s.date}
@@ -224,6 +240,7 @@ export function CleaningClient({ token }: { token: string }) {
                   >
                     {PERIODS.map((p) => <option key={p} value={p}>{p}</option>)}
                   </select>
+                  </div>
                 </div>
               ))}
             </div>

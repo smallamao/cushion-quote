@@ -4,6 +4,7 @@ import {
   composeScheduledTime,
   isCleaningLinkExpired,
   isConfirmablePeriod,
+  validateProposedSlots,
 } from "@/lib/cleaning-schedule";
 
 import { getSheetsClient } from "@/lib/sheets-client";
@@ -128,8 +129,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         .filter((s) => s && typeof s.date === "string" && s.date)
         .slice(0, 3)
         .map((s) => ({ date: s.date as string, period: normalizePeriod(s.period) }));
-      if (slots.length === 0) {
-        return NextResponse.json({ ok: false, error: "請至少選一個日期時段" }, { status: 400 });
+      // 規則與前端共用（lib/cleaning-schedule.ts）。API 這道擋的是開著舊頁籤或手動送請求的人。
+      const slotError = validateProposedSlots(slots);
+      if (slotError) {
+        return NextResponse.json({ ok: false, error: slotError }, { status: 400 });
       }
       const address = typeof body.address === "string" ? body.address.trim() : session.customerAddress;
       const phone = typeof body.phone === "string" ? body.phone.trim() : session.customerPhone;
