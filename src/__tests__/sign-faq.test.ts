@@ -52,10 +52,11 @@ describe("sign-faq 解析", () => {
     expect(out[0].q).toContain("這份簽署代表什麼");
     // 運費各張報價不一樣（含收送／另計／加購同車免運），這一則必須在（老闆 2026-10-25 要求）
     expect(out.some((item) => item.q.includes("運費"))).toBe(true);
-    // 「還能不能改」的界線必須是【訂製工單確認】，不是叫料——訂製品不會發叫料通知
-    // （老闆 2026-10-26）。寫錯界線等於給客人一個做不到的承諾。
+    // 「還能不能改」的界線必須是【訂製訂單核對】，不是叫料——訂製品不會發叫料通知
+    // （老闆 2026-10-26）；叫料前的配送確認是沙發線（Trello 訂單）的流程，不屬於這裡
+    // （2026-11-01 查證）。寫錯界線等於給客人一個做不到的承諾。
     const amend = out.find((item) => item.q.includes("還可以改"));
-    expect(amend?.a).toContain("工單");
+    expect(amend?.a).toContain("訂製訂單");
     expect(amend?.a).not.toContain("叫料");
   });
 });
