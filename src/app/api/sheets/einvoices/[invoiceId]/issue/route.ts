@@ -1,14 +1,23 @@
 import { NextResponse } from "next/server";
 
 import { issueB2BInvoice, issueB2CInvoice } from "@/lib/giveme-client";
-import { parseEInvoiceItems, isoNow, resolveIssueErrorOutcome } from "@/lib/einvoice-utils";
+import {
+  ISSUE_TIMING,
+  PROVIDER_UNKNOWN_MESSAGE,
+  applyProviderOutcome,
+  buildIssuedWriteFailedRecord,
+  isIssuableStatus,
+  type ProviderOutcome,
+} from "@/lib/einvoice-issue";
+import { parseEInvoiceItems, isoNow } from "@/lib/einvoice-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
-import type { EInvoiceRecord } from "@/lib/types";
+import { SHEETS_NO_RETRY } from "@/lib/sheets-retry";
+import type { EInvoiceEventRecord, EInvoiceRecord, EInvoiceStatus } from "@/lib/types";
 
 import { getSession } from "../../_auth";
-import { appendEInvoiceEvent, getEInvoiceRecordById, updateEInvoiceRecord } from "../../_shared";
+import { appendEInvoiceEvent, updateEInvoiceRecord } from "../../_shared";
 
-// 寫入配額用完時 _shared 會退避重試（最多約 17 秒／次），預設 10 秒不夠
+// 時間預算見 ISSUE_TIMING：送出前寫入最多用到第 20 秒，結果寫回最多到第 50 秒
 export const maxDuration = 60;
 
 type PersistedIssueItemSummary = {
@@ -93,213 +102,237 @@ function buildCarrierFields(record: {
   return {};
 }
 
+type SheetsClient = NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>;
+
+class IssueStatusConflictError extends Error {
+  constructor(readonly status: EInvoiceStatus) {
+    super(`invoice status ${status} cannot issue`);
+  }
+}
+
+function errorMessageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** 還沒呼叫 Giveme 就結束：前端可據此判斷「未送出，可重試」 */
+function beforeProvider(status: number, error: string) {
+  return NextResponse.json({ ok: false, stage: "before_provider", error }, { status });
+}
+
+/** 事件 log 只是紀錄，不重試、不佔時間預算，失敗只記 log */
+async function logEventBestEffort(
+  client: SheetsClient,
+  event: Omit<EInvoiceEventRecord, "eventId" | "occurredAt">,
+): Promise<void> {
+  try {
+    await appendEInvoiceEvent(client, event, SHEETS_NO_RETRY);
+  } catch (err) {
+    console.error("[einvoice issue] 事件寫入失敗", event.invoiceId, event.eventType, errorMessageOf(err));
+  }
+}
+
+async function callGiveme(record: EInvoiceRecord, items: PersistedIssueItemSummary[]) {
+  return record.buyerType === "b2b"
+    ? issueB2BInvoice({
+        customerName: record.buyerName,
+        buyerTaxId: record.buyerTaxId,
+        datetime: record.invoiceDate,
+        email: record.email,
+        taxState: "0",
+        totalFee: String(record.totalAmount),
+        amount: String(record.taxAmount),
+        sales: String(record.untaxedAmount),
+        taxType: record.taxType === 4 ? 0 : record.taxType,
+        content: record.overallRemark?.trim() || record.content,
+        items,
+      })
+    : issueB2CInvoice({
+        customerName: record.buyerName,
+        datetime: record.invoiceDate,
+        email: record.email,
+        donationCode: record.donationCode,
+        taxType: record.taxType,
+        totalFee: String(record.totalAmount),
+        content: record.overallRemark?.trim() || record.content,
+        items,
+        ...buildCarrierFields(record),
+      });
+}
+
+/**
+ * Giveme 成功後的寫回：先用剩餘預算寫一次 issued；失敗就（不重試）改寫 needs_review。
+ * 兩次都失敗時紀錄停在 issuing（不可重開，5 分鐘後畫面會開放人工處理），
+ * 回給前端的狀態用 needs_review 表示「已開出、紀錄未確定」。
+ */
+async function persistIssued(
+  client: SheetsClient,
+  invoiceId: string,
+  issuingRecord: EInvoiceRecord,
+  finalRecord: (record: EInvoiceRecord) => EInvoiceRecord,
+  deadline: number,
+): Promise<{ record: EInvoiceRecord; warning: string }> {
+  let writeError: string;
+  try {
+    const persisted = await updateEInvoiceRecord(client, invoiceId, finalRecord, { deadline });
+    if (persisted) return { record: persisted, warning: "" };
+    writeError = "找不到發票紀錄列";
+  } catch (err) {
+    writeError = errorMessageOf(err);
+  }
+  const issued = finalRecord(issuingRecord);
+  const fallback = buildIssuedWriteFailedRecord(issued, issued.providerInvoiceNo, writeError, isoNow());
+  try {
+    const persisted = await updateEInvoiceRecord(
+      client,
+      invoiceId,
+      (record) => buildIssuedWriteFailedRecord(finalRecord(record), issued.providerInvoiceNo, writeError, isoNow()),
+      SHEETS_NO_RETRY,
+    );
+    if (!persisted) console.error("[einvoice issue] 已開立但改寫 needs_review 時找不到紀錄列", invoiceId, issued.providerInvoiceNo);
+  } catch (err) {
+    console.error("[einvoice issue] 已開立但紀錄兩次寫入都失敗", invoiceId, issued.providerInvoiceNo, errorMessageOf(err));
+  }
+  return { record: fallback, warning: fallback.errorMessage };
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ invoiceId: string }> },
 ) {
+  const startedAt = Date.now();
+  const providerCutoff = startedAt + ISSUE_TIMING.totalBudgetMs - ISSUE_TIMING.minRemainingForProviderMs;
+  const finalDeadline = startedAt + ISSUE_TIMING.totalBudgetMs;
+
   const { invoiceId } = await params;
   const session = await getSession(request);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 });
-  }
-  if (session.role !== "admin") {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-  }
+  if (!session) return beforeProvider(401, "not_authenticated");
+  if (session.role !== "admin") return beforeProvider(403, "forbidden");
 
   const client = await getSheetsClient();
-  if (!client) {
-    return NextResponse.json({ ok: false, error: "Google Sheets 未設定" }, { status: 503 });
-  }
+  if (!client) return beforeProvider(503, "Google Sheets 未設定");
 
-  let inlineRecord: EInvoiceRecord | undefined;
-  let bodyInvoiceDate: string | undefined;
+  // body 只取開立日期；紀錄一律以 Sheets 為準（不信任前端帶來的 invoiceRecord）
+  const body = (await request.json().catch(() => ({}))) as { invoiceDate?: unknown };
+  const bodyInvoiceDate = typeof body.invoiceDate === "string" ? body.invoiceDate.trim() : "";
+
+  // 1. 送 Giveme 前一定先把狀態寫成 issuing：之後不論逾時或被中斷，紀錄都不會停在可重開的 draft/failed
+  let fromStatus: EInvoiceStatus = "draft";
+  let issuingRecord: EInvoiceRecord | null;
   try {
-    const body = (await request.json().catch(() => ({}))) as { invoiceRecord?: EInvoiceRecord; invoiceDate?: string };
-    if (body.invoiceRecord && body.invoiceRecord.invoiceId === invoiceId &&
-        (body.invoiceRecord.status === "draft" || body.invoiceRecord.status === "failed")) {
-      inlineRecord = body.invoiceRecord;
-    }
-    if (typeof body.invoiceDate === "string" && body.invoiceDate.trim()) {
-      bodyInvoiceDate = body.invoiceDate.trim();
-    }
-  } catch {
-    // body parse failure is non-fatal; fall through to Sheets lookup
-  }
-
-  // 放在 try 外：Giveme 開立成功後若 Sheets 寫入出錯，catch 要知道發票其實已開出
-  let providerResult: { success: boolean; code: string } | null = null;
-  let issuedRecord: EInvoiceRecord | null = null;
-  let issuedRecordPersisted = false;
-
-  try {
-    const current = inlineRecord ?? await getEInvoiceRecordById(client, invoiceId);
-    if (!current) {
-      return NextResponse.json({ ok: false, error: "invoice not found" }, { status: 404 });
-    }
-    if (current.status !== "draft" && current.status !== "failed") {
-      return NextResponse.json({ ok: false, error: `invoice status ${current.status} cannot issue` }, { status: 409 });
-    }
-
-    // When we have the inline record (just created), skip the intermediate "issuing" write
-    // to avoid spending the propagation-retry budget before the Giveme call.
-    // The final status write below will handle the Sheets update.
-    let draftRecord: EInvoiceRecord | null;
-    if (inlineRecord) {
-      draftRecord = { ...inlineRecord, status: "issuing", ...(bodyInvoiceDate ? { invoiceDate: bodyInvoiceDate } : {}), updatedAt: isoNow() };
-    } else {
-      draftRecord = await updateEInvoiceRecord(client, invoiceId, (record) => ({
+    issuingRecord = await updateEInvoiceRecord(client, invoiceId, (record) => {
+      if (!isIssuableStatus(record.status)) throw new IssueStatusConflictError(record.status);
+      fromStatus = record.status;
+      return {
         ...record,
         status: "issuing",
         ...(bodyInvoiceDate ? { invoiceDate: bodyInvoiceDate } : {}),
         updatedAt: isoNow(),
-      }));
-    }
-    if (!draftRecord) {
-      return NextResponse.json({ ok: false, error: "invoice not found" }, { status: 404 });
-    }
+      };
+    }, { deadline: providerCutoff });
+  } catch (err) {
+    if (err instanceof IssueStatusConflictError) return beforeProvider(409, err.message);
+    return beforeProvider(503, `系統紀錄暫時無法寫入，未送出開立：${errorMessageOf(err)}`);
+  }
+  if (!issuingRecord) return beforeProvider(404, "invoice not found");
 
-    const items = parseEInvoiceItems(draftRecord.itemsJson).map((item) => ({
-      name: item.name,
-      money: item.unitPrice,
-      number: item.quantity,
-      remark: item.remark,
-      taxType: item.taxType,
-    }));
+  // 2. 剩餘時間不夠呼叫 Giveme 並寫回結果 → 不送，盡力把狀態改回去
+  if (Date.now() > providerCutoff) {
+    const revertTo = fromStatus;
+    await updateEInvoiceRecord(client, invoiceId, (record) => (
+      record.status === "issuing" ? { ...record, status: revertTo, updatedAt: isoNow() } : record
+    ), SHEETS_NO_RETRY).catch((err) => console.error("[einvoice issue] 改回原狀態失敗", invoiceId, errorMessageOf(err)));
+    return beforeProvider(503, "系統忙碌（Google 寫入配額），未送出開立，請稍後重試");
+  }
 
-    await appendEInvoiceEvent(client, {
+  const items = parseEInvoiceItems(issuingRecord.itemsJson).map((item) => ({
+    name: item.name,
+    money: item.unitPrice,
+    number: item.quantity,
+    remark: item.remark,
+    taxType: item.taxType,
+  }));
+  const requestSummary = JSON.stringify(buildPersistedIssuePayloadSummary(issuingRecord, items));
+
+  await logEventBestEffort(client, {
+    invoiceId,
+    eventType: "issue_started",
+    fromStatus,
+    toStatus: "issuing",
+    message: "開始送出 Giveme 開票請求",
+    requestJson: JSON.stringify({ sourceType: issuingRecord.sourceType, sourceId: issuingRecord.sourceId, totalAmount: issuingRecord.totalAmount, itemCount: items.length }),
+    responseJson: "",
+    actor: session.displayName,
+  });
+
+  // 3. 呼叫 Giveme：只有乾淨的 success:false 才算確定沒開出；逾時／連線／非 JSON 一律視為不明
+  let outcome: ProviderOutcome;
+  let providerResponse: Awaited<ReturnType<typeof callGiveme>> | null = null;
+  try {
+    providerResponse = await callGiveme(issuingRecord, items);
+    outcome = providerResponse.success
+      ? { kind: "success", code: providerResponse.code, msg: providerResponse.msg }
+      : { kind: "rejected", code: providerResponse.code, msg: providerResponse.msg };
+  } catch (err) {
+    outcome = { kind: "unknown", message: errorMessageOf(err) };
+  }
+
+  const responseSummary = JSON.stringify(providerResponse
+    ? {
+        success: providerResponse.success,
+        code: providerResponse.code,
+        msg: providerResponse.msg,
+        totalFee: providerResponse.totalFee ?? "",
+        phone: providerResponse.phone ?? "",
+        orderCode: providerResponse.orderCode ?? "",
+      }
+    : { error: outcome.kind === "unknown" ? outcome.message : "" });
+  const finalRecord = (record: EInvoiceRecord) =>
+    applyProviderOutcome(record, outcome, { responseJson: responseSummary, requestJson: requestSummary, now: isoNow() });
+
+  // 4. 寫回結果
+  if (outcome.kind === "success") {
+    const { record, warning } = await persistIssued(client, invoiceId, issuingRecord, finalRecord, finalDeadline);
+    await logEventBestEffort(client, {
       invoiceId,
-      eventType: "issue_started",
-      fromStatus: current.status,
-      toStatus: "issuing",
-      message: "開始送出 Giveme 開票請求",
-      requestJson: JSON.stringify({ sourceType: draftRecord.sourceType, sourceId: draftRecord.sourceId, totalAmount: draftRecord.totalAmount, itemCount: items.length }),
-      responseJson: "",
-      actor: session.displayName,
-    });
-
-    const result = draftRecord.buyerType === "b2b"
-      ? await issueB2BInvoice({
-          customerName: draftRecord.buyerName,
-          buyerTaxId: draftRecord.buyerTaxId,
-          datetime: draftRecord.invoiceDate,
-          email: draftRecord.email,
-          taxState: "0",
-          totalFee: String(draftRecord.totalAmount),
-          amount: String(draftRecord.taxAmount),
-          sales: String(draftRecord.untaxedAmount),
-          taxType: draftRecord.taxType === 4 ? 0 : draftRecord.taxType,
-          content: draftRecord.overallRemark?.trim() || draftRecord.content,
-          items,
-        })
-      : await issueB2CInvoice({
-          customerName: draftRecord.buyerName,
-          datetime: draftRecord.invoiceDate,
-          email: draftRecord.email,
-          donationCode: draftRecord.donationCode,
-          taxType: draftRecord.taxType,
-          totalFee: String(draftRecord.totalAmount),
-          content: draftRecord.overallRemark?.trim() || draftRecord.content,
-          items,
-          ...buildCarrierFields(draftRecord),
-        });
-    providerResult = { success: result.success, code: result.code };
-
-    const responseSummary = JSON.stringify({
-      success: result.success,
-      code: result.code,
-      msg: result.msg,
-      totalFee: result.totalFee ?? "",
-      phone: result.phone ?? "",
-      orderCode: result.orderCode ?? "",
-    });
-    const requestSummary = JSON.stringify(buildPersistedIssuePayloadSummary(draftRecord, items));
-
-    const nextStatus = result.success ? "issued" : "failed";
-    const finalUpdater = (record: EInvoiceRecord): EInvoiceRecord => ({
-      ...record,
-      status: nextStatus,
-      providerInvoiceNo: result.code || record.providerInvoiceNo,
-      providerResponseJson: responseSummary,
-      requestPayloadJson: requestSummary,
-      errorCode: result.success ? "" : result.code,
-      errorMessage: result.success ? "" : result.msg || "Giveme 開立失敗",
-      updatedAt: isoNow(),
-    });
-    if (result.success) issuedRecord = finalUpdater(draftRecord);
-    draftRecord = await updateEInvoiceRecord(client, invoiceId, finalUpdater);
-    issuedRecordPersisted = result.success && draftRecord !== null;
-    // If Sheets still hasn't propagated (row not found), build final record in memory so the
-    // client receives a valid record for immediate local-state update.
-    if (!draftRecord && inlineRecord) {
-      draftRecord = finalUpdater({ ...inlineRecord, status: "issuing" as const });
-    }
-
-    await appendEInvoiceEvent(client, {
-      invoiceId,
-      eventType: result.success ? "issue_succeeded" : "issue_failed",
+      eventType: "issue_succeeded",
       fromStatus: "issuing",
-      toStatus: nextStatus,
-      message: result.success ? `成功開立 ${result.code}` : result.msg || "Giveme 開立失敗",
-      requestJson: draftRecord?.requestPayloadJson ?? "",
+      toStatus: record.status,
+      message: warning || `成功開立 ${outcome.code}`,
+      requestJson: requestSummary,
       responseJson: responseSummary,
       actor: session.displayName,
     });
-
-    return NextResponse.json({ ok: result.success, invoice: draftRecord, provider: result }, { status: result.success ? 200 : 502 });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown";
-    const outcome = resolveIssueErrorOutcome(providerResult, message);
-    if (outcome.providerIssued) {
-      // 發票已在 Giveme 開出：絕不能標 failed（會誘導重開）。盡力把紀錄改成 needs_review，
-      // 這一步再失敗也只記 log，回應仍以已開立回給前端。
-      const providerInvoiceNo = providerResult?.code ?? "";
-      // 紀錄已寫成 issued、只有後面的事件 log 失敗 → 不必降級成 needs_review
-      if (!issuedRecordPersisted) {
-        try {
-          await updateEInvoiceRecord(client, invoiceId, (record) => ({
-            ...record,
-            status: outcome.status,
-            providerInvoiceNo: providerInvoiceNo || record.providerInvoiceNo,
-            errorMessage: outcome.errorMessage,
-            updatedAt: isoNow(),
-          }));
-          await appendEInvoiceEvent(client, {
-            invoiceId,
-            eventType: "issue_succeeded",
-            fromStatus: "issuing",
-            toStatus: outcome.status,
-            message: outcome.errorMessage,
-            requestJson: "",
-            responseJson: JSON.stringify(providerResult),
-            actor: session.displayName,
-          });
-        } catch (writeErr) {
-          console.error("[einvoice issue] 已開立但紀錄寫入失敗", invoiceId, providerInvoiceNo, writeErr);
-        }
-      }
-      return NextResponse.json({
-        ok: true,
-        invoice: issuedRecord,
-        provider: providerResult,
-        warning: outcome.warning,
-      });
-    }
-    await updateEInvoiceRecord(client, invoiceId, (record) => ({
-      ...record,
-      status: "failed",
-      errorMessage: message,
-      updatedAt: isoNow(),
-    }));
-    await appendEInvoiceEvent(client, {
-      invoiceId,
-      eventType: "issue_failed",
-      fromStatus: "issuing",
-      toStatus: "failed",
-      message,
-      requestJson: "",
-      responseJson: "",
-      actor: session.displayName,
-    });
-    return NextResponse.json({ ok: false, error: message }, { status: 502 });
+    return NextResponse.json({ ok: true, invoice: record, provider: providerResponse, ...(warning ? { warning } : {}) });
   }
+
+  let record = finalRecord(issuingRecord);
+  let warning = "";
+  try {
+    record = (await updateEInvoiceRecord(client, invoiceId, finalRecord, { deadline: finalDeadline })) ?? record;
+  } catch (err) {
+    // 紀錄停在 issuing（不可重開），5 分鐘後畫面開放人工處理
+    warning = `結果寫回失敗，開票歷史會顯示「開立中」：${errorMessageOf(err)}`;
+    console.error("[einvoice issue] 結果寫回失敗", invoiceId, outcome.kind, errorMessageOf(err));
+  }
+  await logEventBestEffort(client, {
+    invoiceId,
+    eventType: "issue_failed",
+    fromStatus: "issuing",
+    toStatus: record.status,
+    message: record.errorMessage,
+    requestJson: requestSummary,
+    responseJson: responseSummary,
+    actor: session.displayName,
+  });
+
+  if (outcome.kind === "rejected") {
+    return NextResponse.json(
+      { ok: false, stage: "provider", error: record.errorMessage, invoice: record, provider: providerResponse, ...(warning ? { warning } : {}) },
+      { status: 502 },
+    );
+  }
+  return NextResponse.json(
+    { ok: false, stage: "provider_unknown", error: PROVIDER_UNKNOWN_MESSAGE, invoice: record, ...(warning ? { warning } : {}) },
+    { status: 502 },
+  );
 }

@@ -249,30 +249,6 @@ export function isInvoiceExemptTaxRate(rate: number): boolean {
   return rate === 0;
 }
 
-export interface IssueErrorOutcome {
-  status: "needs_review" | "failed";
-  /** Giveme 已實際開立：回應要當成功，且絕不能讓人重開 */
-  providerIssued: boolean;
-  errorMessage: string;
-  warning: string;
-}
-
-/**
- * 開票流程中途出錯時決定紀錄狀態。
- * Giveme 已回成功 → 發票其實已開出，只是系統紀錄沒寫進去；標 needs_review 而非 failed，
- * 否則畫面顯示「失敗」會誘導重開，造成重複開票。
- */
-export function resolveIssueErrorOutcome(
-  provider: { success: boolean; code: string } | null,
-  errorMessage: string,
-): IssueErrorOutcome {
-  if (provider?.success) {
-    const message = `已於 Giveme 開立（${provider.code || "號碼未知"}），但系統紀錄寫入失敗：${errorMessage}；請勿重開`;
-    return { status: "needs_review", providerIssued: true, errorMessage: message, warning: message };
-  }
-  return { status: "failed", providerIssued: false, errorMessage, warning: "" };
-}
-
 const DUPLICATE_ACTIVE_STATUSES: ReadonlySet<EInvoiceRecord["status"]> = new Set(["draft", "issuing", "issued", "needs_review"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
