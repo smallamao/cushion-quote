@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ARRecord, EInvoiceCandidate, EInvoiceRecord } from "@/lib/types";
-import { findPossibleDuplicateInvoices } from "@/lib/einvoice-utils";
+import { findDuplicatesWithinBatch, findPossibleDuplicateInvoices } from "@/lib/einvoice-utils";
 import {
   EINVOICE_ERROR_CODE,
   STALE_ISSUING_LABEL,
@@ -220,7 +220,7 @@ export function EInvoicesClient() {
   const [confirmDeleteBatch, setConfirmDeleteBatch] = useState(false);
   const [confirmDeleteFailed, setConfirmDeleteFailed] = useState(false);
   const [expandedCandidateIds, setExpandedCandidateIds] = useState<Set<string>>(new Set());
-  const [batchIssueConfirm, setBatchIssueConfirm] = useState<{ candidates: EInvoiceCandidate[]; duplicates: BatchIssueDuplicate[] } | null>(null);
+  const [batchIssueConfirm, setBatchIssueConfirm] = useState<{ candidates: EInvoiceCandidate[]; duplicates: BatchIssueDuplicate[]; batchDuplicates: string[][] } | null>(null);
 
   const [snackbar, setSnackbar] = useState<SnackbarState | null>(null);
   const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
@@ -665,12 +665,26 @@ export function EInvoicesClient() {
     const duplicates = selectedCandidates.flatMap((candidate) => {
       const draft = drafts[candidate.candidateId] ?? buildDefaultDraft(candidate);
       const matches = findPossibleDuplicateInvoices(
-        { buyerName: draft.buyerName, totalAmount: draft.totalAmount ?? candidate.totalAmount },
+        {
+          buyerName: draft.buyerName,
+          totalAmount: draft.totalAmount ?? candidate.totalAmount,
+          sourceType: candidate.sourceType,
+          sourceId: candidate.sourceId,
+        },
         invoices,
       );
       return matches.length > 0 ? [{ candidateId: candidate.candidateId, buyerName: draft.buyerName, matches }] : [];
     });
-    setBatchIssueConfirm({ candidates: selectedCandidates, duplicates });
+    // 同一批裡自己重複（例如同一份資料貼了兩次）
+    const batchDuplicates = findDuplicatesWithinBatch(selectedCandidates.map((candidate) => {
+      const draft = drafts[candidate.candidateId] ?? buildDefaultDraft(candidate);
+      return {
+        key: `${draft.buyerName}（${candidate.sourceId}）`,
+        buyerName: draft.buyerName,
+        totalAmount: draft.totalAmount ?? candidate.totalAmount,
+      };
+    }));
+    setBatchIssueConfirm({ candidates: selectedCandidates, duplicates, batchDuplicates });
   }
 
   async function executeBatchIssue(candidatesToIssue: EInvoiceCandidate[]) {
@@ -1894,6 +1908,16 @@ export function EInvoicesClient() {
             <DialogTitle>確認批次開立電子發票</DialogTitle>
           </DialogHeader>
           <div className="px-6 py-4">
+            {(batchIssueConfirm?.batchDuplicates.length ?? 0) > 0 && (
+              <div className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="font-medium">這一批裡有同買方、同金額的項目重複勾選</div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {batchIssueConfirm?.batchDuplicates.map((keys) => (
+                    <li key={keys.join("|")}>{keys.join("、")}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {(batchIssueConfirm?.duplicates.length ?? 0) > 0 && (
               <div className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <div className="font-medium">可能重複開立：以下買方近 60 天已有相同金額的發票</div>
@@ -1952,7 +1976,7 @@ export function EInvoicesClient() {
               disabled={issuing}
             >
               {issuing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-              {(batchIssueConfirm?.duplicates.length ?? 0) > 0 ? "仍要開立" : "確認開立"}
+              {(batchIssueConfirm?.duplicates.length ?? 0) + (batchIssueConfirm?.batchDuplicates.length ?? 0) > 0 ? "仍要開立" : "確認開立"}
             </Button>
           </DialogFooter>
         </DialogContent>

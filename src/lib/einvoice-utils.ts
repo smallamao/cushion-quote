@@ -258,7 +258,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** 批次開立前找「同買方＋同金額＋近期」的有效發票，提醒可能重複開立 */
 export function findPossibleDuplicateInvoices(
-  target: { buyerName: string; totalAmount: number },
+  target: { buyerName: string; totalAmount: number; sourceType?: string; sourceId?: string },
   records: EInvoiceRecord[],
   now: Date = new Date(),
   windowDays = 60,
@@ -266,10 +266,28 @@ export function findPossibleDuplicateInvoices(
   const buyerName = target.buyerName.trim();
   if (!buyerName) return [];
   const cutoff = new Date(now.getTime() - windowDays * DAY_MS).toISOString().slice(0, 10);
+  // 同來源的既有紀錄就是這張候選自己（例如上次未送出的草稿），不算重複
+  const isSelf = (record: EInvoiceRecord) =>
+    Boolean(target.sourceId) && record.sourceType === target.sourceType && record.sourceId === target.sourceId;
   return records.filter((record) =>
+    !isSelf(record) &&
     DUPLICATE_ACTIVE_STATUSES.has(record.status) &&
     record.buyerName.trim() === buyerName &&
     Math.round(record.totalAmount) === Math.round(target.totalAmount) &&
     (record.invoiceDate || record.createdAt).slice(0, 10) >= cutoff,
   );
+}
+
+/** 同一批勾選裡「同買方＋同金額」出現多次（例如同一份資料貼了兩次），回傳各組的 key */
+export function findDuplicatesWithinBatch(
+  items: Array<{ key: string; buyerName: string; totalAmount: number }>,
+): string[][] {
+  const groups = new Map<string, string[]>();
+  for (const item of items) {
+    const buyerName = item.buyerName.trim();
+    if (!buyerName) continue;
+    const groupKey = `${buyerName}\u0000${Math.round(item.totalAmount)}`;
+    groups.set(groupKey, [...(groups.get(groupKey) ?? []), item.key]);
+  }
+  return [...groups.values()].filter((keys) => keys.length > 1);
 }

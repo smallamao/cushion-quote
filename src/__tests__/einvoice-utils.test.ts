@@ -7,6 +7,7 @@ import {
   eInvoiceEventRowToRecord,
   eInvoiceRecordToRow,
   eInvoiceRowToRecord,
+  findDuplicatesWithinBatch,
   findPossibleDuplicateInvoices,
   generateEInvoiceEventId,
   generateEInvoiceId,
@@ -197,5 +198,35 @@ describe("findPossibleDuplicateInvoices", () => {
   it("買方名稱空白時不比對", () => {
     const records = [makeInvoiceRecord({ buyerName: "", totalAmount: 5000, invoiceDate: "2026-10-30", status: "issued" })];
     expect(findPossibleDuplicateInvoices({ buyerName: "  ", totalAmount: 5000 }, records, now)).toEqual([]);
+  });
+});
+
+describe("findPossibleDuplicateInvoices（排除自己）", () => {
+  it("同來源（sourceType:sourceId）的既有紀錄是自己，不算重複", () => {
+    const now = new Date("2026-10-31T12:00:00+08:00");
+    const records = [
+      makeInvoiceRecord({ invoiceId: "SELF", sourceType: "ar", sourceId: "AR-1", buyerName: "王小明", totalAmount: 5000, invoiceDate: "2026-10-30", status: "draft" }),
+      makeInvoiceRecord({ invoiceId: "OTHER", sourceType: "manual", sourceId: "M-1", buyerName: "王小明", totalAmount: 5000, invoiceDate: "2026-10-30", status: "issued" }),
+    ];
+    const result = findPossibleDuplicateInvoices({ buyerName: "王小明", totalAmount: 5000, sourceType: "ar", sourceId: "AR-1" }, records, now);
+    expect(result.map((r) => r.invoiceId)).toEqual(["OTHER"]);
+  });
+});
+
+describe("findDuplicatesWithinBatch", () => {
+  it("同一批裡買方（去空白）＋金額相同的列成組回傳", () => {
+    const groups = findDuplicatesWithinBatch([
+      { key: "a", buyerName: "王小明", totalAmount: 5000 },
+      { key: "b", buyerName: " 王小明", totalAmount: 5000 },
+      { key: "c", buyerName: "王小明", totalAmount: 6000 },
+      { key: "d", buyerName: "李大華", totalAmount: 5000 },
+      { key: "e", buyerName: "", totalAmount: 1 },
+      { key: "f", buyerName: "", totalAmount: 1 },
+    ]);
+    expect(groups).toEqual([["a", "b"]]);
+  });
+
+  it("沒有重複時回傳空陣列", () => {
+    expect(findDuplicatesWithinBatch([{ key: "a", buyerName: "王小明", totalAmount: 1 }])).toEqual([]);
   });
 });
