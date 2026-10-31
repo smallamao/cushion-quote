@@ -61,6 +61,11 @@ interface SnackbarState {
   invoiceId?: string;
 }
 
+// 每張發票約 5 次 Sheets 寫入，Google 上限每分鐘每人 60 次。
+// 每張本身要跑數秒（建草稿＋Giveme＋寫回），再加間隔 4 秒，實際約每分鐘 7～8 張（≈40 次寫入）；
+// 偶發超量時由伺服器端配額重試補上。
+const BATCH_ISSUE_INTERVAL_MS = 4000;
+
 interface CandidateDraftSnapshot {
   candidate: EInvoiceCandidate;
   draft: DraftOverride;
@@ -518,15 +523,21 @@ export function EInvoicesClient() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ invoiceRecord: createPayload.invoice }),
         });
-        const issuePayload = (await issueResponse.json().catch(() => ({}))) as { invoice?: EInvoiceRecord; error?: string; provider?: { msg?: string } };
+        const issuePayload = (await issueResponse.json().catch(() => ({}))) as { invoice?: EInvoiceRecord; error?: string; warning?: string; provider?: { msg?: string } };
         if (!issueResponse.ok) {
+          const issuedNo = issuePayload.invoice?.providerInvoiceNo ?? "";
+          const failDetail = buildUnknownErrorDetail(issuePayload, `${displayName} 開立失敗`);
           return {
             candidateId: candidate.candidateId,
             displayName,
             success: false,
             stage: "issue",
             invoiceId: createPayload.invoice.invoiceId,
-            detail: buildUnknownErrorDetail(issuePayload, `${displayName} 開立失敗`),
+            providerInvoiceNo: issuedNo || undefined,
+            // 已拿到發票號碼代表 Giveme 很可能已開出，重開會重複開票
+            detail: issuedNo
+              ? `Giveme 可能已開立（發票號碼 ${issuedNo}），請勿重試；請到開票歷史按同步確認。\n${failDetail}`
+              : failDetail,
           };
         }
 
@@ -545,7 +556,10 @@ export function EInvoicesClient() {
           invoiceId: finalRecord.invoiceId,
           providerInvoiceNo: finalInvoiceNo,
           invoiceRecord: finalRecord,
-          detail: finalInvoiceNo ? `已成功送出，發票號碼 ${finalInvoiceNo}` : "已成功送出 Giveme",
+          detail: [
+            finalInvoiceNo ? `已成功送出，發票號碼 ${finalInvoiceNo}` : "已成功送出 Giveme",
+            issuePayload.warning ?? "",
+          ].filter(Boolean).join("\n"),
         };
       } catch (err) {
         return {
@@ -554,7 +568,8 @@ export function EInvoicesClient() {
           success: false,
           stage: "issue",
           invoiceId: createPayload.invoice.invoiceId,
-          detail: err instanceof Error ? err.message : `${displayName} 開立失敗`,
+          // 連線中斷時不知道 Giveme 是否已開出，不能直接重開
+          detail: `${err instanceof Error ? err.message : `${displayName} 開立失敗`}\n結果未知：Giveme 可能已開立，請先到開票歷史確認，勿直接重開。`,
         };
       }
     } catch (err) {
@@ -612,12 +627,12 @@ export function EInvoicesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invoiceDate: quickCreateForm.invoiceDate }),
       });
-      const issuePayload = (await issueRes.json().catch(() => ({}))) as { ok?: boolean; invoice?: EInvoiceRecord; error?: string; provider?: { msg?: string } };
+      const issuePayload = (await issueRes.json().catch(() => ({}))) as { ok?: boolean; invoice?: EInvoiceRecord; error?: string; warning?: string; provider?: { msg?: string } };
       if (!issueRes.ok) {
         throw new Error(buildUnknownErrorDetail(issuePayload, "送出開立失敗"));
       }
       const no = issuePayload.invoice?.providerInvoiceNo ?? "";
-      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : "已送出 Giveme" });
+      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : "已送出 Giveme", detail: issuePayload.warning });
       setSnackbar({ message: "電子發票已開立", invoiceId });
       setTimeout(() => setSnackbar(null), 3000);
       setQuickCreateOpen(false);
@@ -651,7 +666,7 @@ export function EInvoicesClient() {
     try {
       const results: BatchIssueItemResult[] = [];
       for (let i = 0; i < snapshots.length; i++) {
-        if (i > 0) await new Promise((r) => setTimeout(r, 1200));
+        if (i > 0) await new Promise((r) => setTimeout(r, BATCH_ISSUE_INTERVAL_MS));
         const snap = snapshots[i]!;
         const displayName = snap.candidate.projectName || snap.candidate.clientName || snap.candidate.candidateId;
         setBatchProgress({ current: i + 1, total: snapshots.length, name: displayName });
@@ -735,12 +750,12 @@ export function EInvoicesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const payload = (await response.json().catch(() => ({}))) as { invoice?: EInvoiceRecord; error?: string; provider?: { msg?: string } };
+      const payload = (await response.json().catch(() => ({}))) as { invoice?: EInvoiceRecord; error?: string; warning?: string; provider?: { msg?: string } };
       if (!response.ok) {
         throw new Error(buildUnknownErrorDetail(payload, "開立失敗"));
       }
       const no = (payload.invoice as EInvoiceRecord | undefined)?.providerInvoiceNo;
-      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : `${invoiceId} 已送出 Giveme` });
+      setNotice({ tone: "success", title: no ? `開立成功，發票號碼 ${no}` : `${invoiceId} 已送出 Giveme`, detail: payload.warning });
       const issuedInvoiceId = (payload.invoice as EInvoiceRecord | undefined)?.invoiceId ?? invoiceId;
       setSnackbar({ message: "電子發票已開立", invoiceId: issuedInvoiceId });
       setTimeout(() => setSnackbar(null), 3000);
