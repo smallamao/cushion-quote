@@ -12,7 +12,6 @@ import {
   resolveOrderTitle,
 } from "@/lib/order-utils";
 import { lineRowToRecord } from "@/app/api/sheets/_v2-utils";
-import { isInvoiceExemptTaxRate } from "@/lib/einvoice-utils";
 import { classifyOrderCategory, inferDeliveryMethod } from "@/lib/order-category";
 import { versionLinesToOrderItems } from "@/lib/quote-mappers";
 import type { CustomOrder, OrderItemCategory, OrderDeliveryMethod } from "@/lib/types";
@@ -250,7 +249,7 @@ export async function createOrder(
 
   // 免開票判定：未稅報價（稅率 0）本身即代表不開發票；或已列入電子發票不開清單
   let invoiceStatus: CustomOrder["invoiceStatus"] = "pending";
-  if (versionId && isInvoiceExemptTaxRate(versionTaxRate)) invoiceStatus = "exempt";
+  if (versionId && versionTaxRate === 0) invoiceStatus = "exempt";
   if (versionId && invoiceStatus === "pending") {
     try {
       const optOutRes = await client.sheets.spreadsheets.values.get({

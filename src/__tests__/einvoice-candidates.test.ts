@@ -33,10 +33,10 @@ function pendingRow(pendingId: string, versionId: string): string[] {
 /** 只回傳指定範圍的假 Sheets client，其他範圍一律空表；不碰真實資料 */
 function makeClient(): Client {
   const data: Record<string, string[][]> = {
-    [AR_RANGE_DATA]: [arRow("AR-TAX", "V-TAX"), arRow("AR-CASH", "V-CASH")],
+    [AR_RANGE_DATA]: [arRow("AR-TAX", "V-TAX"), arRow("AR-CASH", "V-CASH"), arRow("AR-BLANK", "V-BLANK")],
     [PENDING_MONTHLY_RANGE_DATA]: [pendingRow("PM-TAX", "V-TAX"), pendingRow("PM-CASH", "V-CASH")],
   };
-  const versions = [versionRow("V-TAX", "5"), versionRow("V-CASH", "0")];
+  const versions = [versionRow("V-TAX", "5"), versionRow("V-CASH", "0"), versionRow("V-BLANK", "")];
   const get = async ({ range }: { range: string }) => ({
     data: { values: range.startsWith("報價版本!") ? versions : data[range] ?? [] },
   });
@@ -44,9 +44,9 @@ function makeClient(): Client {
 }
 
 describe("buildEInvoiceCandidates", () => {
-  it("清單排除稅率 0（現金價）的版本，AR 與月結都一樣", async () => {
+  it("清單排除稅率明確為 0（現金價）的版本，AR 與月結都一樣；稅率空白的不排除", async () => {
     const candidates = await buildEInvoiceCandidates(makeClient());
-    expect(candidates.map((c) => c.candidateId).sort()).toEqual(["ar:AR-TAX", "pending_monthly:PM-TAX"]);
+    expect(candidates.map((c) => c.candidateId).sort()).toEqual(["ar:AR-BLANK", "ar:AR-TAX", "pending_monthly:PM-TAX"]);
   });
 
   it("直接指定 versionId 時不排除稅率 0，並沿用 5% 拆稅", async () => {

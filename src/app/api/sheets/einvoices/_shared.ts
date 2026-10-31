@@ -219,6 +219,8 @@ async function getCompanyLookup(client: SheetsClient): Promise<{ companyMap: Map
 
 async function getVersionCluster(client: SheetsClient): Promise<{
   versionMap: Map<string, QuoteVersionRecord>;
+  /** 稅率欄原始值：versionRowToRecord 會把空白轉成 0，判斷免開票要看原始儲存格 */
+  rawTaxRateByVersionId: Map<string, string>;
   linesByVersionId: Map<string, VersionLineRecord[]>;
   caseMap: Map<string, CaseRecord>;
 }> {
@@ -231,6 +233,9 @@ async function getVersionCluster(client: SheetsClient): Promise<{
   const versionMap = new Map(
     versionRows.map(versionRowToRecord).filter((version) => version.versionId).map((version) => [version.versionId, version] as const),
   );
+  const rawTaxRateByVersionId = new Map(
+    versionRows.filter((row) => row[0]).map((row) => [row[0] ?? "", row[16] ?? ""] as const),
+  );
   const linesByVersionId = new Map<string, VersionLineRecord[]>();
   for (const line of lineRows.map(lineRowToRecord).filter((row) => row.versionId)) {
     const current = linesByVersionId.get(line.versionId) ?? [];
@@ -240,7 +245,7 @@ async function getVersionCluster(client: SheetsClient): Promise<{
   const caseMap = new Map(
     caseRows.map(caseRowToRecord).filter((row) => row.caseId).map((row) => [row.caseId, row] as const),
   );
-  return { versionMap, linesByVersionId, caseMap };
+  return { versionMap, rawTaxRateByVersionId, linesByVersionId, caseMap };
 }
 
 function buildCandidate(params: {
@@ -256,8 +261,9 @@ function buildCandidate(params: {
   invoiceDate: string;
   existingInvoice: EInvoiceRecord | undefined;
 }): EInvoiceCandidate {
-  // 稅率 0（現金價）的版本只會從「直接指定 versionId」進來（候選清單已排除）。
-  // 使用者明確要為它開票，而應稅發票必有稅額，故沿用 `|| 5` 以 5% 從總額拆出稅額。
+  // 會走到 `|| 5` 的有兩種：稅率欄空白（清單保留，視為一般應稅），以及明確填 0 的現金價版本
+  // ——後者只會從「直接指定 versionId」進來（清單已排除），使用者明確要開票，應稅發票必有稅額。
+  // 兩者都沿用原本的 5% 從總額拆出稅額。
   const rawRate = params.version.taxRate > 0 && params.version.taxRate <= 1
     ? params.version.taxRate * 100
     : params.version.taxRate || 5;
@@ -294,7 +300,7 @@ function buildCandidate(params: {
 }
 
 export async function buildEInvoiceCandidates(client: SheetsClient, options: { versionId?: string } = {}): Promise<EInvoiceCandidate[]> {
-  const [invoiceRecords, { companyMap, primaryContactMap }, { versionMap, linesByVersionId, caseMap }] = await Promise.all([
+  const [invoiceRecords, { companyMap, primaryContactMap }, { versionMap, rawTaxRateByVersionId, linesByVersionId, caseMap }] = await Promise.all([
     getEInvoiceRecords(client),
     getCompanyLookup(client),
     getVersionCluster(client),
@@ -362,7 +368,7 @@ export async function buildEInvoiceCandidates(client: SheetsClient, options: { v
   for (const ar of ars) {
     const version = versionMap.get(ar.versionId);
     if (!version) continue;
-    if (isInvoiceExemptTaxRate(version.taxRate)) continue;
+    if (isInvoiceExemptTaxRate(rawTaxRateByVersionId.get(version.versionId))) continue;
     if (optOutVersionIds.has(ar.versionId)) continue;
     const caseRecord = caseMap.get(ar.caseId);
     const company = companyMap.get(ar.clientId);
@@ -389,7 +395,7 @@ export async function buildEInvoiceCandidates(client: SheetsClient, options: { v
   for (const record of pending) {
     const version = versionMap.get(record.versionId);
     if (!version) continue;
-    if (isInvoiceExemptTaxRate(version.taxRate)) continue;
+    if (isInvoiceExemptTaxRate(rawTaxRateByVersionId.get(version.versionId))) continue;
     const caseRecord = caseMap.get(record.caseId);
     const company = companyMap.get(record.clientId);
     const contact = primaryContactMap.get(record.clientId);

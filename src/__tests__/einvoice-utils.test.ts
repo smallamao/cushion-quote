@@ -160,13 +160,12 @@ describe("einvoice-utils", () => {
 });
 
 describe("isInvoiceExemptTaxRate", () => {
-  it("稅率 0（現金價）視為免開票", () => {
-    expect(isInvoiceExemptTaxRate(0)).toBe(true);
+  it("只有儲存格明確填 0 才算免開票（現金價）", () => {
+    for (const raw of ["0", "0%", "0.0", " 0 ", "0.00%"]) expect(isInvoiceExemptTaxRate(raw)).toBe(true);
   });
 
-  it("有稅率的版本需要開票（百分比或小數皆同）", () => {
-    expect(isInvoiceExemptTaxRate(5)).toBe(false);
-    expect(isInvoiceExemptTaxRate(0.05)).toBe(false);
+  it("空白、無法解析或有稅率都要開票（不可默默略過）", () => {
+    for (const raw of ["", "  ", undefined, "abc", "0.05", "5", "5%"]) expect(isInvoiceExemptTaxRate(raw)).toBe(false);
   });
 });
 

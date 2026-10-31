@@ -244,9 +244,13 @@ export function isWithinCancellationDeadline(
   return now <= getCancellationDeadline(invoiceDateIso, period);
 }
 
-/** 未稅報價（稅率 0，現金價）本身即代表不開發票 */
-export function isInvoiceExemptTaxRate(rate: number): boolean {
-  return rate === 0;
+/**
+ * 未稅報價（稅率 0，現金價）本身即代表不開發票。
+ * 依「報價版本」稅率欄的原始儲存格判斷：只有明確填 0（含 0%、0.0）才算；
+ * 空白或無法解析時不可當成 0 默默排除，交給後續流程以 5% 處理。
+ */
+export function isInvoiceExemptTaxRate(rawCell: string | undefined): boolean {
+  return /^0+(\.0+)?%?$/.test((rawCell ?? "").trim());
 }
 
 const DUPLICATE_ACTIVE_STATUSES: ReadonlySet<EInvoiceRecord["status"]> = new Set(["draft", "issuing", "issued", "needs_review"]);
