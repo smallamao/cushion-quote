@@ -9,6 +9,7 @@ import {
   eInvoiceRowToRecord,
   generateEInvoiceEventId,
   generateEInvoiceId,
+  isInvoiceExemptTaxRate,
   parseEInvoiceItems,
   resolveIssueErrorOutcome,
 } from "@/lib/einvoice-utils";
@@ -155,6 +156,17 @@ describe("einvoice-utils", () => {
     expect(buildEInvoiceItemsFromVersionLines(lines)).toEqual([
       { name: "沙發換布", quantity: 2, unitPrice: 500, amount: 1000, remark: "備註", taxType: 0 },
     ]);
+  });
+});
+
+describe("isInvoiceExemptTaxRate", () => {
+  it("稅率 0（現金價）視為免開票", () => {
+    expect(isInvoiceExemptTaxRate(0)).toBe(true);
+  });
+
+  it("有稅率的版本需要開票（百分比或小數皆同）", () => {
+    expect(isInvoiceExemptTaxRate(5)).toBe(false);
+    expect(isInvoiceExemptTaxRate(0.05)).toBe(false);
   });
 });
 

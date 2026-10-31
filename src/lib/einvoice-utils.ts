@@ -244,6 +244,11 @@ export function isWithinCancellationDeadline(
   return now <= getCancellationDeadline(invoiceDateIso, period);
 }
 
+/** 未稅報價（稅率 0，現金價）本身即代表不開發票 */
+export function isInvoiceExemptTaxRate(rate: number): boolean {
+  return rate === 0;
+}
+
 export interface IssueErrorOutcome {
   status: "needs_review" | "failed";
   /** Giveme 已實際開立：回應要當成功，且絕不能讓人重開 */

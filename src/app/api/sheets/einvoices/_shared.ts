@@ -22,6 +22,7 @@ import {
   eInvoiceRowToRecord,
   generateEInvoiceEventId,
   generateEInvoiceId,
+  isInvoiceExemptTaxRate,
   isoDateNow,
   isoNow,
 } from "@/lib/einvoice-utils";
@@ -258,6 +259,8 @@ function buildCandidate(params: {
   invoiceDate: string;
   existingInvoice: EInvoiceRecord | undefined;
 }): EInvoiceCandidate {
+  // 稅率 0（現金價）的版本只會從「直接指定 versionId」進來（候選清單已排除）。
+  // 使用者明確要為它開票，而應稅發票必有稅額，故沿用 `|| 5` 以 5% 從總額拆出稅額。
   const rawRate = params.version.taxRate > 0 && params.version.taxRate <= 1
     ? params.version.taxRate * 100
     : params.version.taxRate || 5;
@@ -362,6 +365,7 @@ export async function buildEInvoiceCandidates(client: SheetsClient, options: { v
   for (const ar of ars) {
     const version = versionMap.get(ar.versionId);
     if (!version) continue;
+    if (isInvoiceExemptTaxRate(version.taxRate)) continue;
     if (optOutVersionIds.has(ar.versionId)) continue;
     const caseRecord = caseMap.get(ar.caseId);
     const company = companyMap.get(ar.clientId);
@@ -388,6 +392,7 @@ export async function buildEInvoiceCandidates(client: SheetsClient, options: { v
   for (const record of pending) {
     const version = versionMap.get(record.versionId);
     if (!version) continue;
+    if (isInvoiceExemptTaxRate(version.taxRate)) continue;
     const caseRecord = caseMap.get(record.caseId);
     const company = companyMap.get(record.clientId);
     const contact = primaryContactMap.get(record.clientId);
