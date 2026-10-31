@@ -9,13 +9,14 @@ import { getActiveSession } from "@/lib/api-auth";
 import { timingSafeEqual } from "@/lib/constant-time";
 import { appendAuditLog } from "@/lib/audit-log";
 import { appendNotification } from "@/lib/notifications-sheet";
-import { getDriveClient, getSheetsClient } from "@/lib/sheets-client";
-
-const BACKUP_FOLDER_NAME = "營運系統-備份";
-// 保留 90 份（約 3 個月）。資料被改壞不一定馬上發現——某張報價單的金額被誤改，
-// 可能一個月後對帳才看出來，那時 30 天前的版本已經被刪了。
-// 實測一份壓縮後約 0.44 MB，90 份約 40 MB，免費額度 15 GB 綽綽有餘。
-const KEEP_LAST_N = 90;
+import { DRIVE_AUTH_SHEET, getUserDriveClient } from "@/lib/drive-backup-auth";
+import {
+  BACKUP_FOLDER_NAME,
+  BACKUP_FOLDER_QUERY,
+  selectBackupsToPrune,
+} from "@/lib/drive-backup-credential";
+import { getSheetsClient } from "@/lib/sheets-client";
+import type { drive_v3 } from "googleapis";
 
 interface BackupManifest {
   spreadsheetId: string;
@@ -43,22 +44,17 @@ async function isAdmin(request: Request): Promise<boolean> {
   return session?.role === "admin";
 }
 
-async function getOrCreateBackupFolder(
-  drive: NonNullable<Awaited<ReturnType<typeof getDriveClient>>>,
-): Promise<string> {
+async function getOrCreateBackupFolder(drive: drive_v3.Drive): Promise<string> {
   const listRes = await drive.files.list({
-    q: `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    q: BACKUP_FOLDER_QUERY,
     fields: "files(id)",
-    includeItemsFromAllDrives: true,
-    supportsAllDrives: true,
+    orderBy: "createdTime",
   });
   const existing = listRes.data.files?.[0];
   if (existing?.id) return existing.id;
 
-  // Create under the first available drive root. The Service Account
-  // needs permission to create folders; if the backups folder should
-  // live inside a shared drive, the admin can pre-create it and share
-  // it with the Service Account.
+  // 以老闆的帳號建立在他的「我的雲端硬碟」根目錄。App 自己建的資料夾，
+  // drive.file 權限之後才看得到、傳得進去。
   const createRes = await drive.files.create({
     requestBody: {
       name: BACKUP_FOLDER_NAME,
@@ -81,20 +77,28 @@ async function runBackup(): Promise<{
   sheetCount: number;
   pruned: number;
 } | { ok: false; error: string; status?: number }> {
+  // 讀試算表照舊用服務帳號；上傳改用老闆的 Google 帳號（服務帳號沒有 Drive 配額）
   const sheetsClient = await getSheetsClient();
-  const drive = await getDriveClient();
-  if (!sheetsClient || !drive) {
-    return { ok: false, error: "Google Sheets / Drive 尚未設定", status: 503 };
+  if (!sheetsClient) {
+    return { ok: false, error: "Google Sheets 尚未設定", status: 503 };
   }
+  const access = await getUserDriveClient();
+  if (!access.ok) {
+    return { ok: false, error: access.reason, status: 503 };
+  }
+  const drive = access.auth;
 
   // 1) List all sheets in the spreadsheet.
   const meta = await sheetsClient.sheets.spreadsheets.get({
     spreadsheetId: sheetsClient.spreadsheetId,
   });
   const sheets = meta.data.sheets ?? [];
-  const sheetTitles = sheets
-    .map((s) => s.properties?.title)
-    .filter((t): t is string => !!t);
+  // 不備份 Drive 授權表：裡面只有（加密的）refresh token，還原時用不到，
+  // 也不該讓它跟著備份檔散出去
+  const backedUpSheets = sheets.filter(
+    (s) => !!s.properties?.title && s.properties.title !== DRIVE_AUTH_SHEET,
+  );
+  const sheetTitles = backedUpSheets.map((s) => s.properties?.title as string);
 
   // 2) batchGet all sheet data.
   const ranges = sheetTitles.map((title) => `${title}`);
@@ -111,7 +115,7 @@ async function runBackup(): Promise<{
     const title = sheetTitles[i];
     const rows = (valueRanges[i]?.values ?? []) as string[][];
     data[title] = rows;
-    const props = sheets[i].properties?.gridProperties;
+    const props = backedUpSheets[i].properties?.gridProperties;
     manifestSheets.push({
       title,
       rowCount: rows.length,
@@ -170,7 +174,7 @@ async function runBackup(): Promise<{
       supportsAllDrives: true,
     });
     const files = listRes.data.files ?? [];
-    const extra = files.slice(KEEP_LAST_N);
+    const extra = selectBackupsToPrune(files);
     for (const f of extra) {
       if (!f.id) continue;
       try {
@@ -207,6 +211,9 @@ async function runBackup(): Promise<{
  *
  *    修好儲存位置之前，至少不能再「安靜地失敗」——這正是老闆記錄過的
  *    「排程有跑不等於有產出」。失敗就寫一筆通知到後台。
+ *
+ * 2026-11-01：上傳改用老闆的 Google 帳號（設定→系統維護→「連結 Google Drive」）。
+ *    尚未連結、授權失效（invalid_grant）也都走這裡通知，原因寫明要去哪裡重新連結。
  */
 async function notifyBackupFailure(detail: string): Promise<void> {
   try {
@@ -217,7 +224,7 @@ async function notifyBackupFailure(detail: string): Promise<void> {
         `${new Date().toISOString().slice(0, 16).replace("T", " ")} 的備份沒有產出檔案。` +
         `原因：${detail}。` +
         `備份是誤刪或資料被改壞時唯一的救援手段，請盡快處理。`,
-      link: "/settings",
+      link: "/settings?tab=maintenance",
     });
   } catch {
     // 通知失敗不能再讓整個端點爆掉

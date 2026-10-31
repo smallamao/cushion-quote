@@ -4,9 +4,14 @@ import { NextResponse } from "next/server";
 // 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用守門，停用與降權立刻生效。
 
 import { getActiveSession } from "@/lib/api-auth";
-import { getDriveClient } from "@/lib/sheets-client";
+import {
+  getUserDriveClient,
+  loadDriveConnection,
+  toPublicStatus,
+} from "@/lib/drive-backup-auth";
+import { BACKUP_FOLDER_QUERY } from "@/lib/drive-backup-credential";
 
-const BACKUP_FOLDER_NAME = "營運系統-備份";
+export const dynamic = "force-dynamic";
 
 async function isAdmin(request: Request): Promise<boolean> {
   const session = await getActiveSession(request);
@@ -21,37 +26,43 @@ export async function GET(request: Request) {
     );
   }
 
-  const drive = await getDriveClient();
-  if (!drive) {
-    return NextResponse.json(
-      { ok: false, error: "Drive client unavailable" },
-      { status: 503 },
-    );
-  }
-
   try {
-    // Find folder
+    // 2026-11-01：備份改存老闆的 Drive，列表也要用老闆的身分看，
+    // 服務帳號看不到那邊的檔案。連結狀態一起回，畫面才知道要不要叫人去連結。
+    const access = await getUserDriveClient();
+    // 讀狀態放在換 token 之後：換 token 失敗時會把狀態標成失效，這裡要拿到最新的
+    const connection = toPublicStatus(await loadDriveConnection());
+    if (!access.ok) {
+      return NextResponse.json({
+        ok: true,
+        connection,
+        driveError: access.reason,
+        files: [],
+        folderExists: false,
+      });
+    }
+    const drive = access.auth;
+
     const folderRes = await drive.files.list({
-      q: `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      q: BACKUP_FOLDER_QUERY,
       fields: "files(id)",
-      includeItemsFromAllDrives: true,
-      supportsAllDrives: true,
+      orderBy: "createdTime",
     });
     const folderId = folderRes.data.files?.[0]?.id;
     if (!folderId) {
-      return NextResponse.json({ ok: true, files: [], folderExists: false });
+      return NextResponse.json({ ok: true, connection, files: [], folderExists: false });
     }
 
     const listRes = await drive.files.list({
-      q: `'${folderId}' in parents and trashed=false and mimeType='application/json'`,
+      // 2026-10-16 之後的備份是 gzip，原本只列 json 會一份都看不到
+      q: `'${folderId}' in parents and trashed=false and (mimeType='application/json' or mimeType='application/gzip')`,
       fields: "files(id,name,createdTime,size,webViewLink)",
       orderBy: "createdTime desc",
-      pageSize: 50,
-      includeItemsFromAllDrives: true,
-      supportsAllDrives: true,
+      pageSize: 100,
     });
     return NextResponse.json({
       ok: true,
+      connection,
       folderExists: true,
       folderId,
       files: (listRes.data.files ?? []).map((f) => ({

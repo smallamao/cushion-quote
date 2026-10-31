@@ -1,9 +1,9 @@
 "use client";
 
-import { CheckCircle2, Clock, Download, Loader2, RefreshCw, Save, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Clock, Download, Link2, Loader2, RefreshCw, Save, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 interface BackupFile {
   id: string;
@@ -12,6 +12,27 @@ interface BackupFile {
   sizeBytes: number;
   webViewLink: string;
 }
+
+interface DriveConnection {
+  connected: boolean;
+  status: "none" | "active" | "invalid";
+  email: string;
+  connectedAt: string;
+  refreshTokenExpiresAt: string;
+  invalidReason: string;
+}
+
+/** OAuth callback 導回時帶的 ?drive=…，轉成給人看的一句話 */
+const DRIVE_CONNECT_MESSAGES: Record<string, string> = {
+  connected: "✓ 已連結 Google Drive，之後的備份會存到這個帳號的「營運系統-備份」資料夾",
+  denied: "已取消連結 Google Drive",
+  forbidden: "只有管理員可以連結 Google Drive",
+  scope_missing: "連結失敗：授權時沒有勾選 Google Drive 權限，請重新連結並允許",
+  no_refresh_token: "連結失敗：Google 沒有給長期授權，請重新連結一次",
+  no_email: "連結失敗：無法確認 Google 帳號",
+  exchange_failed: "連結失敗：向 Google 換取授權時出錯，請再試一次",
+  save_failed: "連結失敗：授權存檔時出錯，請再試一次",
+};
 
 function fmtBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "—";
@@ -82,22 +103,37 @@ export function BackupPanel() {
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [folderMissing, setFolderMissing] = useState(false);
+  const [connection, setConnection] = useState<DriveConnection | null>(null);
+  const [driveError, setDriveError] = useState<string | null>(null);
+
+  // 從 Google 授權頁回來時顯示結果，並把 ?drive= 從網址拿掉，重新整理才不會再跳一次
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const outcome = url.searchParams.get("drive");
+    if (!outcome) return;
+    setMessage(DRIVE_CONNECT_MESSAGES[outcome] ?? `連結結果：${outcome}`);
+    url.searchParams.delete("drive");
+    window.history.replaceState(null, "", url.toString());
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setMessage(null);
     try {
       const res = await fetch("/api/admin/backup/list", { cache: "no-store" });
       const json = (await res.json()) as {
         ok: boolean;
         files?: BackupFile[];
         folderExists?: boolean;
+        connection?: DriveConnection;
+        driveError?: string;
         error?: string;
       };
       if (!json.ok) {
         setMessage(json.error ?? "載入失敗");
         return;
       }
+      setConnection(json.connection ?? null);
+      setDriveError(json.driveError ?? null);
       setFolderMissing(json.folderExists === false);
       setFiles(json.files ?? []);
     } catch (err) {
@@ -146,6 +182,12 @@ export function BackupPanel() {
     }
   }
 
+  const expiresAt = connection?.refreshTokenExpiresAt
+    ? new Date(connection.refreshTokenExpiresAt)
+    : null;
+  const expired = !!expiresAt && expiresAt.getTime() <= Date.now();
+  const connected = !!connection?.connected && !expired;
+
   const latest = files[0];
   const hoursSinceLatest = latest
     ? (Date.now() - new Date(latest.createdTime).getTime()) / (1000 * 60 * 60)
@@ -191,15 +233,63 @@ export function BackupPanel() {
         )}
       </div>
 
+      <div className="rounded-md border border-[var(--border)] p-4 text-sm">
+        <h3 className="mb-2 font-semibold">備份存放的 Google 帳號</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            {connected ? (
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <span className="font-medium">{connection?.email}</span>
+                {connection?.connectedAt && (
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    （{fmtDate(connection.connectedAt)} 連結）
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-amber-800">
+                <TriangleAlert className="h-4 w-4" />
+                <span className="font-medium">
+                  {connection?.status === "invalid" || expired
+                    ? `授權已失效${connection?.email ? `（${connection.email}）` : ""}，請重新連結`
+                    : "尚未連結"}
+                </span>
+              </div>
+            )}
+            {driveError && !connected && connection?.status !== "none" && (
+              <div className="mt-1 text-xs text-[var(--text-secondary)]">{driveError}</div>
+            )}
+          </div>
+          {/* 整頁導去 Google 授權，不能用 fetch */}
+          <a
+            href="/api/admin/backup/connect"
+            className={buttonVariants({ size: "sm", variant: connected ? "outline" : "default" })}
+          >
+            <Link2 className="h-3.5 w-3.5" />
+            {connection && connection.status !== "none" ? "重新連結" : "連結 Google Drive"}
+          </a>
+        </div>
+        {connected && expiresAt && (
+          <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            目前 Google 授權為測試模式，7 天後會失效（{fmtDate(expiresAt.toISOString())}）。
+            請到 Google Cloud Console 把 OAuth 同意畫面發布為正式版，再回來按「重新連結」。
+          </div>
+        )}
+        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
+          系統只看得到自己建立的備份檔，看不到這個帳號 Drive 裡的其他檔案。
+        </p>
+      </div>
+
       <div className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-4 text-sm">
         <h3 className="mb-2 font-semibold">Google Sheet 定時備份</h3>
         <p className="mb-3 text-xs text-[var(--text-secondary)]">
-          每日台北時間凌晨 02:00 自動把所有工作表備份為 JSON,儲存到 Google Drive 的
-          「<strong>營運系統-備份</strong>」資料夾,保留最近 30 份。你也可以隨時手動
+          每日台北時間凌晨 02:00 自動把所有工作表備份為 JSON(gzip 壓縮),儲存到上方帳號
+          Google Drive 的「<strong>營運系統-備份</strong>」資料夾,保留最近 90 份。你也可以隨時手動
           執行一次。若資料被誤改,可從此處找到對應日期的備份檔還原。
         </p>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => void runBackup()} disabled={running}>
+          <Button size="sm" onClick={() => void runBackup()} disabled={running || !connected}>
             {running ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
@@ -224,7 +314,7 @@ export function BackupPanel() {
         </div>
       )}
 
-      {folderMissing && !loading && (
+      {folderMissing && !loading && connected && (
         <p className="text-xs text-[var(--text-tertiary)]">
           備份資料夾尚未建立。第一次按「立即備份」時會自動建立。
         </p>

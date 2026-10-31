@@ -8,6 +8,7 @@ import {
   signSession,
   verifySignedState,
 } from "@/lib/auth";
+import { driveConnectRedirect, handleDriveBackupCallback } from "@/lib/drive-backup-connect";
 import {
   countActiveAdmins,
   createUser,
@@ -26,6 +27,11 @@ export async function GET(request: Request) {
   const stateParam = url.searchParams.get("state");
 
   if (!code || !stateParam) {
+    // 在 Google 同意畫面按「取消」時只有 error、沒有 code。
+    // Drive 連結流程要導回備份設定頁說明，不是丟去登入頁；登入流程照舊。
+    if (stateParam && verifySignedState(stateParam)?.purpose === "drive-backup") {
+      return driveConnectRedirect(request, "denied");
+    }
     return errorRedirect(request, "missing_code");
   }
 
@@ -33,6 +39,12 @@ export async function GET(request: Request) {
   const stateResult = verifySignedState(stateParam);
   if (!stateResult) {
     return errorRedirect(request, "invalid_state");
+  }
+
+  // 登入與 Drive 連結共用同一個 redirect URI，靠簽章內的 purpose 分流。
+  // Drive 分支只存備份授權，不簽 session、不改 cookie（見 lib/drive-backup-connect.ts）。
+  if (stateResult.purpose === "drive-backup") {
+    return handleDriveBackupCallback(request, code);
   }
   const { returnTo } = stateResult;
 

@@ -152,48 +152,180 @@ export async function exchangeGoogleCode(
   }
 }
 
+/** Drive 備份只要 drive.file：App 只看得到自己建立的檔案，看不到老闆 Drive 裡其他東西 */
+export const DRIVE_BACKUP_SCOPE = "https://www.googleapis.com/auth/drive.file";
+
+/**
+ * 產生「連結 Google Drive 備份」的授權 URL。與登入共用 client 與 redirect URI，
+ * 差別在 scope 與 access_type=offline（要拿 refresh token，排程才能在沒人在線時上傳）。
+ * prompt 帶 consent：Google 只在同意畫面出現時才會發 refresh token，重新連結也要拿得到。
+ */
+export function buildGoogleDriveConnectUrl(state: string): string {
+  if (!GOOGLE_CLIENT_ID) {
+    throw new Error("GOOGLE_OAUTH_CLIENT_ID not configured");
+  }
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: "code",
+    scope: `${DRIVE_BACKUP_SCOPE} openid email`,
+    state,
+    prompt: "select_account consent",
+    access_type: "offline",
+    include_granted_scopes: "true",
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
+export type DriveCodeExchangeResult =
+  | {
+      ok: true;
+      email: string;
+      refreshToken: string;
+      /** Google 只在 OAuth 同意畫面為「測試」狀態時回這個欄位（秒），正式版不會有 */
+      refreshTokenExpiresIn: number | null;
+    }
+  | { ok: false; reason: "exchange_failed" | "no_refresh_token" | "scope_missing" | "no_email" };
+
+/** 解 id_token 的 payload（沿用 exchangeGoogleCode 的信任模型：來自用 client secret 換的 HTTPS 回應） */
+function decodeIdTokenPayload(idToken: string | undefined): GoogleIdTokenPayload | null {
+  const [, payloadB64] = (idToken ?? "").split(".");
+  if (!payloadB64) return null;
+  try {
+    return JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8")) as GoogleIdTokenPayload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drive 連結流程用 code 換 token。只回 refresh token 與帳號，不建立任何登入身分。
+ *
+ * Google 的同意畫面允許使用者取消勾選個別權限（granular consent），
+ * 所以要確認回來的 scope 真的含 drive.file，否則存了也上傳不了。
+ */
+export async function exchangeGoogleCodeForDrive(code: string): Promise<DriveCodeExchangeResult> {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error("Google OAuth credentials not configured");
+  }
+  const params = new URLSearchParams({
+    code,
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    grant_type: "authorization_code",
+  });
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  if (!res.ok) return { ok: false, reason: "exchange_failed" };
+
+  const data = (await res.json()) as {
+    id_token?: string;
+    refresh_token?: string;
+    refresh_token_expires_in?: number;
+    scope?: string;
+  };
+  if (!(data.scope ?? "").split(" ").includes(DRIVE_BACKUP_SCOPE)) {
+    return { ok: false, reason: "scope_missing" };
+  }
+  if (!data.refresh_token) return { ok: false, reason: "no_refresh_token" };
+
+  const payload = decodeIdTokenPayload(data.id_token);
+  if (!payload?.email || payload.email_verified === false) return { ok: false, reason: "no_email" };
+
+  const expiresIn = Number(data.refresh_token_expires_in);
+  return {
+    ok: true,
+    email: payload.email.toLowerCase(),
+    refreshToken: data.refresh_token,
+    refreshTokenExpiresIn: Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : null,
+  };
+}
+
+/**
+ * OAuth state 的用途。
+ *
+ * 登入與「連結 Google Drive 備份」共用同一個 OAuth client 與同一個 redirect URI
+ * （Google Cloud Console 無法再註冊新的 redirect URI），callback 只能靠 state 分辨。
+ * 用途必須包在簽章裡：否則有人拿一張登入用的 state 自己加上 purpose 欄位，
+ * 就能把登入流程導進 Drive 連結分支（反之亦然）。
+ */
+export type OAuthStatePurpose = "login" | "drive-backup";
+
+/**
+ * state 簽章的原文。
+ *
+ * 登入維持 2026-10 以前的格式 `${ts}:${nonce}:${returnTo}`，已經發出去、還在
+ * 10 分鐘有效期內的登入連結不受影響。其他用途加上 `purpose:<用途>:` 前綴——
+ * 登入原文一定以數字（ts）開頭，前綴以字母開頭，兩種原文不可能撞成同一個字串，
+ * 也就無法靠調整 returnTo 把登入 state 的簽章挪用成 Drive state 的簽章。
+ */
+function stateSigningInput(
+  purpose: OAuthStatePurpose,
+  ts: number,
+  nonce: string,
+  returnTo: string,
+): string {
+  const base = `${ts}:${nonce}:${returnTo}`;
+  return purpose === "login" ? base : `purpose:${purpose}:${base}`;
+}
+
 /**
  * 產生帶 HMAC 簽章的 OAuth state payload（base64url 編碼）。
  * 簽章內嵌於 URL state 參數中，callback 端可直接驗證，
  * 不再依賴 cookie 傳遞 state，避免跨站 redirect 遺失 cookie 的問題。
  */
-export function buildSignedState(returnTo: string): string {
+export function buildSignedState(
+  returnTo: string,
+  purpose: OAuthStatePurpose = "login",
+): string {
   if (AUTH_SECRET.length < MIN_SECRET_LEN) throw new Error("AUTH_SECRET not configured or too short (minimum 32 characters)");
   const nonce = crypto.randomBytes(16).toString("base64url");
   const ts = Math.floor(Date.now() / 1000);
   const sig = crypto
     .createHmac("sha256", AUTH_SECRET)
-    .update(`${ts}:${nonce}:${returnTo}`)
+    .update(stateSigningInput(purpose, ts, nonce, returnTo))
     .digest("base64url");
-  return Buffer.from(
-    JSON.stringify({ nonce, ts, sig, returnTo }),
-  ).toString("base64url");
+  // 登入 state 不帶 purpose 欄位，內容與改版前完全相同
+  const payload = purpose === "login"
+    ? { nonce, ts, sig, returnTo }
+    : { nonce, ts, sig, returnTo, purpose };
+  return Buffer.from(JSON.stringify(payload)).toString("base64url");
 }
 
 const STATE_MAX_AGE_SECONDS = 600; // 10 分鐘
 
 /**
- * 驗證 signed state 並回傳 returnTo；失敗回 null。
+ * 驗證 signed state 並回傳 returnTo 與用途；失敗回 null。
+ * 沒有 purpose 欄位＝登入（改版前發出的 state 也是這樣）。認不得的用途一律拒絕。
  */
 export function verifySignedState(
   stateParam: string,
-): { returnTo: string } | null {
+): { returnTo: string; purpose: OAuthStatePurpose } | null {
   if (AUTH_SECRET.length < MIN_SECRET_LEN) return null;
   try {
     const decoded = JSON.parse(
       Buffer.from(stateParam, "base64url").toString("utf-8"),
-    ) as { nonce?: string; ts?: number; sig?: string; returnTo?: string };
+    ) as { nonce?: string; ts?: number; sig?: string; returnTo?: string; purpose?: unknown };
     if (!decoded.nonce || !decoded.ts || !decoded.sig) return null;
+
+    let purpose: OAuthStatePurpose;
+    if (decoded.purpose === undefined) purpose = "login";
+    else if (decoded.purpose === "drive-backup") purpose = "drive-backup";
+    else return null;
 
     // 檢查時效
     const now = Math.floor(Date.now() / 1000);
     if (decoded.ts > now + 60) return null;
     if (now - decoded.ts > STATE_MAX_AGE_SECONDS) return null;
 
-    // 驗證簽章（含 returnTo，防止竄改重導目標）
+    // 驗證簽章（含 returnTo 與用途，防止竄改重導目標或改走別的分支）
     const expectedSig = crypto
       .createHmac("sha256", AUTH_SECRET)
-      .update(`${decoded.ts}:${decoded.nonce}:${decoded.returnTo ?? ""}`)
+      .update(stateSigningInput(purpose, decoded.ts, decoded.nonce, decoded.returnTo ?? ""))
       .digest("base64url");
     if (
       decoded.sig.length !== expectedSig.length ||
@@ -205,7 +337,7 @@ export function verifySignedState(
       return null;
     }
 
-    return { returnTo: decoded.returnTo || "/" };
+    return { returnTo: decoded.returnTo || "/", purpose };
   } catch {
     return null;
   }
