@@ -96,7 +96,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (notMine) return notMine;
   }
 
-  if (session.role === "technician") {
+  // 非 admin 一律只能改白名單欄位。原本只套在 technician，其他非 admin 角色
+  // 走到下面會整包 body 寫進去——預設要收緊，不是預設放行。
+  if (session.role !== "admin") {
     const check = filterTechnicianPatch(body as Record<string, unknown>);
     if (!check.ok) {
       return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });

@@ -10,6 +10,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUnreadReplies } from "@/hooks/useUnreadReplies";
 import { useAppNotifications } from "@/hooks/useAppNotifications";
 import { PushToggle } from "@/components/layout/PushToggle";
+import { USER_ROLE_LABELS } from "@/lib/types";
 
 interface PanelEntry {
   id: string;
@@ -132,7 +133,7 @@ export function HeaderUserMenu() {
   if (!user) return null;
 
   const initial = user.displayName.charAt(0).toUpperCase();
-  const roleLabel = user.role === "admin" ? "管理員" : "技師";
+  const roleLabel = USER_ROLE_LABELS[user.role] ?? user.role;
 
   function handleMarkRead() {
     void markReplyRead();

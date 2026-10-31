@@ -6,7 +6,7 @@
 //   middleware 多放行了案件／報價版本／庫存／商品／供應商／行事曆。）
 
 /**
- * 非 admin 角色（師傅等）可訪問的路徑 prefix — 白名單，其餘一律拒絕。
+ * 技師（到府售後）與 sales 可訪問的路徑 prefix — 白名單，其餘一律拒絕。
  *
  * 目前開放：售後服務（含我的行程）＋ 設備型錄 API（售後單選型號用）。
  * 靜態資源與公開路徑另由 middleware 的 isPublicPath 處理。
@@ -22,6 +22,22 @@ export const TECHNICIAN_ALLOWED_PREFIXES = [
   "/api/upload", // 現場照片／簽名上傳
 ] as const;
 
+/**
+ * 工廠師傅（craftsman，做沙發的人）可訪問的路徑 prefix。
+ *
+ * 只開「生產訂單」頁與它自己的 API——那支 API 在伺服器端只投影製作需要的欄位
+ * （無客戶姓名、地址電話、金額）。刻意不開 /api/sheets/orders：那邊回的是整張訂單。
+ */
+export const CRAFTSMAN_ALLOWED_PREFIXES = [
+  "/production-orders",
+  "/login",
+  "/api/auth",
+  "/api/sheets/production-orders",
+] as const;
+
+/** 角色不認得（表上打錯字、空白、未來新角色還沒接好）時：只留登入／登出 */
+const UNKNOWN_ROLE_ALLOWED_PREFIXES = ["/login", "/api/auth"] as const;
+
 /** 僅 admin 可訪問（即使誤加進白名單也擋下） */
 const ADMIN_ONLY_PREFIXES = [
   "/admin",
@@ -35,10 +51,51 @@ export function isAdminOnly(pathname: string): boolean {
   return ADMIN_ONLY_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
-/** 非 admin 角色能不能訪問此路徑 */
-export function canTechnicianAccess(pathname: string): boolean {
+/**
+ * 各非 admin 角色的白名單。用 switch 而不是物件查表：role 來自憑證／試算表，
+ * 物件查表時 "constructor"、"__proto__" 之類的字串會撈到原型上的東西。
+ * 認不得的角色一律走最嚴格的清單（預設拒絕）。
+ */
+function allowedPrefixesFor(role: string | null | undefined): readonly string[] {
+  switch (role) {
+    case "technician":
+    case "sales": // 目前不建 sales 帳號，沿用技師權限（與過去行為一致）
+      return TECHNICIAN_ALLOWED_PREFIXES;
+    case "craftsman":
+      return CRAFTSMAN_ALLOWED_PREFIXES;
+    default:
+      return UNKNOWN_ROLE_ALLOWED_PREFIXES;
+  }
+}
+
+/** 這個角色能不能訪問此路徑。admin 全開；其他角色各自白名單，ADMIN_ONLY 永遠優先擋下。 */
+export function canRoleAccess(role: string | null | undefined, pathname: string): boolean {
+  if (role === "admin") return true;
   if (isAdminOnly(pathname)) return false;
-  return TECHNICIAN_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
+  return allowedPrefixesFor(role).some((p) => pathname.startsWith(p));
+}
+
+/** 技師（與 sales）能不能訪問此路徑。保留給既有呼叫端與測試。 */
+export function canTechnicianAccess(pathname: string): boolean {
+  return canRoleAccess("technician", pathname);
+}
+
+/**
+ * 非 admin 被擋下時要導回的「自己的首頁」。必須是該角色白名單內的頁面，
+ * 否則 middleware 會一直轉址繞圈（permissions.test.ts 有測）。
+ */
+export function roleHomePath(role: string | null | undefined): string {
+  switch (role) {
+    case "admin":
+      return RETURN_TO_FALLBACK;
+    case "technician":
+    case "sales":
+      return "/after-sales";
+    case "craftsman":
+      return "/production-orders";
+    default:
+      return "/login";
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -100,7 +100,19 @@ export type QuoteDraftSessionSource =
   | "restored-legacy-draft"
   | QuoteLoadRequestSource;
 
-export type UserRole = "admin" | "technician" | "sales";
+/**
+ * 使用者角色。
+ *   technician＝技師（到府售後／安裝），craftsman＝師傅（工廠內做沙發，只看生產訂單）。
+ * 權限白名單見 lib/permissions.ts。
+ */
+export type UserRole = "admin" | "technician" | "sales" | "craftsman";
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  admin: "管理員",
+  technician: "技師",
+  sales: "業務",
+  craftsman: "師傅",
+};
 
 export type AfterSalesStatus =
   | "pending"

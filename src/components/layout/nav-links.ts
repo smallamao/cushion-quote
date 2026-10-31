@@ -7,6 +7,7 @@ import {
   CircleHelp,
   ClipboardCheck,
   ClipboardList,
+  Factory,
   FileText,
   HandCoins,
   MessageSquareText,
@@ -35,8 +36,8 @@ export type NavLinkDef = {
   group: NavGroup;
 };
 
-// 注意：技師（非 admin）可見項目必須與 lib/permissions.ts 的白名單一致，
-// 否則選單會顯示點了會被踢回售後服務的假選項。
+// 注意：非 admin 角色（技師、師傅）可見項目必須與 lib/permissions.ts 該角色的白名單一致，
+// 否則選單會顯示點了會被踢回自己首頁的假選項（permissions.test.ts 有測這條）。
 export const navLinks: NavLinkDef[] = [
   // ── 業務 ──
   { href: "/sofa-quote", label: "報價", icon: Ruler, roles: ["admin"], group: "business" },
@@ -50,6 +51,7 @@ export const navLinks: NavLinkDef[] = [
   { href: "/material-confirm", label: "叫料確認", icon: ClipboardCheck, roles: ["admin"], group: "operations" },
   { href: "/shipping-notice", label: "排程出貨", icon: Truck, roles: ["admin"], group: "operations" },
   { href: "/orders", label: "訂製訂單", icon: ClipboardList, roles: ["admin"], group: "operations" },
+  { href: "/production-orders", label: "生產訂單", icon: Factory, roles: ["admin", "craftsman"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician"], group: "operations" },
   { href: "/my-schedule", label: "我的行程", icon: Calendar, roles: ["technician"], group: "operations" },
   { href: "/calendar", label: "行事曆", icon: Calendar, roles: ["admin"], group: "operations" },

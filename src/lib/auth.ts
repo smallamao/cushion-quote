@@ -3,7 +3,7 @@ import "server-only";
 import crypto from "crypto";
 
 import { MIN_SECRET_LEN } from "@/lib/auth-edge";
-import { canTechnicianAccess } from "@/lib/permissions";
+import { canRoleAccess as canRoleAccessByRole } from "@/lib/permissions";
 import type { Session, UserRole } from "@/lib/types";
 
 const AUTH_SECRET = process.env.AUTH_SECRET ?? "";
@@ -219,6 +219,5 @@ export function getBootstrapAdminEmail(): string {
  * 依 role 判斷路徑存取權（白名單定義於 lib/permissions.ts，與 middleware 共用）
  */
 export function canRoleAccess(pathname: string, role: UserRole): boolean {
-  if (role === "admin") return true;
-  return canTechnicianAccess(pathname);
+  return canRoleAccessByRole(role, pathname);
 }

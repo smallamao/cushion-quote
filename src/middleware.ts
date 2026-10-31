@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import {
-  canTechnicianAccess,
+  canRoleAccess,
   isApiKeyPath,
   isPublicPath,
   isRateLimitedPublicPath,
+  roleHomePath,
 } from "@/lib/permissions";
 import { checkRateLimit, extractClientIp } from "@/lib/rate-limit";
 import { verifySessionEdge } from "@/lib/auth-edge";
@@ -183,11 +184,12 @@ export async function middleware(request: NextRequest) {
 
   // 非 admin 一律套白名單（預設拒絕）。
   // 過去只擋 role === "technician"，導致 sales 等其他角色直接拿到 admin 全權限。
-  if (session.role !== "admin" && !canTechnicianAccess(pathname)) {
+  // 每個角色各自一份白名單（技師／工廠師傅…），認不得的角色走最嚴格的那份。
+  if (session.role !== "admin" && !canRoleAccess(session.role, pathname)) {
     if (isApiPath(pathname)) {
       return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
     }
-    return NextResponse.redirect(new URL("/after-sales", request.url));
+    return NextResponse.redirect(new URL(roleHomePath(session.role), request.url));
   }
 
   return NextResponse.next({ request: { headers: requestHeaders } });

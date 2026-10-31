@@ -9,8 +9,10 @@ import { createUser, listUsers, updateUser } from "@/lib/users-sheet";
  *
  * types.ts 的 UserRole 還有 "sales"，但這套系統目前不建 sales 帳號
  * （middleware 把 sales 與 technician 同權看待）。要支援就在這裡加。
+ * craftsman＝工廠師傅，只看得到生產訂單（見 lib/permissions.ts）。
+ * 與 UsersManagementPanel 的 ROLE_OPTIONS 保持一致。
  */
-const ASSIGNABLE_ROLES: readonly UserRole[] = ["admin", "technician"];
+const ASSIGNABLE_ROLES: readonly UserRole[] = ["admin", "technician", "craftsman"];
 
 function isAssignableRole(role: unknown): role is UserRole {
   return typeof role === "string" && (ASSIGNABLE_ROLES as readonly string[]).includes(role);
@@ -74,11 +76,11 @@ export async function PATCH(request: Request) {
   if (!body.userId) {
     return NextResponse.json({ ok: false, error: "userId required" }, { status: 400 });
   }
-  // 防呆: 不能把自己改成 technician,或 deactivate 自己
+  // 防呆: 不能把自己降成非 admin（技師／師傅…）,或 deactivate 自己
   if (body.userId === guard.session.userId) {
-    if (body.role === "technician") {
+    if (body.role !== undefined && body.role !== "admin") {
       return NextResponse.json(
-        { ok: false, error: "不能把自己改成技師" },
+        { ok: false, error: "不能把自己改成非管理員" },
         { status: 400 },
       );
     }

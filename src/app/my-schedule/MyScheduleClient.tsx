@@ -7,32 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAfterSales } from "@/hooks/useAfterSales";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import type { AfterSalesService, OrderItem } from "@/lib/types";
+import type { MyInstallView } from "@/lib/my-installs";
+import type { AfterSalesService } from "@/lib/types";
 
-// 我的安裝：/api/sheets/orders/my-installs 的安全投影（無金額欄位）
-interface MyInstall {
-  orderId: string;
-  orderNumber: string;
-  clientName: string;
-  orderTitle: string;
-  itemCategory: string;
-  deliveryMethod: string;
-  status: string;
-  installDate: string;
-  extraInstallDates: string[];
-  shipDate: string;
-  installAssignedTo: string;
-  installAddress: string;
-  installContactName: string;
-  installContactPhone: string;
-  materialName: string;
-  materialCode: string;
-  materialImageUrl: string;
-  workOrderPdfUrl: string;
-  items: OrderItem[];
-  notes: unknown[];
-  internalNotes: string;
-}
+// 我的安裝：/api/sheets/orders/my-installs 的安全投影（無金額欄位、無內部備註）
+type MyInstall = MyInstallView;
 import { buildMapsUrl, groupByDate, sortDateGroups } from "@/lib/schedule-utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────

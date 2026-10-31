@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api-auth";
 import { getSheetsClient } from "@/lib/sheets-client";
+import { pickMyInstallView } from "@/lib/my-installs";
 import { ORDER_RANGE_DATA, orderRowToRecord } from "@/lib/order-utils";
 
 // GET /api/sheets/orders/my-installs?assignee=<displayName>
 //
 // 給師傅看的「我的安裝」清單。刻意只回傳施工需要的欄位，
-// 完全不含金額/成本（quotedAmount、materialCost… 都不回），
+// 完全不含金額/成本（quotedAmount、materialCost… 都不回）與內部備註，
+// 投影本身在 lib/my-installs.ts（有測試守著），
 // 因此可以安全地列入 technician 白名單。
 //
 // 🔴 2026-10-15 修補：這支原本整支沒讀 session，而 assignee 是自由查詢參數，
@@ -50,30 +52,7 @@ export async function GET(request: Request) {
           !o.isArchived &&
           (!assignee || o.installAssignedTo === assignee),
       )
-      .map((o) => ({
-        // 安全投影：施工資訊 only，無任何金額欄位
-        orderId: o.orderId,
-        orderNumber: o.orderNumber,
-        clientName: o.clientName,
-        orderTitle: o.orderTitle,
-        itemCategory: o.itemCategory,
-        deliveryMethod: o.deliveryMethod,
-        status: o.status,
-        installDate: o.installDate,
-        extraInstallDates: o.extraInstallDates ?? [],
-        shipDate: o.shipDate ?? "",
-        installAssignedTo: o.installAssignedTo,
-        installAddress: o.installAddress ?? "",
-        installContactName: o.installContactName ?? "",
-        installContactPhone: o.installContactPhone ?? "",
-        materialName: o.materialName,
-        materialCode: o.materialCode,
-        materialImageUrl: o.materialImageUrl,
-        workOrderPdfUrl: o.workOrderPdfUrl ?? "",
-        items: o.items,
-        notes: o.notes,
-        internalNotes: o.internalNotes,
-      }));
+      .map(pickMyInstallView);
 
     return NextResponse.json({ ok: true, installs });
   } catch (err) {

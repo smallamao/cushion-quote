@@ -2,13 +2,16 @@ import { describe, it, expect } from "vitest";
 
 import {
   RETURN_TO_FALLBACK,
+  canRoleAccess,
   canTechnicianAccess,
   isAdminOnly,
   isApiKeyPath,
   isPublicPath,
   isRateLimitedPublicPath,
+  roleHomePath,
   sanitizeReturnTo,
 } from "@/lib/permissions";
+import { navLinks } from "@/components/layout/nav-links";
 
 // 路由決策的表格測試。
 //
@@ -278,5 +281,126 @@ describe("isApiKeyPath — server-to-server 白名單", () => {
     expect(isApiKeyPath("/api/sheets/after-sales-evil")).toBe(false);
     expect(isApiKeyPath("/api/sheets/purchases/a/b/pdf")).toBe(false);
     expect(isApiKeyPath("/api/sheets/after-sales/a/b/slot-session")).toBe(false);
+  });
+});
+
+describe("canRoleAccess — 各角色各自白名單", () => {
+  it("技師／sales 與 canTechnicianAccess 完全一致", () => {
+    const paths = [
+      "/after-sales",
+      "/my-schedule",
+      "/api/sheets/after-sales/SV-0001",
+      "/api/sheets/orders/my-installs",
+      "/api/upload",
+      "/orders",
+      "/api/sheets/orders",
+      "/production-orders",
+      "/api/sheets/production-orders",
+      "/api/sheets/users",
+      "/settings",
+      "/",
+    ];
+    for (const p of paths) {
+      expect(canRoleAccess("technician", p)).toBe(canTechnicianAccess(p));
+      expect(canRoleAccess("sales", p)).toBe(canTechnicianAccess(p));
+    }
+  });
+
+  it("技師看不到生產訂單（那是工廠師傅的頁面）", () => {
+    expect(canTechnicianAccess("/production-orders")).toBe(false);
+    expect(canTechnicianAccess("/api/sheets/production-orders")).toBe(false);
+  });
+
+  const craftsmanAllowed = [
+    "/production-orders",
+    "/login",
+    "/api/auth/logout",
+    "/api/auth/me",
+    "/api/sheets/production-orders",
+    "/api/sheets/production-orders/ORD-001/status",
+  ];
+
+  it.each(craftsmanAllowed)("工廠師傅可以存取：%s", (path) => {
+    expect(canRoleAccess("craftsman", path)).toBe(true);
+  });
+
+  // 整張訂單、客戶資料、金額、帳號——工廠師傅直接打 API 也不能碰
+  const craftsmanDenied = [
+    "/orders",
+    "/orders/ORD-001",
+    "/api/sheets/orders",
+    "/api/sheets/orders/ORD-001",
+    "/api/sheets/orders/ORD-001/status",
+    "/api/sheets/orders/my-installs",
+    "/after-sales",
+    "/api/sheets/after-sales",
+    "/my-schedule",
+    "/quotes",
+    "/api/sheets/quotes-v2",
+    "/remittance",
+    "/receivables",
+    "/api/sheets/clients",
+    "/api/sheets/users",
+    "/api/upload",
+    "/settings",
+    "/admin",
+    "/api/sheets/_debug",
+    "/shipping-notice",
+    "/",
+  ];
+
+  it.each(craftsmanDenied)("工廠師傅不能存取：%s", (path) => {
+    expect(canRoleAccess("craftsman", path)).toBe(false);
+  });
+
+  it("admin 全開", () => {
+    expect(canRoleAccess("admin", "/orders")).toBe(true);
+    expect(canRoleAccess("admin", "/api/sheets/users")).toBe(true);
+    expect(canRoleAccess("admin", "/production-orders")).toBe(true);
+  });
+
+  // 表上打錯字（"Admin"）、空白、原型上的名字——都不能撈到任何權限
+  const unknownRoles = ["Admin", "", "owner", "constructor", "__proto__", "toString", undefined, null];
+
+  it.each(unknownRoles)("認不得的角色（%s）只能登入／登出", (role) => {
+    expect(canRoleAccess(role, "/login")).toBe(true);
+    expect(canRoleAccess(role, "/api/auth/logout")).toBe(true);
+    for (const p of ["/after-sales", "/production-orders", "/orders", "/api/sheets/orders", "/api/upload", "/"]) {
+      expect(canRoleAccess(role, p)).toBe(false);
+    }
+  });
+});
+
+describe("roleHomePath — 被擋下時導回的首頁", () => {
+  it("各角色導向自己的首頁", () => {
+    expect(roleHomePath("technician")).toBe("/after-sales");
+    expect(roleHomePath("sales")).toBe("/after-sales");
+    expect(roleHomePath("craftsman")).toBe("/production-orders");
+    expect(roleHomePath("constructor")).toBe("/login");
+  });
+
+  // 首頁不在自己的白名單內 = middleware 無限轉址
+  it.each(["technician", "sales", "craftsman", "admin", "weird", ""])(
+    "首頁一定在該角色自己的白名單內：%s",
+    (role) => {
+      const home = roleHomePath(role);
+      expect(canRoleAccess(role, home) || isPublicPath(home)).toBe(true);
+    },
+  );
+});
+
+describe("選單與白名單一致", () => {
+  // 選單上出現、點了卻被踢回首頁的假選項
+  it.each(navLinks.flatMap((l) => l.roles.filter((r) => r !== "admin").map((r) => [r, l.href] as const)))(
+    "%s 看得到 %s，白名單也要放行",
+    (role, href) => {
+      expect(canRoleAccess(role, href)).toBe(true);
+    },
+  );
+
+  it("工廠師傅選單上只有生產訂單", () => {
+    expect(navLinks.filter((l) => l.roles.includes("craftsman")).map((l) => l.href)).toEqual([
+      "/production-orders",
+    ]);
   });
 });

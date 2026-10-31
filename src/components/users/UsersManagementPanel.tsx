@@ -6,7 +6,10 @@ import { Loader2, Plus, ShieldCheck, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { User, UserRole } from "@/lib/types";
+import { USER_ROLE_LABELS, type User, type UserRole } from "@/lib/types";
+
+/** 後台可以指派的角色（與 api/sheets/users 的 ASSIGNABLE_ROLES 一致） */
+const ROLE_OPTIONS: readonly UserRole[] = ["admin", "technician", "craftsman"];
 
 export function UsersManagementPanel() {
   const [users, setUsers] = useState<User[]>([]);
@@ -99,7 +102,7 @@ export function UsersManagementPanel() {
     if (user.role === role) return;
     if (
       !confirm(
-        `將 ${user.displayName} 角色改為「${role === "admin" ? "管理員" : "技師"}」?`,
+        `將 ${user.displayName} 角色改為「${USER_ROLE_LABELS[role]}」?`,
       )
     ) {
       return;
@@ -226,7 +229,7 @@ export function UsersManagementPanel() {
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] text-blue-700">
                           <UserIcon className="h-3 w-3" />
-                          技師
+                          {USER_ROLE_LABELS[u.role] ?? u.role}
                         </span>
                       )}
                     </td>
@@ -248,15 +251,24 @@ export function UsersManagementPanel() {
                         <Button size="sm" variant="ghost" onClick={() => renameUser(u)}>
                           改名
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() =>
-                            changeRole(u, u.role === "admin" ? "technician" : "admin")
-                          }
+                        <select
+                          aria-label="變更角色"
+                          value={u.role}
+                          onChange={(e) => void changeRole(u, e.target.value as UserRole)}
+                          className="h-8 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 text-xs"
                         >
-                          {u.role === "admin" ? "降為技師" : "升為管理員"}
-                        </Button>
+                          {/* 表上若是不在選項內的舊角色，仍顯示原值，避免 select 看起來像已是某角色 */}
+                          {!ROLE_OPTIONS.includes(u.role) && (
+                            <option value={u.role} disabled>
+                              {USER_ROLE_LABELS[u.role] ?? u.role}
+                            </option>
+                          )}
+                          {ROLE_OPTIONS.map((r) => (
+                            <option key={r} value={r}>
+                              {USER_ROLE_LABELS[r]}
+                            </option>
+                          ))}
+                        </select>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -302,7 +314,17 @@ export function UsersManagementPanel() {
               </div>
               <div>
                 <Label className="mb-1 block text-xs">角色</Label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  <label className="flex items-center gap-1 cursor-pointer text-sm">
+                    <input
+                      type="radio"
+                      name="newRole"
+                      value="craftsman"
+                      checked={newRole === "craftsman"}
+                      onChange={() => setNewRole("craftsman")}
+                    />
+                    師傅 (只能看生產訂單)
+                  </label>
                   <label className="flex items-center gap-1 cursor-pointer text-sm">
                     <input
                       type="radio"

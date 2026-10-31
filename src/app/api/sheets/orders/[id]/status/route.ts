@@ -1,17 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/api-auth";
-import { getSheetsClient } from "@/lib/sheets-client";
-import {
-  ORDER_RANGE_IDS,
-  ORDER_ROW_RANGE,
-  isoNow,
-  todayDateStr,
-  orderRowToRecord,
-  orderRecordToRow,
-} from "@/lib/order-utils";
-import { updateNotionPageIfExists } from "@/lib/notion-order";
-import type { CustomOrder, OrderStatus } from "@/lib/types";
+import { writeOrderStatus } from "@/lib/order-status-write";
+import type { OrderStatus } from "@/lib/types";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -42,74 +33,23 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "invalid status value" }, { status: 400 });
   }
 
-  const client = await getSheetsClient();
-  if (!client) {
-    return NextResponse.json(
-      { ok: false, error: "Google Sheets 未設定" },
-      { status: 503 },
-    );
-  }
-
   try {
-    const idRes = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: ORDER_RANGE_IDS,
-    });
-    const idRows = (idRes.data.values ?? []) as string[][];
-    const rowIndex = idRows.findIndex((r) => r[0] === orderId);
-    if (rowIndex === -1) {
+    // 寫入邏輯與師傅的生產訂單共用（lib/order-status-write.ts）
+    const result = await writeOrderStatus(orderId, body.status);
+    if (!result.ok) {
+      if (result.error === "sheets_unavailable") {
+        return NextResponse.json(
+          { ok: false, error: "Google Sheets 未設定" },
+          { status: 503 },
+        );
+      }
       return NextResponse.json(
-        { ok: false, error: "order not found" },
+        { ok: false, error: result.error === "row_missing" ? "order row missing" : "order not found" },
         { status: 404 },
       );
     }
 
-    const sheetRow = rowIndex + 2; // +1 for header, +1 for 1-indexed sheets
-
-    // Read the full existing row to merge
-    const existingRes = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: ORDER_ROW_RANGE(sheetRow),
-    });
-    const existingRows = (existingRes.data.values ?? []) as string[][];
-    if (existingRows.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "order row missing" },
-        { status: 404 },
-      );
-    }
-    const existing = orderRowToRecord(existingRows[0]);
-
-    // Set completedDate to today if transitioning to "completed" and it was empty
-    const todayStr = todayDateStr();
-    const completedDate =
-      body.status === "completed" && !existing.completedDate
-        ? todayStr
-        : existing.completedDate;
-
-    const updatedRecord: CustomOrder = {
-      ...existing,
-      status: body.status,
-      completedDate,
-      updatedAt: isoNow(),
-    };
-
-    await client.sheets.spreadsheets.values.update({
-      spreadsheetId: client.spreadsheetId,
-      range: ORDER_ROW_RANGE(sheetRow),
-      valueInputOption: "RAW",
-      requestBody: { values: [orderRecordToRow(updatedRecord)] },
-    });
-
-    // best-effort：Notion 已有此單頁面時同步更新狀態（不建新頁；失敗不影響狀態變更）
-    let notionUpdated = false;
-    try {
-      notionUpdated = await updateNotionPageIfExists(updatedRecord);
-    } catch {
-      // Notion 同步失敗不阻斷主流程
-    }
-
-    return NextResponse.json({ ok: true, notionUpdated });
+    return NextResponse.json({ ok: true, notionUpdated: result.notionUpdated });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

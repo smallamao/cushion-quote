@@ -47,7 +47,9 @@ export async function POST(request: Request) {
   const guard = await requireSession(request);
   if (guard.denied) return guard.denied;
   const { session } = guard;
-  if (session.role === "technician") {
+  // 只有 admin 能開單。原本只擋 technician，其他非 admin 角色（sales、工廠師傅）
+  // 會直接通過——預設要拒絕，不是預設放行。
+  if (session.role !== "admin") {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 
