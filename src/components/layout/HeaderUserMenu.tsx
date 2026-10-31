@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+
+import { clearCachedFetches } from "@/lib/fetch-cache";
 import { Bell, CheckCheck, LogOut } from "lucide-react";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -205,6 +207,10 @@ export function HeaderUserMenu() {
             </div>
             <a
               href="/api/auth/logout"
+              // 登出端點只清得掉 cookie，清不掉存在這台瀏覽器的 localStorage 快取。
+              // 不在這裡清的話，下一個人登入會先看到上一個人的資料（老闆 2026-10-31）。
+              // 維持 <a href>：就算 JS 沒跑起來，登出本身仍然有效。
+              onClick={() => clearCachedFetches()}
               className="flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)]"
             >
               <LogOut className="h-4 w-4" strokeWidth={1.5} />

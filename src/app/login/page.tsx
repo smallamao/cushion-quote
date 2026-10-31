@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { clearCachedFetches } from "@/lib/fetch-cache";
+
 const ERROR_MESSAGES: Record<string, string> = {
   missing_code: "登入流程異常,請重試",
   invalid_state: "驗證失敗,請重新登入",
@@ -42,6 +44,11 @@ function LoginContent() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    // 走到登入頁＝這台瀏覽器現在沒有有效身分，把上一個人的本機快取清乾淨。
+    // 這是最後一道保險：登出按鈕會清，但 session 過期、被停用、或直接開這個網址
+    // 進來的人不會經過那顆按鈕（老闆 2026-10-31 在另一台電腦踩到登出沒反應）。
+    clearCachedFetches();
+
     const detected = detectEmbeddedBrowser();
     setEmbedded(detected);
     setCurrentUrl(window.location.href);
