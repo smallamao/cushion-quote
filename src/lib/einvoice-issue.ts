@@ -19,7 +19,24 @@ export const ISSUE_TIMING = {
   minRemainingForProviderMs: 30_000,
   /** 開立中超過這麼久視為卡住，開放人工處理 */
   staleIssuingMs: 5 * 60_000,
+  /** 寫入鎖定權杖後等一下再讀回確認，讓同時進來的另一個寫入先落地 */
+  lockSettleMs: 1000,
 } as const;
+
+/**
+ * 開立鎖定權杖：寫 issuing 時一併寫進 providerTrackNo（發票隨機碼欄位）。
+ * 這個欄位在 draft/failed → issuing 期間用不到（隨機碼要等開立後按同步才會填入），
+ * 寫回結果時清空。讀回確認權杖仍是自己的才呼叫 Giveme，避免同一張被同時送出兩次。
+ */
+const ISSUE_LOCK_PREFIX = "LOCK:";
+
+export function createIssueLockToken(): string {
+  return `${ISSUE_LOCK_PREFIX}${globalThis.crypto.randomUUID()}`;
+}
+
+export function isIssueLockHeldBy(record: EInvoiceRecord, token: string): boolean {
+  return record.status === "issuing" && record.providerTrackNo === token;
+}
 
 export const PROVIDER_UNKNOWN_MESSAGE = "Giveme 回應不明（逾時/連線錯誤），可能已開立，請到 giveme 後台確認，勿重開";
 export const ISSUE_UNKNOWN_RESULT_MESSAGE = "結果未知：Giveme 可能已開立，請勿重開，請到開票歷史確認";
@@ -41,7 +58,13 @@ export function applyProviderOutcome(
   outcome: ProviderOutcome,
   ctx: { responseJson: string; requestJson: string; now: string },
 ): EInvoiceRecord {
-  const base = { ...record, providerResponseJson: ctx.responseJson, requestPayloadJson: ctx.requestJson, updatedAt: ctx.now };
+  const base = {
+    ...record,
+    providerTrackNo: "", // 清掉開立鎖定權杖
+    providerResponseJson: ctx.responseJson,
+    requestPayloadJson: ctx.requestJson,
+    updatedAt: ctx.now,
+  };
   if (outcome.kind === "success") {
     return { ...base, status: "issued", providerInvoiceNo: outcome.code || record.providerInvoiceNo, errorCode: "", errorMessage: "" };
   }
@@ -66,6 +89,7 @@ export function buildIssuedWriteFailedRecord(
     ...record,
     status: "needs_review",
     providerInvoiceNo: providerInvoiceNo || record.providerInvoiceNo,
+    providerTrackNo: "",
     errorCode: EINVOICE_ERROR_CODE.issuedRecordWriteFailed,
     errorMessage: `已於 Giveme 開立（${providerInvoiceNo || "號碼未知"}），但系統紀錄寫入失敗：${writeError}；請勿重開`,
     updatedAt: now,
@@ -148,12 +172,12 @@ export function resolveIssuingUpdate(
     if (!INVOICE_NUMBER_PATTERN.test(providerInvoiceNo)) {
       return { ok: false, reason: "invalid", error: "發票號碼格式錯誤（應為 2 個英文字母 + 8 位數字，例如 AB12345678）" };
     }
-    return { ok: true, record: { ...record, status: "issued", providerInvoiceNo, errorCode: "", errorMessage: "", updatedAt } };
+    return { ok: true, record: { ...record, status: "issued", providerInvoiceNo, providerTrackNo: "", errorCode: "", errorMessage: "", updatedAt } };
   }
   if (request.action === "mark_failed") {
     return {
       ok: true,
-      record: { ...record, status: "failed", errorCode: "", errorMessage: "人工確認 giveme 沒有開出，改為失敗", updatedAt },
+      record: { ...record, status: "failed", providerTrackNo: "", errorCode: "", errorMessage: "人工確認 giveme 沒有開出，改為失敗", updatedAt },
     };
   }
   return { ok: false, reason: "invalid", error: "unknown action" };

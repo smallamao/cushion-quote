@@ -6,7 +6,9 @@ import {
   PROVIDER_UNKNOWN_MESSAGE,
   applyProviderOutcome,
   buildIssuedWriteFailedRecord,
+  createIssueLockToken,
   isIssuableStatus,
+  isIssueLockHeldBy,
   type ProviderOutcome,
 } from "@/lib/einvoice-issue";
 import { parseEInvoiceItems, isoNow } from "@/lib/einvoice-utils";
@@ -15,7 +17,7 @@ import { SHEETS_NO_RETRY } from "@/lib/sheets-retry";
 import type { EInvoiceEventRecord, EInvoiceRecord, EInvoiceStatus } from "@/lib/types";
 
 import { getSession } from "../../_auth";
-import { appendEInvoiceEvent, updateEInvoiceRecord } from "../../_shared";
+import { appendEInvoiceEvent, getEInvoiceRecordById, updateEInvoiceRecord } from "../../_shared";
 
 // 時間預算見 ISSUE_TIMING：送出前寫入最多用到第 20 秒，結果寫回最多到第 50 秒
 export const maxDuration = 60;
@@ -195,6 +197,24 @@ async function persistIssued(
   return { record: fallback, warning: fallback.errorMessage };
 }
 
+/** 只在鎖定權杖仍是自己的時候把 issuing 改回原狀態（不動別的請求的鎖） */
+async function releaseIssuingLock(
+  client: SheetsClient,
+  invoiceId: string,
+  lockToken: string,
+  revertTo: EInvoiceStatus,
+): Promise<void> {
+  try {
+    await updateEInvoiceRecord(client, invoiceId, (record) => (
+      isIssueLockHeldBy(record, lockToken)
+        ? { ...record, status: revertTo, providerTrackNo: "", updatedAt: isoNow() }
+        : record
+    ), SHEETS_NO_RETRY);
+  } catch (err) {
+    console.error("[einvoice issue] 改回原狀態失敗", invoiceId, errorMessageOf(err));
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ invoiceId: string }> },
@@ -218,6 +238,7 @@ export async function POST(
   // 1. 送 Giveme 前一定先把狀態寫成 issuing：之後不論逾時或被中斷，紀錄都不會停在可重開的 draft/failed
   let fromStatus: EInvoiceStatus = "draft";
   let issuingRecord: EInvoiceRecord | null;
+  const lockToken = createIssueLockToken();
   try {
     issuingRecord = await updateEInvoiceRecord(client, invoiceId, (record) => {
       if (!isIssuableStatus(record.status)) throw new IssueStatusConflictError(record.status);
@@ -225,6 +246,7 @@ export async function POST(
       return {
         ...record,
         status: "issuing",
+        providerTrackNo: lockToken,
         ...(bodyInvoiceDate ? { invoiceDate: bodyInvoiceDate } : {}),
         updatedAt: isoNow(),
       };
@@ -235,12 +257,21 @@ export async function POST(
   }
   if (!issuingRecord) return beforeProvider(404, "invoice not found");
 
-  // 2. 剩餘時間不夠呼叫 Giveme 並寫回結果 → 不送，盡力把狀態改回去
+  // 2. 讀回確認鎖定權杖仍是自己的：同一張被同時送出時，只有最後寫入的那個請求能繼續
+  await new Promise((resolve) => setTimeout(resolve, ISSUE_TIMING.lockSettleMs));
+  try {
+    const confirmed = await getEInvoiceRecordById(client, invoiceId, { deadline: providerCutoff });
+    if (!confirmed || !isIssueLockHeldBy(confirmed, lockToken)) {
+      return beforeProvider(409, "這張發票正由另一個請求送出開立，未重複送出");
+    }
+  } catch (err) {
+    await releaseIssuingLock(client, invoiceId, lockToken, fromStatus);
+    return beforeProvider(503, `無法確認開立鎖定，未送出開立：${errorMessageOf(err)}`);
+  }
+
+  // 3. 剩餘時間不夠呼叫 Giveme 並寫回結果 → 不送，把狀態改回去
   if (Date.now() > providerCutoff) {
-    const revertTo = fromStatus;
-    await updateEInvoiceRecord(client, invoiceId, (record) => (
-      record.status === "issuing" ? { ...record, status: revertTo, updatedAt: isoNow() } : record
-    ), SHEETS_NO_RETRY).catch((err) => console.error("[einvoice issue] 改回原狀態失敗", invoiceId, errorMessageOf(err)));
+    await releaseIssuingLock(client, invoiceId, lockToken, fromStatus);
     return beforeProvider(503, "系統忙碌（Google 寫入配額），未送出開立，請稍後重試");
   }
 
@@ -264,7 +295,7 @@ export async function POST(
     actor: session.displayName,
   });
 
-  // 3. 呼叫 Giveme：只有乾淨的 success:false 才算確定沒開出；逾時／連線／非 JSON 一律視為不明
+  // 4. 呼叫 Giveme：只有乾淨的 success:false 才算確定沒開出；逾時／連線／非 JSON 一律視為不明
   let outcome: ProviderOutcome;
   let providerResponse: Awaited<ReturnType<typeof callGiveme>> | null = null;
   try {
@@ -289,7 +320,7 @@ export async function POST(
   const finalRecord = (record: EInvoiceRecord) =>
     applyProviderOutcome(record, outcome, { responseJson: responseSummary, requestJson: requestSummary, now: isoNow() });
 
-  // 4. 寫回結果
+  // 5. 寫回結果
   if (outcome.kind === "success") {
     const { record, warning } = await persistIssued(client, invoiceId, issuingRecord, finalRecord, finalDeadline);
     await logEventBestEffort(client, {

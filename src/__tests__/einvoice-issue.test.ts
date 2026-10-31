@@ -5,6 +5,8 @@ import {
   ISSUE_UNKNOWN_RESULT_MESSAGE,
   PROVIDER_UNKNOWN_MESSAGE,
   applyProviderOutcome,
+  createIssueLockToken,
+  isIssueLockHeldBy,
   buildIssuedWriteFailedRecord,
   classifyIssueResponse,
   isIssuableStatus,
@@ -156,5 +158,26 @@ describe("isIssueResultReview", () => {
     expect(isIssueResultReview(makeRecord({ status: "needs_review", errorCode: EINVOICE_ERROR_CODE.issuedRecordWriteFailed }))).toBe(true);
     expect(isIssueResultReview(makeRecord({ status: "needs_review", errorCode: "" }))).toBe(false);
     expect(isIssueResultReview(makeRecord({ status: "issued", errorCode: EINVOICE_ERROR_CODE.providerUnknown }))).toBe(false);
+  });
+});
+
+describe("issue lock token", () => {
+  it("每次產生不同的權杖，且以 LOCK: 開頭", () => {
+    const a = createIssueLockToken();
+    expect(a).toMatch(/^LOCK:/);
+    expect(createIssueLockToken()).not.toBe(a);
+  });
+
+  it("只有開立中且權杖相同才算持有", () => {
+    expect(isIssueLockHeldBy(makeRecord({ status: "issuing", providerTrackNo: "LOCK:a" }), "LOCK:a")).toBe(true);
+    expect(isIssueLockHeldBy(makeRecord({ status: "issuing", providerTrackNo: "LOCK:b" }), "LOCK:a")).toBe(false);
+    expect(isIssueLockHeldBy(makeRecord({ status: "issued", providerTrackNo: "LOCK:a" }), "LOCK:a")).toBe(false);
+  });
+
+  it("寫回結果時清掉權杖", () => {
+    const next = applyProviderOutcome(makeRecord({ providerTrackNo: "LOCK:a" }), { kind: "success", code: "FP52472809", msg: "" }, ctx);
+    expect(next.providerTrackNo).toBe("");
+    const fallback = buildIssuedWriteFailedRecord(makeRecord({ providerTrackNo: "LOCK:a" }), "FP52472809", "x", NOW);
+    expect(fallback.providerTrackNo).toBe("");
   });
 });

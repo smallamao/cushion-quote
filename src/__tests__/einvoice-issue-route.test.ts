@@ -11,12 +11,19 @@ const sheet = vi.hoisted(() => ({
   log: [] as string[],
   failUpdate: [] as Array<Error | null>,
   failEventAppend: null as Error | null,
+  /** 每次 update 寫入後呼叫（模擬別的請求在中間寫入） */
+  afterUpdate: null as null | ((rows: string[][]) => void),
 }));
 
 const issueB2CInvoice = vi.hoisted(() => vi.fn());
 const issueB2BInvoice = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/giveme-client", () => ({ issueB2CInvoice, issueB2BInvoice }));
+// 鎖定後的確認等待在測試中設為 0
+vi.mock("@/lib/einvoice-issue", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/einvoice-issue")>();
+  return { ...actual, ISSUE_TIMING: { ...actual.ISSUE_TIMING, lockSettleMs: 0 } };
+});
 vi.mock("@/app/api/sheets/einvoices/_auth", () => ({
   getSession: async () => ({ role: "admin", email: "a@test", displayName: "tester" }),
 }));
@@ -49,6 +56,7 @@ vi.mock("@/lib/sheets-client", () => ({
             const values = requestBody.values[0] ?? [];
             sheet.log.push(`update:${values[25]}`);
             sheet.rows[rowNo - 2] = values;
+            sheet.afterUpdate?.(sheet.rows);
             return {};
           },
           append: async ({ range, requestBody }: { range: string; requestBody: { values: string[][] } }) => {
@@ -109,6 +117,7 @@ beforeEach(() => {
   sheet.log = [];
   sheet.failUpdate = [];
   sheet.failEventAppend = null;
+  sheet.afterUpdate = null;
   issueB2CInvoice.mockReset();
   issueB2BInvoice.mockReset();
   issueB2CInvoice.mockImplementation(async () => {
@@ -220,6 +229,45 @@ describe("POST /api/sheets/einvoices/[id]/issue", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("同一張發票同時送出兩次（鎖定權杖）", () => {
+  it("兩個請求同時進來，只有一個呼叫 Giveme，另一個回 409 before_provider", async () => {
+    seed();
+    const [r1, r2] = await Promise.all([callIssue(), callIssue()]);
+    expect(issueB2CInvoice).toHaveBeenCalledTimes(1);
+    const statuses = [r1.status, r2.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    const loser = r1.status === 409 ? r1 : r2;
+    expect(loser.body.stage).toBe("before_provider");
+    expect(current()).toMatchObject({ status: "issued", providerInvoiceNo: "FP52472809" });
+  });
+
+  it("寫入 issuing 後權杖被別的請求蓋掉 → 不呼叫 Giveme，回 409", async () => {
+    seed();
+    sheet.afterUpdate = (rows) => {
+      sheet.afterUpdate = null;
+      rows[0]![28] = "LOCK:someone-else";
+    };
+    const { status, body } = await callIssue();
+    expect(status).toBe(409);
+    expect(body.stage).toBe("before_provider");
+    expect(issueB2CInvoice).not.toHaveBeenCalled();
+    expect(current().providerTrackNo).toBe("LOCK:someone-else"); // 不動別人的鎖
+  });
+
+  it("開立完成後清掉權杖", async () => {
+    seed();
+    await callIssue();
+    expect(current().providerTrackNo).toBe("");
+  });
+
+  it("Giveme 明確失敗後也清掉權杖", async () => {
+    seed();
+    issueB2CInvoice.mockResolvedValue({ success: false, code: "", msg: "載具錯誤" });
+    await callIssue();
+    expect(current()).toMatchObject({ status: "failed", providerTrackNo: "" });
   });
 });
 
