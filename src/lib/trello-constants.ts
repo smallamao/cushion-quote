@@ -138,6 +138,7 @@ export const DRIVER_LIST: DriverInfo[] = [
   { key: "shin", title: "阿信 (兩人）[BXH-6828]", confirmTitle: "阿信哥～", phoneNumber: "0958640520", labelId: TRELLO.LABELS.DRIVER_SHIN },
   // 回頭車：只在跑南部（高雄）時順路載，不能派台北都會區的單（老闆 2026-10-31）
   { key: "ya",   title: "葉先生 (回頭車・南部高雄)", confirmTitle: "葉先生", phoneNumber: "0933468058 / 0928338272", labelId: TRELLO.LABELS.DRIVER_YA, serviceArea: "南部（高雄）回頭車" },
-  { key: "fu",   title: "阿富",                   confirmTitle: "阿富～",   phoneNumber: "0953123527", labelId: TRELLO.LABELS.DRIVER_FU },
+  // 專跑東部：花蓮、台東的單都派他（老闆 2026-11-01）
+  { key: "fu",   title: "阿富 (花蓮台東)",         confirmTitle: "阿富～",   phoneNumber: "0953123527", labelId: TRELLO.LABELS.DRIVER_FU, serviceArea: "東部（花蓮、台東）" },
   { key: "jian", title: "簡先生",                 confirmTitle: "簡大哥～", phoneNumber: "0910347260", labelId: TRELLO.LABELS.DRIVER_JIAN },
 ];
