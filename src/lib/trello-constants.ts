@@ -124,6 +124,8 @@ export interface DriverInfo {
    * 排車時要先排除跑不了的人，否則會排出送不到的車次。
    */
   serviceArea?: string;
+  /** 主力司機＝沒有指定其他人時的預設派工對象 */
+  isPrimary?: boolean;
 }
 
 /**
@@ -135,7 +137,9 @@ export interface DriverInfo {
  *    標籤是歷史事實，清單是現在能派的人，兩者不同。
  */
 export const DRIVER_LIST: DriverInfo[] = [
-  { key: "shin", title: "阿信 (兩人）[BXH-6828]", confirmTitle: "阿信哥～", phoneNumber: "0958640520", labelId: TRELLO.LABELS.DRIVER_SHIN },
+  // 主力司機，派工的預設對象（老闆 2026-11-01）。沒有範圍限制，
+  // 其餘三位都是特定情況才派：葉先生等南部回頭車、阿富跑東部、簡先生範圍未確認。
+  { key: "shin", title: "阿信 (兩人）[BXH-6828]", confirmTitle: "阿信哥～", phoneNumber: "0958640520", labelId: TRELLO.LABELS.DRIVER_SHIN, isPrimary: true },
   // 回頭車：只在跑南部（高雄）時順路載，不能派台北都會區的單（老闆 2026-10-31）
   { key: "ya",   title: "葉先生 (回頭車・南部高雄)", confirmTitle: "葉先生", phoneNumber: "0933468058 / 0928338272", labelId: TRELLO.LABELS.DRIVER_YA, serviceArea: "南部（高雄）回頭車" },
   // 專跑東部：花蓮、台東的單都派他（老闆 2026-11-01）
