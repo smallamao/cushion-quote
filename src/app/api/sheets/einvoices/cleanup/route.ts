@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 import { getSession } from "../_auth";
-import { getEInvoiceRows } from "../_shared";
+import { EInvoiceRowMovedError, deleteEInvoiceRows, getEInvoiceRows } from "../_shared";
 
 export async function POST(request: Request) {
   const session = await getSession(request as unknown as Request);
@@ -21,35 +21,27 @@ export async function POST(request: Request) {
 
   try {
     const rows = await getEInvoiceRows(client);
-    const failedIndices: number[] = [];
+    const failedTargets = rows.flatMap((row, idx) => (
+      (row[25] ?? "") === "failed" && row[0] ? [{ sheetRow: idx + 2, invoiceId: row[0] }] : []
+    ));
 
-    rows.forEach((row, idx) => {
-      if ((row[25] ?? "") === "failed") {
-        failedIndices.push(idx + 2);
-      }
-    });
-
-    if (failedIndices.length === 0) {
+    if (failedTargets.length === 0) {
       return NextResponse.json({ ok: true, message: "沒有失敗記錄" });
     }
 
-    const sheetName = "電子發票紀錄";
-
-    for (let i = failedIndices.length - 1; i >= 0; i--) {
-      const rowIndex = failedIndices[i];
-        await client.sheets.spreadsheets.values.clear({
-          spreadsheetId: client.spreadsheetId,
-          range: `${sheetName}!A${rowIndex}:AM${rowIndex}`,
-        });
-      }
+    // 整列刪除（原本 values.clear A:AM 會留下空白列，AN/AO 的備註也沒清掉）；刪前逐列確認 ID
+    await deleteEInvoiceRows(client, failedTargets);
 
     return NextResponse.json({
       ok: true,
-      deleted: failedIndices.length,
-      rows: failedIndices,
-      message: `已刪除 ${failedIndices.length} 筆失敗記錄`,
+      deleted: failedTargets.length,
+      rows: failedTargets.map((target) => target.sheetRow),
+      message: `已刪除 ${failedTargets.length} 筆失敗記錄`,
     });
   } catch (err) {
+    if (err instanceof EInvoiceRowMovedError) {
+      return NextResponse.json({ ok: false, error: err.message }, { status: 409 });
+    }
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : "刪除失敗" },
       { status: 500 }

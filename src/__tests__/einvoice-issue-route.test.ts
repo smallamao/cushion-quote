@@ -34,7 +34,14 @@ vi.mock("@/lib/sheets-client", () => ({
     sheets: {
       spreadsheets: {
         values: {
-          get: async () => ({ data: { values: sheet.rows.map((r) => [...r]) } }),
+          get: async ({ range }: { range: string }) => {
+            const single = /!A(\d+):AO(\d+)$/.exec(range);
+            if (single && single[1] === single[2]) {
+              const row = sheet.rows[Number(single[1]) - 2];
+              return { data: { values: row ? [[...row]] : [] } };
+            }
+            return { data: { values: sheet.rows.map((r) => [...r]) } };
+          },
           update: async ({ range, requestBody }: { range: string; requestBody: { values: string[][] } }) => {
             const next = sheet.failUpdate.shift();
             if (next) throw next;

@@ -17,6 +17,7 @@ import {
   EINVOICE_RANGE_DATA,
   EINVOICE_RANGE_FULL,
   EINVOICE_ROW_RANGE,
+  EINVOICE_SHEET,
   buildEInvoiceItemsFromVersionLines,
   eInvoiceEventRecordToRow,
   eInvoiceRecordToRow,
@@ -131,12 +132,66 @@ export async function appendEInvoiceRecord(client: SheetsClient, record: EInvoic
 
 export async function batchAppendEInvoiceRecords(client: SheetsClient, records: EInvoiceRecord[]): Promise<void> {
   if (records.length === 0) return;
-  await withSheetsRetry(() => client.sheets.spreadsheets.values.append({
+  const response = await withSheetsRetry(() => client.sheets.spreadsheets.values.append({
     spreadsheetId: client.spreadsheetId,
     range: EINVOICE_RANGE_FULL,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: records.map(eInvoiceRecordToRow) },
+  }));
+  // 表中有空白列時 append 可能插在中段；記下實際落點方便追查
+  console.info("[einvoice] append", records.map((r) => r.invoiceId).join(","), response?.data?.updates?.updatedRange ?? "");
+}
+
+/** 依列號寫入或刪除前發現該列已不是預期的發票（被插入／刪除的列擠動） */
+export class EInvoiceRowMovedError extends Error {
+  constructor(invoiceId: string) {
+    super(`發票 ${invoiceId} 的資料列位置已變動，請重新整理後再試`);
+    this.name = "EInvoiceRowMovedError";
+  }
+}
+
+const SINGLE_CELL_A = (sheetRow: number) => `${EINVOICE_SHEET}!A${sheetRow}:A${sheetRow}`;
+
+async function getEInvoiceSheetId(client: SheetsClient): Promise<number> {
+  const meta = await withSheetsRetry(() => client.sheets.spreadsheets.get({
+    spreadsheetId: client.spreadsheetId,
+    fields: "sheets.properties",
+  }));
+  const sheetId = meta.data.sheets?.find((sheet) => sheet.properties?.title === EINVOICE_SHEET)?.properties?.sheetId;
+  if (sheetId === undefined || sheetId === null) throw new Error(`找不到工作表 ${EINVOICE_SHEET}`);
+  return sheetId;
+}
+
+/**
+ * 依列號整列刪除（deleteDimension，由下往上）。刪除前一次讀回所有目標列的 A 欄，
+ * 任何一列不是預期的發票編號就整批中止，一列都不刪。
+ */
+export async function deleteEInvoiceRows(
+  client: SheetsClient,
+  targets: Array<{ sheetRow: number; invoiceId: string }>,
+): Promise<void> {
+  if (targets.length === 0) return;
+  const sheetId = await getEInvoiceSheetId(client);
+  const check = await withSheetsRetry(() => client.sheets.spreadsheets.values.batchGet({
+    spreadsheetId: client.spreadsheetId,
+    ranges: targets.map((target) => SINGLE_CELL_A(target.sheetRow)),
+  }));
+  const valueRanges = check.data.valueRanges ?? [];
+  targets.forEach((target, i) => {
+    const actual = String(valueRanges[i]?.values?.[0]?.[0] ?? "");
+    if (actual !== target.invoiceId) throw new EInvoiceRowMovedError(target.invoiceId);
+  });
+  const requests = [...targets]
+    .sort((a, b) => b.sheetRow - a.sheetRow)
+    .map((target) => ({
+      deleteDimension: {
+        range: { sheetId, dimension: "ROWS", startIndex: target.sheetRow - 1, endIndex: target.sheetRow },
+      },
+    }));
+  await withSheetsRetry(() => client.sheets.spreadsheets.batchUpdate({
+    spreadsheetId: client.spreadsheetId,
+    requestBody: { requests },
   }));
 }
 
@@ -153,10 +208,12 @@ export async function getEInvoiceEventRows(client: SheetsClient): Promise<string
 }
 
 const ROW_PROPAGATION_WAIT_MS = 3000;
+const MAX_LOCATE_ATTEMPTS = 3;
 
 /**
- * 讀→定位→寫整段一起重試：重試時重新讀取並重新找列，不沿用十幾秒前的列號
- * （期間若有刪列，舊列號會寫到別張發票上）。
+ * 讀→定位→寫整段一起重試：重試時重新讀取並重新找列，不沿用十幾秒前的列號。
+ * 寫入前再單獨讀回目標列確認 A 欄仍是這張發票（append 可能插在中段把列擠動），
+ * 不符就重新定位；updater 以這次讀回的最新內容為準。
  * updater 拋錯（例如狀態不允許轉換）時不寫入，錯誤直接往外拋。
  */
 export async function updateEInvoiceRecord(
@@ -166,21 +223,31 @@ export async function updateEInvoiceRecord(
   retry: SheetsRetryOptions = {},
 ): Promise<EInvoiceRecord | null> {
   async function tryOnce(): Promise<EInvoiceRecord | null> {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: EINVOICE_RANGE_DATA,
-    });
-    const rows = (response.data.values ?? []) as string[][];
-    const rowIndex = rows.findIndex((row) => (row[0] ?? "") === invoiceId);
-    if (rowIndex === -1) return null;
-    const next = updater(eInvoiceRowToRecord(rows[rowIndex]));
-    await client.sheets.spreadsheets.values.update({
-      spreadsheetId: client.spreadsheetId,
-      range: EINVOICE_ROW_RANGE(rowIndex + 2),
-      valueInputOption: "RAW",
-      requestBody: { values: [eInvoiceRecordToRow(next)] },
-    });
-    return next;
+    for (let attempt = 0; attempt < MAX_LOCATE_ATTEMPTS; attempt++) {
+      const response = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: EINVOICE_RANGE_DATA,
+      });
+      const rows = (response.data.values ?? []) as string[][];
+      const rowIndex = rows.findIndex((row) => (row[0] ?? "") === invoiceId);
+      if (rowIndex === -1) return null;
+      const sheetRow = rowIndex + 2;
+      const fresh = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: EINVOICE_ROW_RANGE(sheetRow),
+      });
+      const freshRow = ((fresh.data.values ?? []) as string[][])[0] ?? [];
+      if ((freshRow[0] ?? "") !== invoiceId) continue;
+      const next = updater(eInvoiceRowToRecord(freshRow));
+      await client.sheets.spreadsheets.values.update({
+        spreadsheetId: client.spreadsheetId,
+        range: EINVOICE_ROW_RANGE(sheetRow),
+        valueInputOption: "RAW",
+        requestBody: { values: [eInvoiceRecordToRow(next)] },
+      });
+      return next;
+    }
+    throw new EInvoiceRowMovedError(invoiceId);
   }
 
   const first = await withSheetsRetry(tryOnce, retry);

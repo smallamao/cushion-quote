@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { EINVOICE_SHEET } from "@/lib/einvoice-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 import { getSession } from "../_auth";
-import { getEInvoiceRows } from "../_shared";
+import { EInvoiceRowMovedError, deleteEInvoiceRows, getEInvoiceRows } from "../_shared";
 
 const DELETABLE_STATUSES = new Set(["draft", "failed"]);
 
@@ -33,7 +32,7 @@ export async function POST(request: Request) {
     const idSet = new Set(invoiceIds);
 
     // Collect target row indices, skipping issued/cancelled records
-    const targetIndices: number[] = [];
+    const targets: Array<{ sheetRow: number; invoiceId: string }> = [];
     const skipped: string[] = [];
 
     rows.forEach((row, idx) => {
@@ -44,42 +43,26 @@ export async function POST(request: Request) {
         skipped.push(`${id}（${status}）`);
         return;
       }
-      targetIndices.push(idx + 2);
+      targets.push({ sheetRow: idx + 2, invoiceId: id });
     });
 
-    if (targetIndices.length === 0) {
+    if (targets.length === 0) {
       const detail = skipped.length > 0 ? `已開立/已作廢的發票無法刪除：${skipped.join("、")}` : "找不到指定記錄";
       return NextResponse.json({ ok: true, deleted: 0, message: detail });
     }
 
-    // Get sheet ID for deleteDimension
-    const meta = await client.sheets.spreadsheets.get({
-      spreadsheetId: client.spreadsheetId,
-      fields: "sheets.properties",
-    });
-    const sheetId = meta.data.sheets
-      ?.find((s) => s.properties?.title === EINVOICE_SHEET)
-      ?.properties?.sheetId;
-
-    if (sheetId !== undefined) {
-      // Delete from bottom up to avoid row index shifting
-      const requests = [...targetIndices].sort((a, b) => b - a).map((rowNum) => ({
-        deleteDimension: {
-          range: { sheetId, dimension: "ROWS", startIndex: rowNum - 1, endIndex: rowNum },
-        },
-      }));
-      await client.sheets.spreadsheets.batchUpdate({
-        spreadsheetId: client.spreadsheetId,
-        requestBody: { requests },
-      });
-    }
+    // 刪除前確認每一列仍是預期的發票，任何一列被擠動就整批不刪
+    await deleteEInvoiceRows(client, targets);
 
     const message = skipped.length > 0
-      ? `已刪除 ${targetIndices.length} 筆，跳過 ${skipped.length} 筆已開立/已作廢記錄`
-      : `已刪除 ${targetIndices.length} 筆記錄`;
+      ? `已刪除 ${targets.length} 筆，跳過 ${skipped.length} 筆已開立/已作廢記錄`
+      : `已刪除 ${targets.length} 筆記錄`;
 
-    return NextResponse.json({ ok: true, deleted: targetIndices.length, skipped: skipped.length, message });
+    return NextResponse.json({ ok: true, deleted: targets.length, skipped: skipped.length, message });
   } catch (err) {
+    if (err instanceof EInvoiceRowMovedError) {
+      return NextResponse.json({ ok: false, error: err.message }, { status: 409 });
+    }
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : "刪除失敗" },
       { status: 500 },

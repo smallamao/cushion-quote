@@ -1,23 +1,13 @@
 import { NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
 
-import { EINVOICE_SHEET } from "@/lib/einvoice-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 import { getSession } from "../_auth";
-import { getEInvoiceRows } from "../_shared";
+import { EInvoiceRowMovedError, deleteEInvoiceRows, getEInvoiceRows } from "../_shared";
 
 // Only draft and failed invoices may be deleted; issued/cancelled are legal records
 const DELETABLE_STATUSES = new Set(["draft", "failed"]);
-
-async function getEInvoiceSheetId(client: Awaited<ReturnType<typeof getSheetsClient>>): Promise<number | undefined> {
-  if (!client) return undefined;
-  const meta = await client.sheets.spreadsheets.get({
-    spreadsheetId: client.spreadsheetId,
-    fields: "sheets.properties",
-  });
-  return meta.data.sheets?.find((s) => s.properties?.title === EINVOICE_SHEET)?.properties?.sheetId ?? undefined;
-}
 
 export async function DELETE(request: Request) {
   const session = await getSession(request as unknown as Request);
@@ -38,39 +28,23 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    const [rows, sheetId] = await Promise.all([
-      getEInvoiceRows(client),
-      getEInvoiceSheetId(client),
-    ]);
+    const rows = await getEInvoiceRows(client);
 
     if (mode === "cleanup-failed") {
-      const failedIndices: number[] = [];
-      rows.forEach((row, idx) => {
-        if ((row[25] ?? "") === "failed") {
-          failedIndices.push(idx + 2);
-        }
-      });
+      const failedTargets = rows.flatMap((row, idx) => (
+        (row[25] ?? "") === "failed" && row[0] ? [{ sheetRow: idx + 2, invoiceId: row[0] }] : []
+      ));
 
-      if (failedIndices.length === 0) {
+      if (failedTargets.length === 0) {
         return NextResponse.json({ ok: true, message: "沒有失敗記錄" });
       }
 
-      if (sheetId !== undefined) {
-        const requests = [...failedIndices].sort((a, b) => b - a).map((rowNum) => ({
-          deleteDimension: {
-            range: { sheetId, dimension: "ROWS", startIndex: rowNum - 1, endIndex: rowNum },
-          },
-        }));
-        await client.sheets.spreadsheets.batchUpdate({
-          spreadsheetId: client.spreadsheetId,
-          requestBody: { requests },
-        });
-      }
+      await deleteEInvoiceRows(client, failedTargets);
 
       return NextResponse.json({
         ok: true,
-        deleted: failedIndices.length,
-        message: `已刪除 ${failedIndices.length} 筆失敗記錄`,
+        deleted: failedTargets.length,
+        message: `已刪除 ${failedTargets.length} 筆失敗記錄`,
       });
     }
 
@@ -91,19 +65,8 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const sheetRowIndex = rowIndex + 2;
-    if (sheetId !== undefined) {
-      await client.sheets.spreadsheets.batchUpdate({
-        spreadsheetId: client.spreadsheetId,
-        requestBody: {
-          requests: [{
-            deleteDimension: {
-              range: { sheetId, dimension: "ROWS", startIndex: sheetRowIndex - 1, endIndex: sheetRowIndex },
-            },
-          }],
-        },
-      });
-    }
+    // 刪除前確認該列仍是這張發票（中段插入的列會讓列號位移）
+    await deleteEInvoiceRows(client, [{ sheetRow: rowIndex + 2, invoiceId }]);
 
     appendAuditLog({
       actor: session.email,
@@ -114,6 +77,9 @@ export async function DELETE(request: Request) {
     });
     return NextResponse.json({ ok: true, invoiceId });
   } catch (err) {
+    if (err instanceof EInvoiceRowMovedError) {
+      return NextResponse.json({ ok: false, error: err.message }, { status: 409 });
+    }
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : "刪除失敗" },
       { status: 500 },
