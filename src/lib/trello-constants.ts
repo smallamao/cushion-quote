@@ -119,13 +119,25 @@ export interface DriverInfo {
   confirmTitle: string;
   phoneNumber: string;
   labelId: string;
+  /**
+   * 這位司機只能跑的範圍；空＝沒有限制。
+   * 排車時要先排除跑不了的人，否則會排出送不到的車次。
+   */
+  serviceArea?: string;
 }
 
+/**
+ * 目前仍在配合的司機。
+ *
+ * 🔴 羅先生 [0725-ED]、范先生 [BFR-7003] 已於 2026-10-31 停止配合，自清單移除。
+ *    但 TRELLO.LABELS 裡的 DRIVER_LOU / DRIVER_FAN **刻意保留**——
+ *    歷史卡片上還掛著那兩個標籤，常數刪掉會讓舊單的司機欄顯示不出來。
+ *    標籤是歷史事實，清單是現在能派的人，兩者不同。
+ */
 export const DRIVER_LIST: DriverInfo[] = [
-  { key: "shin", title: "阿信 (兩人）[BXH-6828]", confirmTitle: "阿信哥～",  phoneNumber: "0958640520", labelId: TRELLO.LABELS.DRIVER_SHIN },
-  { key: "lou",  title: "羅先生 [0725-ED]",        confirmTitle: "阿伯～",    phoneNumber: "0933208509", labelId: TRELLO.LABELS.DRIVER_LOU },
-  { key: "fan",  title: "范先生 [BFR-7003]",        confirmTitle: "范大哥～",  phoneNumber: "0925616827", labelId: TRELLO.LABELS.DRIVER_FAN },
-  { key: "ya",   title: "葉先生 (回頭車)",          confirmTitle: "葉先生",    phoneNumber: "0933468058 / 0928338272", labelId: TRELLO.LABELS.DRIVER_YA },
-  { key: "fu",   title: "阿富",                    confirmTitle: "阿富～",    phoneNumber: "0953123527", labelId: TRELLO.LABELS.DRIVER_FU },
-  { key: "jian", title: "簡先生",                  confirmTitle: "簡大哥～",  phoneNumber: "0910347260", labelId: TRELLO.LABELS.DRIVER_JIAN },
+  { key: "shin", title: "阿信 (兩人）[BXH-6828]", confirmTitle: "阿信哥～", phoneNumber: "0958640520", labelId: TRELLO.LABELS.DRIVER_SHIN },
+  // 回頭車：只在跑南部（高雄）時順路載，不能派台北都會區的單（老闆 2026-10-31）
+  { key: "ya",   title: "葉先生 (回頭車・南部高雄)", confirmTitle: "葉先生", phoneNumber: "0933468058 / 0928338272", labelId: TRELLO.LABELS.DRIVER_YA, serviceArea: "南部（高雄）回頭車" },
+  { key: "fu",   title: "阿富",                   confirmTitle: "阿富～",   phoneNumber: "0953123527", labelId: TRELLO.LABELS.DRIVER_FU },
+  { key: "jian", title: "簡先生",                 confirmTitle: "簡大哥～", phoneNumber: "0910347260", labelId: TRELLO.LABELS.DRIVER_JIAN },
 ];
