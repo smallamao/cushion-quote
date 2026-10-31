@@ -14,6 +14,9 @@ import {
   getEInvoiceRecords,
 } from "./_shared";
 
+// 寫入配額用完時 _shared 會退避重試（最多約 17 秒），預設 10 秒不夠
+export const maxDuration = 60;
+
 interface CreateEInvoicePayload {
   retryOfInvoiceId?: string;
   sourceType: EInvoiceRecord["sourceType"];

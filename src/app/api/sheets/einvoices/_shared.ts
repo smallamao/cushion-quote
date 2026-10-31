@@ -1,4 +1,5 @@
 import { getSheetsClient } from "@/lib/sheets-client";
+import { withSheetsRetry } from "@/lib/sheets-retry";
 import type {
   ARRecord,
   CaseRecord,
@@ -90,13 +91,13 @@ export async function appendEInvoiceEvent(
     eventId: generateEInvoiceEventId(input.invoiceId),
     occurredAt: input.occurredAt ?? isoNow(),
   };
-  await client.sheets.spreadsheets.values.append({
+  await withSheetsRetry(() => client.sheets.spreadsheets.values.append({
     spreadsheetId: client.spreadsheetId,
     range: EINVOICE_EVENT_RANGE_FULL,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [eInvoiceEventRecordToRow(record)] },
-  });
+  }));
 }
 
 export async function getEInvoiceRecords(client: SheetsClient): Promise<EInvoiceRecord[]> {
@@ -127,19 +128,19 @@ function findNextSheetRow(rows: string[][]): number {
 export async function appendEInvoiceRecord(client: SheetsClient, record: EInvoiceRecord): Promise<void> {
   const rows = await getEInvoiceRows(client);
   const nextRow = findNextSheetRow(rows);
-  await client.sheets.spreadsheets.values.update({
+  await withSheetsRetry(() => client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
     range: EINVOICE_ROW_RANGE(nextRow),
     valueInputOption: "RAW",
     requestBody: { values: [eInvoiceRecordToRow(record)] },
-  });
+  }));
 }
 
 export async function batchAppendEInvoiceRecords(client: SheetsClient, records: EInvoiceRecord[]): Promise<void> {
   if (records.length === 0) return;
   const rows = await getEInvoiceRows(client);
   const firstRow = findNextSheetRow(rows);
-  await client.sheets.spreadsheets.values.batchUpdate({
+  await withSheetsRetry(() => client.sheets.spreadsheets.values.batchUpdate({
     spreadsheetId: client.spreadsheetId,
     requestBody: {
       valueInputOption: "RAW",
@@ -148,7 +149,7 @@ export async function batchAppendEInvoiceRecords(client: SheetsClient, records: 
         values: [eInvoiceRecordToRow(record)],
       })),
     },
-  });
+  }));
 }
 
 export async function getEInvoiceEventRows(client: SheetsClient): Promise<string[][]> {
@@ -168,20 +169,20 @@ export async function updateEInvoiceRecord(client: SheetsClient, invoiceId: stri
 
   async function tryOnce(): Promise<EInvoiceRecord | null> {
     // Read directly (no silent catch) so real API errors propagate to the caller
-    const response = await client.sheets.spreadsheets.values.get({
+    const response = await withSheetsRetry(() => client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
       range: EINVOICE_RANGE_DATA,
-    });
+    }));
     const rows = (response.data.values ?? []) as string[][];
     const rowIndex = rows.findIndex((row) => (row[0] ?? "") === invoiceId);
     if (rowIndex === -1) return null;
     const next = updater(eInvoiceRowToRecord(rows[rowIndex]));
-    await client.sheets.spreadsheets.values.update({
+    await withSheetsRetry(() => client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
       range: EINVOICE_ROW_RANGE(rowIndex + 2),
       valueInputOption: "RAW",
       requestBody: { values: [eInvoiceRecordToRow(next)] },
-    });
+    }));
     return next;
   }
 
