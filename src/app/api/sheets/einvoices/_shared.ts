@@ -1,5 +1,5 @@
 import { getSheetsClient } from "@/lib/sheets-client";
-import { withSheetsRetry } from "@/lib/sheets-retry";
+import { withSheetsRetry, type SheetsRetryOptions } from "@/lib/sheets-retry";
 import type {
   ARRecord,
   CaseRecord,
@@ -15,6 +15,7 @@ import {
   EINVOICE_EVENT_RANGE_DATA,
   EINVOICE_EVENT_RANGE_FULL,
   EINVOICE_RANGE_DATA,
+  EINVOICE_RANGE_FULL,
   EINVOICE_ROW_RANGE,
   buildEInvoiceItemsFromVersionLines,
   eInvoiceEventRecordToRow,
@@ -71,21 +72,22 @@ function toContact(row: string[]): Contact {
   };
 }
 
-export async function getEInvoiceRows(client: SheetsClient): Promise<string[][]> {
-  try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: EINVOICE_RANGE_DATA,
-    });
-    return (response.data.values ?? []) as string[][];
-  } catch {
-    return [];
-  }
+/**
+ * 讀取失敗一律拋出，不可吞成 []：呼叫端會拿它做防重複檢查、產生編號、找刪除列，
+ * 空陣列會讓這些全部誤判（曾造成編號從 -001 重來、覆寫第 2 列的風險）。
+ */
+export async function getEInvoiceRows(client: SheetsClient, retry: SheetsRetryOptions = {}): Promise<string[][]> {
+  const response = await withSheetsRetry(() => client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: EINVOICE_RANGE_DATA,
+  }), retry);
+  return (response.data.values ?? []) as string[][];
 }
 
 export async function appendEInvoiceEvent(
   client: SheetsClient,
   input: Omit<EInvoiceEventRecord, "eventId" | "occurredAt"> & { occurredAt?: string },
+  retry: SheetsRetryOptions = {},
 ): Promise<void> {
   const record: EInvoiceEventRecord = {
     ...input,
@@ -98,7 +100,7 @@ export async function appendEInvoiceEvent(
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [eInvoiceEventRecordToRow(record)] },
-  }));
+  }), retry);
 }
 
 export async function getEInvoiceRecords(client: SheetsClient): Promise<EInvoiceRecord[]> {
@@ -106,8 +108,12 @@ export async function getEInvoiceRecords(client: SheetsClient): Promise<EInvoice
   return rows.map(eInvoiceRowToRecord).filter((record) => record.invoiceId);
 }
 
-export async function getEInvoiceRecordById(client: SheetsClient, invoiceId: string): Promise<EInvoiceRecord | null> {
-  const rows = await getEInvoiceRows(client);
+export async function getEInvoiceRecordById(
+  client: SheetsClient,
+  invoiceId: string,
+  retry: SheetsRetryOptions = {},
+): Promise<EInvoiceRecord | null> {
+  const rows = await getEInvoiceRows(client, retry);
   const row = rows.find((current) => (current[0] ?? "") === invoiceId);
   return row ? eInvoiceRowToRecord(row) : null;
 }
@@ -117,39 +123,20 @@ export async function generateNextEInvoiceId(client: SheetsClient): Promise<stri
   return generateEInvoiceId(rows);
 }
 
-function findNextSheetRow(rows: string[][]): number {
-  // rows[i] = sheet row (i + 2). Find last row with a non-empty invoiceId in col A.
-  let lastIdx = -1;
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i]?.[0]) { lastIdx = i; break; }
-  }
-  return lastIdx + 3; // idx→sheetRow(+2), then +1 for next row. Falls back to row 2 when empty.
-}
-
+// 新紀錄一律用 append + INSERT_ROWS 插入新列：不先讀再算列號，
+// 讀取失敗或兩個請求同時建立時都不會覆寫既有列。
 export async function appendEInvoiceRecord(client: SheetsClient, record: EInvoiceRecord): Promise<void> {
-  const rows = await getEInvoiceRows(client);
-  const nextRow = findNextSheetRow(rows);
-  await withSheetsRetry(() => client.sheets.spreadsheets.values.update({
-    spreadsheetId: client.spreadsheetId,
-    range: EINVOICE_ROW_RANGE(nextRow),
-    valueInputOption: "RAW",
-    requestBody: { values: [eInvoiceRecordToRow(record)] },
-  }));
+  await batchAppendEInvoiceRecords(client, [record]);
 }
 
 export async function batchAppendEInvoiceRecords(client: SheetsClient, records: EInvoiceRecord[]): Promise<void> {
   if (records.length === 0) return;
-  const rows = await getEInvoiceRows(client);
-  const firstRow = findNextSheetRow(rows);
-  await withSheetsRetry(() => client.sheets.spreadsheets.values.batchUpdate({
+  await withSheetsRetry(() => client.sheets.spreadsheets.values.append({
     spreadsheetId: client.spreadsheetId,
-    requestBody: {
-      valueInputOption: "RAW",
-      data: records.map((record, i) => ({
-        range: EINVOICE_ROW_RANGE(firstRow + i),
-        values: [eInvoiceRecordToRow(record)],
-      })),
-    },
+    range: EINVOICE_RANGE_FULL,
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: records.map(eInvoiceRecordToRow) },
   }));
 }
 
@@ -165,33 +152,43 @@ export async function getEInvoiceEventRows(client: SheetsClient): Promise<string
   }
 }
 
-export async function updateEInvoiceRecord(client: SheetsClient, invoiceId: string, updater: (record: EInvoiceRecord) => EInvoiceRecord): Promise<EInvoiceRecord | null> {
-  const { EINVOICE_ROW_RANGE, eInvoiceRecordToRow } = await import("@/lib/einvoice-utils");
+const ROW_PROPAGATION_WAIT_MS = 3000;
 
+/**
+ * 讀→定位→寫整段一起重試：重試時重新讀取並重新找列，不沿用十幾秒前的列號
+ * （期間若有刪列，舊列號會寫到別張發票上）。
+ * updater 拋錯（例如狀態不允許轉換）時不寫入，錯誤直接往外拋。
+ */
+export async function updateEInvoiceRecord(
+  client: SheetsClient,
+  invoiceId: string,
+  updater: (record: EInvoiceRecord) => EInvoiceRecord,
+  retry: SheetsRetryOptions = {},
+): Promise<EInvoiceRecord | null> {
   async function tryOnce(): Promise<EInvoiceRecord | null> {
-    // Read directly (no silent catch) so real API errors propagate to the caller
-    const response = await withSheetsRetry(() => client.sheets.spreadsheets.values.get({
+    const response = await client.sheets.spreadsheets.values.get({
       spreadsheetId: client.spreadsheetId,
       range: EINVOICE_RANGE_DATA,
-    }));
+    });
     const rows = (response.data.values ?? []) as string[][];
     const rowIndex = rows.findIndex((row) => (row[0] ?? "") === invoiceId);
     if (rowIndex === -1) return null;
     const next = updater(eInvoiceRowToRecord(rows[rowIndex]));
-    await withSheetsRetry(() => client.sheets.spreadsheets.values.update({
+    await client.sheets.spreadsheets.values.update({
       spreadsheetId: client.spreadsheetId,
       range: EINVOICE_ROW_RANGE(rowIndex + 2),
       valueInputOption: "RAW",
       requestBody: { values: [eInvoiceRecordToRow(next)] },
-    }));
+    });
     return next;
   }
 
-  const first = await tryOnce();
+  const first = await withSheetsRetry(tryOnce, retry);
   if (first) return first;
-  // Row may not have propagated yet (append → GET delay) — wait and retry once
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-  return tryOnce();
+  // Row may not have propagated yet (append → GET delay) — wait and retry once, if the deadline allows
+  if (retry.deadline !== undefined && Date.now() + ROW_PROPAGATION_WAIT_MS > retry.deadline) return null;
+  await new Promise((resolve) => setTimeout(resolve, ROW_PROPAGATION_WAIT_MS));
+  return withSheetsRetry(tryOnce, retry);
 }
 
 async function getCompanyLookup(client: SheetsClient): Promise<{ companyMap: Map<string, Company>; primaryContactMap: Map<string, Contact> }> {

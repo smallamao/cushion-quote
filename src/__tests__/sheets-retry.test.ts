@@ -83,4 +83,22 @@ describe("withSheetsRetry", () => {
       vi.useRealTimers();
     }
   });
+
+  it("設了 deadline：下一次等待會超過期限就不再重試，直接拋出", async () => {
+    let clock = 1_000;
+    const sleep = vi.fn(async (ms: number) => { clock += ms; });
+    const fn = vi.fn(async () => { throw quotaError(); });
+    // 期限 = 現在 + 8 秒：等 2s 可以、再等 5s 到 8s 剛好可以、再等 10s 超過 → 停
+    await expect(withSheetsRetry(fn, { sleep, now: () => clock, deadline: 1_000 + 8_000 })).rejects.toThrow("Quota exceeded");
+    expect(sleep.mock.calls.map((c) => (c as unknown[])[0])).toEqual([2000, 5000]);
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it("deadline 已過：只試一次不等待", async () => {
+    const sleep = vi.fn(async () => {});
+    const fn = vi.fn(async () => { throw quotaError(); });
+    await expect(withSheetsRetry(fn, { sleep, now: () => 5_000, deadline: 0 })).rejects.toThrow("Quota exceeded");
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
 });
