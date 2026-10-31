@@ -303,15 +303,20 @@ const SHEET_DEFINITIONS = [
   {
     title: "售後服務",
     headers: [
+      // 🔴 必須與 lib/after-sales-sheet.ts 的 rowToService／serviceToRow 索引一致。
+      // 2026-10-31 對帳發現兩處不符：照片欄實際叫 ...JSON，而 issueCategories／
+      // dispatchOrder／scheduledTime 是後來加的、從來沒補進這份定義——程式讀寫
+      // 得到值（既有表格欄位還在），但用這份定義新建的表會少三欄。
       "serviceId", "receivedDate", "relatedOrderNo", "shipmentDate",
       "clientName", "clientPhone", "clientContact2", "clientPhone2",
       "deliveryAddress", "modelCode", "modelNameSnapshot", "issueDescription",
-      "issuePhotos", "status", "assignedTo", "scheduledDate",
-      "dispatchNotes", "completedDate", "completionNotes", "completionPhotos",
+      "issuePhotosJSON", "status", "assignedTo", "scheduledDate",
+      "dispatchNotes", "completedDate", "completionNotes", "completionPhotosJSON",
       "createdAt", "updatedAt", "createdBy",
       "customerSignature", "customerSignedAt",
       "serviceType", "outsourcedVendor", "outsourcedNote",
       "itemLocation", "itemDescription",
+      "issueCategoriesJSON", "dispatchOrder", "scheduledTime",
     ],
   },
   {

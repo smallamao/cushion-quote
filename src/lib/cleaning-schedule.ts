@@ -99,3 +99,77 @@ export function validateProposedSlots(slots: { date: string }[]): string | null 
   }
   return null;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * 貼給客人／師傅的文案（老闆 2026-10-31：原本按鈕只複製網址，還要自己打字）
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** 2026-11-21 → 11/21（五） */
+export function formatSlotDate(date: string): string {
+  if (!date) return "";
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return date;
+  return `${d.getMonth() + 1}/${d.getDate()}（${WEEKDAYS[d.getDay()]}）`;
+}
+
+/**
+ * 從「問題描述」裡抓出布料那一行。
+ *
+ * 🔴 只抓這一行，不是整段倒給師傅：問題描述裡還有 LINE 對話連結與內部備註，
+ * 外部師傅不該拿到。抓不到就不顯示，不要瞎猜——布料決定清潔方式與藥劑，
+ * 寫錯比沒寫更危險。
+ */
+export function extractFabricLine(issueDescription: string | undefined): string {
+  const m = (issueDescription ?? "").match(/^\s*布料[：:]\s*(.+?)\s*$/m);
+  return m ? m[1] : "";
+}
+
+/** ① 貼給客人：請他選三組時段 */
+export function buildCustomerSlotMessage(url: string): string {
+  return [
+    "您好～我們幫您開好到府清潔的單了 😊",
+    "麻煩點下面連結選三組方便的時間（不同日期），",
+    "我們跟師傅確認後會再回覆您確定的日期：",
+    "",
+    url,
+    "",
+    "※ 最快可安排後天（師傅需要前置時間）",
+    "※ 這是您方便的時間，不是確定的到府日",
+  ].join("\n");
+}
+
+export interface TechSlotMessageInput {
+  serviceId: string;
+  clientName?: string;
+  phone?: string;
+  phone2?: string;
+  address?: string;
+  model?: string;
+  fabric?: string;
+  slots: { date: string; period: string }[];
+  url: string;
+}
+
+/** ② 貼給師傅：客人已選好，請他確認 */
+export function buildTechSlotMessage(input: TechSlotMessageInput): string {
+  const lines: string[] = [`【到府清潔】${input.serviceId}`];
+  if (input.clientName) lines.push(`客戶：${input.clientName}`);
+  if (input.address) lines.push(`地址：${input.address}`);
+  if (input.phone) {
+    lines.push(`電話：${input.phone}${input.phone2 ? `（備用 ${input.phone2}）` : ""}`);
+  }
+  // 用「品項」不用「沙發」：modelNameSnapshot 常常自己就以「沙發」開頭，會變成「沙發：沙發 265cm…」
+  if (input.model) lines.push(`品項：${input.model}`);
+  // 布料決定清潔方式與藥劑，有抓到就一定要讓師傅看到
+  if (input.fabric) lines.push(`布料：${input.fabric}`);
+  lines.push("", "客人希望時段：");
+  for (const s of input.slots) lines.push(`· ${formatSlotDate(s.date)} ${s.period}`);
+  lines.push(
+    "",
+    "可以的話麻煩點連結確認，要選上午／下午／晚上：",
+    input.url,
+  );
+  return lines.join("\n");
+}

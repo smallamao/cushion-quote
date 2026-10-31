@@ -5,6 +5,10 @@ import {
   isCleaningLinkExpired,
   isConfirmablePeriod,
   validateProposedSlots,
+  formatSlotDate,
+  extractFabricLine,
+  buildTechSlotMessage,
+  buildCustomerSlotMessage,
 } from "@/lib/cleaning-schedule";
 
 // 🔴 2026-10-19 實際踩到：Fiona 三個時段填「10/21 上午、10/21 下午、10/22 皆可」，
@@ -147,5 +151,75 @@ describe("validateProposedSlots", () => {
     expect(
       validateProposedSlots([d("2026-11-03"), d("2026-11-04"), d("2026-11-05"), d("2026-11-06")]),
     ).toBeNull();
+  });
+});
+
+describe("貼給客人／師傅的文案", () => {
+  it("星期由程式算，不會手打錯（2026-11-21 是週六不是週五）", () => {
+    expect(formatSlotDate("2026-11-21")).toBe("11/21（六）");
+    expect(formatSlotDate("2026-11-20")).toBe("11/20（五）");
+  });
+
+  it("日期格式怪或空字串時不要爆掉", () => {
+    expect(formatSlotDate("")).toBe("");
+    expect(formatSlotDate("不是日期")).toBe("不是日期");
+  });
+
+  it("只抓『布料：』那一行，不把整段問題描述倒給師傅", () => {
+    const desc = [
+      "到府清潔（客戶編號 P5037）",
+      "布料：528系列 冰絲涼感布 528-72 白橡木",
+      "LINE 對話：https://chat.line.biz/xxx/chat/yyy",
+      "內部備註：這位客人很在意準時",
+    ].join("\n");
+    expect(extractFabricLine(desc)).toBe("528系列 冰絲涼感布 528-72 白橡木");
+  });
+
+  it("沒有布料那一行就回空字串，不亂猜", () => {
+    expect(extractFabricLine("到府清潔")).toBe("");
+    expect(extractFabricLine(undefined)).toBe("");
+  });
+
+  it("師傅文案：有的欄位才印，沒有的整行略過", () => {
+    const msg = buildTechSlotMessage({
+      serviceId: "AS-20261031-01",
+      clientName: "王小姐",
+      phone: "0952800396",
+      address: "桃園市桃園區文中一路25巷27號11F",
+      model: "沙發 265cm 三件式 L型一組",
+      fabric: "528系列 冰絲涼感布 528-72 白橡木",
+      slots: [{ date: "2026-11-21", period: "下午" }],
+      url: "https://example.com/cleaning/abc",
+    });
+    expect(msg).toContain("【到府清潔】AS-20261031-01");
+    expect(msg).toContain("11/21（六） 下午");
+    expect(msg).toContain("布料：528系列 冰絲涼感布 528-72 白橡木");
+    expect(msg).toContain("https://example.com/cleaning/abc");
+  });
+
+  it("師傅文案：沒有布料就不出現布料那一行（寫錯比沒寫危險）", () => {
+    const msg = buildTechSlotMessage({
+      serviceId: "AS-1",
+      slots: [{ date: "2026-11-21", period: "下午" }],
+      url: "u",
+    });
+    expect(msg).not.toContain("布料");
+    expect(msg).not.toContain("客戶：");
+    expect(msg).not.toContain("地址：");
+  });
+
+  it("師傅文案：有備用電話才加括號", () => {
+    const withTwo = buildTechSlotMessage({ serviceId: "A", phone: "01", phone2: "02", slots: [], url: "u" });
+    expect(withTwo).toContain("電話：01（備用 02）");
+    const withOne = buildTechSlotMessage({ serviceId: "A", phone: "01", slots: [], url: "u" });
+    expect(withOne).toContain("電話：01");
+    expect(withOne).not.toContain("備用");
+  });
+
+  it("客人文案：講明要三組、而且不是確定的到府日", () => {
+    const msg = buildCustomerSlotMessage("https://example.com/cleaning/abc");
+    expect(msg).toContain("三組");
+    expect(msg).toContain("不是確定的到府日");
+    expect(msg).toContain("https://example.com/cleaning/abc");
   });
 });

@@ -1008,7 +1008,15 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
             轉傳給任何人。後端對應的端點也已限 admin（2026-10-15 弱點分析）。 */}
         {!readOnly && mode === "edit" && meta?.serviceId && draft.issueCategories?.includes("到府清潔") && (
           <div className="mb-4">
-            <CleaningSlotSection serviceId={meta.serviceId} />
+            <CleaningSlotSection
+              serviceId={meta.serviceId}
+              clientName={draft.clientName}
+              clientPhone={draft.clientPhone}
+              clientPhone2={draft.clientPhone2}
+              deliveryAddress={draft.deliveryAddress}
+              modelNameSnapshot={draft.modelNameSnapshot}
+              issueDescription={draft.issueDescription}
+            />
           </div>
         )}
         {/* 派工連結：清潔與修復都適用，任何狀態都能給外部師傅（電話直撥／地址導航）。 */}

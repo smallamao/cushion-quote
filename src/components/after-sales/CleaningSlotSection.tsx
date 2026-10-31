@@ -4,36 +4,99 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, Check, Copy, Link2, Loader2, RotateCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  buildCustomerSlotMessage,
+  buildTechSlotMessage,
+  extractFabricLine,
+} from "@/lib/cleaning-schedule";
 import type { CleaningSlotSession } from "@/lib/types";
 
 const WD = ["日", "一", "二", "三", "四", "五", "六"];
 const fmtDate = (d: string) => (d ? `${d}（${WD[new Date(d + "T00:00:00").getDay()]}）` : "");
 
-function CopyLink({ token, label }: { token: string; label: string }) {
-  const [copied, setCopied] = useState(false);
+/**
+ * 一條連結兩顆按鈕：只要網址，或要整段可以直接貼的文案。
+ *
+ * 老闆 2026-10-31：原本只複製網址，收件人、時段、布料那些還得自己打字——
+ * 手打就會出錯（同一天我自己把 11/21 打成「週五」，實際是週六）。
+ * 文案由程式產生，星期與時段就不會再寫錯。
+ */
+function CopyLink({
+  token,
+  label,
+  message,
+}: {
+  token: string;
+  label: string;
+  message: (url: string) => string;
+}) {
+  const [copied, setCopied] = useState<"" | "url" | "msg">("");
   const url = typeof window !== "undefined" ? `${window.location.origin}/cleaning/${token}` : "";
-  async function copy() {
+  async function copy(what: "url" | "msg") {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      await navigator.clipboard.writeText(what === "url" ? url : message(url));
+      setCopied(what);
+      setTimeout(() => setCopied(""), 1800);
     } catch {
       /* ignore */
     }
   }
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 truncate rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-1.5 font-mono text-xs text-[var(--text-secondary)]">
+    <div className="space-y-1.5">
+      <div className="truncate rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-1.5 font-mono text-xs text-[var(--text-secondary)]">
         {url}
       </div>
-      <Button size="sm" variant={copied ? "outline" : "default"} onClick={() => void copy()} className="shrink-0">
-        {copied ? <><Check className="mr-1 h-3.5 w-3.5" />已複製</> : <><Copy className="mr-1 h-3.5 w-3.5" />複製{label}</>}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant={copied === "msg" ? "outline" : "default"}
+          onClick={() => void copy("msg")}
+          className="shrink-0"
+        >
+          {copied === "msg" ? (
+            <><Check className="mr-1 h-3.5 w-3.5" />已複製文案</>
+          ) : (
+            <><Copy className="mr-1 h-3.5 w-3.5" />複製{label}文案</>
+          )}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void copy("url")}
+          className="shrink-0"
+        >
+          {copied === "url" ? (
+            <><Check className="mr-1 h-3.5 w-3.5" />已複製</>
+          ) : (
+            <><Link2 className="mr-1 h-3.5 w-3.5" />只要網址</>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }
 
-export function CleaningSlotSection({ serviceId }: { serviceId: string }) {
+export interface CleaningSlotSectionProps {
+  serviceId: string;
+  /** 組師傅文案用：沒有的欄位會直接略過該行，不會印出空白 */
+  clientName?: string;
+  clientPhone?: string;
+  clientPhone2?: string;
+  deliveryAddress?: string;
+  modelNameSnapshot?: string;
+  /** 只會從裡面抓「布料：」那一行，不會整段外流給師傅 */
+  issueDescription?: string;
+}
+
+export function CleaningSlotSection({
+  serviceId,
+  clientName,
+  clientPhone,
+  clientPhone2,
+  deliveryAddress,
+  modelNameSnapshot,
+  issueDescription,
+}: CleaningSlotSectionProps) {
   const [session, setSession] = useState<CleaningSlotSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -107,7 +170,11 @@ export function CleaningSlotSection({ serviceId }: { serviceId: string }) {
           {/* Step 1: 客人連結 */}
           <div>
             <p className="mb-1 text-xs font-medium text-[var(--text-secondary)]">① 貼給客人選時段</p>
-            <CopyLink token={session.customerToken} label="客人連結" />
+            <CopyLink
+              token={session.customerToken}
+              label="客人"
+              message={(url) => buildCustomerSlotMessage(url)}
+            />
           </div>
 
           {/* Step 2: 客人已選 → 師傅連結 */}
@@ -121,7 +188,23 @@ export function CleaningSlotSection({ serviceId }: { serviceId: string }) {
                   <div key={i}>· {fmtDate(s.date)}　{s.period}</div>
                 ))}
               </div>
-              <CopyLink token={session.techToken} label="師傅連結" />
+              <CopyLink
+                token={session.techToken}
+                label="師傅"
+                message={(url) =>
+                  buildTechSlotMessage({
+                    serviceId,
+                    clientName,
+                    phone: clientPhone || session.customerPhone,
+                    phone2: clientPhone2,
+                    address: deliveryAddress || session.customerAddress,
+                    model: modelNameSnapshot,
+                    fabric: extractFabricLine(issueDescription),
+                    slots: session.proposedSlots,
+                    url,
+                  })
+                }
+              />
             </div>
           )}
 
