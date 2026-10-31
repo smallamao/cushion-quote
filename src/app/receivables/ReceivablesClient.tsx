@@ -2,7 +2,7 @@
 
 import { ExternalLink, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,6 +21,8 @@ import {
   AR_STATUS_LABEL,
   isoDateNow,
 } from "@/lib/ar-utils";
+import { Pagination } from "@/components/ui/pagination";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useARMonthlySummary, useReceivables } from "@/hooks/useReceivables";
 import type { ARStatus } from "@/lib/types";
 
@@ -42,6 +44,9 @@ export function ReceivablesClient() {
   const [statusFilter, setStatusFilter] = useState<ARStatus | "all">("all");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [month, setMonth] = useState(() => isoDateNow().slice(0, 7));
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const isMobile = useIsMobile();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleDelete(arId: string, receivedAmount: number) {
@@ -92,6 +97,20 @@ export function ReceivablesClient() {
       .sort((a, b) => b.issueDate.localeCompare(a.issueDate));
   }, [ars, search, statusFilter, overdueOnly]);
 
+  // 篩選條件一變就回到第一頁，否則會停在一個已經不存在的頁次上看到空白
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, overdueOnly]);
+
+  // 與報價紀錄同一套前端分頁（資料本來就全抓回來，只是一次別顯示那麼多）
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const paged = useMemo(
+    () => filtered.slice(pageStart, pageStart + pageSize),
+    [filtered, pageStart, pageSize],
+  );
+
   return (
     <div className="space-y-6">
       {/* 手機：標題與操作列上下分行；≥sm 恢復同列左右對齊 */}
@@ -120,7 +139,19 @@ export function ReceivablesClient() {
         </TabsList>
         <TabsContent value="active" className="mt-4 space-y-6">
 
-      {/* Monthly summary cards */}
+      {/* 🔴 月份只影響下面這四張統計卡，清單刻意不跟著篩（老闆 2026-10-31 發現它對
+          清單沒作用）。清單若鎖在某個月，更早月份的逾期欠款就會從畫面上消失——
+          那正是應收帳款最不能漏看的東西。所以把控制項搬到卡片這邊並改名，
+          而不是讓它去篩清單。 */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-medium text-[var(--text-secondary)]">統計月份</h3>
+        <Input
+          type="month"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          className="w-40"
+        />
+      </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
           <div className="text-xs text-[var(--text-secondary)]">本月應收</div>
@@ -148,6 +179,10 @@ export function ReceivablesClient() {
         </div>
       </div>
 
+      <p className="-mt-3 text-xs text-[var(--text-tertiary)]">
+        以上為 {month} 的統計；下方清單顯示全部應收，不受統計月份影響，逾期款項不會被藏起來。
+      </p>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[260px]">
@@ -171,12 +206,6 @@ export function ReceivablesClient() {
             ))}
           </SelectContent>
         </Select>
-        <Input
-          type="month"
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          className="w-40"
-        />
         <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
           <Checkbox
             checked={overdueOnly}
@@ -210,14 +239,14 @@ export function ReceivablesClient() {
                 </td>
               </tr>
             )}
-            {!loading && filtered.length === 0 && (
+            {!loading && paged.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-3 py-8 text-center text-xs text-[var(--text-tertiary)]">
                   尚無應收帳款
                 </td>
               </tr>
             )}
-            {filtered.map((ar) => (
+            {paged.map((ar) => (
               <tr
                 key={ar.arId}
                 className={[
@@ -287,6 +316,21 @@ export function ReceivablesClient() {
           </tbody>
         </table>
       </div>
+
+      {/* 與報價紀錄共用同一支分頁元件，預設每頁 20 筆 */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={filtered.length}
+        pageStart={pageStart}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        isMobile={isMobile}
+      />
         </TabsContent>
 
         <TabsContent value="pending-monthly" className="mt-4">
