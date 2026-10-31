@@ -10,6 +10,7 @@ import {
   generateEInvoiceEventId,
   generateEInvoiceId,
   parseEInvoiceItems,
+  resolveIssueErrorOutcome,
 } from "@/lib/einvoice-utils";
 
 function makeInvoiceRecord(overrides: Partial<EInvoiceRecord> = {}): EInvoiceRecord {
@@ -154,5 +155,35 @@ describe("einvoice-utils", () => {
     expect(buildEInvoiceItemsFromVersionLines(lines)).toEqual([
       { name: "沙發換布", quantity: 2, unitPrice: 500, amount: 1000, remark: "備註", taxType: 0 },
     ]);
+  });
+});
+
+describe("resolveIssueErrorOutcome", () => {
+  it("Giveme 已成功開立但後續寫入失敗 → needs_review，回應視為成功並附警告", () => {
+    const outcome = resolveIssueErrorOutcome({ success: true, code: "FP52472809" }, "Quota exceeded for quota metric 'Write requests'");
+    expect(outcome.status).toBe("needs_review");
+    expect(outcome.providerIssued).toBe(true);
+    expect(outcome.errorMessage).toContain("已於 Giveme 開立（FP52472809）");
+    expect(outcome.errorMessage).toContain("Quota exceeded");
+    expect(outcome.errorMessage).toContain("請勿重開");
+    expect(outcome.warning).toBe(outcome.errorMessage);
+  });
+
+  it("Giveme 回成功但沒帶號碼仍視為已開立，避免重開", () => {
+    const outcome = resolveIssueErrorOutcome({ success: true, code: "" }, "boom");
+    expect(outcome.status).toBe("needs_review");
+    expect(outcome.providerIssued).toBe(true);
+    expect(outcome.errorMessage).toContain("號碼未知");
+  });
+
+  it("尚未呼叫 Giveme 就出錯 → 維持 failed", () => {
+    const outcome = resolveIssueErrorOutcome(null, "Quota exceeded");
+    expect(outcome).toEqual({ status: "failed", providerIssued: false, errorMessage: "Quota exceeded", warning: "" });
+  });
+
+  it("Giveme 回失敗後寫入出錯 → 維持 failed", () => {
+    const outcome = resolveIssueErrorOutcome({ success: false, code: "" }, "write error");
+    expect(outcome.status).toBe("failed");
+    expect(outcome.providerIssued).toBe(false);
   });
 });
