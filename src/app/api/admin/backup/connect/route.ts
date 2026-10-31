@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   if (guard.denied) return guard.denied;
 
   try {
-    const state = buildSignedState("/settings?tab=maintenance", "drive-backup");
+    const state = buildSignedState("/settings?tab=maintenance", "drive-backup", guard.session.email);
     return NextResponse.redirect(buildGoogleDriveConnectUrl(state));
   } catch (err) {
     const msg = err instanceof Error ? err.message : "connect init failed";

@@ -33,14 +33,25 @@ async function requireSheets(): Promise<SheetsClient> {
   return client;
 }
 
+function isSheetAlreadyExistsError(err: unknown): boolean {
+  return err instanceof Error && /already exists/i.test(err.message);
+}
+
 async function ensureSheet(client: SheetsClient): Promise<void> {
   const meta = await client.sheets.spreadsheets.get({ spreadsheetId: client.spreadsheetId });
   const exists = (meta.data.sheets ?? []).some((s) => s.properties?.title === DRIVE_AUTH_SHEET);
   if (exists) return;
-  await client.sheets.spreadsheets.batchUpdate({
-    spreadsheetId: client.spreadsheetId,
-    requestBody: { requests: [{ addSheet: { properties: { title: DRIVE_AUTH_SHEET } } }] },
-  });
+  try {
+    await client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: client.spreadsheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title: DRIVE_AUTH_SHEET } } }] },
+    });
+  } catch (err) {
+    // 兩個請求同時第一次用到（例如排程備份與設定頁同時載入）時，晚到的那個 addSheet
+    // 會被 Google 以「already exists」拒絕。表已經在了就照常往下走，其他錯誤照丟。
+    if (!isSheetAlreadyExistsError(err)) throw err;
+  }
+  // 表頭重寫一次無害：先建表的那個請求若在寫表頭前失敗，這裡會補上
   await client.sheets.spreadsheets.values.update({
     spreadsheetId: client.spreadsheetId,
     range: `${DRIVE_AUTH_SHEET}!A1`,

@@ -262,15 +262,20 @@ export type OAuthStatePurpose = "login" | "drive-backup";
  * 10 分鐘有效期內的登入連結不受影響。其他用途加上 `purpose:<用途>:` 前綴——
  * 登入原文一定以數字（ts）開頭，前綴以字母開頭，兩種原文不可能撞成同一個字串，
  * 也就無法靠調整 returnTo 把登入 state 的簽章挪用成 Drive state 的簽章。
+ *
+ * Drive state 另外簽進「按下連結的那位 admin 的 email」：callback 會要求它等於
+ * 當下瀏覽器裡的 session。別人拿到這張 state（例如被轉傳的授權網址）也不能用
+ * 自己的 session 完成連結。
  */
 function stateSigningInput(
   purpose: OAuthStatePurpose,
   ts: number,
   nonce: string,
   returnTo: string,
+  boundEmail: string,
 ): string {
   const base = `${ts}:${nonce}:${returnTo}`;
-  return purpose === "login" ? base : `purpose:${purpose}:${base}`;
+  return purpose === "login" ? base : `purpose:${purpose}:${boundEmail}:${base}`;
 }
 
 /**
@@ -281,18 +286,22 @@ function stateSigningInput(
 export function buildSignedState(
   returnTo: string,
   purpose: OAuthStatePurpose = "login",
+  /** purpose 不是 login 時必填：發起者的 email */
+  boundEmail = "",
 ): string {
   if (AUTH_SECRET.length < MIN_SECRET_LEN) throw new Error("AUTH_SECRET not configured or too short (minimum 32 characters)");
+  const email = boundEmail.trim().toLowerCase();
+  if (purpose !== "login" && !email) throw new Error("非登入用途的 state 必須綁定發起者 email");
   const nonce = crypto.randomBytes(16).toString("base64url");
   const ts = Math.floor(Date.now() / 1000);
   const sig = crypto
     .createHmac("sha256", AUTH_SECRET)
-    .update(stateSigningInput(purpose, ts, nonce, returnTo))
+    .update(stateSigningInput(purpose, ts, nonce, returnTo, email))
     .digest("base64url");
-  // 登入 state 不帶 purpose 欄位，內容與改版前完全相同
+  // 登入 state 不帶 purpose／email 欄位，內容與改版前完全相同
   const payload = purpose === "login"
     ? { nonce, ts, sig, returnTo }
-    : { nonce, ts, sig, returnTo, purpose };
+    : { nonce, ts, sig, returnTo, purpose, email };
   return Buffer.from(JSON.stringify(payload)).toString("base64url");
 }
 
@@ -301,21 +310,25 @@ const STATE_MAX_AGE_SECONDS = 600; // 10 分鐘
 /**
  * 驗證 signed state 並回傳 returnTo 與用途；失敗回 null。
  * 沒有 purpose 欄位＝登入（改版前發出的 state 也是這樣）。認不得的用途一律拒絕。
+ * 非登入用途另外回傳簽章內綁定的發起者 email（小寫），登入時為空字串。
  */
 export function verifySignedState(
   stateParam: string,
-): { returnTo: string; purpose: OAuthStatePurpose } | null {
+): { returnTo: string; purpose: OAuthStatePurpose; boundEmail: string } | null {
   if (AUTH_SECRET.length < MIN_SECRET_LEN) return null;
   try {
     const decoded = JSON.parse(
       Buffer.from(stateParam, "base64url").toString("utf-8"),
-    ) as { nonce?: string; ts?: number; sig?: string; returnTo?: string; purpose?: unknown };
+    ) as { nonce?: string; ts?: number; sig?: string; returnTo?: string; purpose?: unknown; email?: unknown };
     if (!decoded.nonce || !decoded.ts || !decoded.sig) return null;
 
     let purpose: OAuthStatePurpose;
     if (decoded.purpose === undefined) purpose = "login";
     else if (decoded.purpose === "drive-backup") purpose = "drive-backup";
     else return null;
+
+    const boundEmail = purpose === "login" ? "" : typeof decoded.email === "string" ? decoded.email : "";
+    if (purpose !== "login" && !boundEmail) return null;
 
     // 檢查時效
     const now = Math.floor(Date.now() / 1000);
@@ -325,7 +338,7 @@ export function verifySignedState(
     // 驗證簽章（含 returnTo 與用途，防止竄改重導目標或改走別的分支）
     const expectedSig = crypto
       .createHmac("sha256", AUTH_SECRET)
-      .update(stateSigningInput(purpose, decoded.ts, decoded.nonce, decoded.returnTo ?? ""))
+      .update(stateSigningInput(purpose, decoded.ts, decoded.nonce, decoded.returnTo ?? "", boundEmail))
       .digest("base64url");
     if (
       decoded.sig.length !== expectedSig.length ||
@@ -337,7 +350,7 @@ export function verifySignedState(
       return null;
     }
 
-    return { returnTo: decoded.returnTo || "/", purpose };
+    return { returnTo: decoded.returnTo || "/", purpose, boundEmail };
   } catch {
     return null;
   }

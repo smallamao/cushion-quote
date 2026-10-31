@@ -27,7 +27,7 @@ function hmac(input: string): string {
 describe("OAuth state — 登入流程維持原樣", () => {
   it("登入 state 解析為 login，returnTo 保留", () => {
     const state = auth.buildSignedState("/orders?x=1");
-    expect(auth.verifySignedState(state)).toEqual({ returnTo: "/orders?x=1", purpose: "login" });
+    expect(auth.verifySignedState(state)).toEqual({ returnTo: "/orders?x=1", purpose: "login", boundEmail: "" });
   });
 
   it("登入 state 的內容與改版前相同：沒有 purpose 欄位，簽章原文是 ts:nonce:returnTo", () => {
@@ -39,7 +39,7 @@ describe("OAuth state — 登入流程維持原樣", () => {
   it("改版前格式手工簽的 state 仍可通過（已發出的登入連結不受影響）", () => {
     const ts = Math.floor(Date.now() / 1000);
     const state = encode({ nonce: "n1", ts, sig: hmac(`${ts}:n1:/x`), returnTo: "/x" });
-    expect(auth.verifySignedState(state)).toEqual({ returnTo: "/x", purpose: "login" });
+    expect(auth.verifySignedState(state)).toEqual({ returnTo: "/x", purpose: "login", boundEmail: "" });
   });
 
   it("returnTo 被竄改就拒絕", () => {
@@ -55,12 +55,28 @@ describe("OAuth state — 登入流程維持原樣", () => {
 });
 
 describe("OAuth state — Drive 備份用途", () => {
-  it("drive-backup state 解析為 drive-backup", () => {
-    const state = auth.buildSignedState("/settings?tab=maintenance", "drive-backup");
+  it("drive-backup state 解析為 drive-backup，並帶回綁定的發起者 email（小寫）", () => {
+    const state = auth.buildSignedState("/settings?tab=maintenance", "drive-backup", "Boss@Example.com");
     expect(auth.verifySignedState(state)).toEqual({
       returnTo: "/settings?tab=maintenance",
       purpose: "drive-backup",
+      boundEmail: "boss@example.com",
     });
+  });
+
+  it("drive-backup state 簽章原文含綁定 email", () => {
+    const decoded = decode(auth.buildSignedState("/s", "drive-backup", "boss@example.com"));
+    expect(decoded.sig).toBe(hmac(`purpose:drive-backup:boss@example.com:${decoded.ts}:${decoded.nonce}:/s`));
+  });
+
+  it("竄改綁定的 email 會讓簽章失效", () => {
+    const decoded = decode(auth.buildSignedState("/s", "drive-backup", "boss@example.com"));
+    expect(auth.verifySignedState(encode({ ...decoded, email: "attacker@example.com" }))).toBeNull();
+    expect(auth.verifySignedState(encode({ ...decoded, email: "" }))).toBeNull();
+  });
+
+  it("drive-backup state 不綁 email 就不發", () => {
+    expect(() => auth.buildSignedState("/s", "drive-backup")).toThrow();
   });
 
   it("把登入 state 加上 purpose 欄位不會變成 drive-backup（簽章不符）", () => {
@@ -69,7 +85,7 @@ describe("OAuth state — Drive 備份用途", () => {
   });
 
   it("把 drive-backup state 的 purpose 拿掉不會變成登入", () => {
-    const decoded = decode(auth.buildSignedState("/a", "drive-backup"));
+    const decoded = decode(auth.buildSignedState("/a", "drive-backup", "boss@example.com"));
     delete decoded.purpose;
     expect(auth.verifySignedState(encode(decoded))).toBeNull();
   });
@@ -83,7 +99,7 @@ describe("OAuth state — Drive 備份用途", () => {
     // 用登入格式的原文去簽，也不算 drive-backup 的簽章
     expect(
       auth.verifySignedState(
-        encode({ nonce: "n", ts, sig: hmac(`${ts}:n:/`), returnTo: "/", purpose: "drive-backup" }),
+        encode({ nonce: "n", ts, sig: hmac(`${ts}:n:/`), returnTo: "/", purpose: "drive-backup", email: "boss@example.com" }),
       ),
     ).toBeNull();
   });

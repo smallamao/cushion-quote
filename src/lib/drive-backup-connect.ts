@@ -32,10 +32,20 @@ export function driveConnectRedirect(request: Request, outcome: DriveConnectOutc
   return NextResponse.redirect(url);
 }
 
-export async function handleDriveBackupCallback(request: Request, code: string): Promise<NextResponse> {
+export async function handleDriveBackupCallback(
+  request: Request,
+  code: string,
+  /** state 簽章內綁定的發起者 email（按下「連結 Google Drive」的那位 admin） */
+  boundEmail: string,
+): Promise<NextResponse> {
   // 先驗身分再換 code：不是 admin 的人連 token 都不該替他換
   const guard = await requireAdmin(request);
   if (guard.denied) return driveConnectRedirect(request, "forbidden");
+  // 完成連結的必須是發起連結的同一個人：授權網址被轉給別人，對方用自己的 session 也走不完
+  const sessionEmail = guard.session.email.trim().toLowerCase();
+  if (!boundEmail || sessionEmail !== boundEmail.trim().toLowerCase()) {
+    return driveConnectRedirect(request, "forbidden");
+  }
 
   let result: Awaited<ReturnType<typeof exchangeGoogleCodeForDrive>>;
   try {

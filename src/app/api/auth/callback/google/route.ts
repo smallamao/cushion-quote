@@ -44,7 +44,7 @@ export async function GET(request: Request) {
   // 登入與 Drive 連結共用同一個 redirect URI，靠簽章內的 purpose 分流。
   // Drive 分支只存備份授權，不簽 session、不改 cookie（見 lib/drive-backup-connect.ts）。
   if (stateResult.purpose === "drive-backup") {
-    return handleDriveBackupCallback(request, code);
+    return handleDriveBackupCallback(request, code, stateResult.boundEmail);
   }
   const { returnTo } = stateResult;
 

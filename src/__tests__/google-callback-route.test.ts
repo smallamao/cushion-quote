@@ -94,7 +94,24 @@ describe("callback — 登入流程不變", () => {
 });
 
 describe("callback — Drive 備份分支", () => {
-  const driveState = () => auth.buildSignedState("/settings?tab=maintenance", "drive-backup");
+  const driveState = (email = "boss@example.com") =>
+    auth.buildSignedState("/settings?tab=maintenance", "drive-backup", email);
+
+  it("state 綁定的 admin 與目前 session 不同人：forbidden，不換 code", async () => {
+    const res = await GET(callback({ code: "c9", state: driveState("other-admin@example.com") }));
+    expect(res.headers.get("location")).toBe("https://app.test/settings?tab=maintenance&drive=forbidden");
+    expect(exchangeGoogleCodeForDrive).not.toHaveBeenCalled();
+    expect(saveDriveConnection).not.toHaveBeenCalled();
+  });
+
+  it("email 大小寫不同仍視為同一人", async () => {
+    exchangeGoogleCodeForDrive.mockResolvedValue({
+      ok: true, email: "owner@gmail.com", refreshToken: "rt", refreshTokenExpiresIn: null,
+    });
+    requireAdmin.mockResolvedValue({ session: { ...ADMIN, email: "Boss@Example.com" } });
+    const res = await GET(callback({ code: "c", state: driveState("boss@example.com") }));
+    expect(res.headers.get("location")).toContain("drive=connected");
+  });
 
   it("admin 連結成功：存授權、導回設定頁、不碰 session cookie、不走登入", async () => {
     exchangeGoogleCodeForDrive.mockResolvedValue({
