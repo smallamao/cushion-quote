@@ -113,6 +113,12 @@ const BANK_ACCOUNTS: BankAccount[] = [
 
 const QUICK_AMOUNTS = [3000, 5000, 10000, 15000, 20000];
 
+const PAYMENT_REF_PLACEHOLDER: Record<PaymentType, string> = {
+  匯款: "帳號末五碼",
+  刷卡: "卡號末五碼",
+  "LINE PAY": "LINE PAY 驗證碼",
+};
+
 interface CardInfo {
   due: string;
   dueComplete: boolean;
@@ -254,12 +260,12 @@ function buildReceiptMessage(
 
 export function RemittanceClient() {
   const [amount, setAmount] = useState("");
-  const [lastFive, setLastFive] = useState("");
+  // 帳號末五碼／卡號末五碼／LINE PAY 驗證碼共用一格，切換付款方式不清空
+  const [paymentRef, setPaymentRef] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [paymentType, setPaymentType] = useState<PaymentType>("匯款");
   const [receiptModal, setReceiptModal] = useState<{ customer: string; full: string } | null>(null);
   const [isBalance, setIsBalance] = useState(false);
-  const [linepayCode, setLinepayCode] = useState("");
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [cardInfo, setCardInfo] = useState<CardInfo | null>(null);
@@ -299,8 +305,8 @@ export function RemittanceClient() {
   }
 
   function showBothReceipts(isPotatoAccount: boolean) {
-    const customer = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, "客戶回覆聯", isBalance, linepayCode, isPotatoAccount, cardInfo ?? undefined);
-    const full = buildReceiptMessage(amount, lastFive, orderNumber, paymentType, "完整記錄", isBalance, linepayCode, isPotatoAccount, cardInfo ?? undefined);
+    const customer = buildReceiptMessage(amount, paymentRef, orderNumber, paymentType, "客戶回覆聯", isBalance, paymentRef, isPotatoAccount, cardInfo ?? undefined);
+    const full = buildReceiptMessage(amount, paymentRef, orderNumber, paymentType, "完整記錄", isBalance, paymentRef, isPotatoAccount, cardInfo ?? undefined);
     setReceiptModal({ customer, full });
   }
 
@@ -417,25 +423,15 @@ export function RemittanceClient() {
           className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
         />
 
-        {/* Last five / LINE PAY code */}
-        {paymentType !== "LINE PAY" ? (
-          <input
-            type="text"
-            value={lastFive}
-            onChange={(e) => setLastFive(e.target.value)}
-            placeholder={paymentType === "匯款" ? "帳號末五碼" : "卡號末五碼"}
-            maxLength={5}
-            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-          />
-        ) : (
-          <input
-            type="text"
-            value={linepayCode}
-            onChange={(e) => setLinepayCode(e.target.value)}
-            placeholder="LINE PAY 驗證碼"
-            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-          />
-        )}
+        {/* Last five / card last five / LINE PAY code */}
+        <input
+          type="text"
+          value={paymentRef}
+          onChange={(e) => setPaymentRef(e.target.value)}
+          placeholder={PAYMENT_REF_PLACEHOLDER[paymentType]}
+          maxLength={paymentType === "LINE PAY" ? undefined : 5}
+          className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+        />
 
         <button
           onClick={handleReceiptClick}
