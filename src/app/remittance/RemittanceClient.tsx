@@ -85,7 +85,7 @@ const BANK_ACCOUNTS: BankAccount[] = [
   },
   {
     id: "sinopac_custom",
-    buttonLabel: "輸出永豐（陳涵儀）",
+    buttonLabel: "輸出大戶（陳涵儀）",
     orderPrefix: "S",
     isCustomCushion: true,
     holderName: "陳涵儀",
