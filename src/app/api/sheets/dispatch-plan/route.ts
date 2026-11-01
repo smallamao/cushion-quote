@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/api-auth";
 import { parseDeliveryRegion } from "@/lib/delivery-region";
+import {
+  HARD_CAP, MAX_ROUTES, NOTIFY_LEAD_DAYS, SOFT_CAP, suggestDriver,
+} from "@/lib/dispatch-rules";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import { normalizeDeliveryPeriod } from "@/lib/material-confirm-types";
 import { TRELLO } from "@/lib/trello-constants";
-import { addCardCommentUnlessTest, getBoardCards } from "@/lib/trello-server";
+import { addCardCommentUnlessTest, getBoardCardsWithDesc } from "@/lib/trello-server";
 
 /**
  * 排車視圖：把「客人給的希望時段」攤成 日期 × 時段 × 區域，供人工排車。
@@ -23,8 +26,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** 同一天超過這個數量就提示。沒有實際容量資料前用觀測值：實測最多一天 4 筆第一志願。 */
-export const DAILY_SOFT_CAP = 4;
-
 export async function GET(request: Request) {
   const guard = await requireAdmin(request);
   if (guard.denied) return guard.denied;
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
   try {
     const [confirms, cards] = await Promise.all([
       listConfirms(),
-      getBoardCards(TRELLO.BOARD_ID).catch(() => []),
+      getBoardCardsWithDesc(TRELLO.BOARD_ID).catch(() => []),
     ]);
     // 地址在卡片描述裡，沒有獨立欄位
     const descById = new Map(
@@ -56,6 +57,12 @@ export async function GET(request: Request) {
           city: region.city,
           isRemote: region.isRemote,
           regionUnknown: region.unknown,
+          driver: suggestDriver(region.city),
+          /**
+           * 只給一組時段＝完全沒有彈性，要最先鎖定。
+           * 老闆 2026-11-01：有些是舊沙發要配合清潔隊時間，改不了。
+           */
+          locked: c.preferredSlots.length === 1,
         };
       });
 
@@ -77,7 +84,10 @@ export async function GET(request: Request) {
         };
       });
 
-    return NextResponse.json({ ok: true, pending, scheduled, dailySoftCap: DAILY_SOFT_CAP });
+    return NextResponse.json({
+      ok: true, pending, scheduled,
+      rules: { softCap: SOFT_CAP, hardCap: HARD_CAP, maxRoutes: MAX_ROUTES, notifyLeadDays: NOTIFY_LEAD_DAYS },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "讀取失敗";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

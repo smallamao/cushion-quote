@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 
+import { isStorageOverdue } from "@/lib/dispatch-rules";
+
 /**
  * 排車視圖：把客人給的希望時段攤成「一天一張卡」，供人工排車。
  *
@@ -17,7 +19,11 @@ interface Pending {
   token: string; cardId: string; orderNumber: string; customerName: string;
   dueDate: string; weekKey: string; slots: Slot[];
   region: string; city: string; isRemote: boolean; regionUnknown: boolean;
+  driver: { name: string; note: string };
+  /** 只給一組時段＝沒有彈性（常見原因：舊沙發要配合清潔隊），要最先鎖定 */
+  locked: boolean;
 }
+interface Rules { softCap: number; hardCap: number; maxRoutes: number; notifyLeadDays: number }
 interface Scheduled {
   token: string; orderNumber: string; customerName: string;
   date: string; period: string; region: string; city: string; isRemote: boolean;
@@ -33,7 +39,7 @@ function fmtDate(ymd: string): string {
 export function DispatchPlanClient() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [scheduled, setScheduled] = useState<Scheduled[]>([]);
-  const [cap, setCap] = useState(4);
+  const [rules, setRules] = useState<Rules>({ softCap: 4, hardCap: 6, maxRoutes: 3, notifyLeadDays: 3 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -44,12 +50,12 @@ export function DispatchPlanClient() {
     try {
       const res = await fetch("/api/sheets/dispatch-plan", { cache: "no-store" });
       const j = (await res.json()) as {
-        ok: boolean; error?: string; pending?: Pending[]; scheduled?: Scheduled[]; dailySoftCap?: number;
+        ok: boolean; error?: string; pending?: Pending[]; scheduled?: Scheduled[]; rules?: Rules;
       };
       if (!j.ok) { setError(j.error ?? "讀取失敗"); return; }
       setPending(j.pending ?? []);
       setScheduled(j.scheduled ?? []);
-      setCap(j.dailySoftCap ?? 4);
+      if (j.rules) setRules(j.rules);
     } catch {
       setError("讀取失敗，請檢查網路");
     } finally {
@@ -134,12 +140,13 @@ export function DispatchPlanClient() {
 
       <div className="mt-4 space-y-3">
         {days.map((d) => {
-          const cities = new Set(
-            [...d.booked.map((b) => b.city), ...d.candidates.map((c) => c.p.city)].filter(Boolean),
-          );
-          const over = d.booked.length > cap;
-          const mixed = cities.size > 1;
-          const hasRemote = [...d.booked, ...d.candidates.map((c) => c.p)].some((x) => x.isRemote);
+          // 🔴 路線數用「已排定的縣市數」估，不用候選——候選只是客人想要，還沒成立。
+          //    老闆 2026-11-01：淡水＋土城同一天可以（都算新北，一條路線），
+          //    早上新竹下午台北是兩條。所以跨縣市本身不是問題，跨太多條才是。
+          const routes = new Set(d.booked.map((b) => b.city).filter(Boolean)).size;
+          const overHard = d.booked.length > rules.hardCap;
+          const overSoft = !overHard && d.booked.length > rules.softCap;
+          const tooManyRoutes = routes > rules.maxRoutes;
           return (
             <div key={d.date} className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -147,19 +154,19 @@ export function DispatchPlanClient() {
                 <span className="text-xs text-[var(--text-secondary)]">
                   已排 {d.booked.length}・候選 {d.candidates.length}
                 </span>
-                {over && (
+                {overHard && (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
-                    ⚠️ 已排超過 {cap} 筆
+                    🚨 已排 {d.booked.length} 趟，超過上限 {rules.hardCap}
                   </span>
                 )}
-                {mixed && (
+                {overSoft && (
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
-                    ⚠️ 跨 {cities.size} 個縣市
+                    ⚠️ 已排 {d.booked.length} 趟，偏多（常態 {rules.softCap} 以內）
                   </span>
                 )}
-                {hasRemote && (
-                  <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[11px] text-purple-800">
-                    🚩 含遠程
+                {tooManyRoutes && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
+                    ⚠️ {routes} 條路線，超過 {rules.maxRoutes}
                   </span>
                 )}
               </div>
@@ -188,20 +195,37 @@ export function DispatchPlanClient() {
                 <div className="mt-2 space-y-1">
                   {d.candidates
                     .filter((c) => !assignedTokens.has(c.p.token))
-                    .sort((a, b) => a.rank - b.rank)
+                    // 只給一組時段的沒有退路，排在最前面
+                    .sort((a, b) => Number(b.p.locked) - Number(a.p.locked) || a.rank - b.rank)
                     .map((c) => (
                       <div
                         key={`${c.p.token}-${c.rank}`}
                         className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] px-2 py-1.5 text-sm"
                       >
-                        <span className="rounded bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)]">
-                          第 {c.rank} 志願
-                        </span>
+                        {c.p.locked ? (
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-medium text-red-700">
+                            🔒 只給這一組
+                          </span>
+                        ) : (
+                          <span className="rounded bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)]">
+                            第 {c.rank} 志願
+                          </span>
+                        )}
                         <span className="font-medium">{c.p.orderNumber} {c.p.customerName}</span>
                         <span className="text-xs text-[var(--text-secondary)]">{c.period}</span>
                         <span className={`text-xs ${c.p.isRemote ? "font-medium text-purple-700" : c.p.regionUnknown ? "text-red-600" : "text-[var(--text-secondary)]"}`}>
                           📍 {c.p.region}
                         </span>
+                        {c.p.driver.name && (
+                          <span className="text-xs text-[var(--text-secondary)]" title={c.p.driver.note}>
+                            🚚 {c.p.driver.name}
+                          </span>
+                        )}
+                        {isStorageOverdue(c.p.dueDate, d.date) && (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
+                            ⚠️ 完工後逾兩週
+                          </span>
+                        )}
                         <button
                           type="button" disabled={busy}
                           onClick={() => void assign(c.p.token, d.date, c.period)}
