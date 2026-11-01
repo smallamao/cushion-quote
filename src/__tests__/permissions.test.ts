@@ -434,12 +434,12 @@ describe("選單與白名單一致", () => {
     },
   );
 
-  // 老闆指定：師傅選單只有兩項。「我的行程」在售後服務頁裡是分頁，不另列選單
-  // （/my-schedule 與 my-installs 仍在白名單，那個分頁要用）
-  it("工廠師傅選單只有生產訂單＋售後服務", () => {
+  // 老闆指定：師傅選單是生產訂單＋售後服務＋我的行程（我的行程跟售後服務綁在一起）
+  it("工廠師傅選單是生產訂單＋售後服務＋我的行程", () => {
     expect(navLinks.filter((l) => l.roles.includes("craftsman")).map((l) => l.href)).toEqual([
       "/production-orders",
       "/after-sales",
+      "/my-schedule",
     ]);
   });
 

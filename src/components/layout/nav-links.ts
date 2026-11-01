@@ -53,7 +53,7 @@ export const navLinks: NavLinkDef[] = [
   { href: "/orders", label: "訂製訂單", icon: ClipboardList, roles: ["admin"], group: "operations" },
   { href: "/production-orders", label: "生產訂單", icon: Factory, roles: ["admin", "craftsman"], group: "operations" },
   { href: "/after-sales", label: "售後服務", icon: Stethoscope, roles: ["admin", "technician", "craftsman"], group: "operations" },
-  { href: "/my-schedule", label: "我的行程", icon: Calendar, roles: ["technician"], group: "operations" },
+  { href: "/my-schedule", label: "我的行程", icon: Calendar, roles: ["technician", "craftsman"], group: "operations" },
   { href: "/calendar", label: "行事曆", icon: Calendar, roles: ["admin"], group: "operations" },
   // ── 財務 ──
   { href: "/remittance", label: "匯款資訊", icon: Wallet, roles: ["admin"], group: "finance" },
