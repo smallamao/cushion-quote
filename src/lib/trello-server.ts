@@ -318,6 +318,22 @@ export function readDepositState(card: BoardCardWithChecklists): DepositState {
   return { paid: null, text: "" };
 }
 
+/**
+ * 整塊板的卡片，額外帶描述欄。
+ *
+ * 🔴 getBoardCards 刻意不抓 desc（大多數呼叫端用不到，抓了平白放大回應）。
+ *    但配送地址就寫在 desc 裡，排車視圖非抓不可——2026-10-31 就是漏了這個，
+ *    導致每一筆的區域都顯示「需確認」。要用描述欄請改呼叫這支。
+ */
+export async function getBoardCardsWithDesc(
+  boardId: string,
+): Promise<Array<BoardCardLite & { desc: string }>> {
+  return trelloJson<Array<BoardCardLite & { desc: string }>>(`boards/${boardId}/cards`, {
+    fields: "name,due,idList,desc",
+    customFieldItems: "true",
+  });
+}
+
 export function getCustomFieldDate(card: BoardCardLite, fieldId: string): string {
   const v = (card.customFieldItems ?? []).find((i) => i.idCustomField === fieldId)?.value?.date;
   return v ?? "";
