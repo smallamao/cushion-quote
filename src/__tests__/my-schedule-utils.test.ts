@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  afterSalesPatchFor,
   filterTechnicianPatch,
+  visibleServicesFor,
   groupByDate,
   sortDateGroups,
   buildMapsUrl,
@@ -153,5 +155,50 @@ describe("buildMapsUrl", () => {
     expect(url).toBe(
       `https://www.google.com/maps/dir/${encodeURIComponent("地址A")}/${encodeURIComponent("地址B")}/${encodeURIComponent("地址C")}`,
     );
+  });
+});
+
+describe("visibleServicesFor — 售後單清單依角色過濾", () => {
+  const services = [
+    { ...base, serviceId: "AS-1", assignedTo: "阿明" },
+    { ...base, serviceId: "AS-2", assignedTo: " 阿明 " },
+    { ...base, serviceId: "AS-3", assignedTo: "阿華" },
+    { ...base, serviceId: "AS-4", assignedTo: "" },
+  ];
+  const ids = (list: AfterSalesService[]) => list.map((s) => s.serviceId);
+
+  it("admin 看全部", () => {
+    expect(ids(visibleServicesFor("admin", "老闆", services))).toEqual(["AS-1", "AS-2", "AS-3", "AS-4"]);
+  });
+
+  it.each(["technician", "craftsman", "sales"])("%s 只看指派給自己的（前後空白不影響）", (role) => {
+    expect(ids(visibleServicesFor(role, "阿明", services))).toEqual(["AS-1", "AS-2"]);
+  });
+
+  it.each(["craftsman", "technician", "weird", undefined])("%s 拿不到自己名字時回空，不退化成全部", (role) => {
+    expect(visibleServicesFor(role, "  ", services)).toEqual([]);
+  });
+
+  it("未指派的單不屬於任何非 admin", () => {
+    expect(ids(visibleServicesFor("craftsman", "阿華", services))).toEqual(["AS-3"]);
+  });
+});
+
+describe("afterSalesPatchFor — 售後單 PATCH 欄位依角色過濾", () => {
+  it("admin 整包通過", () => {
+    const body = { clientName: "改名", assignedTo: "阿華", status: "pending" };
+    expect(afterSalesPatchFor("admin", body)).toEqual({ ok: true, filtered: body });
+  });
+
+  it.each(["technician", "craftsman", "sales", "weird", null])("%s 只能改完工欄位", (role) => {
+    expect(afterSalesPatchFor(role, { status: "completed", completionNotes: "OK" })).toEqual({
+      ok: true,
+      filtered: { status: "completed", completionNotes: "OK" },
+    });
+    expect(afterSalesPatchFor(role, { status: "in_progress" }).ok).toBe(true);
+    expect(afterSalesPatchFor(role, { assignedTo: "自己" }).ok).toBe(false);
+    expect(afterSalesPatchFor(role, { clientPhone: "0900" }).ok).toBe(false);
+    expect(afterSalesPatchFor(role, { status: "cancelled" }).ok).toBe(false);
+    expect(afterSalesPatchFor(role, { status: "scheduled" }).ok).toBe(false);
   });
 });

@@ -46,6 +46,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useUsers } from "@/hooks/useUsers";
 import { invalidateCache } from "@/lib/fetch-cache";
 import { parseAfterSalesText } from "@/lib/after-sales-paste-parser";
+import { isAfterSalesReadOnly } from "@/lib/permissions";
 import type {
   AfterSalesReply,
   AfterSalesService,
@@ -128,7 +129,8 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
   const { equipment } = useEquipment();
   const { settings } = useSettings();
   const { users } = useUsers();
-  const readOnly = user?.role === "technician";
+  // 只有 admin 能編輯；技師、工廠師傅（與未來新角色）一律唯讀
+  const readOnly = isAfterSalesReadOnly(user?.role);
 
   // 技師不能新增工單，導回列表
   useEffect(() => {

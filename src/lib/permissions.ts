@@ -6,33 +6,42 @@
 //   middleware 多放行了案件／報價版本／庫存／商品／供應商／行事曆。）
 
 /**
+ * 售後服務「現場角色」共用的路徑：技師與工廠師傅都靠這組做售後。
+ * 伺服器端的規則對所有非 admin 一致：只看得到指派給自己的單、只能改完工欄位、
+ * 不能開單／刪單（見 api/sheets/after-sales 與 schedule-utils）。
+ */
+const AFTER_SALES_FIELD_PREFIXES = [
+  "/after-sales",
+  "/my-schedule", // 自己的派工行程（資料來源就是售後服務；/after-sales 非 admin 預設也是這個分頁）
+  "/api/sheets/after-sales",
+  "/api/sheets/equipment", // 售後單選設備型號
+  "/api/sheets/orders/my-installs", // 「我的行程」裡的「我的安裝」（安全投影，無金額；只回指派給自己的）
+  "/api/upload", // 現場照片／簽名上傳
+] as const;
+
+/**
  * 技師（到府售後）與 sales 可訪問的路徑 prefix — 白名單，其餘一律拒絕。
  *
  * 目前開放：售後服務（含我的行程）＋ 設備型錄 API（售後單選型號用）。
  * 靜態資源與公開路徑另由 middleware 的 isPublicPath 處理。
  */
-export const TECHNICIAN_ALLOWED_PREFIXES = [
-  "/after-sales",
-  "/my-schedule", // 師傅自己的派工行程（資料來源就是售後服務）
-  "/login",
-  "/api/auth",
-  "/api/sheets/after-sales",
-  "/api/sheets/equipment", // 售後單選設備型號
-  "/api/sheets/orders/my-installs", // 師傅的「我的安裝」（安全投影，無金額）
-  "/api/upload", // 現場照片／簽名上傳
-] as const;
+export const TECHNICIAN_ALLOWED_PREFIXES = [...AFTER_SALES_FIELD_PREFIXES, "/login", "/api/auth"] as const;
 
 /**
  * 工廠師傅（craftsman，做沙發的人）可訪問的路徑 prefix。
  *
- * 只開「生產訂單」頁與它自己的 API——那支 API 在伺服器端只投影製作需要的欄位
+ * 「生產訂單」頁與它自己的 API——那支 API 在伺服器端只投影製作需要的欄位
  * （無客戶姓名、地址電話、金額）。刻意不開 /api/sheets/orders：那邊回的是整張訂單。
+ *
+ * 2026-11-01 老闆指定：師傅也要做售後服務，權限與技師完全相同（同一組
+ * AFTER_SALES_FIELD_PREFIXES）。售後單本來就含客戶地址電話，但只限指派給他的單。
  */
 export const CRAFTSMAN_ALLOWED_PREFIXES = [
   "/production-orders",
+  "/api/sheets/production-orders",
+  ...AFTER_SALES_FIELD_PREFIXES,
   "/login",
   "/api/auth",
-  "/api/sheets/production-orders",
 ] as const;
 
 /** 角色不認得（表上打錯字、空白、未來新角色還沒接好）時：只留登入／登出 */
@@ -66,6 +75,14 @@ function allowedPrefixesFor(role: string | null | undefined): readonly string[] 
     default:
       return UNKNOWN_ROLE_ALLOWED_PREFIXES;
   }
+}
+
+/**
+ * 售後服務單在這個角色眼中是不是唯讀。只有 admin 能編輯；技師、師傅、
+ * 認不得的角色（含 null＝還沒載入）一律唯讀——新角色預設最小權限。
+ */
+export function isAfterSalesReadOnly(role: string | null | undefined): boolean {
+  return role !== "admin";
 }
 
 /** 這個角色能不能訪問此路徑。admin 全開；其他角色各自白名單，ADMIN_ONLY 永遠優先擋下。 */

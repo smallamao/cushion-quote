@@ -9,7 +9,7 @@ import { createUser, listUsers, updateUser } from "@/lib/users-sheet";
  *
  * types.ts 的 UserRole 還有 "sales"，但這套系統目前不建 sales 帳號
  * （middleware 把 sales 與 technician 同權看待）。要支援就在這裡加。
- * craftsman＝工廠師傅，只看得到生產訂單（見 lib/permissions.ts）。
+ * craftsman＝工廠師傅，生產訂單＋指派給自己的售後服務（見 lib/permissions.ts）。
  * 與 UsersManagementPanel 的 ROLE_OPTIONS 保持一致。
  */
 const ASSIGNABLE_ROLES: readonly UserRole[] = ["admin", "technician", "craftsman"];

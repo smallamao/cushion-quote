@@ -31,6 +31,33 @@ export function filterTechnicianPatch(
   return { ok: true, filtered };
 }
 
+/**
+ * 售後單清單：這個角色看得到哪些單。admin 全部；其他角色（技師、工廠師傅、
+ * 認不得的角色）只看指派給自己的。拿不到自己名字時回空——不能退化成「全部」。
+ */
+export function visibleServicesFor<T extends Pick<AfterSalesService, "assignedTo">>(
+  role: string | null | undefined,
+  displayName: string,
+  services: readonly T[],
+): T[] {
+  if (role === "admin") return [...services];
+  const me = displayName.trim();
+  if (!me) return [];
+  return services.filter((s) => (s.assignedTo ?? "").trim() === me);
+}
+
+/**
+ * 售後單 PATCH 的欄位規則。admin 整包通過；其他角色一律走技師白名單
+ * （只能改狀態＝處理中／已完成與完工欄位）。
+ */
+export function afterSalesPatchFor(
+  role: string | null | undefined,
+  body: Record<string, unknown>,
+): { ok: true; filtered: Record<string, unknown> } | { ok: false; error: string } {
+  if (role === "admin") return { ok: true, filtered: body };
+  return filterTechnicianPatch(body);
+}
+
 export interface DateGroup {
   date: string;
   items: AfterSalesService[];

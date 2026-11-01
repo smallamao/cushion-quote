@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api-auth";
 import { createService, listServices } from "@/lib/after-sales-sheet";
 import { buildDispatchPath } from "@/lib/dispatch-link";
+import { visibleServicesFor } from "@/lib/schedule-utils";
 import type { AfterSalesServiceType, AfterSalesStatus } from "@/lib/types";
 
 export async function GET(request: Request) {
@@ -17,10 +18,8 @@ export async function GET(request: Request) {
     //    因此等於整份客戶名冊（姓名、地址、電話）的讀取權限。
     //    前端本來就只顯示自己的（MyScheduleClient 的 isAdmin || assignedTo === myName），
     //    這裡只是把同一條規則搬到伺服器端真正執行。
-    const me = session.displayName.trim();
-    const services = isAdmin
-      ? all
-      : all.filter((s) => me && (s.assignedTo ?? "").trim() === me);
+    // 技師、工廠師傅等非 admin 同一條規則（visibleServicesFor 有測試守著）
+    const services = visibleServicesFor(session.role, session.displayName, all);
 
     // 一併回傳各單的派工連結路徑，讓列表「複製派工連結」不必再打一次 API
     // （同步複製才不會被 Safari 的「必須在點擊手勢內寫剪貼簿」擋掉）。

@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 
 import { AfterSalesListClient } from "@/app/after-sales/AfterSalesListClient";
 import { MyScheduleClient } from "@/app/my-schedule/MyScheduleClient";
+import { CraftsmanTabBar } from "@/components/layout/CraftsmanTabBar";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 type Tab = "list" | "schedule";
@@ -27,6 +28,8 @@ export function AfterSalesTabsClient() {
 
   return (
     <div>
+      {/* 工廠師傅：頂部「生產訂單｜售後服務」切換（其他角色不顯示） */}
+      <CraftsmanTabBar active="after-sales" />
       <div className="flex border-b border-[var(--border)] px-4 bg-[var(--bg-base)]">
         <button
           onClick={() => setTab("list")}

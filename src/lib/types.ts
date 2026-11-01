@@ -102,7 +102,7 @@ export type QuoteDraftSessionSource =
 
 /**
  * 使用者角色。
- *   technician＝技師（到府售後／安裝），craftsman＝師傅（工廠內做沙發，只看生產訂單）。
+ *   technician＝技師（到府售後／安裝），craftsman＝師傅（工廠內做沙發：生產訂單＋指派給自己的售後服務）。
  * 權限白名單見 lib/permissions.ts。
  */
 export type UserRole = "admin" | "technician" | "sales" | "craftsman";

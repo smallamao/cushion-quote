@@ -5,6 +5,7 @@ import {
   canRoleAccess,
   canTechnicianAccess,
   isAdminOnly,
+  isAfterSalesReadOnly,
   isApiKeyPath,
   isPublicPath,
   isRateLimitedPublicPath,
@@ -318,6 +319,17 @@ describe("canRoleAccess — 各角色各自白名單", () => {
     "/api/auth/me",
     "/api/sheets/production-orders",
     "/api/sheets/production-orders/ORD-001/status",
+    // 2026-11-01：師傅也做售後服務，與技師同一組路徑
+    "/after-sales",
+    "/after-sales/SV-0001",
+    "/my-schedule",
+    "/api/sheets/after-sales",
+    "/api/sheets/after-sales/SV-0001",
+    "/api/sheets/after-sales/SV-0001/replies",
+    "/api/sheets/after-sales/unread-count",
+    "/api/sheets/equipment",
+    "/api/sheets/orders/my-installs",
+    "/api/upload",
   ];
 
   it.each(craftsmanAllowed)("工廠師傅可以存取：%s", (path) => {
@@ -331,26 +343,45 @@ describe("canRoleAccess — 各角色各自白名單", () => {
     "/api/sheets/orders",
     "/api/sheets/orders/ORD-001",
     "/api/sheets/orders/ORD-001/status",
-    "/api/sheets/orders/my-installs",
-    "/after-sales",
-    "/api/sheets/after-sales",
-    "/my-schedule",
+    "/api/sheets/orders/ORD-001/work-order",
     "/quotes",
     "/api/sheets/quotes-v2",
     "/remittance",
     "/receivables",
     "/api/sheets/clients",
     "/api/sheets/users",
-    "/api/upload",
+    "/api/sheets/users/U-001",
     "/settings",
     "/admin",
+    "/admin/users",
     "/api/sheets/_debug",
     "/shipping-notice",
+    "/calendar",
     "/",
   ];
 
   it.each(craftsmanDenied)("工廠師傅不能存取：%s", (path) => {
     expect(canRoleAccess("craftsman", path)).toBe(false);
+  });
+
+  it("工廠師傅的售後權限與技師完全一致（多的只有生產訂單）", () => {
+    const paths = [
+      "/after-sales",
+      "/after-sales/new",
+      "/my-schedule",
+      "/api/sheets/after-sales/SV-0001",
+      "/api/sheets/after-sales/SV-0001/dispatch-link",
+      "/api/sheets/equipment",
+      "/api/sheets/orders/my-installs",
+      "/api/upload",
+      "/orders",
+      "/api/sheets/orders",
+      "/api/sheets/users",
+      "/settings",
+    ];
+    for (const p of paths) {
+      expect(canRoleAccess("craftsman", p)).toBe(canTechnicianAccess(p));
+    }
   });
 
   it("admin 全開", () => {
@@ -398,9 +429,31 @@ describe("選單與白名單一致", () => {
     },
   );
 
-  it("工廠師傅選單上只有生產訂單", () => {
+  it("工廠師傅選單：生產訂單＋售後服務（含我的行程）", () => {
     expect(navLinks.filter((l) => l.roles.includes("craftsman")).map((l) => l.href)).toEqual([
       "/production-orders",
+      "/after-sales",
+      "/my-schedule",
     ]);
   });
+
+  it("技師選單不變：售後服務＋我的行程，沒有生產訂單", () => {
+    expect(navLinks.filter((l) => l.roles.includes("technician")).map((l) => l.href)).toEqual([
+      "/after-sales",
+      "/my-schedule",
+    ]);
+  });
+});
+
+describe("isAfterSalesReadOnly — 售後單編輯權", () => {
+  it("只有 admin 能編輯", () => {
+    expect(isAfterSalesReadOnly("admin")).toBe(false);
+  });
+
+  it.each(["technician", "craftsman", "sales", "Admin", "", "constructor", undefined, null])(
+    "%s 一律唯讀（含還沒載入的 null）",
+    (role) => {
+      expect(isAfterSalesReadOnly(role)).toBe(true);
+    },
+  );
 });

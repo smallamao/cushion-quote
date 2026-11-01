@@ -323,7 +323,7 @@ export function UsersManagementPanel() {
                       checked={newRole === "craftsman"}
                       onChange={() => setNewRole("craftsman")}
                     />
-                    師傅 (只能看生產訂單)
+                    師傅 (生產訂單＋自己的售後服務)
                   </label>
                   <label className="flex items-center gap-1 cursor-pointer text-sm">
                     <input
