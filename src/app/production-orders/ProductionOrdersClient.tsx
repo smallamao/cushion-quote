@@ -8,7 +8,11 @@ import { CraftsmanTabBar } from "@/components/layout/CraftsmanTabBar";
 import { ProductionOrderDetail } from "@/app/production-orders/ProductionOrderDetail";
 import { ProductionListSkeleton, ProductionOrderList } from "@/app/production-orders/ProductionOrderList";
 import { CompleteConfirmSheet, ImageLightbox } from "@/app/production-orders/ProductionSheets";
-import type { ProductionOrderView, ProductionSettableStatus } from "@/lib/production-orders";
+import {
+  productionStatusErrorMessage,
+  type ProductionOrderView,
+  type ProductionSettableStatus,
+} from "@/lib/production-orders";
 import { taipeiDateStr } from "@/lib/production-groups";
 
 // 工廠師傅的生產訂單。資料來自 /api/sheets/production-orders 的白名單投影：
@@ -31,6 +35,8 @@ export function ProductionOrdersClient() {
   const [viewingPdf, setViewingPdf] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // 「已完成」群組展開狀態放這裡：進詳細頁時清單會卸載，回來要維持原樣，捲動位置才對得上
+  const [doneOpen, setDoneOpen] = useState(false);
   // 台灣日期；跨午夜不重新整理也會在下次載入時更新
   const [today, setToday] = useState(() => taipeiDateStr());
 
@@ -43,9 +49,10 @@ export function ProductionOrdersClient() {
     setToday(taipeiDateStr());
     try {
       const res = await fetch("/api/sheets/production-orders", { cache: "no-store" });
-      const json = (await res.json()) as { ok: boolean; orders?: ProductionOrderView[]; error?: string };
+      const json = (await res.json()) as { ok: boolean; orders?: ProductionOrderView[] };
       if (!json.ok) {
-        setError(json.error ?? "載入失敗");
+        // 伺服器的錯誤代碼不上畫面
+        setError("載入失敗");
         return;
       }
       setError(null);
@@ -93,20 +100,24 @@ export function ProductionOrdersClient() {
   async function setStatus(order: ProductionOrderView, status: ProductionSettableStatus) {
     setSaving(status);
     setActionError(null);
+    // null＝連線本身失敗（沒拿到回應）
+    let httpStatus: number | null = null;
     try {
       const res = await fetch(`/api/sheets/production-orders/${encodeURIComponent(order.orderId)}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      const json = (await res.json()) as { ok: boolean; order?: ProductionOrderView; error?: string };
-      if (!json.ok || !json.order) throw new Error(json.error ?? `伺服器錯誤 ${res.status}`);
+      httpStatus = res.status;
+      const json = (await res.json()) as { ok: boolean; order?: ProductionOrderView };
+      if (!json.ok || !json.order) throw new Error("update_failed");
       const updated = json.order;
       setOrders((prev) => prev.map((o) => (o.orderId === updated.orderId ? updated : o)));
       setConfirmOpen(false);
-    } catch (err) {
+    } catch {
       setConfirmOpen(false);
-      setActionError(err instanceof Error ? `更新失敗：${err.message}` : "更新失敗");
+      // 成功碼卻解析失敗也當連線問題；伺服器的錯誤代碼不給師傅看
+      setActionError(`更新失敗：${productionStatusErrorMessage(httpStatus !== null && httpStatus < 300 ? null : httpStatus)}`);
     } finally {
       setSaving(null);
     }
@@ -175,7 +186,19 @@ export function ProductionOrdersClient() {
             onViewImage={setLightboxUrl}
           />
         ) : !loaded ? (
-          loading ? <ProductionListSkeleton /> : null
+          loading ? (
+            <ProductionListSkeleton />
+          ) : (
+            // 直接開網址進來、第一次載入就失敗：上面有重試橫幅，這裡留一條回清單的路
+            <button
+              type="button"
+              onClick={backToList}
+              className="flex h-14 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[19px] font-bold"
+            >
+              <ArrowLeft className="h-5 w-5" />
+              回清單
+            </button>
+          )
         ) : (
           // 已完成超過 7 天、被取消或網址打錯：清單上已經沒有這張
           <div className="flex flex-col items-center gap-4 py-14 text-center">
@@ -232,7 +255,13 @@ export function ProductionOrdersClient() {
       {!loaded ? (
         loading ? <ProductionListSkeleton /> : null
       ) : (
-        <ProductionOrderList orders={orders} today={today} onOpen={openOrder} />
+        <ProductionOrderList
+          orders={orders}
+          today={today}
+          doneOpen={doneOpen}
+          onToggleDone={() => setDoneOpen((v) => !v)}
+          onOpen={openOrder}
+        />
       )}
     </div>
   );

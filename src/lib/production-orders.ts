@@ -134,3 +134,21 @@ export function canSetProductionStatus(current: OrderStatus, next: unknown): nex
   if (!isProductionSettableStatus(next)) return false;
   return current === "production" || current === "waiting" || current === "completed";
 }
+
+/**
+ * 生產清單「改狀態」失敗時給師傅看的話。只看 HTTP 狀態碼，伺服器回的錯誤代碼
+ * （not_found、forbidden…）一律不上畫面。status=null＝連線本身失敗。
+ */
+export function productionStatusErrorMessage(status: number | null): string {
+  switch (status) {
+    case 404:
+      return "這張單已不在清單上，請重新整理";
+    case 401:
+    case 403:
+      return "沒有權限更新這張單";
+    case 400:
+      return "無法改成這個狀態";
+    default:
+      return "連線失敗，請再試一次";
+  }
+}

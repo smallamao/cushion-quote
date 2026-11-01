@@ -1,19 +1,29 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { Loader2, X } from "lucide-react";
 
 // 生產訂單用的兩個全螢幕浮層：已完成確認（底部抽屜）、看大圖。
 
-/** Esc 關閉 */
-function useEscape(onClose: () => void) {
+/** Esc 關閉；enabled=false 時不理會（送出中不能關） */
+function useEscape(onClose: () => void, enabled = true) {
   useEffect(() => {
+    if (!enabled) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, enabled]);
+}
+
+/** 打開時把焦點移進浮層，關閉時還給原本按的那顆按鈕（鍵盤／讀屏才不會迷路） */
+function useDialogFocus(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ref.current?.focus();
+    return () => previous?.focus();
+  }, [ref]);
 }
 
 /**
@@ -33,7 +43,9 @@ export function CompleteConfirmSheet({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  useEscape(onCancel);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEscape(onCancel, !saving);
+  useDialogFocus(panelRef);
   return (
     <div
       className="fixed inset-0 z-[80] flex flex-col justify-end bg-black/45"
@@ -43,7 +55,9 @@ export function CompleteConfirmSheet({
       onClick={saving ? undefined : onCancel}
     >
       <div
-        className="mx-auto w-full max-w-lg rounded-t-[20px] bg-[var(--bg-elevated)] px-5 pb-[calc(28px+env(safe-area-inset-bottom))] pt-4"
+        ref={panelRef}
+        tabIndex={-1}
+        className="mx-auto w-full max-w-lg rounded-t-[20px] outline-none bg-[var(--bg-elevated)] px-5 pb-[calc(28px+env(safe-area-inset-bottom))] pt-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-[var(--border-strong)]" aria-hidden />
@@ -79,7 +93,9 @@ export function CompleteConfirmSheet({
 
 /** 點縮圖看大圖；點任何地方關閉 */
 export function ImageLightbox({ url, alt, onClose }: { url: string; alt: string; onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
   useEscape(onClose);
+  useDialogFocus(closeRef);
   return (
     <div
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/90 p-3"
@@ -89,6 +105,7 @@ export function ImageLightbox({ url, alt, onClose }: { url: string; alt: string;
       onClick={onClose}
     >
       <button
+        ref={closeRef}
         type="button"
         onClick={onClose}
         aria-label="關閉"

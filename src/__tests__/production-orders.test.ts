@@ -6,6 +6,7 @@ import {
   isProductionSettableStatus,
   isVisibleOnProductionList,
   pickProductionOrderView,
+  productionStatusErrorMessage,
 } from "@/lib/production-orders";
 import type { CustomOrder, OrderStatus } from "@/lib/types";
 
@@ -277,6 +278,26 @@ describe("canSetProductionStatus — 師傅改狀態規則", () => {
     for (const v of [undefined, null, 1, {}, ["completed"], "Completed", "done"]) {
       expect(isProductionSettableStatus(v)).toBe(false);
       expect(canSetProductionStatus("production", v)).toBe(false);
+    }
+  });
+});
+
+describe("productionStatusErrorMessage — 改狀態失敗給師傅看的話", () => {
+  it.each([
+    [404, "這張單已不在清單上，請重新整理"],
+    [403, "沒有權限更新這張單"],
+    [401, "沒有權限更新這張單"],
+    [400, "無法改成這個狀態"],
+    [500, "連線失敗，請再試一次"],
+    [503, "連線失敗，請再試一次"],
+    [null, "連線失敗，請再試一次"],
+  ] as const)("HTTP %s → %s", (status, msg) => {
+    expect(productionStatusErrorMessage(status)).toBe(msg);
+  });
+
+  it("不會出現伺服器的錯誤代碼", () => {
+    for (const s of [400, 401, 403, 404, 500, null]) {
+      expect(productionStatusErrorMessage(s)).not.toMatch(/not_found|forbidden|invalid|bad_request/);
     }
   });
 });

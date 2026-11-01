@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { ChevronDown, ChevronRight, Factory } from "lucide-react";
 
 import type { ProductionOrderView } from "@/lib/production-orders";
@@ -150,14 +149,17 @@ function GroupHeader({
 export function ProductionOrderList({
   orders,
   today,
+  doneOpen,
+  onToggleDone,
   onOpen,
 }: {
   orders: ProductionOrderView[];
   today: string;
+  /** 已完成群組是否展開（預設收起：師傅打開清單要看的是還沒做的；狀態由上層保管） */
+  doneOpen: boolean;
+  onToggleDone: () => void;
   onOpen: (order: ProductionOrderView) => void;
 }) {
-  // 已完成預設收起：師傅打開清單要看的是還沒做的
-  const [doneOpen, setDoneOpen] = useState(false);
   const groups = groupProductionOrders(orders, today);
   const hasActive = groups.some((g) => g.key !== "done");
 
@@ -174,7 +176,7 @@ export function ProductionOrderList({
               count={g.orders.length}
               collapsible={isDone}
               open={doneOpen}
-              onToggle={() => setDoneOpen((v) => !v)}
+              onToggle={onToggleDone}
             />
             {showCards && (
               <div className="space-y-2.5">

@@ -319,6 +319,7 @@ describe("canRoleAccess — 各角色各自白名單", () => {
     "/api/auth/me",
     "/api/sheets/production-orders",
     "/api/sheets/production-orders/ORD-001/status",
+    "/api/sheets/production-orders/x/status",
     // 2026-11-01：師傅也做售後服務，與技師同一組路徑
     "/after-sales",
     "/after-sales/SV-0001",
@@ -371,6 +372,10 @@ describe("canRoleAccess — 各角色各自白名單", () => {
       "/my-schedule",
       "/api/sheets/after-sales/SV-0001",
       "/api/sheets/after-sales/SV-0001/dispatch-link",
+      // 這幾支 route 內部再擋 requireAdmin；middleware 層師傅與技師結果要一致
+      "/api/sheets/after-sales/quick-cleaning",
+      "/api/sheets/after-sales/SV-0001/slot-session",
+      "/api/sheets/after-sales/unread-count",
       "/api/sheets/equipment",
       "/api/sheets/orders/my-installs",
       "/api/upload",
@@ -429,12 +434,19 @@ describe("選單與白名單一致", () => {
     },
   );
 
-  it("工廠師傅選單：生產訂單＋售後服務（含我的行程）", () => {
+  // 老闆指定：師傅選單只有兩項。「我的行程」在售後服務頁裡是分頁，不另列選單
+  // （/my-schedule 與 my-installs 仍在白名單，那個分頁要用）
+  it("工廠師傅選單只有生產訂單＋售後服務", () => {
     expect(navLinks.filter((l) => l.roles.includes("craftsman")).map((l) => l.href)).toEqual([
       "/production-orders",
       "/after-sales",
-      "/my-schedule",
     ]);
+  });
+
+  it("售後服務頁的「我的行程」分頁用到的路徑，師傅都放行", () => {
+    for (const p of ["/my-schedule", "/api/sheets/orders/my-installs", "/api/sheets/after-sales", "/api/upload"]) {
+      expect(canRoleAccess("craftsman", p)).toBe(true);
+    }
   });
 
   it("技師選單不變：售後服務＋我的行程，沒有生產訂單", () => {
