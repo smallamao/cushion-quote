@@ -1,7 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 
 import { requireAdmin } from "@/lib/api-auth";
 
+import { appendNotification } from "@/lib/notifications-sheet";
+import { createOrder } from "@/lib/order-create";
+import { shouldAutoCreateOrderOnArchive } from "@/lib/signed-back";
 import { findCompanyIdentityForCase } from "@/lib/company-lookup";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { deriveOptionMeta } from "@/lib/quote-options";
@@ -295,6 +298,44 @@ export async function PATCH(
     // 造成版本 accepted 但報價/案件/應收帳款全部沒跟上。
     await syncAutoCommissionSettlements(client, updated);
     await syncVersionToParents(client, updated);
+
+    // 🔴 人工上傳合約歸檔也要自動開訂製訂單（老闆 2026-11-02 發現）。
+    //
+    // 線上簽署（/api/public/sign/[token]）早就有這段，理由是「客人一簽完就會匯訂金，
+    // 訂單若沒開就不會進排程、不會叫料，等於收了錢卻沒人在做」（2026-09-29）。
+    // 但客人不一定走線上連結——紙本簽回、LINE 傳回簽圖，內勤是用這個端點歸檔的，
+    // 那條路沒接上，同一個洞等於只補了一半。
+    // 實例：CA-202610-023-Q01-V03（NT$40,000）2026-11-02 歸檔後沒有任何訂單。
+    //
+    // 只在「這次才從未回簽變成已回簽」時觸發，重複儲存不會重跑；
+    // createOrder 本身也有同版本去重，與報價列表的手動開單按鈕不會重複建單。
+    // 已拒絕／已取代的版本不開單——回簽後又被拒的情況確實存在
+    // （CA-202607-009-Q01-V02），那種單開出來是錯的。
+    if (shouldAutoCreateOrderOnArchive(existing, updated)) {
+      // 放 after()：歸檔要先存檔成功，開單慢或失敗都不該讓內勤看到「儲存失敗」
+      const amountText = `NT$ ${(updated.totalAmount ?? 0).toLocaleString()}`;
+      after(async () => {
+        let orderId = "";
+        try {
+          const created = await createOrder(client, { sourceType: "quote", versionId });
+          orderId = created.orderId;
+        } catch {
+          orderId = "";
+        }
+        try {
+          await appendNotification({
+            type: "quote_signed",
+            title: orderId ? "合約已歸檔，訂單已自動建立" : "合約已歸檔（訂單未建立）",
+            body: orderId
+              ? `${updated.contactNameSnapshot || updated.clientNameSnapshot || "客戶"} 的 ${updated.quoteId}（${amountText}）已歸檔回簽合約，已自動開立訂單 ${orderId}，請補上交期與排程`
+              : `${updated.contactNameSnapshot || updated.clientNameSnapshot || "客戶"} 的 ${updated.quoteId}（${amountText}）已歸檔回簽合約，但自動開單未成功，請到報價紀錄手動建立訂製訂單`,
+            link: orderId ? `/orders/${orderId}` : "/quotes",
+          });
+        } catch {
+          // 通知失敗不影響已完成的歸檔與開單
+        }
+      });
+    }
 
     return NextResponse.json({ ok: true, version: updated });
   } catch (err) {
