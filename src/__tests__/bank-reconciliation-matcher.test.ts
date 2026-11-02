@@ -57,6 +57,8 @@ const S879_AR: ARWithSchedules = {
       notes: "",
       createdAt: "2026-05-01T00:00:00Z",
       updatedAt: "2026-05-01T00:00:00Z",
+      paymentRef: "",
+      receivingAccountId: "",
     },
   ],
 };

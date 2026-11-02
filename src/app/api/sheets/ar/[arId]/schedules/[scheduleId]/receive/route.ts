@@ -11,9 +11,11 @@ import {
   arRecordToRow,
   arRowToRecord,
   arScheduleRecordToRow,
+  ensureArScheduleColumns,
   arScheduleRowToRecord,
   calcARStatusFromSchedules,
   calcScheduleDerivedStatus,
+  isValidARPaymentMethod,
   isoDateNow,
   isoNow,
 } from "@/lib/ar-utils";
@@ -47,6 +49,24 @@ export async function POST(request: Request, context: RouteContext) {
   if (!payload.receivedDate) {
     return NextResponse.json(
       { ok: false, error: "receivedDate is required" },
+      { status: 400 },
+    );
+  }
+
+  if (!isValidARPaymentMethod(payload.paymentMethod)) {
+    return NextResponse.json(
+      { ok: false, error: "paymentMethod is invalid" },
+      { status: 400 },
+    );
+  }
+  // 末五碼／驗證碼、收款帳戶 id 都是短字串；擋掉異常輸入避免寫爆儲存格
+  if (
+    (payload.paymentRef != null && (typeof payload.paymentRef !== "string" || payload.paymentRef.length > 40)) ||
+    (payload.receivingAccountId != null &&
+      (typeof payload.receivingAccountId !== "string" || payload.receivingAccountId.length > 40))
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "paymentRef / receivingAccountId is invalid" },
       { status: 400 },
     );
   }
@@ -94,6 +114,9 @@ export async function POST(request: Request, context: RouteContext) {
       adjustmentAmount:
         existingSchedule.adjustmentAmount + (payload.adjustmentAmount ?? 0),
       notes: payload.notes ?? existingSchedule.notes,
+      // 沒帶（例：銀行核對）就保留原值；有帶（含空字串）就以這次為準
+      paymentRef: payload.paymentRef?.trim() ?? existingSchedule.paymentRef,
+      receivingAccountId: payload.receivingAccountId ?? existingSchedule.receivingAccountId,
       updatedAt: now,
     };
     updatedSchedule.scheduleStatus = calcScheduleDerivedStatus(updatedSchedule, today);
@@ -122,6 +145,8 @@ export async function POST(request: Request, context: RouteContext) {
     const arSheetRow = arRowIndex + 2;
     const scheduleSheetRow = scheduleRowIndex + 2;
 
+    // 應收分期 A:Q 寫入前先確保實體欄數足夠（舊表只有 15 欄）
+    await ensureArScheduleColumns(client);
     await client.sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: client.spreadsheetId,
       requestBody: {

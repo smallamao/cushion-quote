@@ -21,6 +21,7 @@ import {
   arRecordToRow,
   arRowToRecord,
   arScheduleRecordToRow,
+  ensureArScheduleColumns,
   arScheduleRowToRecord,
   calcARStatusFromSchedules,
   calcScheduleDerivedStatus,
@@ -157,6 +158,8 @@ async function syncARAmountToVersion(
   if (arRowIndex >= 0) {
     data.push({ range: AR_ROW_RANGE(arRowIndex + 2), values: [arRecordToRow(updatedAr)] });
   }
+  // 應收分期 A:Q 寫入前先確保實體欄數足夠（舊表只有 15 欄）
+  await ensureArScheduleColumns(client);
   await client.sheets.spreadsheets.values.batchUpdate({
     spreadsheetId: client.spreadsheetId,
     requestBody: { valueInputOption: "RAW", data },
@@ -227,6 +230,8 @@ async function syncARFromVersion(
       notes: "",
       createdAt: now,
       updatedAt: now,
+      paymentRef: "",
+      receivingAccountId: "",
     };
     const { arStatus, hasOverdue } = calcARStatusFromSchedules([schedule], today);
 
@@ -255,6 +260,8 @@ async function syncARFromVersion(
       createdBy: "auto",
     };
 
+    // 應收分期 A:Q 寫入前先確保實體欄數足夠（舊表只有 15 欄）
+    await ensureArScheduleColumns(client);
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
       range: AR_RANGE_FULL,
@@ -284,6 +291,8 @@ async function syncARFromVersion(
           : "版本狀態變更,自動取消",
         updatedAt: now,
       };
+      // 應收分期 A:Q 寫入前先確保實體欄數足夠（舊表只有 15 欄）
+      await ensureArScheduleColumns(client);
       await client.sheets.spreadsheets.values.update({
         spreadsheetId: client.spreadsheetId,
         range: AR_ROW_RANGE(arRowIdx + 2),

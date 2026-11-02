@@ -10,6 +10,7 @@ import {
   arRecordToRow,
   arRowToRecord,
   arScheduleRecordToRow,
+  ensureArScheduleColumns,
   generateArId,
   generateArScheduleId,
   isoDateNow,
@@ -127,6 +128,8 @@ export async function POST(request: Request) {
       notes: `合併請款：${orderNumbers}`,
       createdAt: now,
       updatedAt: now,
+      paymentRef: "",
+      receivingAccountId: "",
     };
 
     const arRecord: ARRecord = {
@@ -156,6 +159,8 @@ export async function POST(request: Request) {
       relatedOrderIds: orderIds,
     };
 
+    // 應收分期 A:Q 寫入前先確保實體欄數足夠（舊表只有 15 欄）
+    await ensureArScheduleColumns(client);
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
       range: AR_RANGE_FULL,

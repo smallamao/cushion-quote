@@ -7,6 +7,7 @@ import type {
   PendingMonthlyRecord,
   PendingMonthlyStatus,
 } from "@/lib/types";
+import type { SheetsClient } from "@/lib/sheets-client";
 
 export const AR_SHEET = "應收帳款";
 export const AR_SCHEDULE_SHEET = "應收分期";
@@ -20,10 +21,12 @@ export const AR_RANGE_IDS = `${AR_SHEET}!A2:A1000`;
 export const AR_ROW_RANGE = (sheetRow: number) =>
   `${AR_SHEET}!A${sheetRow}:W${sheetRow}`;
 
-export const AR_SCHEDULE_RANGE_FULL = `${AR_SCHEDULE_SHEET}!A:O`;
-export const AR_SCHEDULE_RANGE_DATA = `${AR_SCHEDULE_SHEET}!A2:O10000`;
+// 應收分期 sheet — 17 columns A:Q（P 末五碼／驗證碼、Q 收款帳戶 為 2026-11 新增）
+export const AR_SCHEDULE_COLUMN_COUNT = 17;
+export const AR_SCHEDULE_RANGE_FULL = `${AR_SCHEDULE_SHEET}!A:Q`;
+export const AR_SCHEDULE_RANGE_DATA = `${AR_SCHEDULE_SHEET}!A2:Q10000`;
 export const AR_SCHEDULE_ROW_RANGE = (sheetRow: number) =>
-  `${AR_SCHEDULE_SHEET}!A${sheetRow}:O${sheetRow}`;
+  `${AR_SCHEDULE_SHEET}!A${sheetRow}:Q${sheetRow}`;
 
 // 月結待出 sheet — 15 columns A:O
 export const PENDING_MONTHLY_RANGE_FULL = `${PENDING_MONTHLY_SHEET}!A:O`;
@@ -126,6 +129,9 @@ export function arScheduleRowToRecord(row: string[]): ARScheduleRecord {
     notes: row[12] ?? "",
     createdAt: row[13] ?? "",
     updatedAt: row[14] ?? "",
+    // 舊列只有 A:O，缺的欄位補空字串
+    paymentRef: row[15] ?? "",
+    receivingAccountId: row[16] ?? "",
   };
 }
 
@@ -146,7 +152,62 @@ export function arScheduleRecordToRow(r: ARScheduleRecord): string[] {
     r.notes,
     r.createdAt,
     r.updatedAt,
+    r.paymentRef,
+    r.receivingAccountId,
   ];
+}
+
+/**
+ * 確保「應收分期」實體表格寬度至少 AR_SCHEDULE_COLUMN_COUNT 欄。
+ * 舊表只有 15 欄（A:O），直接寫 A:Q 會因超出 grid 範圍失敗，所以每條寫入路徑寫之前都要先呼叫。
+ * 冪等：欄數已足夠就不擴；P1:Q1 表頭空白才補寫；同一個執行個體成功一次後就不再查詢。
+ */
+const ensuredScheduleGrid = new Set<string>();
+
+export async function ensureArScheduleColumns(client: SheetsClient): Promise<void> {
+  if (ensuredScheduleGrid.has(client.spreadsheetId)) return;
+  const meta = await client.sheets.spreadsheets.get({
+    spreadsheetId: client.spreadsheetId,
+    fields: "sheets.properties(sheetId,title,gridProperties.columnCount)",
+  });
+  const props = meta.data.sheets?.find(
+    (s) => s.properties?.title === AR_SCHEDULE_SHEET,
+  )?.properties;
+  // 分頁不存在時交給後續寫入自己報錯，不在這裡建表
+  if (props?.sheetId == null) return;
+  const current = props.gridProperties?.columnCount ?? 0;
+  if (current < AR_SCHEDULE_COLUMN_COUNT) {
+    await client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: client.spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            appendDimension: {
+              sheetId: props.sheetId,
+              dimension: "COLUMNS",
+              length: AR_SCHEDULE_COLUMN_COUNT - current,
+            },
+          },
+        ],
+      },
+    });
+  }
+  // 新欄位表頭：空白才補寫，不覆蓋使用者自己改過的欄名
+  const headerRange = `${AR_SCHEDULE_SHEET}!P1:Q1`;
+  const headerRes = await client.sheets.spreadsheets.values.get({
+    spreadsheetId: client.spreadsheetId,
+    range: headerRange,
+  });
+  const header = headerRes.data.values?.[0] ?? [];
+  if (!header[0] && !header[1]) {
+    await client.sheets.spreadsheets.values.update({
+      spreadsheetId: client.spreadsheetId,
+      range: headerRange,
+      valueInputOption: "RAW",
+      requestBody: { values: [["末五碼／驗證碼", "收款帳戶"]] },
+    });
+  }
+  ensuredScheduleGrid.add(client.spreadsheetId);
 }
 
 // ===== Status calculators =====
@@ -426,8 +487,16 @@ export const AR_PAYMENT_METHOD_LABEL: Record<
   transfer: "匯款",
   check: "支票",
   credit_card: "刷卡",
+  line_pay: "LINE PAY",
   other: "其他",
 };
+
+/** 伺服器端驗證收款方式：只接受上面列出的方式（不含空字串） */
+export function isValidARPaymentMethod(
+  value: unknown,
+): value is Exclude<ARPaymentMethod, ""> {
+  return typeof value === "string" && Object.hasOwn(AR_PAYMENT_METHOD_LABEL, value);
+}
 
 /**
  * Default credit card fee rate (percentage).

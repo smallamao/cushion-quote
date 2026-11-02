@@ -492,6 +492,7 @@ export type ARPaymentMethod =
   | "transfer"
   | "check"
   | "credit_card"
+  | "line_pay"
   | "other"
   | "";
 
@@ -511,6 +512,10 @@ export interface ARScheduleRecord {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  /** 帳號末五碼／卡號末五碼／LINE PAY 驗證碼（舊資料為空字串） */
+  paymentRef: string;
+  /** 匯款收款帳戶 id（對應 @/lib/remittance BANK_ACCOUNTS；非匯款為空字串） */
+  receivingAccountId: string;
 }
 
 export interface ARRecord {
@@ -559,6 +564,10 @@ export interface RecordARPaymentPayload {
   receivedDate: string;
   paymentMethod: ARPaymentMethod;
   notes?: string;
+  /** 帳號末五碼／卡號末五碼／LINE PAY 驗證碼；未帶則保留原值 */
+  paymentRef?: string;
+  /** 匯款收款帳戶 id；未帶則保留原值 */
+  receivingAccountId?: string;
   /** 調整金額增量（負值＝沖銷，例如匯費差額 -30，使該期以實收金額結清） */
   adjustmentAmount?: number;
 }

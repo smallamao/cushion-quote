@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Check, Copy, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Dialog,
@@ -27,6 +27,15 @@ import {
   grossFromNet,
   isoDateNow,
 } from "@/lib/ar-utils";
+import {
+  DEFAULT_RECEIVING_ACCOUNT_ID,
+  PAYMENT_REF_PLACEHOLDER,
+  buildClientReply,
+  isoDateToLocalDate,
+  receiptPayLabelForSchedule,
+  receivingAccountOptions,
+  type PaymentType,
+} from "@/lib/remittance";
 import type {
   ARPaymentMethod,
   ARScheduleRecord,
@@ -37,6 +46,8 @@ interface RecordPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   schedule: ARScheduleRecord | null;
+  /** 此應收共幾期；用來判斷客戶回覆聯寫「訂金」「餘額」或「款項」 */
+  scheduleCount: number;
   onSubmit: (payload: RecordARPaymentPayload) => Promise<void>;
 }
 
@@ -44,10 +55,69 @@ function fmt(n: number): string {
   return n.toLocaleString("zh-TW", { maximumFractionDigits: 0 });
 }
 
+/** 有末五碼欄位的收款方式 → 對應匯款資訊頁的付款類型（訊息格式共用） */
+const REF_PAYMENT_TYPE: Partial<Record<ARPaymentMethod, PaymentType>> = {
+  transfer: "匯款",
+  credit_card: "刷卡",
+  line_pay: "LINE PAY",
+};
+
+const RECEIVING_ACCOUNT_OPTIONS = receivingAccountOptions();
+const LAST_ACCOUNT_KEY = "ar_last_receiving_account_id";
+
+function loadLastAccountId(): string {
+  try {
+    const saved = localStorage.getItem(LAST_ACCOUNT_KEY) ?? "";
+    if (RECEIVING_ACCOUNT_OPTIONS.some((o) => o.id === saved)) return saved;
+  } catch {
+    /* 私密瀏覽等情況讀不到 localStorage，用預設 */
+  }
+  return DEFAULT_RECEIVING_ACCOUNT_ID;
+}
+
+function saveLastAccountId(id: string): void {
+  try {
+    localStorage.setItem(LAST_ACCOUNT_KEY, id);
+  } catch {
+    /* 存不了就算了，下次用預設 */
+  }
+}
+
+/**
+ * 複製文字：優先 navigator.clipboard；失敗（舊版 iOS、非 https）退回 textarea + execCommand。
+ * textarea 放在對話框內，避免被 Dialog 的 focus trap 擋住選取。
+ */
+async function copyText(text: string, container: HTMLElement | null): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.readOnly = true;
+    // 16px 以上避免 iOS 聚焦時自動放大畫面
+    ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px;";
+    const host = container ?? document.body;
+    host.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    host.removeChild(ta);
+    return ok;
+  }
+}
+
 export function RecordPaymentDialog({
   open,
   onOpenChange,
   schedule,
+  scheduleCount,
   onSubmit,
 }: RecordPaymentDialogProps) {
   const [paymentMethod, setPaymentMethod] = useState<Exclude<ARPaymentMethod, "">>("transfer");
@@ -63,8 +133,17 @@ export function RecordPaymentDialog({
   const [writeOffShortfall, setWriteOffShortfall] = useState(false);
   const [writeOffReason, setWriteOffReason] = useState("匯費／手續費");
 
+  // 帳號末五碼／卡號末五碼／LINE PAY 驗證碼共用一格，切換收款方式不清空
+  const [paymentRef, setPaymentRef] = useState("");
+  const [receivingAccountId, setReceivingAccountId] = useState(DEFAULT_RECEIVING_ACCOUNT_ID);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // 收款成功後顯示要傳給客人的「客戶回覆聯」，不直接關閉
+  const [replyText, setReplyText] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const outstandingThisSchedule = schedule
     ? Math.max(
@@ -84,9 +163,15 @@ export function RecordPaymentDialog({
     setCardFeeRate(DEFAULT_CARD_FEE_RATE);
     setWriteOffShortfall(false);
     setWriteOffReason("匯費／手續費");
+    setPaymentRef("");
+    setReceivingAccountId(loadLastAccountId());
+    setReplyText(null);
+    setCopyState("idle");
   }, [open, schedule, outstandingThisSchedule]);
 
   const isCard = paymentMethod === "credit_card";
+  const isTransfer = paymentMethod === "transfer";
+  const refPaymentType = REF_PAYMENT_TYPE[paymentMethod] ?? null;
 
   // When using card: derive fee and net from gross + rate
   const cardDerived = useMemo(() => {
@@ -139,6 +224,9 @@ export function RecordPaymentDialog({
 
     const shortfallNow = outstandingThisSchedule - receivedAmount;
     const doWriteOff = writeOffShortfall && shortfallNow > 0;
+    // 只有匯款／刷卡／LINE PAY 存末五碼；只有匯款存收款帳戶
+    const ref = refPaymentType ? paymentRef.trim() : "";
+    const accountId = isTransfer ? receivingAccountId : "";
 
     setSaving(true);
     try {
@@ -147,6 +235,8 @@ export function RecordPaymentDialog({
         receivedAmount,
         receivedDate,
         paymentMethod,
+        paymentRef: ref,
+        receivingAccountId: accountId,
         notes: doWriteOff
           ? [finalNotes, `沖銷差額 $${fmt(shortfallNow)}：${writeOffReason}`]
               .filter(Boolean)
@@ -155,12 +245,28 @@ export function RecordPaymentDialog({
         // 負值＝下修應收，使本期以實收金額結清（已收現金不變）
         ...(doWriteOff ? { adjustmentAmount: -shortfallNow } : {}),
       });
-      onOpenChange(false);
+      if (isTransfer) saveLastAccountId(receivingAccountId);
+      setReplyText(
+        buildClientReply({
+          date: isoDateToLocalDate(receivedDate),
+          payLabel: receiptPayLabelForSchedule(schedule.label, schedule.seq, scheduleCount),
+          // 刷卡：客人看到的是他刷的金額（含手續費），不是我們實收的淨額
+          amount: isCard ? cardGrossAmount : receivedAmount,
+          paymentType: refPaymentType,
+          paymentRef: ref,
+        }),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "記錄失敗");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleCopy() {
+    if (!replyText) return;
+    const ok = await copyText(replyText, contentRef.current);
+    setCopyState(ok ? "copied" : "failed");
   }
 
   if (!schedule) return null;
@@ -169,13 +275,53 @@ export function RecordPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent ref={contentRef}>
         <DialogHeader>
           <DialogTitle>
-            記錄收款 — 第 {schedule.seq} 期 {schedule.label}
+            {replyText ? "已記錄收款" : `記錄收款 — 第 ${schedule.seq} 期 ${schedule.label}`}
           </DialogTitle>
         </DialogHeader>
 
+        {replyText ? (
+          <>
+            <div className="space-y-3">
+              <p className="text-xs text-[var(--text-secondary)]">
+                客戶回覆聯（複製後貼到 LINE 給客人）
+              </p>
+              <div className="select-all whitespace-pre-wrap break-words rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-base leading-relaxed text-[var(--text-primary)]">
+                {replyText}
+              </div>
+              {copyState === "failed" && (
+                <div className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  自動複製失敗，請長按上方文字手動複製。
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                完成
+              </Button>
+              <Button
+                size="lg"
+                className="h-12 text-base md:h-12"
+                onClick={() => void handleCopy()}
+              >
+                {copyState === "copied" ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    已複製
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    複製給客人
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+        <>
         <div className="space-y-4">
           <div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs space-y-1">
             <div className="flex justify-between">
@@ -218,6 +364,41 @@ export function RecordPaymentDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* 末五碼：匯款／刷卡／LINE PAY 共用一格，切換方式不清空 */}
+          {refPaymentType && (
+            <div className={isTransfer ? "grid grid-cols-2 gap-3" : undefined}>
+              <div>
+                <Label className="mb-1 block text-xs">
+                  {PAYMENT_REF_PLACEHOLDER[refPaymentType]}（選填）
+                </Label>
+                <Input
+                  value={paymentRef}
+                  onChange={(e) => setPaymentRef(e.target.value)}
+                  placeholder={PAYMENT_REF_PLACEHOLDER[refPaymentType]}
+                  maxLength={refPaymentType === "LINE PAY" ? undefined : 5}
+                  inputMode={refPaymentType === "LINE PAY" ? undefined : "numeric"}
+                />
+              </div>
+              {isTransfer && (
+                <div>
+                  <Label className="mb-1 block text-xs">收款帳戶（選填）</Label>
+                  <Select value={receivingAccountId} onValueChange={setReceivingAccountId}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECEIVING_ACCOUNT_OPTIONS.map((o) => (
+                        <SelectItem key={o.id} value={o.id}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
 
           {isCard ? (
             <div className="space-y-3 rounded border border-amber-200 bg-amber-50/60 p-3">
@@ -349,8 +530,8 @@ export function RecordPaymentDialog({
               onChange={(e) => setNotes(e.target.value)}
               placeholder={
                 isCard
-                  ? "例：卡號末四碼 1234 / 銀行：玉山"
-                  : "例：支票號 CH1234 / 匯款末四碼 5678"
+                  ? "例：銀行：玉山"
+                  : "例：支票號 CH1234"
               }
             />
             {isCard && (
@@ -382,6 +563,8 @@ export function RecordPaymentDialog({
             )}
           </Button>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   );

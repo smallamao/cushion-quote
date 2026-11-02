@@ -12,6 +12,7 @@ import {
   arRecordToRow,
   arRowToRecord,
   arScheduleRecordToRow,
+  ensureArScheduleColumns,
   arScheduleRowToRecord,
   calcARStatusFromSchedules,
   calcScheduleDerivedStatus,
@@ -112,7 +113,11 @@ export async function PUT(request: Request, context: RouteContext) {
     const totalAdjustment = existingRecs.reduce((s, r) => s + r.adjustmentAmount, 0);
     const paidRec = existingRecs.filter((r) => r.receivedAmount > 0);
     const carriedDate = paidRec.map((r) => r.receivedDate).filter(Boolean).sort().pop() ?? "";
-    const carriedMethod = paidRec.find((r) => r.paymentMethod)?.paymentMethod ?? "";
+    const carriedFrom = paidRec.find((r) => r.paymentMethod);
+    const carriedMethod = carriedFrom?.paymentMethod ?? "";
+    // 末五碼／收款帳戶跟著收款方式一起沿用
+    const carriedRef = carriedFrom?.paymentRef ?? "";
+    const carriedAccountId = carriedFrom?.receivingAccountId ?? "";
 
     if (totalReceived > Math.round(ar.totalAmount)) {
       return NextResponse.json(
@@ -128,6 +133,8 @@ export async function PUT(request: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "schedule sheet not found" }, { status: 500 });
     }
 
+    // 應收分期 A:Q 寫入前先確保實體欄數足夠（舊表只有 15 欄）
+    await ensureArScheduleColumns(client);
     // 1. 刪除舊分期列（由下往上，避免索引位移）
     if (existingIdx.length > 0) {
       await client.sheets.spreadsheets.batchUpdate({
@@ -178,6 +185,8 @@ export async function PUT(request: Request, context: RouteContext) {
         notes: applied > 0 ? "由原分期重新分配（已收金額沿用）" : "",
         createdAt: now,
         updatedAt: now,
+        paymentRef: applied > 0 ? carriedRef : "",
+        receivingAccountId: applied > 0 ? carriedAccountId : "",
       };
       rec.scheduleStatus = calcScheduleDerivedStatus(rec, today);
       return rec;

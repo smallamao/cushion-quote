@@ -11,6 +11,7 @@ import {
   arRecordToRow,
   arRowToRecord,
   arScheduleRecordToRow,
+  ensureArScheduleColumns,
   arScheduleRowToRecord,
   calcARStatusFromSchedules,
   calcScheduleDerivedStatus,
@@ -117,6 +118,8 @@ export async function POST(request: Request, context: RouteContext) {
       updatedAt: now,
     };
 
+    // 應收分期 A:Q 寫入前先確保實體欄數足夠（舊表只有 15 欄）
+    await ensureArScheduleColumns(client);
     await client.sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: client.spreadsheetId,
       requestBody: {

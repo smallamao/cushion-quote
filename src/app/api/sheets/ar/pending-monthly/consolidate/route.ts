@@ -12,6 +12,7 @@ import {
   arRecordToRow,
   arRowToRecord,
   arScheduleRecordToRow,
+  ensureArScheduleColumns,
   calcARStatusFromSchedules,
   generateArId,
   generateArScheduleId,
@@ -125,6 +126,8 @@ export async function POST(request: Request) {
       notes: `案件 ${r.caseId} / 版本 ${r.versionId}`,
       createdAt: now,
       updatedAt: now,
+      paymentRef: "",
+      receivingAccountId: "",
     }));
 
     const { arStatus, hasOverdue } = calcARStatusFromSchedules(schedules, today);
@@ -157,6 +160,8 @@ export async function POST(request: Request) {
       createdBy: "auto-monthly",
     };
 
+    // 應收分期 A:Q 寫入前先確保實體欄數足夠（舊表只有 15 欄）
+    await ensureArScheduleColumns(client);
     await client.sheets.spreadsheets.values.append({
       spreadsheetId: client.spreadsheetId,
       range: AR_RANGE_FULL,

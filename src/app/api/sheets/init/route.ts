@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { AR_SCHEDULE_SHEET, ensureArScheduleColumns } from "@/lib/ar-utils";
 import { timingSafeEqual } from "@/lib/constant-time";
 import { getSheetsClient } from "@/lib/sheets-client";
 
@@ -206,6 +207,8 @@ const SHEET_DEFINITIONS = [
       "備註",
       "建立時間",
       "更新時間",
+      "末五碼／驗證碼",
+      "收款帳戶",
     ],
   },
   {
@@ -424,6 +427,10 @@ export async function POST(request: Request) {
     }
 
     for (const def of SHEET_DEFINITIONS) {
+      // 應收分期表頭 17 欄，舊表實體只有 15 欄 → 先擴欄再寫表頭
+      if (def.title === AR_SCHEDULE_SHEET) {
+        await ensureArScheduleColumns(client);
+      }
       await client.sheets.spreadsheets.values.update({
         spreadsheetId: client.spreadsheetId,
         range: `${def.title}!A1`,

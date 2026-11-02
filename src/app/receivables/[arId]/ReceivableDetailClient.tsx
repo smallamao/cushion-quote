@@ -10,6 +10,7 @@ import { EditSchedulesDialog } from "@/components/ar/EditSchedulesDialog";
 import { WriteOffDialog } from "@/components/ar/WriteOffDialog";
 import { RecordPaymentDialog } from "@/components/ar/RecordPaymentDialog";
 import {
+  AR_PAYMENT_METHOD_LABEL,
   AR_SCHEDULE_STATUS_COLOR,
   AR_SCHEDULE_STATUS_LABEL,
   AR_STATUS_COLOR,
@@ -18,6 +19,7 @@ import {
   isoDateNow,
 } from "@/lib/ar-utils";
 import { useReceivableDetail } from "@/hooks/useReceivables";
+import { receivingAccountLabelById } from "@/lib/remittance";
 import type { ARScheduleRecord } from "@/lib/types";
 
 interface Props {
@@ -26,6 +28,16 @@ interface Props {
 
 function fmt(n: number): string {
   return n.toLocaleString("zh-TW", { maximumFractionDigits: 0 });
+}
+
+/** 收款方式摘要，例「匯款 18173｜大戶（訂製）周春懋 …5918」；沒記收款方式回空字串 */
+function paymentSummary(s: ARScheduleRecord): string {
+  if (!s.paymentMethod) return "";
+  const method = [AR_PAYMENT_METHOD_LABEL[s.paymentMethod] ?? s.paymentMethod, s.paymentRef]
+    .filter(Boolean)
+    .join(" ");
+  const account = receivingAccountLabelById(s.receivingAccountId);
+  return account ? `${method}｜${account}` : method;
 }
 
 export function ReceivableDetailClient({ arId }: Props) {
@@ -243,7 +255,14 @@ export function ReceivableDetailClient({ arId }: Props) {
                     <td className="px-3 py-2 text-right font-mono text-xs text-green-700">
                       {s.receivedAmount > 0 ? fmt(s.receivedAmount) : "—"}
                     </td>
-                    <td className="px-3 py-2 text-xs">{s.receivedDate || "—"}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {s.receivedDate || "—"}
+                      {paymentSummary(s) && (
+                        <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
+                          {paymentSummary(s)}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${AR_SCHEDULE_STATUS_COLOR[derivedStatus]}`}
@@ -310,6 +329,7 @@ export function ReceivableDetailClient({ arId }: Props) {
           if (!open) setPaymentTarget(null);
         }}
         schedule={paymentTarget}
+        scheduleCount={schedules.length}
         onSubmit={async (payload) => {
           await recordPayment(payload);
         }}
