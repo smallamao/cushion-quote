@@ -10,6 +10,8 @@ import {
   arScheduleRowToRecord,
   ensureArScheduleColumns,
   isValidARPaymentMethod,
+  mergePaymentRefFields,
+  validatePaymentRefFields,
 } from "@/lib/ar-utils";
 import type { SheetsClient } from "@/lib/sheets-client";
 import type { ARScheduleRecord } from "@/lib/types";
@@ -124,5 +126,38 @@ describe("ensureArScheduleColumns：實體欄數不足時擴欄（冪等）", ()
     await ensureArScheduleColumns(client);
     expect(batchUpdate).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("記錄收款：末五碼／收款帳戶 保留或覆蓋", () => {
+  const existing = { paymentRef: "18173", receivingAccountId: "big_custom" };
+
+  it("未帶或空字串 → 保留原值", () => {
+    expect(mergePaymentRefFields(existing, {})).toEqual(existing);
+    expect(mergePaymentRefFields(existing, { paymentRef: "", receivingAccountId: "" })).toEqual(existing);
+    expect(mergePaymentRefFields(existing, { paymentRef: "   " })).toEqual(existing);
+  });
+
+  it("有值才覆蓋（末五碼會 trim）", () => {
+    expect(
+      mergePaymentRefFields(existing, { paymentRef: " 55667 ", receivingAccountId: "taishin" }),
+    ).toEqual({ paymentRef: "55667", receivingAccountId: "taishin" });
+    expect(mergePaymentRefFields({ paymentRef: "", receivingAccountId: "" }, { paymentRef: "1" }))
+      .toEqual({ paymentRef: "1", receivingAccountId: "" });
+  });
+
+  it("收款帳戶必須是已知帳戶 id", () => {
+    expect(validatePaymentRefFields({})).toBeNull();
+    expect(validatePaymentRefFields({ receivingAccountId: "" })).toBeNull();
+    expect(validatePaymentRefFields({ receivingAccountId: "big_custom" })).toBeNull();
+    expect(validatePaymentRefFields({ receivingAccountId: "taishin_simple" })).toBeNull();
+    expect(validatePaymentRefFields({ receivingAccountId: "hacker" })).toBe("receivingAccountId is invalid");
+    expect(validatePaymentRefFields({ receivingAccountId: 5 })).toBe("receivingAccountId is invalid");
+  });
+
+  it("末五碼型別／長度檢查", () => {
+    expect(validatePaymentRefFields({ paymentRef: "18173" })).toBeNull();
+    expect(validatePaymentRefFields({ paymentRef: 18173 })).toBe("paymentRef is invalid");
+    expect(validatePaymentRefFields({ paymentRef: "x".repeat(41) })).toBe("paymentRef is invalid");
   });
 });

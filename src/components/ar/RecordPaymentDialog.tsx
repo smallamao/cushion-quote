@@ -48,7 +48,12 @@ interface RecordPaymentDialogProps {
   schedule: ARScheduleRecord | null;
   /** 此應收共幾期；用來判斷客戶回覆聯寫「訂金」「餘額」或「款項」 */
   scheduleCount: number;
-  onSubmit: (payload: RecordARPaymentPayload) => Promise<void>;
+  /** 頁面層的流程狀態：存檔中（按鈕鎖住） */
+  saving: boolean;
+  /** 頁面層保存的客戶回覆聯；有值＝已存檔，只顯示回覆聯，不再顯示可送出的表單 */
+  replyText: string | null;
+  /** 送出收款；replyText 是存檔成功後要顯示的客戶回覆聯 */
+  onSubmit: (payload: RecordARPaymentPayload, replyText: string) => Promise<void>;
 }
 
 function fmt(n: number): string {
@@ -118,6 +123,8 @@ export function RecordPaymentDialog({
   onOpenChange,
   schedule,
   scheduleCount,
+  saving,
+  replyText,
   onSubmit,
 }: RecordPaymentDialogProps) {
   const [paymentMethod, setPaymentMethod] = useState<Exclude<ARPaymentMethod, "">>("transfer");
@@ -137,11 +144,9 @@ export function RecordPaymentDialog({
   const [paymentRef, setPaymentRef] = useState("");
   const [receivingAccountId, setReceivingAccountId] = useState(DEFAULT_RECEIVING_ACCOUNT_ID);
 
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // 收款成功後顯示要傳給客人的「客戶回覆聯」，不直接關閉
-  const [replyText, setReplyText] = useState<string | null>(null);
+  // 收款成功後的「客戶回覆聯」由頁面層保存（replyText prop），重新載入資料也不會消失
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -165,7 +170,6 @@ export function RecordPaymentDialog({
     setWriteOffReason("匯費／手續費");
     setPaymentRef("");
     setReceivingAccountId(loadLastAccountId());
-    setReplyText(null);
     setCopyState("idle");
   }, [open, schedule, outstandingThisSchedule]);
 
@@ -198,7 +202,8 @@ export function RecordPaymentDialog({
   }, [isCard, cardDerived.net]);
 
   async function handleSubmit() {
-    if (!schedule) return;
+    // 已存檔或存檔中都不能再送出（頁面層也會再擋一次）
+    if (!schedule || saving || replyText) return;
     setError("");
     if (receivedAmount <= 0) {
       setError("收款金額必須 > 0");
@@ -224,19 +229,27 @@ export function RecordPaymentDialog({
 
     const shortfallNow = outstandingThisSchedule - receivedAmount;
     const doWriteOff = writeOffShortfall && shortfallNow > 0;
-    // 只有匯款／刷卡／LINE PAY 存末五碼；只有匯款存收款帳戶
+    // 只有匯款／刷卡／LINE PAY 存末五碼；只有匯款存收款帳戶。
+    // 不適用或沒填就不帶（undefined），伺服器端保留原值
     const ref = refPaymentType ? paymentRef.trim() : "";
     const accountId = isTransfer ? receivingAccountId : "";
+    const reply = buildClientReply({
+      date: isoDateToLocalDate(receivedDate),
+      payLabel: receiptPayLabelForSchedule(schedule.label, schedule.seq, scheduleCount),
+      // 刷卡：客人看到的是他刷的金額（含手續費），不是我們實收的淨額
+      amount: isCard ? cardGrossAmount : receivedAmount,
+      paymentType: refPaymentType,
+      paymentRef: ref,
+    });
 
-    setSaving(true);
     try {
       await onSubmit({
         scheduleId: schedule.scheduleId,
         receivedAmount,
         receivedDate,
         paymentMethod,
-        paymentRef: ref,
-        receivingAccountId: accountId,
+        paymentRef: ref || undefined,
+        receivingAccountId: accountId || undefined,
         notes: doWriteOff
           ? [finalNotes, `沖銷差額 $${fmt(shortfallNow)}：${writeOffReason}`]
               .filter(Boolean)
@@ -244,22 +257,10 @@ export function RecordPaymentDialog({
           : finalNotes,
         // 負值＝下修應收，使本期以實收金額結清（已收現金不變）
         ...(doWriteOff ? { adjustmentAmount: -shortfallNow } : {}),
-      });
+      }, reply);
       if (isTransfer) saveLastAccountId(receivingAccountId);
-      setReplyText(
-        buildClientReply({
-          date: isoDateToLocalDate(receivedDate),
-          payLabel: receiptPayLabelForSchedule(schedule.label, schedule.seq, scheduleCount),
-          // 刷卡：客人看到的是他刷的金額（含手續費），不是我們實收的淨額
-          amount: isCard ? cardGrossAmount : receivedAmount,
-          paymentType: refPaymentType,
-          paymentRef: ref,
-        }),
-      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "記錄失敗");
-    } finally {
-      setSaving(false);
     }
   }
 

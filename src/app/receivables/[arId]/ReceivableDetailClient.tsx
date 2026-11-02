@@ -3,7 +3,7 @@
 import { ArrowLeft, Loader2, Scissors, SplitSquareHorizontal, Trash2, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useReducer, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { EditSchedulesDialog } from "@/components/ar/EditSchedulesDialog";
@@ -19,8 +19,13 @@ import {
   isoDateNow,
 } from "@/lib/ar-utils";
 import { useReceivableDetail } from "@/hooks/useReceivables";
+import {
+  INITIAL_RECORD_PAYMENT_FLOW,
+  canSubmitPayment,
+  recordPaymentFlowReducer,
+} from "@/lib/record-payment-flow";
 import { receivingAccountLabelById } from "@/lib/remittance";
-import type { ARScheduleRecord } from "@/lib/types";
+import type { ARScheduleRecord, RecordARPaymentPayload } from "@/lib/types";
 
 interface Props {
   arId: string;
@@ -43,7 +48,14 @@ function paymentSummary(s: ARScheduleRecord): string {
 export function ReceivableDetailClient({ arId }: Props) {
   const { ar, schedules, loading, error, recordPayment, deleteAR, reload } =
     useReceivableDetail(arId);
-  const [paymentTarget, setPaymentTarget] = useState<ARScheduleRecord | null>(null);
+  // 記錄收款流程放在頁面層：存檔後重新載入資料時，回覆聯不會消失、表單也不會回到可再送出
+  const [paymentFlow, dispatchPayment] = useReducer(
+    recordPaymentFlowReducer,
+    INITIAL_RECORD_PAYMENT_FLOW,
+  );
+  // 同步鎖：避免連點時兩次送出都讀到舊的 phase
+  const paymentFlowRef = useRef(paymentFlow);
+  paymentFlowRef.current = paymentFlow;
   const [editSchedulesOpen, setEditSchedulesOpen] = useState(false);
   const [writeOffTarget, setWriteOffTarget] = useState<ARScheduleRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -73,7 +85,21 @@ export function ReceivableDetailClient({ arId }: Props) {
     }
   }
 
-  if (loading) {
+  async function handlePaymentSubmit(payload: RecordARPaymentPayload, replyText: string) {
+    if (!canSubmitPayment(paymentFlowRef.current)) return;
+    paymentFlowRef.current = { ...paymentFlowRef.current, phase: "saving" };
+    dispatchPayment({ type: "submit" });
+    try {
+      await recordPayment(payload);
+    } catch (err) {
+      dispatchPayment({ type: "failed" });
+      throw err;
+    }
+    dispatchPayment({ type: "saved", replyText });
+  }
+
+  // 只有第一次載入才整頁轉圈；存檔後的重新載入保留畫面（否則對話框會被卸載）
+  if (loading && !ar) {
     return (
       <div className="flex items-center justify-center py-24 text-sm text-[var(--text-secondary)]">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -82,7 +108,7 @@ export function ReceivableDetailClient({ arId }: Props) {
     );
   }
 
-  if (error || !ar) {
+  if (!ar) {
     return (
       <div className="py-24 text-center text-sm text-red-600">
         {error || "找不到此應收帳款"}
@@ -92,6 +118,9 @@ export function ReceivableDetailClient({ arId }: Props) {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
@@ -276,7 +305,7 @@ export function ReceivableDetailClient({ arId }: Props) {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => setPaymentTarget(s)}
+                            onClick={() => dispatchPayment({ type: "open", target: s })}
                             className="h-7 gap-1 text-xs"
                           >
                             <Wallet className="h-3 w-3" />
@@ -324,15 +353,15 @@ export function ReceivableDetailClient({ arId }: Props) {
       />
 
       <RecordPaymentDialog
-        open={paymentTarget !== null}
+        open={paymentFlow.phase !== "closed"}
         onOpenChange={(open) => {
-          if (!open) setPaymentTarget(null);
+          if (!open) dispatchPayment({ type: "close" });
         }}
-        schedule={paymentTarget}
+        schedule={paymentFlow.target}
         scheduleCount={schedules.length}
-        onSubmit={async (payload) => {
-          await recordPayment(payload);
-        }}
+        saving={paymentFlow.phase === "saving"}
+        replyText={paymentFlow.replyText}
+        onSubmit={handlePaymentSubmit}
       />
     </div>
   );

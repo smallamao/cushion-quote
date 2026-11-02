@@ -16,6 +16,8 @@ import {
   calcARStatusFromSchedules,
   calcScheduleDerivedStatus,
   isValidARPaymentMethod,
+  mergePaymentRefFields,
+  validatePaymentRefFields,
   isoDateNow,
   isoNow,
 } from "@/lib/ar-utils";
@@ -59,16 +61,9 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
-  // 末五碼／驗證碼、收款帳戶 id 都是短字串；擋掉異常輸入避免寫爆儲存格
-  if (
-    (payload.paymentRef != null && (typeof payload.paymentRef !== "string" || payload.paymentRef.length > 40)) ||
-    (payload.receivingAccountId != null &&
-      (typeof payload.receivingAccountId !== "string" || payload.receivingAccountId.length > 40))
-  ) {
-    return NextResponse.json(
-      { ok: false, error: "paymentRef / receivingAccountId is invalid" },
-      { status: 400 },
-    );
+  const refError = validatePaymentRefFields(payload);
+  if (refError) {
+    return NextResponse.json({ ok: false, error: refError }, { status: 400 });
   }
 
   const client = await getSheetsClient();
@@ -114,9 +109,8 @@ export async function POST(request: Request, context: RouteContext) {
       adjustmentAmount:
         existingSchedule.adjustmentAmount + (payload.adjustmentAmount ?? 0),
       notes: payload.notes ?? existingSchedule.notes,
-      // 沒帶（例：銀行核對）就保留原值；有帶（含空字串）就以這次為準
-      paymentRef: payload.paymentRef?.trim() ?? existingSchedule.paymentRef,
-      receivingAccountId: payload.receivingAccountId ?? existingSchedule.receivingAccountId,
+      // 沒帶或空字串（銀行核對、非匯款、第二筆分次付款沒填）→ 保留原值；有值才覆蓋
+      ...mergePaymentRefFields(existingSchedule, payload),
       updatedAt: now,
     };
     updatedSchedule.scheduleStatus = calcScheduleDerivedStatus(updatedSchedule, today);

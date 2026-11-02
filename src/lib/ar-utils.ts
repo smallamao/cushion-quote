@@ -8,6 +8,7 @@ import type {
   PendingMonthlyStatus,
 } from "@/lib/types";
 import type { SheetsClient } from "@/lib/sheets-client";
+import { BANK_ACCOUNTS } from "@/lib/remittance";
 
 export const AR_SHEET = "應收帳款";
 export const AR_SCHEDULE_SHEET = "應收分期";
@@ -490,6 +491,44 @@ export const AR_PAYMENT_METHOD_LABEL: Record<
   line_pay: "LINE PAY",
   other: "其他",
 };
+
+/**
+ * 驗證收款 payload 的末五碼／收款帳戶；回傳錯誤訊息，沒問題回 null。
+ * 收款帳戶必須是 BANK_ACCOUNTS 裡的 id（空字串／未帶＝不改，允許）。
+ */
+export function validatePaymentRefFields(payload: {
+  paymentRef?: unknown;
+  receivingAccountId?: unknown;
+}): string | null {
+  const { paymentRef, receivingAccountId } = payload;
+  if (paymentRef != null && (typeof paymentRef !== "string" || paymentRef.length > 40)) {
+    return "paymentRef is invalid";
+  }
+  if (receivingAccountId != null && receivingAccountId !== "") {
+    if (
+      typeof receivingAccountId !== "string" ||
+      !BANK_ACCOUNTS.some((a) => a.id === receivingAccountId)
+    ) {
+      return "receivingAccountId is invalid";
+    }
+  }
+  return null;
+}
+
+/**
+ * 記錄收款時合併末五碼／收款帳戶：未帶或空字串＝保留原值，只有非空值才覆蓋。
+ * 例：第二筆分次付款沒填末五碼、或改用現金（不帶帳戶），都不會清掉第一筆存的資料。
+ */
+export function mergePaymentRefFields(
+  existing: Pick<ARScheduleRecord, "paymentRef" | "receivingAccountId">,
+  payload: { paymentRef?: string; receivingAccountId?: string },
+): Pick<ARScheduleRecord, "paymentRef" | "receivingAccountId"> {
+  const ref = payload.paymentRef?.trim();
+  return {
+    paymentRef: ref ? ref : existing.paymentRef,
+    receivingAccountId: payload.receivingAccountId || existing.receivingAccountId,
+  };
+}
 
 /** 伺服器端驗證收款方式：只接受上面列出的方式（不含空字串） */
 export function isValidARPaymentMethod(
