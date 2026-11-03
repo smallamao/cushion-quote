@@ -42,7 +42,7 @@ describe("buildWorkOrderNoteText", () => {
     expect(t).toContain("⚠ 一只拉鍊頭收合在反向");
   });
 
-  it("分組標題（itemType=header）用 ■ 單獨一行", () => {
+  it("分組標題（itemType=header）用 ▶ 單獨一行——與工單 PDF 同一個符號", () => {
     const withHeader = {
       ...base,
       items: [
@@ -51,7 +51,7 @@ describe("buildWorkOrderNoteText", () => {
       ],
     } as unknown as CustomOrder;
     const t = buildWorkOrderNoteText(withHeader);
-    expect(t).toContain("■ 【大和樂活】單人沙發墊四組");
+    expect(t).toContain("▶ 【大和樂活】單人沙發墊四組");
     // 尺寸只有一行且另有數量時，數量接在同一行
     expect(t).toContain("W60 x 63 x 15cm 四只");
   });

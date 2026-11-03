@@ -47,7 +47,7 @@ export function buildWorkOrderNoteText(order: CustomOrder): string {
     const spec = (item.foamSpec ?? "").trim();
     // 分組標題（itemType=header）沒有尺寸，單獨成一行
     if (item.itemType === "header") {
-      if (name) itemLines.push(`■ ${name}`);
+      if (name) itemLines.push(`▶ ${name}`);
       continue;
     }
     const title = [name, spec].filter(Boolean).join(" ");

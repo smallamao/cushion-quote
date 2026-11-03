@@ -566,7 +566,10 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                 if (item.itemType === "header") {
                   return (
                     <View key={item.id} style={s.groupHeaderRow}>
-                      <Text style={s.groupHeaderPrefix}>▸</Text>
+                      {/* 🔴 不可用 ▸（U+25B8）：Noto Sans TC 兩個字重都缺這個字，
+                          react-pdf 會畫出一個小小的亂碼（老闆 2026-11-03 在工單上發現）。
+                          ▶（U+25B6）同形狀且字型有收，記事本文案也用同一個符號。 */}
+                      <Text style={s.groupHeaderPrefix}>▶</Text>
                       <Text style={s.groupHeaderText}>{safeText(item.name)}</Text>
                     </View>
                   );
