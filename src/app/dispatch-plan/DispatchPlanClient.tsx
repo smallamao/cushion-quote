@@ -31,6 +31,19 @@ interface Scheduled {
 }
 
 const WD = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** 台灣時區的今天，YYYY-MM-DD。伺服器在 UTC，用本地時間會跨日偏一天。 */
+function todayTw(): string {
+  const d = new Date(Date.now() + 8 * 3600_000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+function addDays(ymd: string, n: number): string {
+  const t = Date.parse(`${ymd}T00:00:00+08:00`) + n * 86_400_000;
+  const d = new Date(t + 8 * 3600_000);
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
 function fmtDate(ymd: string): string {
   const [, m, d] = ymd.split("-");
   const w = WD[new Date(`${ymd}T00:00:00+08:00`).getDay()];
@@ -43,6 +56,9 @@ export function DispatchPlanClient() {
   const [rules, setRules] = useState<Rules>({ softCap: 4, hardCap: 6, maxRoutes: 3, notifyLeadDays: 3 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [from, setFrom] = useState(todayTw);
+  const [to, setTo] = useState(() => addDays(todayTw(), 30));
+  const [showExpired, setShowExpired] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -93,23 +109,42 @@ export function DispatchPlanClient() {
   }
 
   /** 把「候選」與「已排定」依日期攤平成一天一張卡 */
+  const today = todayTw();
+
+  /**
+   * 🔴 三組日期全部過去的單要另外列，不能只是濾掉日期讓它消失。
+   *    2026-11-03 實測 37 筆待排車有 17 筆屬於這類——多半是這個頁面上線前
+   *    就已人工配送完成、系統沒留紀錄的舊單。無聲隱藏等於把問題藏起來。
+   */
+  const expired = useMemo(
+    () => pending.filter((p) => p.slots.length > 0 && p.slots.every((s) => s.date < today)),
+    [pending, today],
+  );
+  const expiredTokens = new Set(expired.map((p) => p.token));
+
   const days = useMemo(() => {
     const map = new Map<string, {
       date: string;
       booked: Scheduled[];
       candidates: Array<{ p: Pending; period: string; rank: number }>;
     }>();
+    const inRange = (d: string) => d >= from && d <= to;
     const touch = (d: string) =>
       map.get(d) ?? (map.set(d, { date: d, booked: [], candidates: [] }), map.get(d)!);
 
-    for (const s of scheduled) if (s.date) touch(s.date).booked.push(s);
+    for (const s of scheduled) if (s.date && inRange(s.date)) touch(s.date).booked.push(s);
     for (const p of pending) {
+      if (expiredTokens.has(p.token)) continue;
       p.slots.forEach((s, i) => {
-        if (s.date) touch(s.date).candidates.push({ p, period: s.period, rank: i + 1 });
+        // 過去的日期排不了，不列為候選
+        if (s.date && s.date >= today && inRange(s.date)) {
+          touch(s.date).candidates.push({ p, period: s.period, rank: i + 1 });
+        }
       });
     }
     return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
-  }, [pending, scheduled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, scheduled, from, to, today]);
 
   const assignedTokens = new Set(scheduled.map((s) => s.token));
 
@@ -133,10 +168,62 @@ export function DispatchPlanClient() {
         </button>
       </div>
 
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-xs text-[var(--text-secondary)]">顯示區間</span>
+        <input
+          type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+          className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-sm"
+        />
+        <span className="text-[var(--text-tertiary)]">～</span>
+        <input
+          type="date" value={to} onChange={(e) => setTo(e.target.value)}
+          className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-sm"
+        />
+        <button
+          type="button"
+          onClick={() => { setFrom(todayTw()); setTo(addDays(todayTw(), 30)); }}
+          className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs hover:bg-[var(--bg-hover)]"
+        >
+          回到今天起 30 天
+        </button>
+      </div>
+
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
       {!loading && days.length === 0 && (
         <p className="mt-6 text-center text-sm text-[var(--text-secondary)]">目前沒有待排車的訂單。</p>
+      )}
+
+      {expired.length > 0 && (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3">
+          <button
+            type="button"
+            onClick={() => setShowExpired((v) => !v)}
+            className="flex w-full items-center gap-2 text-left"
+          >
+            <span className="text-sm font-semibold text-amber-900">
+              ⏳ 客人給的時段都已過期（{expired.length} 筆）
+            </span>
+            <span className="ml-auto text-xs text-amber-800">{showExpired ? "收合" : "展開"}</span>
+          </button>
+          <p className="mt-1 text-xs text-amber-800">
+            這些單排不進任何一天。多半是這個頁面上線前就已人工配送完成、系統沒留紀錄；
+            也可能是客人拖太久。請逐筆確認後再處理。
+          </p>
+          {showExpired && (
+            <div className="mt-2 space-y-1">
+              {expired.map((p) => (
+                <div key={p.token} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-sm">
+                  <span className="font-medium">{p.orderNumber} {p.customerName}</span>
+                  <span className="text-xs text-[var(--text-secondary)]">📍 {p.region}</span>
+                  <span className="text-xs text-[var(--text-tertiary)]">
+                    客人選了 {p.slots.map((s) => s.date.slice(5)).join("、")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="mt-4 space-y-3">
