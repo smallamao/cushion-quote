@@ -26,7 +26,8 @@ interface Pending {
 interface Rules { softCap: number; hardCap: number; maxRoutes: number; notifyLeadDays: number }
 interface Scheduled {
   token: string; orderNumber: string; customerName: string;
-  date: string; period: string; region: string; city: string; isRemote: boolean;
+  date: string; period: string; slots: Slot[]; dueDate: string;
+  region: string; city: string; isRemote: boolean;
 }
 
 const WD = ["日", "一", "二", "三", "四", "五", "六"];
@@ -173,21 +174,43 @@ export function DispatchPlanClient() {
 
               {d.booked.length > 0 && (
                 <div className="mt-2 rounded-lg bg-emerald-50 p-2">
-                  {d.booked.map((b) => (
-                    <div key={b.token} className="flex flex-wrap items-center gap-2 py-0.5 text-sm">
-                      <span className="font-medium text-emerald-900">
-                        ✅ {b.orderNumber} {b.customerName}
-                      </span>
-                      <span className="text-xs text-emerald-800">{b.period}・{b.region}</span>
-                      <button
-                        type="button" disabled={busy}
-                        onClick={() => void unassign(b.token)}
-                        className="ml-auto rounded border border-emerald-300 px-2 py-0.5 text-[11px] text-emerald-800 disabled:opacity-40"
-                      >
-                        取消指派
-                      </button>
-                    </div>
-                  ))}
+                  {d.booked.map((b) => {
+                    // 客人給的其他組——直接改排，不用先取消再回頭找那一天
+                    const others = (b.slots ?? []).filter((s) => s.date && s.date !== b.date);
+                    return (
+                      <div key={b.token} className="py-1 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-emerald-900">
+                            ✅ {b.orderNumber} {b.customerName}
+                          </span>
+                          <span className="text-xs text-emerald-800">{b.period}・{b.region}</span>
+                          <button
+                            type="button" disabled={busy}
+                            onClick={() => void unassign(b.token)}
+                            className="ml-auto rounded border border-emerald-300 px-2 py-0.5 text-[11px] text-emerald-800 disabled:opacity-40"
+                          >
+                            放回待排車
+                          </button>
+                        </div>
+                        {others.length > 0 && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-emerald-800/80">改排到：</span>
+                            {others.map((s, i) => (
+                              <button
+                                key={`${s.date}-${i}`}
+                                type="button" disabled={busy}
+                                onClick={() => void assign(b.token, s.date, s.period)}
+                                title={`${fmtDate(s.date)} ${s.period}`}
+                                className="rounded border border-emerald-300 bg-white/70 px-2 py-0.5 text-[11px] text-emerald-900 disabled:opacity-40"
+                              >
+                                {fmtDate(s.date)} {s.period}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

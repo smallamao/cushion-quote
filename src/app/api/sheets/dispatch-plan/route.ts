@@ -78,6 +78,9 @@ export async function GET(request: Request) {
           customerName: c.customerName,
           date: c.chosenDate,
           period: c.chosenPeriod,
+          /** 客人原本給的三組——已排定的單要改天時，直接從這裡挑，不必先取消再重找 */
+          slots: c.preferredSlots,
+          dueDate: c.dueDate,
           region: region.label,
           city: region.city,
           isRemote: region.isRemote,
