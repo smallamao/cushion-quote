@@ -1,9 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { buildWorkOrderNoteText } from "@/lib/workorder-note";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Loader2, Plus, Save, ShoppingCart, Upload, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ClipboardList,
+  FileImage,
+  Loader2,
+  Plus,
+  Save,
+  ShoppingCart,
+  Upload,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +122,8 @@ export function OrderDetailClient({ orderId }: Props) {
   const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [statusChanging, setStatusChanging] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
+  const [jpgBusy, setJpgBusy] = useState(false);
+  const [noteCopied, setNoteCopied] = useState(false);
   const [poUploading, setPoUploading] = useState(false);
   const [notionResult, setNotionResult] = useState<{ ok: boolean; message: string } | null>(null);
   // 關聯採購單（供財務頁計入成本 + 反查區塊顯示）；一次抓、兩處共用
@@ -268,6 +281,44 @@ export function OrderDetailClient({ orderId }: Props) {
     }
   }
 
+  /**
+   * 老闆 2026-11-03：原本要「同步到 Notion → 再去 Notion 把工單圖複製回來」才能貼記事本。
+   * 那張圖就是同步時用 generateWorkOrderJpgBlob 產的，繞一圈只是為了拿回自己做的東西。
+   * Notion 同步保留（過渡期兩邊一起對帳款），這顆只是讓你不必為了拿圖而繞路。
+   */
+  async function handleDownloadWorkOrderJpg() {
+    const target = draft ?? order;
+    if (!target) return;
+    setJpgBusy(true);
+    try {
+      const { generateWorkOrderJpgBlob } = await import("@/components/pdf/WorkOrderPDF");
+      const blob = await generateWorkOrderJpgBlob({ order: target });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `工單-${target.orderNumber || target.orderId}.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "JPG 生成失敗");
+    } finally {
+      setJpgBusy(false);
+    }
+  }
+
+  /** 整段記事本文案一次複製好，不必照著工單圖逐字重打 */
+  async function handleCopyWorkOrderNote() {
+    const target = draft ?? order;
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(buildWorkOrderNoteText(target));
+      setNoteCopied(true);
+      setTimeout(() => setNoteCopied(false), 1800);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "複製失敗");
+    }
+  }
+
   async function handleNotionSync() {
     if (!order) return;
     setNotionSyncing(true);
@@ -396,6 +447,29 @@ export function OrderDetailClient({ orderId }: Props) {
             >
               <ShoppingCart className="mr-1 h-3 w-3" />
               建立採購單
+            </Button>
+            {/* 這兩顆是為了「貼進 LINE 記事本＋傳給客戶」（老闆 2026-11-03）：
+                原本要繞 Notion 拿圖、再照著圖逐字重打文字。 */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={jpgBusy}
+              onClick={() => void handleDownloadWorkOrderJpg()}
+              className="h-7 text-xs"
+            >
+              {jpgBusy
+                ? <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                : <FileImage className="mr-1 h-3 w-3" />}
+              工單 JPG
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleCopyWorkOrderNote()}
+              className="h-7 text-xs"
+            >
+              <ClipboardList className="mr-1 h-3 w-3" />
+              {noteCopied ? "已複製記事本" : "複製記事本"}
             </Button>
             <Button
               size="sm"
