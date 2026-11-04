@@ -647,13 +647,18 @@ function WorkOrderDocument({ order }: WorkOrderPDFProps) {
                   note.color === "red"    ? s.noteTextDanger
                   : note.color === "orange" ? s.noteTextWarn
                   : s.noteTextBlack;
-                const prefix = note.isWarning ? "⚠ " : "";
+                // 🔴 警告不再加符號前綴（老闆 2026-11-04 決定）。
+                // 原本用 ⚠（U+26A0）：PDF 這邊渲染是正確的，但版面編輯器是瀏覽器 DOM
+                // 預覽，用的是系統字型（本專案的 Noto Sans TC 各 11MB，不可能當網頁字型
+                // 載給預覽用），macOS 上 Apple Symbols／SF NS／Apple Color Emoji 都有這個
+                // 字，瀏覽器挑哪個不一定，於是預覽看起來跟 PDF 不一樣。
+                // 這一行本來就是紅色粗體，訊號已經夠強，符號是多餘的。
+                // ⚠ 仍保留在 LINE 記事本文案（lib/workorder-note.ts）——純文字沒有顏色
+                // 與粗體可用，拿掉就跟一般備註分不出來了。
                 return (
                   <View key={note.id} style={s.noteRow}>
                     <Text style={s.noteBullet}>◆</Text>
-                    <Text style={noteStyle}>
-                      {prefix}{safeText(note.text)}
-                    </Text>
+                    <Text style={noteStyle}>{safeText(note.text)}</Text>
                   </View>
                 );
               })}

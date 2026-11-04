@@ -68,6 +68,8 @@ export function buildWorkOrderNoteText(order: CustomOrder): string {
   const notes = (order.notes ?? []).filter((n) => (n.text ?? "").trim());
   if (notes.length) {
     blocks.push(
+      // ⚠ 只留在純文字這邊：PDF 用紅色粗體標警告，所以那邊不加符號（老闆 2026-11-04）；
+      // 但 LINE 記事本沒有顏色也沒有粗體，拿掉就跟一般備註分不出來。
       ["施工備註", ...notes.map((n) => `${n.isWarning ? "⚠" : "◆"} ${n.text.trim()}`)].join("\n"),
     );
   }
