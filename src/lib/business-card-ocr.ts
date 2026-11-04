@@ -2,7 +2,7 @@ import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
 
-import { AI_MAX_TOKENS, AI_MODEL_VISION } from "@/lib/ai-model";
+import { AI_MAX_TOKENS, AI_MODEL_VISION, AI_NO_KEY_MESSAGE } from "@/lib/ai-model";
 
 export interface BusinessCardData {
   companyName: string;
@@ -15,18 +15,6 @@ export interface BusinessCardData {
   lineId: string;
   address: string;
 }
-
-const EMPTY_RESULT: BusinessCardData = {
-  companyName: "",
-  taxId: "",
-  name: "",
-  role: "",
-  phone: "",
-  phone2: "",
-  email: "",
-  lineId: "",
-  address: "",
-};
 
 /** Anthropic 只收這四種圖片格式，其他一律當 JPEG 送（手機拍照幾乎都是 JPEG） */
 const SUPPORTED_MEDIA = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
@@ -43,7 +31,9 @@ export async function recognizeBusinessCard(
   images: { buffer: Buffer; mimeType: string }[],
 ): Promise<BusinessCardData> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { ...EMPTY_RESULT };
+  // 沒金鑰時丟錯而不是回空白：靜默回一堆空欄位，操作的人會以為是名片拍壞了，
+  // 實際上是系統沒設定——呼叫端有 catch，會把訊息顯示出來（2026-11-04）。
+  if (!apiKey) throw new Error(AI_NO_KEY_MESSAGE);
 
   const prompt = `你是一個名片 OCR 助手。${images.length > 1 ? "以下是同一張名片的正面和反面。請綜合兩面的資訊，擷取" : "請從這張名片圖片中擷取"}以下欄位並以 JSON 格式回傳。
 若某欄位不存在則回傳空字串。
