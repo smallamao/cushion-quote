@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, Loader2, Check, X, ShieldAlert } from "lucide-react";
 
+import { useTouchDevice } from "@/hooks/useTouchDevice";
+import { shouldSubmitOnEnter } from "@/lib/chat-input";
+
 interface ChatTurn {
   role: "user" | "model";
   text: string;
@@ -21,6 +24,9 @@ interface Msg {
 
 const EXAMPLES = ["查 S941", "邱意晴的訂單", "這個月完成幾張", "把 S941 改完成"];
 
+/** 輸入框最高約五行，再長就自己捲，不要把對話區擠掉 */
+const MAX_INPUT_HEIGHT = 132;
+
 export function AssistantPanel() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [history, setHistory] = useState<ChatTurn[]>([]);
@@ -28,10 +34,22 @@ export function AssistantPanel() {
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** Safari 的 isComposing 不可靠，compositionstart/end 自己再記一份 */
+  const composingRef = useRef(false);
+  const touchDevice = useTouchDevice();
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // 輸入框跟著內容長高
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+  }, [input]);
 
   async function send(text: string) {
     const msg = text.trim();
@@ -100,7 +118,7 @@ export function AssistantPanel() {
       {/* 隱私提示 */}
       <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-2 text-[11px] text-[var(--text-tertiary)]">
         <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
-        使用 Google Gemini 免費版，對話內容（含查到的訂單資料）會傳給 Google。請勿輸入不該外流的機密。
+        使用 Anthropic Claude，對話內容（含查到的訂單資料）會傳給 Anthropic。請勿輸入不該外流的機密。
       </div>
 
       {/* 訊息區 */}
@@ -168,23 +186,38 @@ export function AssistantPanel() {
       </div>
 
       {/* 輸入區 */}
-      <div className="flex items-center gap-2 border-t border-[var(--border)] p-3">
-        <input
+      <div className="flex items-end gap-2 border-t border-[var(--border)] p-3">
+        <textarea
+          ref={inputRef}
+          rows={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send(input);
-            }
+          onCompositionStart={() => {
+            composingRef.current = true;
           }}
-          placeholder="輸入指令，例如：把 S941 改完成"
-          className="flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+          onCompositionEnd={(e) => {
+            composingRef.current = false;
+            setInput(e.currentTarget.value);
+          }}
+          onKeyDown={(e) => {
+            const isComposing =
+              e.nativeEvent.isComposing || e.keyCode === 229 || composingRef.current;
+            if (!shouldSubmitOnEnter({ key: e.key, shiftKey: e.shiftKey, isComposing, touchDevice }))
+              return;
+            e.preventDefault();
+            void send(input);
+          }}
+          placeholder={
+            touchDevice ? "輸入指令，按右邊箭頭送出" : "輸入指令（Shift+Enter 換行）"
+          }
+          style={{ maxHeight: MAX_INPUT_HEIGHT }}
+          className="flex-1 resize-none overflow-y-auto rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-sm leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
         />
         <button
           onClick={() => void send(input)}
           disabled={loading || !input.trim()}
-          className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent)] text-white disabled:opacity-40"
+          aria-label="送出"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent)] text-white disabled:opacity-40 sm:h-9 sm:w-9"
         >
           <Send className="h-4 w-4" />
         </button>
