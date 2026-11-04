@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 
-import type { BusinessCardData } from "@/lib/gemini-client";
+import type { BusinessCardData } from "@/lib/business-card-ocr";
 
 interface RecognitionState {
   status: "idle" | "uploading" | "done" | "error";

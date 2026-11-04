@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/api-auth";
 import { v2 as cloudinary } from "cloudinary";
 import { NextResponse } from "next/server";
 
-import { recognizeBusinessCard } from "@/lib/gemini-client";
+import { recognizeBusinessCard } from "@/lib/business-card-ocr";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,

@@ -10,7 +10,7 @@ import { BusinessCardUpload } from "./BusinessCardUpload";
 import { ContactCard } from "./ContactCard";
 import { useContacts } from "@/hooks/useContacts";
 import type { Contact } from "@/lib/types/company";
-import type { BusinessCardData } from "@/lib/gemini-client";
+import type { BusinessCardData } from "@/lib/business-card-ocr";
 
 interface ContactsTabProps {
   companyId: string;

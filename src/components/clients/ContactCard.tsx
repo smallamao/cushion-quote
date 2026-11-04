@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BusinessCardUpload } from "./BusinessCardUpload";
 import type { Contact } from "@/lib/types/company";
-import type { BusinessCardData } from "@/lib/gemini-client";
+import type { BusinessCardData } from "@/lib/business-card-ocr";
 
 interface ContactCardProps {
   contact: Contact;

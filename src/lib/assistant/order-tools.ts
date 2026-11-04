@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Type, type FunctionDeclaration } from "@google/genai";
+import type Anthropic from "@anthropic-ai/sdk";
 
 import { ORDER_RANGE_DATA, orderRowToRecord } from "@/lib/order-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
@@ -90,30 +90,30 @@ export async function getOrder(args: {
   return o ? toSummary(o) : { error: `找不到工單 ${id}` };
 }
 
-export const functionDeclarations: FunctionDeclaration[] = [
+export const toolDefinitions: Anthropic.Tool[] = [
   {
     name: "find_orders",
     description: "查詢訂製訂單清單。可用關鍵字(工單號 / 客戶名 / 訂製內容)、狀態、月份篩選，回傳最多 30 筆摘要。",
-    parameters: {
-      type: Type.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        query: { type: Type.STRING, description: "關鍵字：工單號 / 客戶姓名 / 訂製內容，可省略" },
+        query: { type: "string", description: "關鍵字：工單號 / 客戶姓名 / 訂製內容，可省略" },
         status: {
-          type: Type.STRING,
+          type: "string",
           enum: ["production", "waiting", "completed", "cancelled"],
           description: "狀態篩選：production=排程/生產中, waiting=待出貨, completed=完成, cancelled=取消。可省略",
         },
-        month: { type: Type.STRING, description: "月份 YYYY-MM，篩下單日或安裝/出貨日落在該月的單，可省略" },
+        month: { type: "string", description: "月份 YYYY-MM，篩下單日或安裝/出貨日落在該月的單，可省略" },
       },
     },
   },
   {
     name: "get_order",
     description: "查詢單一訂製訂單的詳細資訊。",
-    parameters: {
-      type: Type.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        orderId: { type: Type.STRING, description: "工單編號，例如 S941" },
+        orderId: { type: "string", description: "工單編號，例如 S941" },
       },
       required: ["orderId"],
     },
@@ -122,12 +122,12 @@ export const functionDeclarations: FunctionDeclaration[] = [
     name: PROPOSE_STATUS_CHANGE,
     description:
       "提議把某張訂單改成新狀態。這只是『提議』，不會真的改——必須由使用者在畫面上按確認，系統才會執行。不要假裝已經改好。",
-    parameters: {
-      type: Type.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        orderId: { type: Type.STRING, description: "工單編號，例如 S941" },
+        orderId: { type: "string", description: "工單編號，例如 S941" },
         status: {
-          type: Type.STRING,
+          type: "string",
           enum: ["production", "waiting", "completed", "cancelled"],
           description: "目標狀態：production=排程/生產中, waiting=待出貨, completed=完成, cancelled=取消",
         },

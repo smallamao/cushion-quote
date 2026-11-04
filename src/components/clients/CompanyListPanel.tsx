@@ -25,7 +25,7 @@ import {
 import { CLIENT_TYPE_LABELS, CHANNEL_LABELS } from "@/lib/constants";
 import type { ClientType, Channel } from "@/lib/types";
 import type { Company, CompanyWithPrimaryContact } from "@/lib/types/company";
-import type { BusinessCardData } from "@/lib/gemini-client";
+import type { BusinessCardData } from "@/lib/business-card-ocr";
 import {
   scanClientImpact,
   useCompanies,

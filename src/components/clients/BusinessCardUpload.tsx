@@ -5,7 +5,7 @@ import { useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useBusinessCardRecognition } from "@/hooks/useBusinessCardRecognition";
-import type { BusinessCardData } from "@/lib/gemini-client";
+import type { BusinessCardData } from "@/lib/business-card-ocr";
 
 interface BusinessCardUploadProps {
   onRecognized: (data: BusinessCardData, imageUrls: string[]) => void;

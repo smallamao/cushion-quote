@@ -1,4 +1,6 @@
-import { GoogleGenerativeAI, SchemaType, type FunctionDeclaration, type Content } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
+
+import { AI_MAX_TOKENS, AI_MODEL_AGENT, AI_NO_KEY_MESSAGE } from "@/lib/ai-model";
 
 import { issueB2BInvoice, issueB2CInvoice } from "@/lib/giveme-client";
 import { generateEInvoiceId, isoNow } from "@/lib/einvoice-utils";
@@ -8,19 +10,20 @@ import { createService, listServices } from "@/lib/after-sales-sheet";
 import { appendEInvoiceRecord, getEInvoiceRows, getEInvoiceRecords } from "@/app/api/sheets/einvoices/_shared";
 import { getQuoteRows, quoteRowToRecord } from "@/app/api/sheets/_v2-utils";
 
-const functionDeclarations: FunctionDeclaration[] = [
+/** 匯出供測試檢查格式（機械式從 Gemini 轉過來，容易留下不合規的 schema） */
+export const toolDefinitions: Anthropic.Tool[] = [
   {
     name: "create_invoice",
     description: "建立並立即開立電子發票。適用於客戶要開發票、或已完工需要開立發票的場景。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        buyerName: { type: SchemaType.STRING, description: "買方名稱（客戶姓名或公司名稱）" },
-        buyerTaxId: { type: SchemaType.STRING, description: "買方統一編號，B2B 才填，B2C 不填" },
-        totalAmount: { type: SchemaType.NUMBER, description: "含稅總金額（新台幣）" },
-        itemName: { type: SchemaType.STRING, description: "主要品項名稱，例如「沙發換布」、「窗簾安裝」" },
-        overallRemark: { type: SchemaType.STRING, description: "總備註，會顯示在發票上" },
-        invoiceDate: { type: SchemaType.STRING, description: "發票日期，格式 YYYY-MM-DD，不填則用今天" },
+        buyerName: { type: "string", description: "買方名稱（客戶姓名或公司名稱）" },
+        buyerTaxId: { type: "string", description: "買方統一編號，B2B 才填，B2C 不填" },
+        totalAmount: { type: "number", description: "含稅總金額（新台幣）" },
+        itemName: { type: "string", description: "主要品項名稱，例如「沙發換布」、「窗簾安裝」" },
+        overallRemark: { type: "string", description: "總備註，會顯示在發票上" },
+        invoiceDate: { type: "string", description: "發票日期，格式 YYYY-MM-DD，不填則用今天" },
       },
       required: ["buyerName", "totalAmount"],
     },
@@ -28,12 +31,12 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "create_after_sales",
     description: "建立售後報修服務單。適用於客戶反映問題、需要派人維修的場景。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        clientName: { type: SchemaType.STRING, description: "客戶姓名" },
-        clientPhone: { type: SchemaType.STRING, description: "客戶電話" },
-        issueDescription: { type: SchemaType.STRING, description: "問題描述，盡量詳細" },
+        clientName: { type: "string", description: "客戶姓名" },
+        clientPhone: { type: "string", description: "客戶電話" },
+        issueDescription: { type: "string", description: "問題描述，盡量詳細" },
       },
       required: ["clientName", "issueDescription"],
     },
@@ -41,12 +44,12 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "query_purchase_orders",
     description: "查詢採購單列表。可以查最近幾筆、依狀態篩選、或依日期篩選（例如今天）。所有參數都是選填，直接呼叫即可。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        status: { type: SchemaType.STRING, description: "篩選狀態：draft（草稿）、confirmed（已確認）、received（已到貨）、cancelled（已取消）。不填則查全部。" },
-        orderDate: { type: SchemaType.STRING, description: "篩選特定日期，格式 YYYY-MM-DD。例如查今天就填今天的日期。不填則不篩選。" },
-        limit: { type: SchemaType.NUMBER, description: "最多顯示幾筆，預設 5，最多 20" },
+        status: { type: "string", description: "篩選狀態：draft（草稿）、confirmed（已確認）、received（已到貨）、cancelled（已取消）。不填則查全部。" },
+        orderDate: { type: "string", description: "篩選特定日期，格式 YYYY-MM-DD。例如查今天就填今天的日期。不填則不篩選。" },
+        limit: { type: "number", description: "最多顯示幾筆，預設 5，最多 20" },
       },
       required: [],
     },
@@ -54,11 +57,11 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "query_clients",
     description: "查詢客戶資料。開發票前確認客戶名稱、統編，或查詢客戶是否存在。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        keyword: { type: SchemaType.STRING, description: "搜尋關鍵字，可以是公司名稱或簡稱的一部分" },
-        limit: { type: SchemaType.NUMBER, description: "最多顯示幾筆，預設 5" },
+        keyword: { type: "string", description: "搜尋關鍵字，可以是公司名稱或簡稱的一部分" },
+        limit: { type: "number", description: "最多顯示幾筆，預設 5" },
       },
       required: ["keyword"],
     },
@@ -66,11 +69,11 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "query_quotes",
     description: "查詢報價單列表。可以依狀態篩選：draft（草稿）、sent（已送出）、accepted（已接受）、rejected（已拒絕）、cancelled（已取消）。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        status: { type: SchemaType.STRING, description: "報價單狀態篩選，不填則查全部" },
-        limit: { type: SchemaType.NUMBER, description: "最多顯示幾筆，預設 5" },
+        status: { type: "string", description: "報價單狀態篩選，不填則查全部" },
+        limit: { type: "number", description: "最多顯示幾筆，預設 5" },
       },
       required: [],
     },
@@ -78,11 +81,11 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "update_purchase_status",
     description: "更新採購單狀態。例如把草稿改為已確認，或標記為已到貨。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        orderId: { type: SchemaType.STRING, description: "採購單號，例如 PS-20260430-01" },
-        status: { type: SchemaType.STRING, description: "新狀態：draft（草稿）、confirmed（已確認）、received（已到貨）、cancelled（已取消）" },
+        orderId: { type: "string", description: "採購單號，例如 PS-20260430-01" },
+        status: { type: "string", description: "新狀態：draft（草稿）、confirmed（已確認）、received（已到貨）、cancelled（已取消）" },
       },
       required: ["orderId", "status"],
     },
@@ -90,12 +93,12 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "query_after_sales",
     description: "查詢售後報修單列表。可以依狀態篩選：pending（待處理）、scheduled（已排程）、in_progress（處理中）、completed（已完成）。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        status: { type: SchemaType.STRING, description: "篩選狀態：pending、scheduled、in_progress、completed。不填則查全部。" },
-        keyword: { type: SchemaType.STRING, description: "客戶姓名關鍵字，選填" },
-        limit: { type: SchemaType.NUMBER, description: "最多顯示幾筆，預設 5，最多 20" },
+        status: { type: "string", description: "篩選狀態：pending、scheduled、in_progress、completed。不填則查全部。" },
+        keyword: { type: "string", description: "客戶姓名關鍵字，選填" },
+        limit: { type: "number", description: "最多顯示幾筆，預設 5，最多 20" },
       },
       required: [],
     },
@@ -103,11 +106,11 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "query_invoices",
     description: "查詢電子發票列表。可以依狀態篩選：draft（草稿）、issued（已開立）、cancelled（已作廢）。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        status: { type: SchemaType.STRING, description: "篩選狀態：draft、issued、cancelled。不填則查全部。" },
-        limit: { type: SchemaType.NUMBER, description: "最多顯示幾筆，預設 5，最多 20" },
+        status: { type: "string", description: "篩選狀態：draft、issued、cancelled。不填則查全部。" },
+        limit: { type: "number", description: "最多顯示幾筆，預設 5，最多 20" },
       },
       required: [],
     },
@@ -115,22 +118,22 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "create_purchase_order",
     description: "建立採購單草稿。向供應商採購材料時使用。",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object",
       properties: {
-        supplierName: { type: SchemaType.STRING, description: "供應商名稱" },
-        orderDate: { type: SchemaType.STRING, description: "採購日期 YYYY-MM-DD，不填則用今天" },
-        notes: { type: SchemaType.STRING, description: "備註" },
+        supplierName: { type: "string", description: "供應商名稱" },
+        orderDate: { type: "string", description: "採購日期 YYYY-MM-DD，不填則用今天" },
+        notes: { type: "string", description: "備註" },
         items: {
-          type: SchemaType.ARRAY,
+          type: "array",
           description: "採購品項清單",
           items: {
-            type: SchemaType.OBJECT,
+            type: "object",
             properties: {
-              name: { type: SchemaType.STRING, description: "品項名稱" },
-              quantity: { type: SchemaType.NUMBER, description: "數量" },
-              unitPrice: { type: SchemaType.NUMBER, description: "單價" },
-              unit: { type: SchemaType.STRING, description: "單位，例如碼、件、式" },
+              name: { type: "string", description: "品項名稱" },
+              quantity: { type: "number", description: "數量" },
+              unitPrice: { type: "number", description: "單價" },
+              unit: { type: "string", description: "單位，例如碼、件、式" },
             },
             required: ["name", "quantity", "unitPrice"],
           },
@@ -591,7 +594,7 @@ async function executeTool(
   return `未知工具：${name}`;
 }
 
-const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? "");
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" });
 
 const SYSTEM_PROMPT = `你是馬鈴薯沙發的業務助理，幫老闆用一句話快速建立或查詢工作單。今天日期：${new Date().toISOString().slice(0, 10)}。
 
@@ -652,7 +655,7 @@ const SYSTEM_PROMPT = `你是馬鈴薯沙發的業務助理，幫老闆用一句
 
 const HISTORY_MAX_PAIRS = 6;
 const HISTORY_TTL_MS = 30 * 60 * 1000;
-const userHistories = new Map<string, { history: Content[]; ts: number }>();
+const userHistories = new Map<string, { history: Anthropic.MessageParam[]; ts: number }>();
 
 export interface RunAgentOptions {
   /**
@@ -674,17 +677,13 @@ export async function runAgent(
     return "✅ 對話記憶已清除。";
   }
 
-  const blockedTools = new Set(options?.blockedTools ?? []);
-  const allowedDeclarations = functionDeclarations.filter((d) => !blockedTools.has(d.name));
+  if (!process.env.ANTHROPIC_API_KEY) return AI_NO_KEY_MESSAGE;
 
-  const model = genai.getGenerativeModel({
-    model: "gemini-2.5-flash",
-    tools: [{ functionDeclarations: allowedDeclarations }],
-    systemInstruction: SYSTEM_PROMPT,
-  });
+  const blockedTools = new Set(options?.blockedTools ?? []);
+  const allowedTools = toolDefinitions.filter((d) => !blockedTools.has(d.name));
 
   // Load per-user history (in-process memory, 30-min TTL)
-  let history: Content[] = [];
+  let history: Anthropic.MessageParam[] = [];
   if (userId) {
     const stored = userHistories.get(userId);
     if (stored && Date.now() - stored.ts < HISTORY_TTL_MS) {
@@ -692,58 +691,72 @@ export async function runAgent(
     }
   }
 
-  const chat = model.startChat({ history });
-  let result = await chat.sendMessage(userMessage);
+  const messages: Anthropic.MessageParam[] = [...history, { role: "user", content: userMessage }];
   let lastToolResult = "";
+  let reply: Anthropic.Message | null = null;
 
-  for (let round = 0; round < 3; round++) {
-    const calls = result.response.functionCalls();
-    if (!calls || calls.length === 0) break;
+  // 最多三輪工具呼叫，與先前的行為一致：第三輪之後就把手上的結果交出去，
+  // 不讓它無限往下呼叫（工具都會動到真實資料，繞不完比答不出來更糟）。
+  for (let round = 0; round < 3; round += 1) {
+    reply = await anthropic.messages.create({
+      model: AI_MODEL_AGENT,
+      max_tokens: AI_MAX_TOKENS,
+      system: SYSTEM_PROMPT,
+      tools: allowedTools,
+      messages,
+    });
 
-    const toolResponses = await Promise.all(
-      calls.map(async (call) => {
+    if (reply.stop_reason !== "tool_use") break;
+
+    const toolUses = reply.content.filter(
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+    );
+    if (toolUses.length === 0) break;
+
+    messages.push({ role: "assistant", content: reply.content });
+
+    const results: Anthropic.ToolResultBlockParam[] = await Promise.all(
+      toolUses.map(async (call) => {
         const toolResult = await executeTool(
           call.name,
-          call.args as Record<string, unknown>,
+          (call.input ?? {}) as Record<string, unknown>,
           blockedTools,
         );
         lastToolResult = toolResult;
-        return {
-          functionResponse: {
-            name: call.name,
-            response: { result: toolResult },
-          },
-        };
+        return { type: "tool_result" as const, tool_use_id: call.id, content: toolResult };
       }),
     );
-
-    result = await chat.sendMessage(toolResponses);
+    messages.push({ role: "user", content: results });
   }
 
-  const text = result.response.text().trim();
+  const text = (reply?.content ?? [])
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
 
-  // Debug: log finish reason when there's no output
   if (!text && !lastToolResult) {
-    const candidate = result.response.candidates?.[0];
-    console.warn("[agent] empty response — finishReason:", candidate?.finishReason, "| message:", userMessage);
+    console.warn("[agent] empty response — stop_reason:", reply?.stop_reason, "| message:", userMessage);
     console.warn("[agent] history length at call:", history.length);
     // Don't save history when there was no useful output — prevents polluting next call
     return "（沒有回應，請輸入「清除」後重試）";
   }
 
-  // Save updated history — keep only plain text turns (skip function call/response entries)
+  // 只存純文字來回，不存工具呼叫與結果：工具結果可能很長（整張報價、整批訂單），
+  // 留在歷史裡會把下一次請求撐爆，而且對後續對話沒有幫助。
   if (userId) {
-    const full = await chat.getHistory();
-    const textOnly = full.filter((entry) =>
-      entry.parts.length > 0 && entry.parts.every((p) => "text" in p && typeof p.text === "string"),
-    );
-    // Trim first, then re-anchor to first user — prevents slice(-N) landing on a model entry
+    const textOnly: Anthropic.MessageParam[] = [
+      ...history,
+      { role: "user", content: userMessage },
+      { role: "assistant", content: text || lastToolResult },
+    ];
+    // 先裁切，再對齊到第一個 user——Anthropic 要求訊息必須以 user 開頭，
+    // slice(-N) 有機會剛好切在 assistant 上。
     const sliced = textOnly.slice(-(HISTORY_MAX_PAIRS * 2));
     const firstUser = sliced.findIndex((e) => e.role === "user");
     const trimmed = firstUser >= 0 ? sliced.slice(firstUser) : [];
     userHistories.set(userId, { history: trimmed, ts: Date.now() });
   }
 
-  // Gemini 2.5 sometimes returns empty text after tool calls — fall back to raw tool result
   return text || lastToolResult;
 }
