@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { AI_MAX_TOKENS, AI_MODEL_AGENT, AI_MODEL_VISION } from "@/lib/ai-model";
-import { toolDefinitions as agentTools } from "@/lib/agent-tools";
-import { toolDefinitions as orderTools } from "@/lib/assistant/order-tools";
+import { MUTATING_TOOLS, readOnlyTools, toolDefinitions as agentTools } from "@/lib/agent-tools";
+import { PROPOSE_STATUS_TOOL } from "@/lib/assistant/order-tools";
 
 /**
  * 2026-11-04 從 Gemini 換到 Claude：工具宣告是用機械式轉換改過來的
@@ -64,15 +64,38 @@ function checkTools(tools: readonly ToolLike[], label: string) {
 }
 
 describe("Claude 工具宣告", () => {
-  checkTools(orderTools as unknown as ToolLike[], "訂單助手");
-  checkTools(agentTools as unknown as ToolLike[], "LINE agent");
+  checkTools([PROPOSE_STATUS_TOOL] as unknown as ToolLike[], "面板專屬");
+  checkTools(agentTools as unknown as ToolLike[], "共用工具表");
 
-  it("LINE agent 的 9 個工具都在", () => {
-    expect(agentTools).toHaveLength(9);
+  it("共用工具表涵蓋 11 個工具（含訂製訂單查詢）", () => {
+    expect(agentTools).toHaveLength(11);
+    const names = agentTools.map((t) => t.name);
+    expect(names).toContain("query_orders");
+    expect(names).toContain("get_order");
+  });
+
+  it("🔴 宣告與處理函式必須一一對應——漏一個就是模型看得到卻呼叫沒反應", async () => {
+    const mod = (await import("@/lib/agent-tools")) as unknown as Record<string, unknown>;
+    void mod;
+    // executeTool 對未知工具會回「未知工具：」，用它反查每個宣告都有處理函式
+    const { executeTool } = await import("@/lib/agent-tools");
+    for (const t of agentTools) {
+      const out = await executeTool(t.name, {}, new Set([t.name]));
+      // 被擋下代表名稱有被認得（擋在 handler 查找之前），不會是「未知工具」
+      expect(out, `${t.name} 沒有對應的處理函式`).not.toContain("未知工具");
+    }
+    expect(await executeTool("definitely_not_a_tool", {}, new Set())).toContain("未知工具");
+  });
+
+  it("唯讀子集不含任何會寫入的工具", () => {
+    for (const t of readOnlyTools()) {
+      expect(MUTATING_TOOLS.has(t.name), `${t.name} 會寫入卻出現在唯讀清單`).toBe(false);
+    }
+    expect(readOnlyTools().length).toBeLessThan(agentTools.length);
   });
 
   it("工具名稱不重複", () => {
-    for (const tools of [orderTools, agentTools]) {
+    for (const tools of [agentTools]) {
       const names = tools.map((t) => t.name);
       expect(new Set(names).size).toBe(names.length);
     }

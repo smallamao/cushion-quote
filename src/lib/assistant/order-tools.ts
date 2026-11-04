@@ -90,35 +90,11 @@ export async function getOrder(args: {
   return o ? toSummary(o) : { error: `找不到工單 ${id}` };
 }
 
-export const toolDefinitions: Anthropic.Tool[] = [
-  {
-    name: "find_orders",
-    description: "查詢訂製訂單清單。可用關鍵字(工單號 / 客戶名 / 訂製內容)、狀態、月份篩選，回傳最多 30 筆摘要。",
-    input_schema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "關鍵字：工單號 / 客戶姓名 / 訂製內容，可省略" },
-        status: {
-          type: "string",
-          enum: ["production", "waiting", "completed", "cancelled"],
-          description: "狀態篩選：production=排程/生產中, waiting=待出貨, completed=完成, cancelled=取消。可省略",
-        },
-        month: { type: "string", description: "月份 YYYY-MM，篩下單日或安裝/出貨日落在該月的單，可省略" },
-      },
-    },
-  },
-  {
-    name: "get_order",
-    description: "查詢單一訂製訂單的詳細資訊。",
-    input_schema: {
-      type: "object",
-      properties: {
-        orderId: { type: "string", description: "工單編號，例如 S941" },
-      },
-      required: ["orderId"],
-    },
-  },
-  {
+/**
+ * 這個面板專屬的「提議改狀態」工具。其餘工具一律走共用工具表
+ * （lib/agent-tools.ts）——2026-11-04 起不再各自維護一份宣告。
+ */
+export const PROPOSE_STATUS_TOOL: Anthropic.Tool = {
     name: PROPOSE_STATUS_CHANGE,
     description:
       "提議把某張訂單改成新狀態。這只是『提議』，不會真的改——必須由使用者在畫面上按確認，系統才會執行。不要假裝已經改好。",
@@ -134,8 +110,7 @@ export const toolDefinitions: Anthropic.Tool[] = [
       },
       required: ["orderId", "status"],
     },
-  },
-];
+  };
 
 export const SYSTEM_INSTRUCTION = `你是「馬鈴薯沙發營運系統」的內部助理，只服務辦公室同仁。
 - 你只能用提供的工具：查詢訂單(find_orders / get_order)、或提議修改訂單狀態(propose_status_change)。

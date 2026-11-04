@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import { AI_MAX_TOKENS, AI_MODEL_AGENT, AI_NO_KEY_MESSAGE } from "@/lib/ai-model";
+import { findOrders, getOrder } from "@/lib/assistant/order-tools";
 
 import { issueB2BInvoice, issueB2CInvoice } from "@/lib/giveme-client";
 import { generateEInvoiceId, isoNow } from "@/lib/einvoice-utils";
@@ -140,6 +141,29 @@ export const toolDefinitions: Anthropic.Tool[] = [
         },
       },
       required: ["supplierName", "items"],
+    },
+  },
+  {
+    name: "query_orders",
+    description:
+      "查詢訂製訂單。可用關鍵字（工單號／客戶名／訂製內容）、狀態、月份篩選。" +
+      "狀態：pending_setup=待建立內容, production=排程/生產中, waiting=待出貨, completed=完成, cancelled=取消。",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "關鍵字：工單號、客戶姓名或訂製內容，可省略" },
+        status: { type: "string", description: "狀態篩選，可省略" },
+        month: { type: "string", description: "月份 YYYY-MM，可省略" },
+      },
+    },
+  },
+  {
+    name: "get_order",
+    description: "查詢單一訂製訂單的詳細資訊（用工單號）。",
+    input_schema: {
+      type: "object",
+      properties: { orderId: { type: "string", description: "工單號，例如 ORD-2026-11-003" } },
+      required: ["orderId"],
     },
   },
 ];
@@ -574,7 +598,66 @@ async function handleQueryInvoices(args: Record<string, unknown>): Promise<strin
   }
 }
 
-async function executeTool(
+/**
+ * 查訂製訂單。沿用畫面助手既有的 findOrders，不另外寫一套——
+ * 兩個管道查到的東西必須一樣，分兩份實作遲早會各自長歪（2026-11-04）。
+ */
+async function handleQueryOrders(args: Record<string, unknown>): Promise<string> {
+  const rows = await findOrders({
+    query: typeof args.query === "string" ? args.query : undefined,
+    status: typeof args.status === "string" ? args.status : undefined,
+    month: typeof args.month === "string" ? args.month : undefined,
+  });
+  if (rows.length === 0) return "找不到符合的訂製訂單。";
+  return rows
+    .slice(0, 20)
+    .map((o) => JSON.stringify(o))
+    .join("\n");
+}
+
+async function handleGetOrder(args: Record<string, unknown>): Promise<string> {
+  const result = await getOrder({ orderId: String(args.orderId ?? "") });
+  return JSON.stringify(result);
+}
+
+/**
+ * 工具名稱 → 處理函式。
+ *
+ * 2026-11-04：原本是一條 if 鏈，而宣告在另一個陣列、處理函式又散在各處——
+ * 加一個工具要同時改三個地方，漏一個就是「模型看得到、呼叫下去沒反應」的靜默失效。
+ * 改成對照表，並由 ai-tools-schema 測試強制宣告與處理函式必須一一對應。
+ */
+const TOOL_HANDLERS: Record<string, (args: Record<string, unknown>) => Promise<string>> = {
+  create_invoice: handleCreateInvoice,
+  create_after_sales: handleCreateAfterSales,
+  query_purchase_orders: handleQueryPurchaseOrders,
+  create_purchase_order: handleCreatePurchaseOrder,
+  query_clients: handleQueryClients,
+  query_quotes: handleQueryQuotes,
+  update_purchase_status: handleUpdatePurchaseStatus,
+  query_after_sales: handleQueryAfterSales,
+  query_invoices: handleQueryInvoices,
+  query_orders: handleQueryOrders,
+  get_order: handleGetOrder,
+};
+
+/**
+ * 會寫入資料的工具。管道可以整批擋掉唯讀以外的動作，
+ * 不必每次新增工具都回頭想「這個該不該讓 LINE 用」。
+ */
+export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
+  "create_invoice",
+  "create_after_sales",
+  "create_purchase_order",
+  "update_purchase_status",
+]);
+
+/** 唯讀工具：給只能查、不能改的管道（例如畫面上的助手面板） */
+export function readOnlyTools(): Anthropic.Tool[] {
+  return toolDefinitions.filter((t) => !MUTATING_TOOLS.has(t.name));
+}
+
+export async function executeTool(
   name: string,
   args: Record<string, unknown>,
   blockedTools: ReadonlySet<string>,
@@ -582,16 +665,9 @@ async function executeTool(
   // 第二道鎖：工具宣告已經過濾過，但模型仍可能憑記憶呼叫被拿掉的工具名。
   // 開發票會真的送出到加值中心，不能只靠「沒告訴它」來防。
   if (blockedTools.has(name)) return `此管道不提供「${name}」這個動作，請改用後台操作。`;
-  if (name === "create_invoice") return handleCreateInvoice(args);
-  if (name === "create_after_sales") return handleCreateAfterSales(args);
-  if (name === "query_purchase_orders") return handleQueryPurchaseOrders(args);
-  if (name === "create_purchase_order") return handleCreatePurchaseOrder(args);
-  if (name === "query_clients") return handleQueryClients(args);
-  if (name === "query_quotes") return handleQueryQuotes(args);
-  if (name === "update_purchase_status") return handleUpdatePurchaseStatus(args);
-  if (name === "query_after_sales") return handleQueryAfterSales(args);
-  if (name === "query_invoices") return handleQueryInvoices(args);
-  return `未知工具：${name}`;
+  const handler = TOOL_HANDLERS[name];
+  if (!handler) return `未知工具：${name}`;
+  return handler(args);
 }
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" });

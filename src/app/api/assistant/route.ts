@@ -7,13 +7,12 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { AI_MAX_TOKENS, AI_MODEL_AGENT } from "@/lib/ai-model";
+import { executeTool, readOnlyTools } from "@/lib/agent-tools";
 import {
   PROPOSE_STATUS_CHANGE,
+  PROPOSE_STATUS_TOOL,
   STATUS_LABELS,
   SYSTEM_INSTRUCTION,
-  findOrders,
-  getOrder,
-  toolDefinitions,
 } from "@/lib/assistant/order-tools";
 import type { OrderStatus } from "@/lib/types";
 
@@ -30,11 +29,18 @@ interface ChatTurn {
   text: string;
 }
 
-/** 只讀工具：直接執行、把結果餵回模型。寫入工具(改狀態)不在此，改由前端確認後才呼叫真正的 API。 */
-const readHandlers: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
-  find_orders: (a) => findOrders(a as { query?: string; status?: string; month?: string }),
-  get_order: (a) => getOrder(a as { orderId: string }),
-};
+/**
+ * 這個面板能用的工具＝共用工具表裡的唯讀那些，加上「提議改狀態」。
+ *
+ * 2026-11-04 改成共用：原本畫面助手與 LINE agent 各自維護一份工具宣告，
+ * 加一個能力要寫兩遍，結果就是兩邊都不加、助手停在很早期的狀態。
+ * 寫入動作一律不給這個面板直接執行——改狀態走 propose，由使用者在畫面按確認。
+ */
+function panelTools() {
+  return [...readOnlyTools(), PROPOSE_STATUS_TOOL];
+}
+
+const NO_WRITES: ReadonlySet<string> = new Set();
 
 function textOf(message: Anthropic.Message): string {
   return message.content
@@ -85,7 +91,7 @@ export async function POST(request: Request) {
       model: AI_MODEL_AGENT,
       max_tokens: AI_MAX_TOKENS,
       system: SYSTEM_INSTRUCTION,
-      tools: toolDefinitions,
+      tools: panelTools(),
       messages,
     });
 
@@ -117,22 +123,15 @@ export async function POST(request: Request) {
       messages.push({ role: "assistant", content: resp.content });
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const c of calls) {
-        const handler = readHandlers[c.name];
-        const result = handler
-          ? await handler((c.input ?? {}) as Record<string, unknown>)
-          : { error: `未知工具 ${c.name}` };
-        results.push({
-          type: "tool_result",
-          tool_use_id: c.id,
-          content: JSON.stringify(result),
-        });
+        const result = await executeTool(c.name, (c.input ?? {}) as Record<string, unknown>, NO_WRITES);
+        results.push({ type: "tool_result", tool_use_id: c.id, content: result });
       }
       messages.push({ role: "user", content: results });
       resp = await anthropic.messages.create({
         model: AI_MODEL_AGENT,
         max_tokens: AI_MAX_TOKENS,
         system: SYSTEM_INSTRUCTION,
-        tools: toolDefinitions,
+        tools: panelTools(),
         messages,
       });
     }
