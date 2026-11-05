@@ -334,14 +334,6 @@ const SHEET_DEFINITIONS = [
     ],
   },
   {
-    title: "銀行核對紀錄",
-    headers: [
-      "reconId", "txId", "txDate", "amount", "description",
-      "memo", "caseId", "caseNameSnapshot", "clientNameSnapshot",
-      "paymentType", "confirmedAt",
-    ],
-  },
-  {
     title: "訂製訂單",
     headers: [
       "orderId", "caseId", "versionId", "clientName", "orderNumber",

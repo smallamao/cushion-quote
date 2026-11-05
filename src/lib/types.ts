@@ -1182,18 +1182,7 @@ export interface PurchaseProductHistoryResponse {
 // Re-export Company/Contact types
 export type { Company, Contact, CompanyWithContacts, CompanyWithPrimaryContact } from "./types/company";
 
-// ===== 銀行入帳核對 (Bank Reconciliation) =====
-
-export type BankPaymentType =
-  | "訂金"
-  | "尾款"
-  | "全額"
-  | "進貨款"
-  | "佣金"
-  | "雜項";
-
-export type ReconcileStatus = "pending" | "confirmed" | "ignored";
-export type ReconcileConfidence = "high" | "medium" | "none";
+// ===== 銀行對帳 (Bank Verification，唯讀) =====
 
 export interface BankTransaction {
   /** 合成唯一識別：txDate+txTime+debit+credit+balance，防重複上傳 */
@@ -1208,40 +1197,10 @@ export interface BankTransaction {
   memo: string;          // 備註/資金用途（原始字串）
 }
 
-/** View model — lives in browser state only, not persisted as a flat row. */
-export interface ReconciliationEntry {
-  tx: BankTransaction;
-  status: ReconcileStatus;
-  confidence: ReconcileConfidence;
-  /** 比對到的 AR ID（null = 無對應 AR） */
-  arId: string | null;
-  /** 比對到的分期 ID（null = 未找到適合分期） */
-  scheduleId: string | null;
-  caseId: string | null;
-  caseNameSnapshot: string | null;
-  clientNameSnapshot: string | null;
-  paymentType: BankPaymentType | null;
-}
-
 export interface ARWithSchedules extends ARRecord {
   schedules: ARScheduleRecord[];
 }
 export { companyToClient } from "./types/company";
-
-/** 已確認的核對紀錄，永久存入 Google Sheets */
-export interface BankReconRecord {
-  reconId: string;       // 唯一 ID，格式 BR-{txId 前 12 碼}
-  txId: string;          // 銀行交易 ID（dedup 用）
-  txDate: string;        // 交易日期 YYYY-MM-DD
-  amount: number;        // 入帳金額（credit）
-  description: string;   // 交易摘要
-  memo: string;          // 備註欄
-  caseId: string;        // 案件號
-  caseNameSnapshot: string;
-  clientNameSnapshot: string;
-  paymentType: BankPaymentType;
-  confirmedAt: string;   // ISO 8601
-}
 
 // ===== 訂製訂單 (Custom Orders) =====
 

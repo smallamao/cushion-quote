@@ -1,21 +1,5 @@
 import type { BankTransaction } from "@/lib/types";
 
-export function normalizeFullWidth(str: string): string {
-  return str.replace(/[！-～]/g, (ch) =>
-    String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
-  );
-}
-
-export function extractCaseIdFromMemo(memo: string): string | null {
-  // 正規化全形 + 移除所有空白後，擷取 [LSP] + 3~6 位數字
-  const normalized = normalizeFullWidth(memo).replace(/\s+/g, "");
-  const match = normalized.match(/([LSP]\d{3,6})/);
-  if (!match) return null;
-  const raw = match[1];
-  // 移除字母後的前導零（P001455 → P1455），但保留正常的 L019 不變
-  return raw.replace(/^([A-Z]+)0+(\d{3,})$/, (_, prefix, num) => prefix + num);
-}
-
 function parseAmount(raw: string): number | null {
   const trimmed = raw.trim().replace(/,/g, "");
   if (!trimmed) return null;
@@ -121,4 +105,42 @@ export function parseSinopacCSV(csvText: string): ParseBankCSVResult {
   }
 
   return { transactions, accountNumber, errors };
+}
+
+export interface ParseBankFilesResult {
+  /** 合併後依交易時間排序；多個檔案重疊的同一筆交易只留一筆 */
+  transactions: BankTransaction[];
+  /** 各檔第 1 行的帳號文字（去重，保留出現順序） */
+  accountTexts: string[];
+  errors: string[];
+}
+
+/**
+ * 一次讀多個永豐往來明細（例如連續四個月各一份）。
+ * 同一筆交易在兩份檔案都出現時（匯出區間重疊）以 txId 去重——txId 含餘額，
+ * 所以同一天同金額的兩筆不同交易不會被誤併。
+ */
+export function parseSinopacFiles(files: Array<{ name: string; text: string }>): ParseBankFilesResult {
+  const seen = new Set<string>();
+  const transactions: BankTransaction[] = [];
+  const accountTexts: string[] = [];
+  const errors: string[] = [];
+
+  for (const file of files) {
+    const result = parseSinopacCSV(file.text.replace(/^﻿/, ""));
+    for (const e of result.errors) errors.push(`${file.name}：${e}`);
+    if (result.accountNumber && !accountTexts.includes(result.accountNumber)) {
+      accountTexts.push(result.accountNumber);
+    }
+    for (const tx of result.transactions) {
+      if (seen.has(tx.txId)) continue;
+      seen.add(tx.txId);
+      transactions.push(tx);
+    }
+  }
+
+  const sorted = [...transactions].sort((a, b) =>
+    `${a.txDate}T${a.txTime}`.localeCompare(`${b.txDate}T${b.txTime}`),
+  );
+  return { transactions: sorted, accountTexts, errors };
 }

@@ -915,7 +915,7 @@ export function OrderListClient() {
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); openBuildAr(order); }}
-                                title="未建應收帳款 · 點此建立（建立後才能記錄收款、核對入帳）"
+                                title="未建應收帳款 · 點此建立（建立後才能記錄收款、銀行對帳）"
                                 className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-[var(--bg-hover)]"
                               >
                                 <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-dashed border-gray-300" />
@@ -1213,7 +1213,7 @@ export function OrderListClient() {
           <DialogHeader>
             <DialogTitle>建立應收帳款</DialogTitle>
             <DialogDescription>
-              直接建立的訂單不會自動開應收。建立後即可記錄收款、進入「核對入帳」對帳。
+              直接建立的訂單不會自動開應收。建立後即可記錄收款、在應收帳款「銀行對帳」核對。
             </DialogDescription>
           </DialogHeader>
           {buildArOrder && (

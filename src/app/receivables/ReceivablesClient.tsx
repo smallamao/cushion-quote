@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BankVerifyPanel } from "@/components/ar/BankVerifyPanel";
 import { PendingMonthlyPanel } from "@/components/ar/PendingMonthlyPanel";
 import {
   AR_STATUS_COLOR,
@@ -38,7 +39,9 @@ function fmt(n: number): string {
   return n.toLocaleString("zh-TW", { maximumFractionDigits: 0 });
 }
 
-export function ReceivablesClient() {
+export type ReceivablesTab = "active" | "pending-monthly" | "bank";
+
+export function ReceivablesClient({ initialTab = "active" }: { initialTab?: ReceivablesTab }) {
   const { ars, loading, reload } = useReceivables();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ARStatus | "all">("all");
@@ -132,10 +135,11 @@ export function ReceivablesClient() {
         </Button>
       </div>
 
-      <Tabs defaultValue="active">
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="active">應收清單</TabsTrigger>
           <TabsTrigger value="pending-monthly">月結待出</TabsTrigger>
+          <TabsTrigger value="bank">銀行對帳</TabsTrigger>
         </TabsList>
         <TabsContent value="active" className="mt-4 space-y-6">
 
@@ -335,6 +339,10 @@ export function ReceivablesClient() {
 
         <TabsContent value="pending-monthly" className="mt-4">
           <PendingMonthlyPanel />
+        </TabsContent>
+
+        <TabsContent value="bank" className="mt-4">
+          <BankVerifyPanel />
         </TabsContent>
       </Tabs>
     </div>

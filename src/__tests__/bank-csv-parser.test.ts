@@ -1,43 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  normalizeFullWidth,
-  extractCaseIdFromMemo,
-  parseSinopacCSV,
-} from "@/lib/bank-csv-parser";
-
-describe("normalizeFullWidth", () => {
-  it("轉換全形英文", () => {
-    expect(normalizeFullWidth("Ｌ５８７")).toBe("L587");
-  });
-  it("轉換全形數字", () => {
-    expect(normalizeFullWidth("０１２")).toBe("012");
-  });
-  it("半形不變", () => {
-    expect(normalizeFullWidth("L587")).toBe("L587");
-  });
-});
-
-describe("extractCaseIdFromMemo", () => {
-  it("擷取全形訂單號", () => {
-    expect(extractCaseIdFromMemo("7000003111430221601 Ｌ０１９臥榻墊")).toBe(
-      "L019"
-    );
-  });
-  it("擷取半形帶空格訂單號", () => {
-    expect(extractCaseIdFromMemo("8080000174966010128 S 8 7 8")).toBe("S878");
-  });
-  it("多餘前導零 P001455 → P1455", () => {
-    expect(extractCaseIdFromMemo("0520004221000067521 Ｐ００１４５５")).toBe(
-      "P1455"
-    );
-  });
-  it("找不到訂單號回傳 null", () => {
-    expect(extractCaseIdFromMemo("8220000613540250150")).toBeNull();
-  });
-  it("純帳號字串回傳 null", () => {
-    expect(extractCaseIdFromMemo("永豐銀行-16625")).toBeNull();
-  });
-});
+import { parseSinopacCSV, parseSinopacFiles } from "@/lib/bank-csv-parser";
 
 describe("parseSinopacCSV", () => {
   const HEADER = `帳號,168-018-0008591-8【TEST】新台幣,,,,,,,,,,
@@ -106,5 +68,42 @@ describe("parseSinopacCSV", () => {
     const { transactions } = parseSinopacCSV(csv);
     expect(transactions).toHaveLength(2);
     expect(transactions[0].txId).not.toBe(transactions[1].txId);
+  });
+});
+
+describe("parseSinopacFiles", () => {
+  const file = (name: string, account: string, body: string) => ({
+    name,
+    text: `\uFEFF帳號,${account},,,,,,,,,,\r\n交易日, 計息日, 摘要, 支出, 存入, 餘額,匯率,備註/資金用途,\r\n${body}`,
+  });
+
+  it("多個檔案合併、重疊的同一筆交易只留一筆、依時間排序", () => {
+    const sep = file(
+      "m9.csv",
+      "168-018-0008591-8【大戶】新台幣",
+      "2026/09/30 10:00,2026/09/30,跨行轉帳, ,5000,105000,,7000024411500765241,\r\n" +
+        "\t2026/10/01 13:05,2026/10/01,跨行轉帳, ,3000,108000,,\t7000024411500765241,\r\n",
+    );
+    const oct = file(
+      "m10.csv",
+      "168-018-0008591-8【大戶】新台幣",
+      "2026/10/01 13:05,2026/10/01,跨行轉帳, ,3000,108000,,7000024411500765241,\r\n" +
+        "2026/10/02 09:00,2026/10/02,利息存入, ,12,108012,,,\r\n",
+    );
+    const { transactions, accountTexts, errors } = parseSinopacFiles([oct, sep]);
+    expect(errors).toHaveLength(0);
+    expect(accountTexts).toEqual(["168-018-0008591-8【大戶】新台幣"]);
+    expect(transactions.map((t) => `${t.txDate} ${t.credit}`)).toEqual([
+      "2026-09-30 5000",
+      "2026-10-01 3000",
+      "2026-10-02 12",
+    ]);
+    expect(transactions[1].memo).toBe("7000024411500765241");
+  });
+
+  it("不同帳戶的檔案各自列出帳號", () => {
+    const a = file("a.csv", "168-018-0008591-8【大戶】新台幣", "2026/10/01 10:00,2026/10/01,跨行轉帳, ,1,1,,x,\r\n");
+    const b = file("b.csv", "030-018-0008106-1【馬鈴薯】新台幣", "2026/10/01 10:00,2026/10/01,跨行轉帳, ,1,1,,x,\r\n");
+    expect(parseSinopacFiles([a, b]).accountTexts).toHaveLength(2);
   });
 });
