@@ -6,6 +6,7 @@ import {
   extractLast5,
   extractOrderNumber,
   maskMemo,
+  mergeRanges,
   scheduleRef,
   verifyBankTransactions,
   type VerifySchedule,
@@ -104,6 +105,9 @@ describe("extractOrderNumber", () => {
     ["7000003111430221601 Ｌ０１９臥榻墊", "L019"],
     ["s0882 尾款", "S882"],
     ["8220000613540250150", ""],
+    ["CHANG PS 0912345678", ""],
+    ["L12345678901", ""],
+    ["王 P6288", "P6288"],
   ])("%s → %s", (memo, expected) => {
     expect(extractOrderNumber(memo)).toBe(expected);
   });
@@ -125,7 +129,7 @@ describe("accountIdsForCsv", () => {
   it("CSV 帳號文字對到收款帳戶 id", () => {
     expect(accountIdsForCsv(CSV_ACCOUNT, OWN)).toEqual(["big_custom"]);
   });
-  it("認不得回傳空陣列", () => {
+  it("認不得回傳空陣列（CSV 帳號不在收款帳戶清單內）", () => {
     expect(accountIdsForCsv("999-999-9999999-9", OWN)).toEqual([]);
   });
 });
@@ -133,6 +137,16 @@ describe("accountIdsForCsv", () => {
 describe("maskMemo", () => {
   it("長串數字只留末五碼", () => {
     expect(maskMemo("7000024411500765241 S882")).toBe("…65241 S882");
+  });
+  it("夾空白／連字號、總共 ≥10 位也遮", () => {
+    expect(maskMemo("700 0024 4115 0076 5241 訂金")).toBe("…65241 訂金");
+    expect(maskMemo("168-018-0008591-8")).toBe("…85918");
+  });
+  it("帳號後面接其他數字時只遮帳號", () => {
+    expect(maskMemo("7000024411500765241 2026")).toBe("…65241 2026");
+  });
+  it("短數字與空白隔開的單號不遮", () => {
+    expect(maskMemo("S 8 7 8 尾款 3000")).toBe("S 8 7 8 尾款 3000");
   });
 });
 
@@ -203,7 +217,8 @@ describe("verifyBankTransactions", () => {
       ],
       [s],
     );
-    expect(rows.every((r) => r.category === "amount_mismatch")).toBe(true);
+    // 第一筆 ⚠️ 吃掉那筆收款；第二筆同末五碼只剩 ❗
+    expect(rows.map((r) => r.category)).toEqual(["amount_mismatch", "missing_in_system"]);
   });
 
   it("🔍 沒有末五碼佐證，只剩一筆金額相同、日期相近 → 可能是（不自動認定）", () => {
@@ -279,6 +294,98 @@ describe("verifyBankTransactions", () => {
     expect(debitCount).toBe(1);
   });
 
+  it("自家帳戶轉入不走金額＋日期，不吃掉別人的收款（那筆仍列 ❌）", () => {
+    const s = sch({ receivedAmount: 50000, receivedDate: "2026-10-10" });
+    const { rows, systemOnly } = run(
+      [tx({ credit: 50000, memo: "8070006801800918474", txDate: "2026-10-10" }), tx({ debit: 1, txDate: "2026-10-31" })],
+      [s],
+    );
+    expect(rows[0].category).toBe("non_order");
+    expect(rows[0].reason).toBe("內部帳戶轉入");
+    expect(rows[0].schedules).toHaveLength(0);
+    expect(systemOnly.map((x) => x.scheduleId)).toEqual([s.scheduleId]);
+  });
+
+  it("🔍 分期記了別的末五碼就不算可能是", () => {
+    const s = sch({ ref: "11111", receivedAmount: 6000, receivedDate: "2026-10-10" });
+    const { rows } = run([tx({ credit: 6000, memo: "7000024411500765241" })], [s]);
+    expect(rows[0].category).toBe("missing_in_system");
+  });
+
+  it("🔍 金額要完全相同；差 $30 不算", () => {
+    const s = sch({ receivedAmount: 6030, receivedDate: "2026-10-10" });
+    const { rows } = run([tx({ credit: 6000, memo: "現金存款" })], [s]);
+    expect(rows[0].category).toBe("missing_in_system");
+  });
+
+  it("⚠️ 吃掉對到的收款，不會同時出現在 ❌", () => {
+    const s = sch({ ref: "65241", receivedAmount: 10000, receivedDate: "2026-10-05" });
+    const { rows, systemOnly } = run(
+      [tx({ credit: 9000, memo: "7000024411500765241", txDate: "2026-10-05" }), tx({ debit: 1, txDate: "2026-10-31" })],
+      [s],
+    );
+    expect(rows[0].category).toBe("amount_mismatch");
+    expect(rows[0].note).toBe("銀行 少 $1,000");
+    expect(systemOnly).toHaveLength(0);
+  });
+
+  it("兩筆分期競爭同一組分筆入帳：各自拿到不重複的兩筆", () => {
+    const a = sch({ ref: "65241", receivedAmount: 15000, receivedDate: "2026-10-10" });
+    const b = sch({ ref: "65241", receivedAmount: 15000, receivedDate: "2026-10-12" });
+    const memo = "7000024411500765241";
+    const { rows } = run(
+      [
+        tx({ credit: 10000, memo, txDate: "2026-10-09" }),
+        tx({ credit: 5000, memo, txDate: "2026-10-10" }),
+        tx({ credit: 10000, memo, txDate: "2026-10-11" }),
+        tx({ credit: 5000, memo, txDate: "2026-10-12" }),
+      ],
+      [a, b],
+    );
+    expect(rows.every((r) => r.category === "ok" && r.reason === "分筆入帳")).toBe(true);
+    const bySchedule = (id: string) => rows.filter((r) => r.schedules[0].scheduleId === id);
+    expect(bySchedule(a.scheduleId).reduce((n, r) => n + (r.tx.credit ?? 0), 0)).toBe(15000);
+    expect(bySchedule(b.scheduleId).reduce((n, r) => n + (r.tx.credit ?? 0), 0)).toBe(15000);
+  });
+
+  it("CSV 帳號不在收款帳戶清單內：❌ 只列沒指定收款帳戶的", () => {
+    const blank = sch({ receivedAmount: 5000, receivedDate: "2026-10-15" });
+    const assigned = sch({ receivedAmount: 5000, receivedDate: "2026-10-15", receivingAccountId: "big_custom" });
+    const { systemOnly } = verifyBankTransactions(
+      [tx({ debit: 1, txDate: "2026-10-01" }), tx({ debit: 1, txDate: "2026-10-31" })],
+      [blank, assigned],
+      ORDERS,
+      { accountTexts: ["999-999-9999999-9【別家】新台幣"], ownAccounts: OWN },
+    );
+    expect(systemOnly.map((s) => s.scheduleId)).toEqual([blank.scheduleId]);
+  });
+
+  describe("明細涵蓋區間", () => {
+    const ranges = [
+      { from: "2026-08-01", to: "2026-08-31" },
+      { from: "2026-10-01", to: "2026-10-31" },
+    ];
+    const verify = (schedules: VerifySchedule[]) =>
+      verifyBankTransactions([], schedules, ORDERS, { accountTexts: [CSV_ACCOUNT], ownAccounts: OWN, ranges });
+
+    it("缺月份的空檔不列 ❌，並回報空檔", () => {
+      const sep = sch({ receivedAmount: 5000, receivedDate: "2026-09-15" });
+      const oct = sch({ receivedAmount: 5000, receivedDate: "2026-10-15" });
+      const result = verify([sep, oct]);
+      expect(result.systemOnly.map((s) => s.scheduleId)).toEqual([oct.scheduleId]);
+      expect(result.gaps).toEqual([{ from: "2026-09-01", to: "2026-09-30" }]);
+    });
+
+    it("區間最後 2 天的收款改列「可能跨月入帳」", () => {
+      const endAug = sch({ receivedAmount: 5000, receivedDate: "2026-08-31" });
+      const day30 = sch({ receivedAmount: 5000, receivedDate: "2026-08-30" });
+      const day29 = sch({ receivedAmount: 5000, receivedDate: "2026-08-29" });
+      const result = verify([endAug, day30, day29]);
+      expect(result.systemOnly.map((s) => s.scheduleId)).toEqual([day29.scheduleId]);
+      expect(result.crossPeriod.map((s) => s.scheduleId)).toEqual([day30.scheduleId, endAug.scheduleId]);
+    });
+  });
+
   describe("❌ 系統有記、銀行沒看到", () => {
     const txs = [
       tx({ credit: 999, memo: "現金", txDate: "2026-10-01" }),
@@ -294,5 +401,16 @@ describe("verifyBankTransactions", () => {
       const { systemOnly } = run(txs, [inRange, sameAcct, otherAcct, cash, outOfRange, unpaid]);
       expect(systemOnly.map((s) => s.scheduleId)).toEqual([inRange.scheduleId, sameAcct.scheduleId]);
     });
+  });
+});
+
+describe("mergeRanges", () => {
+  it("相連的月份合併成一段", () => {
+    expect(
+      mergeRanges([
+        { from: "2026-09-01", to: "2026-09-30" },
+        { from: "2026-08-01", to: "2026-08-31" },
+      ]),
+    ).toEqual({ coverage: [{ from: "2026-08-01", to: "2026-09-30" }], gaps: [] });
   });
 });

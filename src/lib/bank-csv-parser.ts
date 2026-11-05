@@ -112,7 +112,22 @@ export interface ParseBankFilesResult {
   transactions: BankTransaction[];
   /** 各檔第 1 行的帳號文字（去重，保留出現順序） */
   accountTexts: string[];
+  /** 各檔涵蓋的日期區間（YYYY-MM-DD）：有「查詢日期」行就用它，否則用該檔最早～最晚交易日 */
+  ranges: Array<{ name: string; from: string; to: string }>;
   errors: string[];
+}
+
+const QUERY_RANGE_RE = /(\d{4})\/?(\d{2})\/?(\d{2})\s*[~～-]\s*(\d{4})\/?(\d{2})\/?(\d{2})/;
+
+/** 第 2 行「查詢日期, 20261001~20261031」→ { from: "2026-10-01", to: "2026-10-31" } */
+export function parseQueryRange(csvText: string): { from: string; to: string } | null {
+  for (const line of csvText.split(/\r?\n/)) {
+    if (line.split(",")[0]?.trim() === "交易日") break;
+    if (!line.includes("查詢日期")) continue;
+    const m = line.match(QUERY_RANGE_RE);
+    if (m) return { from: `${m[1]}-${m[2]}-${m[3]}`, to: `${m[4]}-${m[5]}-${m[6]}` };
+  }
+  return null;
 }
 
 /**
@@ -124,10 +139,17 @@ export function parseSinopacFiles(files: Array<{ name: string; text: string }>):
   const seen = new Set<string>();
   const transactions: BankTransaction[] = [];
   const accountTexts: string[] = [];
+  const ranges: ParseBankFilesResult["ranges"] = [];
   const errors: string[] = [];
 
   for (const file of files) {
-    const result = parseSinopacCSV(file.text.replace(/^﻿/, ""));
+    const text = file.text.replace(/^\uFEFF/, "");
+    const result = parseSinopacCSV(text);
+    const txDates = result.transactions.map((t) => t.txDate).sort();
+    const range =
+      parseQueryRange(text) ??
+      (txDates.length ? { from: txDates[0], to: txDates[txDates.length - 1] } : null);
+    if (range) ranges.push({ name: file.name, ...range });
     for (const e of result.errors) errors.push(`${file.name}：${e}`);
     if (result.accountNumber && !accountTexts.includes(result.accountNumber)) {
       accountTexts.push(result.accountNumber);
@@ -142,5 +164,5 @@ export function parseSinopacFiles(files: Array<{ name: string; text: string }>):
   const sorted = [...transactions].sort((a, b) =>
     `${a.txDate}T${a.txTime}`.localeCompare(`${b.txDate}T${b.txTime}`),
   );
-  return { transactions: sorted, accountTexts, errors };
+  return { transactions: sorted, accountTexts, ranges, errors };
 }

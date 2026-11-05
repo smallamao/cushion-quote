@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSinopacCSV, parseSinopacFiles } from "@/lib/bank-csv-parser";
+import { parseQueryRange, parseSinopacCSV, parseSinopacFiles } from "@/lib/bank-csv-parser";
 
 describe("parseSinopacCSV", () => {
   const HEADER = `帳號,168-018-0008591-8【TEST】新台幣,,,,,,,,,,
@@ -105,5 +105,19 @@ describe("parseSinopacFiles", () => {
     const a = file("a.csv", "168-018-0008591-8【大戶】新台幣", "2026/10/01 10:00,2026/10/01,跨行轉帳, ,1,1,,x,\r\n");
     const b = file("b.csv", "030-018-0008106-1【馬鈴薯】新台幣", "2026/10/01 10:00,2026/10/01,跨行轉帳, ,1,1,,x,\r\n");
     expect(parseSinopacFiles([a, b]).accountTexts).toHaveLength(2);
+  });
+});
+
+describe("parseQueryRange", () => {
+  it("讀第 2 行的查詢日期", () => {
+    const text = "帳號, 168-018-0008591-8【大戶】新台幣\r\n查詢日期, 20261001~20261031\r\n\r\n交易日,計息日\r\n";
+    expect(parseQueryRange(text)).toEqual({ from: "2026-10-01", to: "2026-10-31" });
+  });
+  it("沒有查詢日期回傳 null，parseSinopacFiles 改用交易日", () => {
+    const text = "帳號,x\r\n交易日, 計息日, 摘要, 支出, 存入, 餘額,匯率,備註/資金用途,\r\n2026/10/03 10:00,2026/10/03,跨行轉帳, ,1,1,,x,\r\n";
+    expect(parseQueryRange(text)).toBeNull();
+    expect(parseSinopacFiles([{ name: "a.csv", text }]).ranges).toEqual([
+      { name: "a.csv", from: "2026-10-03", to: "2026-10-03" },
+    ]);
   });
 });

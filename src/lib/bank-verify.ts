@@ -10,8 +10,18 @@
 import type { ARWithSchedules, ARPaymentMethod, BankTransaction, CustomOrder } from "@/lib/types";
 import { BANK_ACCOUNTS, type BankAccount } from "@/lib/remittance";
 
-/** 金額差在這個範圍內算一致（客人匯款常被扣 15～30 元手續費） */
+/**
+ * ✅ 一致與分筆入帳的金額容許差：有末五碼或單號佐證時，差 $50 內算一致
+ * （客人匯款常被扣 15～30 元手續費）。
+ */
 export const AMOUNT_TOLERANCE = 50;
+/**
+ * 🔍 可能是：沒有末五碼／單號佐證，只靠金額＋日期推測，所以金額必須完全相同
+ * （差 < $1）。放寬到 $50 的話，常見整數金額（例 $3,000）會互相誤認。
+ */
+export const POSSIBLE_AMOUNT_TOLERANCE = 1;
+/** 區間最後幾天記的收款，銀行可能隔個營業日才入帳 → 不列 ❌，改列「可能跨月入帳」 */
+export const CROSS_PERIOD_DAYS = 2;
 /** 「可能是」：沒有末五碼／單號佐證時，系統收款日與銀行入帳日最多差幾天 */
 export const POSSIBLE_DAY_WINDOW = 5;
 /** 分筆入帳：同一個末五碼／單號的幾筆入帳，彼此最多相隔幾天還算同一次付款 */
@@ -62,10 +72,21 @@ export interface BankVerifyRow {
   note: string;
 }
 
+export interface DateRange {
+  from: string;
+  to: string;
+}
+
 export interface BankVerifyResult {
   rows: BankVerifyRow[];
   /** ❌ 系統有記、銀行沒看到 */
   systemOnly: VerifySchedule[];
+  /** 收款日落在明細涵蓋區間的最後幾天、銀行還沒看到：可能下一期才入帳，只提示不算 ❌ */
+  crossPeriod: VerifySchedule[];
+  /** 上傳檔案涵蓋的日期區間（相連的已合併） */
+  coverage: DateRange[];
+  /** 涵蓋區間之間的空檔（例：上傳了八月、十月，缺九月） */
+  gaps: DateRange[];
   debitCount: number;
   dateFrom: string;
   dateTo: string;
@@ -100,7 +121,10 @@ export function extractLast5(memo: string): string {
  */
 export function extractOrderNumber(text: string): string {
   const upper = nfkc(text).toUpperCase();
-  const re = /([PSL])0*(\d{3,6})/;
+  // 前面不能緊貼英文字母（「CHANG PS 0912…」去空白後的 PS09…不是單號），
+  // 後面不能再接數字（「L12345678901」是帳號不是單號）。前面可以接數字：
+  // 「帳號 S 8 7 8」去空白後單號正好緊貼在帳號後面。
+  const re = /(?<![A-Z])([PSL])0*(\d{3,6})(?!\d)/;
   const m = upper.match(re) ?? upper.replace(/\s+/g, "").match(re);
   return m ? `${m[1]}${m[2]}` : "";
 }
@@ -192,6 +216,27 @@ function dayDiff(a: string, b: string): number {
   return Math.abs(ta - tb) / 86_400_000;
 }
 
+function addDays(date: string, days: number): string {
+  const t = Date.parse(`${date.slice(0, 10)}T00:00:00Z`);
+  return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** 把各檔的日期區間合併（重疊或相鄰的接起來），並找出中間的空檔 */
+export function mergeRanges(ranges: DateRange[]): { coverage: DateRange[]; gaps: DateRange[] } {
+  const sorted = ranges.filter((r) => r.from && r.to).sort((a, b) => a.from.localeCompare(b.from));
+  const coverage: DateRange[] = [];
+  for (const r of sorted) {
+    const last = coverage[coverage.length - 1];
+    if (last && r.from <= addDays(last.to, 1)) {
+      coverage[coverage.length - 1] = { from: last.from, to: r.to > last.to ? r.to : last.to };
+    } else {
+      coverage.push({ ...r });
+    }
+  }
+  const gaps = coverage.slice(1).map((r, i) => ({ from: addDays(coverage[i].to, 1), to: addDays(r.from, -1) }));
+  return { coverage, gaps };
+}
+
 function feeNote(credit: number, recorded: number): string {
   const diff = recorded - credit;
   if (diff > 0) return `少 $${diff.toLocaleString()}（手續費）`;
@@ -244,6 +289,8 @@ function findSplitSubset(rows: Working[], target: number): Working[] | null {
 export interface VerifyOptions {
   /** 上傳的 CSV 帳號文字（第 1 行），用來篩「系統有記、銀行沒看到」 */
   accountTexts?: string[];
+  /** 各檔涵蓋的日期區間；沒給就用交易最早～最晚日 */
+  ranges?: DateRange[];
   /** 老闆自己的帳戶（預設 BANK_ACCOUNTS） */
   ownAccounts?: readonly BankAccount[];
 }
@@ -272,8 +319,11 @@ export function verifyBankTransactions(
 
   const debitCount = transactions.filter((t) => !t.credit && t.debit).length;
   const dates = transactions.map((t) => t.txDate).sort();
-  const dateFrom = dates[0] ?? "";
-  const dateTo = dates[dates.length - 1] ?? "";
+  const { coverage, gaps } = mergeRanges(
+    options.ranges ?? (dates.length ? [{ from: dates[0], to: dates[dates.length - 1] }] : []),
+  );
+  const dateFrom = coverage[0]?.from ?? "";
+  const dateTo = coverage[coverage.length - 1]?.to ?? "";
 
   const nonOrder: BankVerifyRow[] = [];
   const work: Working[] = [];
@@ -344,14 +394,20 @@ export function verifyBankTransactions(
   for (const w of work) {
     if (w.result) continue;
     const cands = uniqueSchedules([...w.refCands, ...w.orderCands]);
-    const free = cands.filter((s) => !used.has(s.scheduleId));
+    const free = cands
+      .filter((s) => !used.has(s.scheduleId))
+      .sort((a, b) => Math.abs(a.receivedAmount - w.credit) - Math.abs(b.receivedAmount - w.credit));
     if (free.length > 0) {
+      // 吃掉金額最接近的那筆：差額只在 ⚠️ 顯示，不要同一筆收款又出現在 ❌
+      const s = free[0];
+      used.add(s.scheduleId);
+      const diff = w.credit - s.receivedAmount;
       w.result = {
         category: "amount_mismatch",
         reason: w.refCands.length > 0 ? "末五碼對上、金額不符" : "備註單號對上、金額不符",
-        schedules: free,
-        arId: free[0].arId,
-        note: "",
+        schedules: [s],
+        arId: s.arId,
+        note: `銀行 ${diff > 0 ? "多" : "少"} $${Math.abs(diff).toLocaleString()}`,
       };
     } else if (cands.length > 0) {
       // 這位客人記過的收款都已對給別筆入帳 → 這筆多半是還沒記的另一期（例：尾款）
@@ -373,13 +429,20 @@ export function verifyBankTransactions(
       };
     }
   }
-  // 5. 沒有末五碼／單號佐證：金額＋日期只剩唯一一筆 → 🔍（不自動認定）
+  // 5. 自家帳戶互轉（單號也沒對上）→ ⚪，不能拿去走金額＋日期吃掉別人的收款
+  for (const w of work) {
+    if (w.result || !w.isInternal) continue;
+    w.result = { category: "non_order", reason: "內部帳戶轉入", schedules: [], arId: "", note: "" };
+  }
+  // 6. 沒有末五碼／單號佐證：金額完全相同＋日期 ±5 天只剩唯一一筆 → 🔍（不自動認定）
+  //    分期記了別的末五碼，就不是這筆（客人帳號不同）
   for (const w of work) {
     if (w.result) continue;
     const near = received.filter(
       (s) =>
         !used.has(s.scheduleId) &&
-        Math.abs(s.receivedAmount - w.credit) <= AMOUNT_TOLERANCE &&
+        !(s.ref && w.last5 && s.ref !== w.last5) &&
+        Math.abs(s.receivedAmount - w.credit) < POSSIBLE_AMOUNT_TOLERANCE &&
         !!s.receivedDate &&
         dayDiff(s.receivedDate, w.tx.txDate) <= POSSIBLE_DAY_WINDOW,
     );
@@ -393,8 +456,6 @@ export function verifyBankTransactions(
         arId: "",
         note: "",
       };
-    } else if (w.isInternal) {
-      w.result = { category: "non_order", reason: "內部帳戶轉入", schedules: [], arId: "", note: "" };
     } else {
       w.result = { category: "missing_in_system", reason: "系統查無", schedules: [], arId: "", note: "" };
     }
@@ -414,23 +475,39 @@ export function verifyBankTransactions(
 
   // ❌ 系統有記、銀行沒看到
   const csvAccountIds = new Set((options.accountTexts ?? []).flatMap((t) => accountIdsForCsv(t, ownAccounts)));
-  const systemOnly = received
+  const unseen = received
     .filter(
       (s) =>
         !used.has(s.scheduleId) &&
         !!s.receivedDate &&
-        !!dateFrom &&
-        s.receivedDate >= dateFrom &&
-        s.receivedDate <= dateTo &&
         (s.paymentMethod === "transfer" || !s.paymentMethod) &&
         (!s.receivingAccountId || csvAccountIds.has(s.receivingAccountId)),
     )
     .sort((a, b) => a.receivedDate.localeCompare(b.receivedDate));
+  // 只看明細真正涵蓋的日期（缺月份的空檔不算銀行沒看到）
+  const coveringRange = (s: VerifySchedule) =>
+    coverage.find((r) => s.receivedDate >= r.from && s.receivedDate <= r.to);
+  const isNearEnd = (s: VerifySchedule, r: DateRange) =>
+    s.receivedDate > addDays(r.to, -CROSS_PERIOD_DAYS);
+  const systemOnly = unseen.filter((s) => {
+    const r = coveringRange(s);
+    return !!r && !isNearEnd(s, r);
+  });
+  const crossPeriod = unseen.filter((s) => {
+    const r = coveringRange(s);
+    return !!r && isNearEnd(s, r);
+  });
 
-  return { rows, systemOnly, debitCount, dateFrom, dateTo };
+  return { rows, systemOnly, crossPeriod, coverage, gaps, debitCount, dateFrom, dateTo };
 }
 
 /** 備註裡的長串數字（帳號）只留末五碼：7000024411500765241 → …65241 */
 export function maskMemo(memo: string): string {
-  return nfkc(memo).replace(/\d{8,}/g, (d) => `…${d.slice(-5)}`);
+  // 連續 8 位以上，或夾空白／連字號但總共 ≥10 位數字，都當帳號遮掉
+  // （一段裡有連續 8 位以上就只遮那幾段，以免把帳號後面的其他數字併進末五碼）
+  return nfkc(memo).replace(/\d[\d \-]*\d/g, (run) => {
+    if (/\d{8,}/.test(run)) return run.replace(/\d{8,}/g, (d) => `…${d.slice(-5)}`);
+    const digits = run.replace(/\D/g, "");
+    return digits.length >= 10 ? `…${digits.slice(-5)}` : run;
+  });
 }

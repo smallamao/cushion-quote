@@ -13,6 +13,7 @@ import { parseSinopacFiles } from "@/lib/bank-csv-parser";
 import {
   accountIdsForCsv,
   buildVerifySchedules,
+  CROSS_PERIOD_DAYS,
   maskMemo,
   verifyBankTransactions,
   type BankVerifyRow,
@@ -23,6 +24,8 @@ import { receivingAccountLabelById } from "@/lib/remittance";
 import type { ARWithSchedules, CustomOrder } from "@/lib/types";
 
 interface CsvFile {
+  /** 名稱＋大小＋修改時間：同名但內容不同的檔案（例：兩個帳戶都叫「往來明細.csv」）不會互相覆蓋 */
+  key: string;
   name: string;
   text: string;
 }
@@ -67,13 +70,21 @@ const SYSTEM_ONLY_META = {
   tone: "border-red-200 bg-red-50 text-red-700",
 };
 
+const CROSS_PERIOD_META = {
+  icon: "ℹ️",
+  label: "可能跨月入帳",
+  hint: `收款日在明細最後 ${CROSS_PERIOD_DAYS} 天、銀行還沒看到：多半隔個營業日才入帳，上傳下一期明細再看`,
+};
+
 function fmt(n: number): string {
   return n.toLocaleString("zh-TW", { maximumFractionDigits: 0 });
 }
 
 async function readCsvFiles(list: FileList | null): Promise<CsvFile[]> {
   const files = Array.from(list ?? []).filter((f) => f.name.toLowerCase().endsWith(".csv"));
-  return Promise.all(files.map(async (f) => ({ name: f.name, text: await f.text() })));
+  return Promise.all(
+    files.map(async (f) => ({ key: `${f.name}|${f.size}|${f.lastModified}`, name: f.name, text: await f.text() })),
+  );
 }
 
 function ArLink({ arId }: { arId: string }) {
@@ -210,7 +221,10 @@ export function BankVerifyPanel() {
   const result = useMemo(
     () =>
       parsed && !loading
-        ? verifyBankTransactions(parsed.transactions, schedules, orders, { accountTexts: parsed.accountTexts })
+        ? verifyBankTransactions(parsed.transactions, schedules, orders, {
+            accountTexts: parsed.accountTexts,
+            ranges: parsed.ranges,
+          })
         : null,
     [parsed, schedules, orders, loading],
   );
@@ -229,7 +243,7 @@ export function BankVerifyPanel() {
 
   async function addFiles(list: FileList | null) {
     const incoming = await readCsvFiles(list);
-    setFiles((prev) => [...prev.filter((p) => !incoming.some((f) => f.name === p.name)), ...incoming]);
+    setFiles((prev) => [...prev, ...incoming.filter((f) => !prev.some((p) => p.key === f.key))]);
   }
 
   return (
@@ -274,14 +288,14 @@ export function BankVerifyPanel() {
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {files.map((f) => (
             <span
-              key={f.name}
+              key={f.key}
               className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-0.5"
             >
               {f.name}
               <button
                 type="button"
                 aria-label={`移除 ${f.name}`}
-                onClick={() => setFiles((prev) => prev.filter((p) => p.name !== f.name))}
+                onClick={() => setFiles((prev) => prev.filter((p) => p.key !== f.key))}
                 className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
               >
                 <X className="h-3 w-3" />
@@ -333,9 +347,17 @@ export function BankVerifyPanel() {
               );
             })}
             <div className="text-[var(--text-secondary)]">
-              期間：{result.dateFrom} ～ {result.dateTo}　入帳 {result.rows.length} 筆　支出 {result.debitCount} 筆（不核對）
+              期間：{result.coverage.map((r) => `${r.from} ～ ${r.to}`).join("、")}　入帳 {result.rows.length} 筆　支出 {result.debitCount} 筆（不核對）
             </div>
           </div>
+
+          {result.gaps.length > 0 && (
+            <div className="flex gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              上傳的明細中間有缺：{result.gaps.map((g) => `${g.from} ～ ${g.to}`).join("、")}。
+              這段期間的收款不會列進「系統有記、銀行沒看到」，要核對請補上該月的明細。
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2">
             {[
@@ -370,6 +392,11 @@ export function BankVerifyPanel() {
           <Section meta={CATEGORY_META.possible} count={byCategory.possible.length} defaultOpen>
             {byCategory.possible.map((r) => (
               <BankRow key={r.tx.txId} row={r} />
+            ))}
+          </Section>
+          <Section meta={CROSS_PERIOD_META} count={result.crossPeriod.length} defaultOpen={false}>
+            {result.crossPeriod.map((s) => (
+              <SystemOnlyRow key={s.scheduleId} s={s} />
             ))}
           </Section>
           <Section meta={CATEGORY_META.ok} count={byCategory.ok.length} defaultOpen={false}>
