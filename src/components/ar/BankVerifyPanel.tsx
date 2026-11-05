@@ -121,6 +121,11 @@ function BankRow({ row }: { row: BankVerifyRow }) {
           {maskMemo(row.tx.memo) || "（無備註）"}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+          {row.ownAccountId && (
+            <span className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[var(--text-secondary)]">
+              自己帳戶轉入：{receivingAccountLabelById(row.ownAccountId)}
+            </span>
+          )}
           {orderNos.length > 0 && <span className="font-medium">{orderNos.join(" ")}</span>}
           {clientName && <span>{clientName}</span>}
           {row.schedules.map((s) => (
@@ -367,6 +372,11 @@ export function BankVerifyPanel() {
               { key: "possible", meta: CATEGORY_META.possible, count: byCategory.possible.length },
               { key: "ok", meta: CATEGORY_META.ok, count: byCategory.ok.length },
               { key: "non_order", meta: CATEGORY_META.non_order, count: byCategory.non_order.length },
+              {
+                key: "cross_period",
+                meta: { ...CROSS_PERIOD_META, tone: CATEGORY_META.non_order.tone },
+                count: result.crossPeriod.length,
+              },
             ].map(({ key, meta, count }) => (
               <span key={key} className={`rounded-full border px-3 py-1 text-xs font-medium ${meta.tone}`}>
                 {meta.icon} {meta.label} {count}

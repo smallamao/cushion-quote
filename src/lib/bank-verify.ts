@@ -61,6 +61,8 @@ export interface BankVerifyRow {
   /** 備註裡匯款帳號的末五碼（自家帳戶轉入時仍會填，但不拿來比對） */
   last5: string;
   isInternal: boolean;
+  /** 自家帳戶轉入時，是 BANK_ACCOUNTS 的哪個帳戶（顯示用；非自家為空字串） */
+  ownAccountId: string;
   /** 備註裡的訂單編號（S882 / P1455 / L019） */
   orderNumber: string;
   /** 從備註單號找到的訂單客戶名（系統沒記錄時也能看出是誰） */
@@ -159,8 +161,14 @@ export function accountIdsForCsv(
   return accounts.filter((a) => sameAccount(digitsOf(a.accountNumber), digits)).map((a) => a.id);
 }
 
-function ownLast5Set(accounts: readonly BankAccount[]): Set<string> {
-  return new Set(accounts.map((a) => digitsOf(a.accountNumber).slice(-5)).filter((s) => s.length === 5));
+/** 自家帳戶末五碼 → 帳戶 id（同末五碼的第一個） */
+function ownLast5Map(accounts: readonly BankAccount[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const a of accounts) {
+    const last5 = digitsOf(a.accountNumber).slice(-5);
+    if (last5.length === 5 && !map.has(last5)) map.set(last5, a.id);
+  }
+  return map;
 }
 
 /** 摘要或備註一看就不是客人付款：利息、大戶回饋、刷退／退款 */
@@ -255,7 +263,8 @@ interface Working {
   /** 末五碼或單號有指到東西（決定是 ⚠️ 還是走金額＋日期） */
   refCands: VerifySchedule[];
   orderCands: VerifySchedule[];
-  result: Omit<BankVerifyRow, "tx" | "last5" | "isInternal" | "orderNumber" | "orderClientName"> | null;
+  ownAccountId: string;
+  result: Omit<BankVerifyRow, "tx" | "last5" | "isInternal" | "ownAccountId" | "orderNumber" | "orderClientName"> | null;
 }
 
 function uniqueSchedules(list: VerifySchedule[]): VerifySchedule[] {
@@ -302,7 +311,7 @@ export function verifyBankTransactions(
   options: VerifyOptions = {},
 ): BankVerifyResult {
   const ownAccounts = options.ownAccounts ?? BANK_ACCOUNTS;
-  const ownLast5 = ownLast5Set(ownAccounts);
+  const ownLast5 = ownLast5Map(ownAccounts);
   const received = schedules.filter((s) => s.receivedAmount > 0);
   const used = new Set<string>();
 
@@ -338,6 +347,7 @@ export function verifyBankTransactions(
       tx,
       last5: rawLast5,
       isInternal,
+      ownAccountId: isInternal ? ownLast5.get(rawLast5) ?? "" : "",
       orderNumber,
       orderClientName: order?.clientName ?? "",
     };
@@ -429,24 +439,35 @@ export function verifyBankTransactions(
       };
     }
   }
-  // 5. 自家帳戶互轉（單號也沒對上）→ ⚪，不能拿去走金額＋日期吃掉別人的收款
-  for (const w of work) {
-    if (w.result || !w.isInternal) continue;
-    w.result = { category: "non_order", reason: "內部帳戶轉入", schedules: [], arId: "", note: "" };
-  }
-  // 6. 沒有末五碼／單號佐證：金額完全相同＋日期 ±5 天只剩唯一一筆 → 🔍（不自動認定）
-  //    分期記了別的末五碼，就不是這筆（客人帳號不同）
+  // 5. 沒有末五碼／單號佐證：金額完全相同＋日期 ±5 天只剩唯一一筆 → 🔍（不自動認定）
+  //    分期記了別的末五碼，就不是這筆（客人帳號不同）。
+  //    自家帳戶轉入也走同一套嚴格規則（老闆 2026-11 決定）：客人常先匯到陳涵儀等
+  //    自己的帳戶、再轉進大戶。那筆的匯款人是老闆自己，看不出客人末五碼，
+  //    所以不做末五碼排除；對不到或不只一筆就歸 ⚪，不吃掉任何收款。
   for (const w of work) {
     if (w.result) continue;
+    const customerLast5 = w.isInternal ? "" : w.last5;
     const near = received.filter(
       (s) =>
         !used.has(s.scheduleId) &&
-        !(s.ref && w.last5 && s.ref !== w.last5) &&
+        !(s.ref && customerLast5 && s.ref !== customerLast5) &&
         Math.abs(s.receivedAmount - w.credit) < POSSIBLE_AMOUNT_TOLERANCE &&
         !!s.receivedDate &&
         dayDiff(s.receivedDate, w.tx.txDate) <= POSSIBLE_DAY_WINDOW,
     );
-    if (near.length === 1) {
+    if (w.isInternal) {
+      if (near.length === 1) {
+        settle(w, near[0], "可能是（自己帳戶轉入）", "possible");
+      } else {
+        w.result = {
+          category: "non_order",
+          reason: "內部帳戶轉入",
+          schedules: [],
+          arId: "",
+          note: near.length > 1 ? `金額相同 ${near.length} 筆` : "",
+        };
+      }
+    } else if (near.length === 1) {
       settle(w, near[0], "金額＋日期相近（需確認）", "possible");
     } else if (near.length > 1) {
       w.result = {
@@ -466,6 +487,7 @@ export function verifyBankTransactions(
       tx: w.tx,
       last5: w.last5,
       isInternal: w.isInternal,
+      ownAccountId: w.ownAccountId,
       orderNumber: w.orderNumber,
       orderClientName: w.orderClientName,
       ...(w.result as NonNullable<Working["result"]>),

@@ -294,16 +294,39 @@ describe("verifyBankTransactions", () => {
     expect(debitCount).toBe(1);
   });
 
-  it("自家帳戶轉入不走金額＋日期，不吃掉別人的收款（那筆仍列 ❌）", () => {
-    const s = sch({ receivedAmount: 50000, receivedDate: "2026-10-10" });
-    const { rows, systemOnly } = run(
-      [tx({ credit: 50000, memo: "8070006801800918474", txDate: "2026-10-10" }), tx({ debit: 1, txDate: "2026-10-31" })],
-      [s],
-    );
-    expect(rows[0].category).toBe("non_order");
-    expect(rows[0].reason).toBe("內部帳戶轉入");
-    expect(rows[0].schedules).toHaveLength(0);
-    expect(systemOnly.map((x) => x.scheduleId)).toEqual([s.scheduleId]);
+  describe("自家帳戶轉入（客人先匯到老闆自己的帳戶再轉進來）", () => {
+    const internal = (over: Partial<BankTransaction> = {}) =>
+      tx({ credit: 50000, memo: "8070006801800918474", txDate: "2026-10-10", ...over });
+    const end = tx({ debit: 1, txDate: "2026-10-31" });
+
+    it("金額相同、日期相近只剩一筆 → 🔍 並吃掉那筆，標出是哪個自己帳戶", () => {
+      // 分期記的是客人自己的末五碼——自家轉入看不出客人末五碼，不能因此排除
+      const s = sch({ ref: "65241", receivedAmount: 50000, receivedDate: "2026-10-08" });
+      const { rows, systemOnly } = run([internal(), end], [s]);
+      expect(rows[0].category).toBe("possible");
+      expect(rows[0].reason).toBe("可能是（自己帳戶轉入）");
+      expect(rows[0].ownAccountId).toBe("sinopac_custom");
+      expect(rows[0].schedules[0].scheduleId).toBe(s.scheduleId);
+      expect(systemOnly).toHaveLength(0);
+    });
+
+    it("金額相同的不只一筆 → ⚪，不吃掉任何收款", () => {
+      const a = sch({ receivedAmount: 50000, receivedDate: "2026-10-12" });
+      const b = sch({ receivedAmount: 50000, receivedDate: "2026-10-14" });
+      const { rows, systemOnly } = run([internal(), end], [a, b]);
+      expect(rows[0].category).toBe("non_order");
+      expect(rows[0].reason).toBe("內部帳戶轉入");
+      expect(rows[0].note).toBe("金額相同 2 筆");
+      expect(systemOnly.map((x) => x.scheduleId)).toEqual([a.scheduleId, b.scheduleId]);
+    });
+
+    it("金額差 $10 → ⚪，那筆收款仍列 ❌", () => {
+      const s = sch({ receivedAmount: 50010, receivedDate: "2026-10-10" });
+      const { rows, systemOnly } = run([internal(), end], [s]);
+      expect(rows[0].category).toBe("non_order");
+      expect(rows[0].schedules).toHaveLength(0);
+      expect(systemOnly.map((x) => x.scheduleId)).toEqual([s.scheduleId]);
+    });
   });
 
   it("🔍 分期記了別的末五碼就不算可能是", () => {
