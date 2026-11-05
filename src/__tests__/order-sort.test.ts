@@ -26,14 +26,14 @@ describe("cmpDateDesc", () => {
   });
 });
 
-describe("cmpInstallDate（安裝/出貨日：無日期排最前）", () => {
+describe("cmpInstallDate（安裝/出貨日：有日期排前面）", () => {
   it("有日期時新到舊", () => {
     expect(cmpInstallDate("2026-07-24", "2026-07-22")).toBeLessThan(0);
     expect(cmpInstallDate("2026-07-22", "2026-07-24")).toBeGreaterThan(0);
   });
   it("空值排最前（不論另一邊新舊）", () => {
-    expect(cmpInstallDate("", "2026-01-01")).toBeLessThan(0);
-    expect(cmpInstallDate("2026-01-01", "")).toBeGreaterThan(0);
+    expect(cmpInstallDate("", "2026-01-01")).toBeGreaterThan(0);
+    expect(cmpInstallDate("2026-01-01", "")).toBeLessThan(0);
     expect(cmpInstallDate("", "")).toBe(0);
   });
 });
@@ -55,14 +55,14 @@ describe("compareOrders（狀態分組排序）", () => {
     expect(sorted).toEqual([
       // 待出貨排在生產中之前（老闆 2026-10-25）：快要出貨的最需要盯
       "W1",
-      // production：先「無安裝日」者（依下單日新→舊、再建立時間舊→新），
+      // production：先「有安裝日」者，新→舊（老闆 2026-11-05 改向）
+      "P_install24",
+      "P_install22",
+      // 再「無安裝日」者（依下單日新→舊、再建立時間舊→新）
       "P_order21",
       "P_order12",
       "P_noDate_old",
       "P_noDate_new",
-      // 再「有安裝日」者，新→舊
-      "P_install24",
-      "P_install22",
       // 結案狀態在最後
       "C1",
       "X1",
@@ -110,7 +110,7 @@ describe("待建立內容（pending_setup）排最前", () => {
   it("同為待建立內容時，仍照安裝/出貨日與下單日往下比", () => {
     const a = mk({ status: "pending_setup", installDate: "", orderDate: "2026-05-01" });
     const b = mk({ status: "pending_setup", installDate: "2026-05-01", orderDate: "2026-05-01" });
-    expect(compareOrders(a, b)).toBeLessThan(0); // 無日期者仍排前
+    expect(compareOrders(a, b)).toBeGreaterThan(0); // 有出貨日者排前（老闆 2026-11-05 改向）
   });
 });
 

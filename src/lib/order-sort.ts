@@ -6,7 +6,7 @@ import type { CustomOrder, OrderStatus } from "@/lib/types";
 //      擺最前面是為了避免人工遺落（老闆 2026-10-12）：沒填完就不該混進生產中的單裡。
 //      待出貨排在排程/生產中之前（老闆 2026-10-25）：快要出貨的最需要盯，
 //      生產中的還有時間。原本是對齊 Notion 看板的順序，這裡刻意不再對齊。
-//   2. 安裝/出貨日：無日期者排最前（尚未排期，浮上來提醒處理）→ 有日期新 → 舊
+//   2. 安裝/出貨日：有日期者排前面（新→舊），沒填日期的排最後（老闆 2026-11-05）
 //   3. 下單日：新 → 舊（無日期者排最後）
 //   4. 建立時間：舊 → 新（前面全平手時的穩定排序）
 const STATUS_RANK: Record<OrderStatus, number> = {
@@ -28,15 +28,18 @@ export function cmpDateDesc(a: string | undefined, b: string | undefined): numbe
 }
 
 /**
- * 安裝/出貨日專用排序：尚未填日期者排最前（浮上來提醒排期），
- * 其餘由新到舊。與 cmpDateDesc 的差別只在空值方向。
+ * 安裝/出貨日專用排序：**有填日期的排前面**，沒填的排後面；有日期者由新到舊。
+ *
+ * 🔴 2026-11-05 老闆要求改向。原本是「無日期排最前」，用意是浮上來提醒排期，
+ *    但實際使用下來，還沒排期的單佔住整個畫面上方，反而把有出貨日、
+ *    真正要盯進度的單擠到下面。改成有日期優先。
  */
 export function cmpInstallDate(a: string | undefined, b: string | undefined): number {
   const av = a || "";
   const bv = b || "";
   if (!av && !bv) return 0;
-  if (!av) return -1;
-  if (!bv) return 1;
+  if (!av) return 1;
+  if (!bv) return -1;
   return bv.localeCompare(av);
 }
 
