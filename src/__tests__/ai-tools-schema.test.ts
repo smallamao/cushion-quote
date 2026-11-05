@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { AI_MAX_TOKENS, AI_MODEL_AGENT, AI_MODEL_VISION } from "@/lib/ai-model";
 import { MUTATING_TOOLS, readOnlyTools, toolDefinitions as agentTools } from "@/lib/agent-tools";
-import { PROPOSE_STATUS_TOOL } from "@/lib/assistant/order-tools";
+import { PROPOSE_STATUS_TOOL, SYSTEM_INSTRUCTION } from "@/lib/assistant/order-tools";
 
 /**
  * 2026-11-04 從 Gemini 換到 Claude：工具宣告是用機械式轉換改過來的
@@ -67,11 +67,30 @@ describe("Claude 工具宣告", () => {
   checkTools([PROPOSE_STATUS_TOOL] as unknown as ToolLike[], "面板專屬");
   checkTools(agentTools as unknown as ToolLike[], "共用工具表");
 
-  it("共用工具表涵蓋 11 個工具（含訂製訂單查詢）", () => {
-    expect(agentTools).toHaveLength(11);
+  it("共用工具表涵蓋 12 個工具（含訂製訂單查詢與叫料狀況）", () => {
+    expect(agentTools).toHaveLength(12);
     const names = agentTools.map((t) => t.name);
     expect(names).toContain("query_orders");
     expect(names).toContain("get_order");
+    expect(names).toContain("get_order_materials");
+  });
+
+  /**
+   * 2026-11-04 踩過：加了工具卻沒改 SYSTEM_INSTRUCTION，指令裡還寫著一個早就不存在的
+   * find_orders，等於一邊給工具一邊叫模型別用。這條測試讓下次漏改就紅。
+   */
+  it("🔴 系統指令提到的工具名稱必須真的存在", () => {
+    const mentioned = SYSTEM_INSTRUCTION.match(/\b[a-z_]+_[a-z_]+\b/g) ?? [];
+    const known = new Set([...agentTools.map((t) => t.name), PROPOSE_STATUS_TOOL.name]);
+    for (const name of mentioned) {
+      expect(known.has(name), `系統指令提到 ${name}，但工具表裡沒有這個工具`).toBe(true);
+    }
+  });
+
+  it("🔴 每個唯讀工具都要寫進系統指令，否則模型不知道自己查得到", () => {
+    for (const t of readOnlyTools()) {
+      expect(SYSTEM_INSTRUCTION, `系統指令沒提到 ${t.name}`).toContain(t.name);
+    }
   });
 
   it("🔴 宣告與處理函式必須一一對應——漏一個就是模型看得到卻呼叫沒反應", async () => {

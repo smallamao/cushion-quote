@@ -166,6 +166,29 @@ export const toolDefinitions: Anthropic.Tool[] = [
       required: ["orderId"],
     },
   },
+  {
+    name: "get_order_materials",
+    description:
+      "查訂製訂單的叫料狀況：這張訂單關聯到哪些採購單、買了什麼面料／皮革／泡棉、採購單在什麼狀態。" +
+      "不給 orderIds 就看全部「排程/生產中」的訂單。" +
+      "⚠️ 回傳內容附有判讀限制，轉述時必須一併說明，不可自行下「已採購／未採購」的結論。",
+    input_schema: {
+      type: "object",
+      properties: {
+        orderIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "要查的工單號，例如 [\"ORD-2026-10-018\"]。不填則查全部指定狀態的訂單。",
+        },
+        orderStatus: {
+          type: "string",
+          description:
+            "沒給 orderIds 時要看哪種狀態的訂單：production（排程/生產中，預設）、waiting（待出貨）、pending_setup、completed。",
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 async function handleCreateInvoice(args: Record<string, unknown>): Promise<string> {
@@ -345,7 +368,7 @@ async function handleQueryPurchaseOrders(args: Record<string, unknown>): Promise
     }
 
     const STATUS_LABEL: Record<string, string> = {
-      draft: "草稿", confirmed: "已確認", received: "已到貨", cancelled: "已取消",
+      draft: "草稿", sent: "已送出給廠商", confirmed: "已確認", received: "已到貨", cancelled: "已取消",
     };
 
     const lines = orders.map((o, i) =>
@@ -353,6 +376,19 @@ async function handleQueryPurchaseOrders(args: Record<string, unknown>): Promise
     );
 
     return `最近 ${orders.length} 筆採購單：\n\n${lines.join("\n\n")}`;
+  } catch (e) {
+    return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function handleGetOrderMaterials(args: Record<string, unknown>): Promise<string> {
+  const { getOrderMaterials } = await import("@/lib/assistant/order-materials");
+  const ids = Array.isArray(args.orderIds) ? args.orderIds.map(String) : undefined;
+  try {
+    return await getOrderMaterials({
+      orderIds: ids,
+      orderStatus: args.orderStatus ? String(args.orderStatus) : undefined,
+    });
   } catch (e) {
     return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
   }
@@ -631,6 +667,7 @@ const TOOL_HANDLERS: Record<string, (args: Record<string, unknown>) => Promise<s
   create_invoice: handleCreateInvoice,
   create_after_sales: handleCreateAfterSales,
   query_purchase_orders: handleQueryPurchaseOrders,
+  get_order_materials: handleGetOrderMaterials,
   create_purchase_order: handleCreatePurchaseOrder,
   query_clients: handleQueryClients,
   query_quotes: handleQueryQuotes,

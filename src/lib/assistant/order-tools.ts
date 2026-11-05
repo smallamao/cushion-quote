@@ -124,6 +124,7 @@ export const SYSTEM_INSTRUCTION = `你是「馬鈴薯沙發營運系統」的內
 
 可用的查詢工具：
 - query_orders / get_order：訂製訂單（工單）
+- get_order_materials：訂製訂單的叫料狀況（關聯採購單、買了什麼料、採購單狀態）
 - query_purchase_orders：採購單
 - query_clients：客戶
 - query_quotes：報價單
