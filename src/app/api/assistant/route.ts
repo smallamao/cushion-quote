@@ -9,11 +9,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { AI_MAX_TOKENS, AI_MODEL_AGENT } from "@/lib/ai-model";
 import { executeTool, readOnlyTools } from "@/lib/agent-tools";
 import {
+  PROPOSE_PURCHASE_STATUS_CHANGE,
+  PROPOSE_PURCHASE_STATUS_TOOL,
   PROPOSE_STATUS_CHANGE,
   PROPOSE_STATUS_TOOL,
   STATUS_LABELS,
   SYSTEM_INSTRUCTION,
 } from "@/lib/assistant/order-tools";
+import { describePurchaseProposal } from "@/lib/assistant/purchase-proposal";
 import type { OrderStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -37,7 +40,7 @@ interface ChatTurn {
  * 寫入動作一律不給這個面板直接執行——改狀態走 propose，由使用者在畫面按確認。
  */
 function panelTools() {
-  return [...readOnlyTools(), PROPOSE_STATUS_TOOL];
+  return [...readOnlyTools(), PROPOSE_STATUS_TOOL, PROPOSE_PURCHASE_STATUS_TOOL];
 }
 
 const NO_WRITES: ReadonlySet<string> = new Set();
@@ -127,6 +130,26 @@ export async function POST(request: Request) {
         (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
       );
       if (calls.length === 0) break;
+
+      // 採購單改狀態 → 一樣不執行，但確認訊息要先查有沒有內容相同的重複單。
+      const purchaseCall = calls.find((c) => c.name === PROPOSE_PURCHASE_STATUS_CHANGE);
+      if (purchaseCall) {
+        const args = (purchaseCall.input ?? {}) as { purchaseId?: string; status?: string };
+        const proposal = await describePurchaseProposal(
+          (args.purchaseId ?? "").trim(),
+          String(args.status ?? ""),
+        );
+        return NextResponse.json({
+          ok: true,
+          reply: proposal.reply,
+          pendingAction: proposal.pendingAction,
+          history: [
+            ...history,
+            { role: "user", text: message },
+            { role: "model", text: proposal.historyNote },
+          ],
+        });
+      }
 
       // 寫入意圖 → 不執行，回傳待確認動作，由使用者在畫面按確認才真的改。
       const writeCall = calls.find((c) => c.name === PROPOSE_STATUS_CHANGE);

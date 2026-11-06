@@ -16,6 +16,7 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
 };
 
 export const PROPOSE_STATUS_CHANGE = "propose_status_change";
+export const PROPOSE_PURCHASE_STATUS_CHANGE = "propose_purchase_status_change";
 
 /** 回傳給模型的訂單摘要——只放查詢需要的欄位，盡量少送敏感資料。 */
 interface OrderSummary {
@@ -113,6 +114,34 @@ export const PROPOSE_STATUS_TOOL: Anthropic.Tool = {
   };
 
 /**
+ * 採購單改狀態——一樣只給「提議」，真正寫入由使用者在畫面按確認。
+ *
+ * 老闆 2026-11-06：助手查出一堆還掛草稿的採購單，卻只能叫他自己去後台一張張點。
+ * 但直接把 update_purchase_status 開給面板不行——2026-11-06 查出 1,315 張裡有 19 組
+ * 內容完全相同的重複單，14 組整組還是草稿；沒有確認關卡的話，助手一句「好我幫你送出」
+ * 就可能重複下單近十萬。確認視窗會附上重複單警告。
+ */
+export const PROPOSE_PURCHASE_STATUS_TOOL: Anthropic.Tool = {
+  name: PROPOSE_PURCHASE_STATUS_CHANGE,
+  description:
+    "提議把某張採購單改成新狀態（例如草稿→已送出給廠商）。這只是『提議』，不會真的改——" +
+    "必須由使用者在畫面上按確認，系統才會執行。不要假裝已經改好。一次只提議一張。",
+  input_schema: {
+    type: "object",
+    properties: {
+      purchaseId: { type: "string", description: "採購單號，例如 PS-20261106-01" },
+      status: {
+        type: "string",
+        enum: ["sent", "confirmed", "received", "cancelled", "draft"],
+        description:
+          "目標狀態：sent=已送出給廠商, confirmed=已確認, received=已到貨, cancelled=已取消, draft=退回草稿",
+      },
+    },
+    required: ["purchaseId", "status"],
+  },
+};
+
+/**
  * 畫面助手的系統指令。
  *
  * 🔴 這裡列的工具名稱要跟 readOnlyTools() 的實際清單對得起來。
@@ -133,6 +162,7 @@ export const SYSTEM_INSTRUCTION = `你是「馬鈴薯沙發營運系統」的內
 
 規則：
 - 一題可以連續呼叫多個工具，查完再一起作答；需要先查清單再逐筆追細節就去查，不要只查一輪就交差。
-- 修改狀態一律用 propose_status_change 提議，交由使用者在畫面上確認後系統才會執行；你絕對不要說「已經改好了」。
+- 修改訂製訂單狀態用 propose_status_change、修改採購單狀態用 propose_purchase_status_change，都只是提議，交由使用者在畫面上確認後系統才會執行；你絕對不要說「已經改好了」。
+- 採購單一次只提議一張。使用者說「全部送出」時，先把清單列出來請他逐張確認，不要連續丟一堆提議。
 - 一律用繁體中文、簡潔回答。據實回報，不要杜撰。
 - 工具查不到的就直說查不到，並指出是缺哪一項資料或哪個工具，不要用推測填補。`;

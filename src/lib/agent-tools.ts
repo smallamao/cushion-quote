@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import { AI_MAX_TOKENS, AI_MODEL_AGENT, AI_NO_KEY_MESSAGE } from "@/lib/ai-model";
+import { PURCHASE_STATUSES, isPurchaseStatus, purchaseStatusLabel } from "@/lib/purchase-status";
 import { findOrders, getOrder } from "@/lib/assistant/order-tools";
 
 import { issueB2BInvoice, issueB2CInvoice } from "@/lib/giveme-client";
@@ -367,12 +368,8 @@ async function handleQueryPurchaseOrders(args: Record<string, unknown>): Promise
       return statusFilter ? `找不到狀態為「${statusFilter}」的採購單。` : "目前沒有採購單。";
     }
 
-    const STATUS_LABEL: Record<string, string> = {
-      draft: "草稿", sent: "已送出給廠商", confirmed: "已確認", received: "已到貨", cancelled: "已取消",
-    };
-
     const lines = orders.map((o, i) =>
-      `${i + 1}. ${o.orderId}\n   ${o.supplierName}\n   ${o.orderDate} ／ NT$${o.totalAmount.toLocaleString()} ／ ${STATUS_LABEL[o.status] ?? o.status}`
+      `${i + 1}. ${o.orderId}\n   ${o.supplierName}\n   ${o.orderDate} ／ NT$${o.totalAmount.toLocaleString()} ／ ${purchaseStatusLabel(o.status)}`
     );
 
     return `最近 ${orders.length} 筆採購單：\n\n${lines.join("\n\n")}`;
@@ -536,15 +533,12 @@ async function handleUpdatePurchaseStatus(args: Record<string, unknown>): Promis
   if (!client) return "❌ Google Sheets 未設定。";
 
   const orderId = String(args.orderId ?? "").trim();
-  const newStatus = String(args.status ?? "").trim() as PurchaseOrderStatus;
-  const validStatuses = ["draft", "confirmed", "received", "cancelled"];
+  const newStatus = String(args.status ?? "").trim();
 
   if (!orderId) return "❌ 請提供採購單號。";
-  if (!validStatuses.includes(newStatus)) return `❌ 無效狀態「${newStatus}」，可用：${validStatuses.join("、")}`;
-
-  const STATUS_LABEL: Record<string, string> = {
-    draft: "草稿", confirmed: "已確認", received: "已到貨", cancelled: "已取消",
-  };
+  // sent 以前漏在這張清單外，導致「把草稿改成已送出」被自己擋掉（2026-11-06）。
+  if (!isPurchaseStatus(newStatus))
+    return `❌ 無效狀態「${newStatus}」，可用：${PURCHASE_STATUSES.join("、")}`;
 
   try {
     const res = await client.sheets.spreadsheets.values.get({
@@ -563,7 +557,7 @@ async function handleUpdatePurchaseStatus(args: Record<string, unknown>): Promis
       requestBody: { values: [[newStatus]] },
     });
 
-    return `✅ 採購單 ${orderId} 狀態已更新為「${STATUS_LABEL[newStatus]}」。`;
+    return `✅ 採購單 ${orderId} 狀態已更新為「${purchaseStatusLabel(newStatus)}」。`;
   } catch (e) {
     return `❌ 更新失敗：${e instanceof Error ? e.message : String(e)}`;
   }

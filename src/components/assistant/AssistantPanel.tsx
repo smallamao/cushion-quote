@@ -10,11 +10,34 @@ interface ChatTurn {
   role: "user" | "model";
   text: string;
 }
-interface PendingAction {
-  type: "status_change";
-  orderId: string;
-  status: string;
-  statusLabel: string;
+/**
+ * 待確認動作。助手從不自己寫入——它只提議，使用者在這裡按確認才真的改。
+ * 2026-11-06 加上採購單：查出 1,315 張裡有 19 組內容完全相同的重複單，
+ * 所以採購單的提議會帶 warning，確認鈕旁邊要把它顯示出來。
+ */
+type PendingAction =
+  | {
+      type: "status_change";
+      orderId: string;
+      status: string;
+      statusLabel: string;
+    }
+  | {
+      type: "purchase_status_change";
+      purchaseId: string;
+      status: string;
+      statusLabel: string;
+      warning?: string;
+    };
+
+function actionTargetId(a: PendingAction): string {
+  return a.type === "status_change" ? a.orderId : a.purchaseId;
+}
+
+function actionEndpoint(a: PendingAction): string {
+  return a.type === "status_change"
+    ? `/api/sheets/orders/${encodeURIComponent(a.orderId)}/status`
+    : `/api/sheets/purchases/${encodeURIComponent(a.purchaseId)}/status`;
 }
 interface Msg {
   role: "user" | "assistant";
@@ -81,7 +104,7 @@ export function AssistantPanel() {
     if (confirming) return;
     setConfirming(true);
     try {
-      const res = await fetch(`/api/sheets/orders/${encodeURIComponent(action.orderId)}/status`, {
+      const res = await fetch(actionEndpoint(action), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: action.status }),
@@ -93,7 +116,7 @@ export function AssistantPanel() {
         copy.push({
           role: "assistant",
           text: ok
-            ? `✅ 已將 ${action.orderId} 改為「${action.statusLabel}」`
+            ? `✅ 已將 ${actionTargetId(action)} 改為「${action.statusLabel}」`
             : `⚠️ 改狀態失敗：${data.error ?? res.status}`,
         });
         return copy;
@@ -150,6 +173,11 @@ export function AssistantPanel() {
               }`}
             >
               {m.text}
+              {m.pending?.type === "purchase_status_change" && m.pending.warning && (
+                <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--warning,#d97706)] bg-[var(--bg-elevated)] px-2.5 py-2 text-xs text-[var(--text-primary)]">
+                  {m.pending.warning}
+                </div>
+              )}
               {m.pending && (
                 <div className="mt-2 flex gap-2">
                   <button
