@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, X } from "lucide-react";
+import { Check, Copy, ReceiptText, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -15,13 +15,15 @@ interface ReceiptConfirmModalProps {
   title: string;
   segments: Segment[];
   onClose: () => void;
+  /** 視窗底部「關閉」上方的主要動作（收款確認 → 開立發票）；不給就不顯示 */
+  primaryAction?: { label: string; hint?: string; onClick: () => void };
 }
 
 /**
  * 一次顯示多段訊息（收款確認的「客戶回覆聯」「完整記錄」），每段各有複製鈕。
  * 複製不自動關閉，讓使用者可依需要複製任一段（省去先切換再輸出的步驟）。
  */
-export function ReceiptConfirmModal({ open, title, segments, onClose }: ReceiptConfirmModalProps) {
+export function ReceiptConfirmModal({ open, title, segments, onClose, primaryAction }: ReceiptConfirmModalProps) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   if (!open) return null;
@@ -75,7 +77,18 @@ export function ReceiptConfirmModal({ open, title, segments, onClose }: ReceiptC
           ))}
         </div>
 
-        <div className="border-t border-[var(--border)] px-4 py-3">
+        <div className="space-y-2 border-t border-[var(--border)] px-4 py-3">
+          {primaryAction && (
+            <>
+              <Button className="w-full" onClick={primaryAction.onClick}>
+                <ReceiptText className="mr-1 h-4 w-4" />
+                {primaryAction.label}
+              </Button>
+              {primaryAction.hint && (
+                <p className="text-center text-[11px] text-[var(--text-tertiary)]">{primaryAction.hint}</p>
+              )}
+            </>
+          )}
           <Button variant="outline" className="w-full" onClick={onClose}>
             關閉
           </Button>

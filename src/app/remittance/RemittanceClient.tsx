@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { MessageResultModal } from "@/components/sofa/MessageResultModal";
 import { ReceiptConfirmModal } from "@/components/sofa/ReceiptConfirmModal";
 import {
@@ -12,6 +13,17 @@ import {
   type CardInfo,
   type PaymentType,
 } from "@/lib/remittance";
+import {
+  buildReceiptInvoiceQuery,
+  canInvoiceFromReceipt,
+  type ReceiptInvoiceInfo,
+} from "@/lib/receipt-invoice";
+
+/** 本地日期 YYYY-MM-DD（收款確認訊息裡的「匯款日期」也是用當下本地日期） */
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -26,7 +38,13 @@ export function RemittanceClient() {
   const [paymentRef, setPaymentRef] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [paymentType, setPaymentType] = useState<PaymentType>("匯款");
-  const [receiptModal, setReceiptModal] = useState<{ customer: string; full: string } | null>(null);
+  const router = useRouter();
+  // invoice：輸出當下的收款資料快照（LINE PAY／刷卡才有），按「開立發票」就帶這份過去
+  const [receiptModal, setReceiptModal] = useState<{
+    customer: string;
+    full: string;
+    invoice: ReceiptInvoiceInfo | null;
+  } | null>(null);
   const [isBalance, setIsBalance] = useState(false);
   const [modal, setModal] = useState<{ title: string; message: string } | null>(null);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
@@ -69,7 +87,18 @@ export function RemittanceClient() {
   function showBothReceipts(isPotatoAccount: boolean) {
     const customer = buildReceiptMessage(amount, paymentRef, orderNumber, paymentType, "客戶回覆聯", isBalance, paymentRef, isPotatoAccount, cardInfo ?? undefined);
     const full = buildReceiptMessage(amount, paymentRef, orderNumber, paymentType, "完整記錄", isBalance, paymentRef, isPotatoAccount, cardInfo ?? undefined);
-    setReceiptModal({ customer, full });
+    const amountNum = Number(amount);
+    const invoice: ReceiptInvoiceInfo | null =
+      canInvoiceFromReceipt(paymentType) && amountNum > 0
+        ? {
+            amount: amountNum,
+            orderNumber: orderNumber.trim(),
+            paymentType,
+            paymentRef: paymentRef.trim(),
+            receivedDate: localToday(),
+          }
+        : null;
+    setReceiptModal({ customer, full, invoice });
   }
 
   function handleReceiptClick() {
@@ -256,6 +285,19 @@ export function RemittanceClient() {
             { label: "完整記錄（內部存查）", text: receiptModal.full },
           ]}
           onClose={() => setReceiptModal(null)}
+          primaryAction={
+            receiptModal.invoice
+              ? {
+                  label: "開立發票",
+                  hint: "帶到電子發票頁填好，確認後才會送出",
+                  onClick: () => {
+                    const info = receiptModal.invoice;
+                    if (!info) return;
+                    router.push(`/einvoices?${buildReceiptInvoiceQuery(info)}` as never);
+                  },
+                }
+              : undefined
+          }
         />
       )}
     </div>

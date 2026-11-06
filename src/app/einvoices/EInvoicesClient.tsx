@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, FileText, Loader2, ReceiptText, RefreshCw, RotateCcw, SendHorizonal, XCircle } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ARRecord, EInvoiceCandidate, EInvoiceRecord } from "@/lib/types";
@@ -15,6 +15,18 @@ import {
   type IssueResponseClass,
 } from "@/lib/einvoice-issue";
 import { formatCurrency } from "@/lib/utils";
+import {
+  buildQuickInvoiceForm,
+  buyerNameFromCardName,
+  duplicateKey,
+  ensureVoucherInNote,
+  findReceiptDuplicates,
+  parseReceiptInvoiceQuery,
+  receiptIssueBlockReason,
+  receiptSourceId,
+  type ReceiptInvoiceInfo,
+} from "@/lib/receipt-invoice";
+import { TRELLO } from "@/lib/trello-constants";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -181,7 +193,36 @@ function buildDefaultDraft(candidate: EInvoiceCandidate): DraftOverride {
   };
 }
 
+/**
+ * 用訂單編號（P6337）查 Trello 卡片上的客人姓名，填進買方名稱。
+ * 查不到或同號有好幾張卡就回空字串，讓老闆自己打——不猜。
+ */
+async function lookupBuyerName(orderNumber: string): Promise<string> {
+  try {
+    const qs = new URLSearchParams({ query: orderNumber, modelTypes: "cards", card_fields: "name", cards_limit: "10" });
+    const res = await fetch(`/api/trello/search?${qs.toString()}`, { cache: "no-store" });
+    if (!res.ok) return "";
+    const { cards = [] } = (await res.json()) as { cards?: Array<{ id: string; name: string }> };
+    const pattern = new RegExp(`(^|[^0-9A-Za-z])${orderNumber}(?![0-9])`);
+    const matches = cards.filter((c) => pattern.test(c.name));
+    if (matches.length !== 1) return "";
+    const card = matches[0];
+    const cfRes = await fetch(`/api/trello/cards/${card.id}/customFieldItems`, { cache: "no-store" });
+    if (cfRes.ok) {
+      const items = (await cfRes.json()) as Array<{ idCustomField: string; value?: { text?: string } }>;
+      const contact = items
+        .find((i) => i.idCustomField === TRELLO.CUSTOM_FIELDS.PRIMARY_CONTACT_NAME)
+        ?.value?.text?.trim();
+      if (contact) return contact;
+    }
+    return buyerNameFromCardName(card.name, orderNumber);
+  } catch {
+    return "";
+  }
+}
+
 export function EInvoicesClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const versionId = searchParams.get("versionId")?.trim() ?? "";
 
@@ -239,6 +280,17 @@ export function EInvoicesClient() {
     invoiceDate: new Date().toISOString().slice(0, 10),
   });
   const [quickCreating, setQuickCreating] = useState(false);
+  // 從匯款資訊頁「收款確認 → 開立發票」帶過來的收款（老闆 2026-11-06）
+  const [receiptPrefill, setReceiptPrefill] = useState<ReceiptInvoiceInfo | null>(null);
+  const [buyerLookup, setBuyerLookup] = useState<"" | "loading" | "found" | "notfound">("");
+  // 勾選「確認是另一筆款項」時當下那組可能重複的發票；名單一變就要重勾
+  const [receiptAckedKey, setReceiptAckedKey] = useState("");
+  const [invoicesLoaded, setInvoicesLoaded] = useState(false);
+  const receiptHandledRef = useRef(false);
+  // Trello 查姓名是非同步的：回來時若這次收款帶入已結束，就不要寫進表單
+  const receiptTokenRef = useRef(0);
+  // 連點兩下時 state 還沒更新，用 ref 同步擋
+  const quickCreatingRef = useRef(false);
 
   const load = useCallback(async (options: LoadOptions = {}) => {
     setLoading(true);
@@ -248,13 +300,17 @@ export function EInvoicesClient() {
         fetch("/api/sheets/einvoices", { cache: "no-store" }),
         fetch("/api/sheets/ar", { cache: "no-store" }),
       ]);
+      // 發票清單是防重複開票的依據：它讀到就先存，候選或應收失敗不影響它
+      if (invoiceResponse.ok) {
+        const invoicePayload = (await invoiceResponse.json()) as { invoices: EInvoiceRecord[] };
+        setInvoices(invoicePayload.invoices);
+        setInvoicesLoaded(true);
+      }
       if (!candidateResponse.ok || !invoiceResponse.ok) {
         throw new Error("讀取電子發票資料失敗");
       }
       const candidatePayload = (await candidateResponse.json()) as { candidates: EInvoiceCandidate[] };
-      const invoicePayload = (await invoiceResponse.json()) as { invoices: EInvoiceRecord[] };
       setCandidates(candidatePayload.candidates);
-      setInvoices(invoicePayload.invoices);
       // 應收讀取失敗不阻斷發票功能，只是不顯示收款狀態
       if (arResponse.ok) {
         const arPayload = (await arResponse.json()) as { ars?: ARRecord[] };
@@ -286,7 +342,7 @@ export function EInvoicesClient() {
         });
       }
       setCandidates([]);
-      setInvoices([]);
+      // 不清空 invoices：清成空陣列等於「沒有任何發票」，收款開票的防重複就會放行
     } finally {
       setLoading(false);
     }
@@ -295,6 +351,79 @@ export function EInvoicesClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 等發票清單載完才打開，防重複檢查才有資料可比
+  useEffect(() => {
+    if (loading || receiptHandledRef.current) return;
+    const info = parseReceiptInvoiceQuery(new URLSearchParams(searchParams.toString()));
+    if (!info) return;
+    receiptHandledRef.current = true;
+    const token = ++receiptTokenRef.current;
+    setReceiptPrefill(info);
+    setReceiptAckedKey("");
+    setQuickCreateForm(buildQuickInvoiceForm(info, ""));
+    setQuickCreateOpen(true);
+    const order = info.orderNumber.match(/P\d{4,6}/i)?.[0]?.toUpperCase() ?? "";
+    if (!order) {
+      setBuyerLookup("notfound");
+      return;
+    }
+    setBuyerLookup("loading");
+    void lookupBuyerName(order).then((name) => {
+      if (receiptTokenRef.current !== token) return;
+      setBuyerLookup(name ? "found" : "notfound");
+      if (name) setQuickCreateForm((f) => (f.buyerName.trim() ? f : { ...f, buyerName: name }));
+    });
+  }, [loading, searchParams]);
+
+  // 兩層：收款憑證／來源 ID 相同（一定重複，直接擋）＋ 60 天內同買方同金額
+  // （功能上線前手開、沒有憑證的那些，要勾選確認）
+  const { receiptExactDups, receiptPossibleDups } = useMemo(() => {
+    if (!receiptPrefill) return { receiptExactDups: [], receiptPossibleDups: [] };
+    const exact = findReceiptDuplicates(invoices, receiptPrefill);
+    const input = Number(quickCreateForm.totalAmount.replace(/[,$]/g, ""));
+    // 跟 handleQuickCreate 同一套算法，比對的是實際會開出的含稅總額
+    const untaxed = quickCreateForm.amountType === "未稅" ? input : Math.round(input / 1.05);
+    const total = untaxed + Math.round(untaxed * 0.05);
+    const exactIds = new Set(exact.map((i) => i.invoiceId));
+    const possible = findPossibleDuplicateInvoices(
+      { buyerName: quickCreateForm.buyerName, totalAmount: total },
+      invoices,
+    ).filter((i) => !exactIds.has(i.invoiceId));
+    return { receiptExactDups: exact, receiptPossibleDups: possible };
+  }, [receiptPrefill, invoices, quickCreateForm.buyerName, quickCreateForm.totalAmount, quickCreateForm.amountType]);
+  const receiptBlockReason = receiptPrefill
+    ? receiptIssueBlockReason({
+        invoicesLoaded,
+        exactDuplicates: receiptExactDups,
+        possibleDuplicates: receiptPossibleDups,
+        ackedKey: receiptAckedKey,
+      })
+    : "";
+  const receiptBlocked = receiptBlockReason !== "";
+
+  /**
+   * 收款帶入的流程結束（開好、失敗、結果未知或取消）：清掉帶入資料與網址參數，
+   * 重新整理或按上一頁才不會又跳出一張填好、可以再按一次的表單。
+   */
+  function clearReceiptPrefill() {
+    receiptTokenRef.current += 1;
+    setReceiptPrefill(null);
+    setReceiptAckedKey("");
+    setBuyerLookup("");
+    if (searchParams.get("fromReceipt")) router.replace("/einvoices" as never);
+  }
+
+  const emptyQuickForm = () => ({ buyerName: "", buyerTaxId: "", totalAmount: "", amountType: "含稅" as const, content: "", remark: "", overallRemark: "", internalNote: "", invoiceDate: new Date().toISOString().slice(0, 10) });
+
+  function handleQuickCreateOpenChange(open: boolean) {
+    if (!open && quickCreatingRef.current) return; // 送出中不讓關
+    setQuickCreateOpen(open);
+    if (!open && receiptPrefill) {
+      clearReceiptPrefill();
+      setQuickCreateForm(emptyQuickForm());
+    }
+  }
 
   const selectedCandidates = useMemo(
     () => candidates.filter((candidate) => selectedIds.includes(candidate.candidateId)),
@@ -599,6 +728,9 @@ export function EInvoicesClient() {
     const inputAmount = Number(quickCreateForm.totalAmount.replace(/[,$]/g, ""));
     if (!quickCreateForm.buyerName.trim()) return;
     if (!inputAmount || inputAmount <= 0) return;
+    if (receiptBlocked || quickCreatingRef.current) return;
+    quickCreatingRef.current = true;
+    const receipt = receiptPrefill;
     setQuickCreating(true);
     try {
       const untaxed = quickCreateForm.amountType === "未稅"
@@ -613,7 +745,8 @@ export function EInvoicesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sourceType: "manual",
-          sourceId: `QUICK-${now}`,
+          // 收款帶入的用固定 ID，後端會擋同一筆收款的第二張
+          sourceId: receipt ? receiptSourceId(receipt) : `QUICK-${now}`,
           buyerType: quickCreateForm.buyerTaxId.trim() ? "b2b" : "b2c",
           buyerName: quickCreateForm.buyerName.trim(),
           buyerTaxId: quickCreateForm.buyerTaxId.trim(),
@@ -626,7 +759,9 @@ export function EInvoicesClient() {
           content,
           items: [{ name: content, quantity: 1, unitPrice: untaxed, amount: untaxed, remark: quickCreateForm.remark.trim(), taxType: 0 }],
           overallRemark: quickCreateForm.overallRemark.trim(),
-          internalNote: quickCreateForm.internalNote.trim(),
+          internalNote: receipt
+            ? ensureVoucherInNote(quickCreateForm.internalNote, receipt)
+            : quickCreateForm.internalNote.trim(),
         }),
       });
       const createPayload = (await createRes.json().catch(() => ({}))) as { ok?: boolean; invoice?: EInvoiceRecord; error?: string };
@@ -638,6 +773,10 @@ export function EInvoicesClient() {
       if (result.kind !== "issued") {
         setNotice({ tone: "error", title: result.kind === "unknown" ? "開立結果未知" : "快速開立失敗", detail: result.message });
         setQuickCreateOpen(false);
+        if (receipt) {
+          clearReceiptPrefill();
+          setQuickCreateForm(emptyQuickForm());
+        }
         await load({ preserveFeedback: true });
         return;
       }
@@ -646,12 +785,19 @@ export function EInvoicesClient() {
       setSnackbar({ message: "電子發票已開立", invoiceId });
       setTimeout(() => setSnackbar(null), 3000);
       setQuickCreateOpen(false);
-      setQuickCreateForm({ buyerName: "", buyerTaxId: "", totalAmount: "", amountType: "含稅", content: "", remark: "", overallRemark: "", internalNote: "", invoiceDate: new Date().toISOString().slice(0, 10) });
+      setQuickCreateForm(emptyQuickForm());
+      if (receipt) clearReceiptPrefill();
       await load({ preserveFeedback: true });
     } catch (err) {
       setNotice({ tone: "error", title: "快速開立失敗", detail: err instanceof Error ? err.message : "未知錯誤" });
       setQuickCreateOpen(false);
+      if (receipt) {
+        clearReceiptPrefill();
+        setQuickCreateForm(emptyQuickForm());
+        await load({ preserveFeedback: true });
+      }
     } finally {
+      quickCreatingRef.current = false;
       setQuickCreating(false);
     }
   }
@@ -1983,12 +2129,71 @@ export function EInvoicesClient() {
       </Dialog>
 
       {/* 快速開立 modal */}
-      <Dialog open={quickCreateOpen} onOpenChange={setQuickCreateOpen}>
+      <Dialog open={quickCreateOpen} onOpenChange={handleQuickCreateOpenChange}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>快速開立電子發票</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 px-1 py-2">
+            {receiptPrefill && (
+              <div className="rounded-md bg-[var(--bg-subtle)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                從收款確認帶入：{receiptPrefill.orderNumber || "無單號"}・{receiptPrefill.paymentType}
+                {receiptPrefill.paymentRef ? ` ${receiptPrefill.paymentRef}` : ""}・
+                {formatCurrency(receiptPrefill.amount)}
+                {buyerLookup === "loading" && <span className="ml-1">（查 Trello 客人姓名中…）</span>}
+                {buyerLookup === "notfound" && !quickCreateForm.buyerName.trim() && (
+                  <span className="ml-1 text-[var(--warning,#b45309)]">（Trello 查不到姓名，請手動填）</span>
+                )}
+                {buyerLookup === "found" && (
+                  <span className="ml-1">（買方名稱取自 Trello 訂單卡，請確認）</span>
+                )}
+              </div>
+            )}
+            {receiptBlockReason === "not_loaded" && (
+              <div className="rounded-md border border-[var(--error)] bg-[var(--error-light)] px-3 py-2 text-xs text-[var(--error)]">
+                發票紀錄讀取失敗，無法檢查這筆是不是開過了。請重新整理頁面再試。
+              </div>
+            )}
+            {receiptPrefill && receiptExactDups.length > 0 && (
+              <div className="space-y-1 rounded-md border border-[var(--error)] bg-[var(--error-light)] px-3 py-2 text-xs">
+                <p className="font-semibold text-[var(--error)]">
+                  {receiptExactDups.every((d) => d.status === "draft")
+                    ? "這筆收款已經有一張還沒送出的草稿，請到下方開票歷史處理那張："
+                    : "這筆收款已經開過發票，不能再開："}
+                </p>
+                <ul className="space-y-0.5 text-[var(--text-primary)]">
+                  {receiptExactDups.map((d) => (
+                    <li key={d.invoiceId}>
+                      {d.providerInvoiceNo || d.invoiceId}・{d.buyerName}・{formatCurrency(d.totalAmount)}・
+                      {(d.invoiceDate || d.createdAt).slice(0, 10)}
+                    </li>
+                  ))}
+                </ul>
+                {!receiptExactDups.every((d) => d.status === "draft") && (
+                  <p className="text-[var(--text-secondary)]">要重開請先到下方開票歷史把那張作廢。</p>
+                )}
+              </div>
+            )}
+            {receiptPrefill && receiptExactDups.length === 0 && receiptPossibleDups.length > 0 && (
+              <div className="space-y-2 rounded-md border border-[var(--error)] bg-[var(--error-light)] px-3 py-2 text-xs">
+                <p className="font-semibold text-[var(--error)]">60 天內有同買方、同金額的發票，可能開過了：</p>
+                <ul className="space-y-0.5 text-[var(--text-primary)]">
+                  {receiptPossibleDups.map((d) => (
+                    <li key={d.invoiceId}>
+                      {d.providerInvoiceNo || d.invoiceId}・{d.buyerName}・{formatCurrency(d.totalAmount)}・
+                      {(d.invoiceDate || d.createdAt).slice(0, 10)}
+                    </li>
+                  ))}
+                </ul>
+                <label className="flex cursor-pointer items-center gap-2 text-[var(--text-primary)]">
+                  <Checkbox
+                    checked={receiptAckedKey === duplicateKey(receiptPossibleDups)}
+                    onCheckedChange={(v) => setReceiptAckedKey(v === true ? duplicateKey(receiptPossibleDups) : "")}
+                  />
+                  確認這是另一筆款項，還是要開
+                </label>
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">買方名稱 *</Label>
               <Input
@@ -2081,10 +2286,10 @@ export function EInvoicesClient() {
             })()}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setQuickCreateOpen(false)} disabled={quickCreating}>取消</Button>
+            <Button variant="outline" onClick={() => handleQuickCreateOpenChange(false)} disabled={quickCreating}>取消</Button>
             <Button
               onClick={() => void handleQuickCreate()}
-              disabled={quickCreating || !quickCreateForm.buyerName.trim() || !quickCreateForm.totalAmount}
+              disabled={quickCreating || receiptBlocked || !quickCreateForm.buyerName.trim() || !quickCreateForm.totalAmount}
             >
               {quickCreating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
               建立並開立
