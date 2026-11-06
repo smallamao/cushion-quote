@@ -346,6 +346,7 @@ const SHEET_DEFINITIONS = [
       "createdAt", "updatedAt", "createdBy",
       "materialPurchasesJson", "materialImageScale", "photoLayoutJson", "fontScale",
       "workOrderPdfUrl", "workOrderPdfUpdatedAt", "paidDate", "clientId", "shipDate", "extraInstallDatesJson", "installAssignedTo", "installAddress", "installContactName", "installContactPhone",
+      "notionPageId", "LINE對話連結", "客戶單號", "客供底單JSON", "包數",
     ],
   },
 ];

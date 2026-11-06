@@ -1,11 +1,11 @@
 import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AY`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AY10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AZ`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AZ10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AY${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:AZ${sheetRow}`;
 
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
@@ -94,6 +94,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     lineChatUrl: row[48] ?? "",
     clientPoNumber: row[49] ?? "",
     clientPoPhotos: parseJsonSafe<string[]>(row[50], []),
+    packageCount: toNumber(row[51]) || undefined,
   };
 
   // Migrate legacy imageUrl → photos[0] for each item
@@ -160,6 +161,7 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     r.lineChatUrl ?? "",
     r.clientPoNumber ?? "",
     JSON.stringify(r.clientPoPhotos ?? []),
+    r.packageCount ? String(r.packageCount) : "",
   ];
 }
 

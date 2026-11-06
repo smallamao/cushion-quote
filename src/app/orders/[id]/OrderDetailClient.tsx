@@ -10,6 +10,7 @@ import {
   FileImage,
   Loader2,
   Plus,
+  Printer,
   Save,
   ShoppingCart,
   Upload,
@@ -48,6 +49,8 @@ import { FinanceTab } from "./FinanceTab";
 import { LinkedPurchasesSection } from "./LinkedPurchasesSection";
 import { generateWorkOrderJpgBlob } from "@/components/pdf/WorkOrderPDF";
 import { WorkorderTab } from "./WorkorderTab";
+import { ShippingLabelDialog } from "./ShippingLabelDialog";
+import { isB2BOrder } from "@/lib/shipping-label";
 
 interface Props {
   orderId: string;
@@ -124,6 +127,7 @@ export function OrderDetailClient({ orderId }: Props) {
   const [notionSyncing, setNotionSyncing] = useState(false);
   const [jpgBusy, setJpgBusy] = useState(false);
   const [noteCopied, setNoteCopied] = useState(false);
+  const [labelOpen, setLabelOpen] = useState(false);
   const [poUploading, setPoUploading] = useState(false);
   const [notionResult, setNotionResult] = useState<{ ok: boolean; message: string } | null>(null);
   // 關聯採購單（供財務頁計入成本 + 反查區塊顯示）；一次抓、兩處共用
@@ -471,6 +475,18 @@ export function OrderDetailClient({ orderId }: Props) {
               <ClipboardList className="mr-1 h-3 w-3" />
               {noteCopied ? "已複製記事本" : "複製記事本"}
             </Button>
+            {/* B2B 宅配每包貼一張；取代 Keynote 手改底稿（老闆 2026-11-06） */}
+            {isB2BOrder(draft) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setLabelOpen(true)}
+                className="h-7 text-xs"
+              >
+                <Printer className="mr-1 h-3 w-3" />
+                出貨標籤
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -946,13 +962,31 @@ export function OrderDetailClient({ orderId }: Props) {
                         </span>
                       </div>
 
-                      <div className="mb-3 max-w-xs">
-                        <Label className="text-xs">客戶單號</Label>
-                        <Input
-                          value={draft.clientPoNumber ?? ""}
-                          onChange={(e) => updateDraft("clientPoNumber", e.target.value)}
-                          placeholder="對方的採購單號，可用來搜尋"
-                        />
+                      <div className="mb-3 flex flex-wrap gap-3">
+                        <div className="w-full max-w-xs">
+                          <Label className="text-xs">客戶單號</Label>
+                          <Input
+                            value={draft.clientPoNumber ?? ""}
+                            onChange={(e) => updateDraft("clientPoNumber", e.target.value)}
+                            placeholder="對方的採購單號，可用來搜尋"
+                          />
+                        </div>
+                        {/* 出貨標籤預設印這個張數 */}
+                        <div className="w-28">
+                          <Label className="text-xs">出貨包數</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={draft.packageCount || ""}
+                            onChange={(e) => {
+                              // 清空要送 0 而不是 undefined：存檔時 undefined 會被
+                              // JSON.stringify 丟掉，後端 {...existing, ...patch} 就保留舊值，清不掉
+                              const n = Math.floor(Number(e.target.value));
+                              updateDraft("packageCount", n > 0 ? n : 0);
+                            }}
+                            placeholder="例：2"
+                          />
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap items-start gap-2">
@@ -1112,6 +1146,8 @@ export function OrderDetailClient({ orderId }: Props) {
           </div>
         </TabsContent>
       </Tabs>
+
+      <ShippingLabelDialog order={draft} open={labelOpen} onOpenChange={setLabelOpen} />
     </div>
   );
 }
