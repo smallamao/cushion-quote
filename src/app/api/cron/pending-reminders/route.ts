@@ -11,6 +11,7 @@ import {
   addCardCommentUnlessTest,
   getBoardCardsWithChecklists,
   readDepositState,
+  toTaipeiYmd,
 } from "@/lib/trello-server";
 
 /**
@@ -94,6 +95,45 @@ export async function GET(request: Request) {
           "✖️ 系統自動標記：卡片已在「Fail 作廢」，叫料確認單同步標為取消",
         ).catch(() => {});
         autoCancelled.push(confirm.orderNumber);
+      }
+    }
+  } catch {
+    /* 讀不到就跳過，不影響後面的催辦 */
+  }
+
+  /**
+   * 卡片已經在「已出貨／待評論／完成」→ 叫料確認單補登實際配送日並結案。
+   *
+   * 🔴 2026-11-08 實查：52 筆「待排車」裡有 27 筆早就出貨了（P6299、P6300、
+   *    P6315…），排車清單超過一半是假的。老闆因此每一筆都得自己回頭查，
+   *    這就是「一直反覆人工確認」的來源——不是流程設計不好，是資料不可信。
+   *
+   * 卡片的到期日會被更新成實際配送日（老闆 2026-11-08 確認），所以直接拿來補登。
+   * 這份歷史紀錄也是日後要反推製作順序時唯一的依據。
+   */
+  const autoClosed: string[] = [];
+  try {
+    const cards = await getBoardCardsWithChecklists(TRELLO.BOARD_ID);
+    const DONE_LISTS = new Set<string>([
+      TRELLO.LISTS.SHIPPED,
+      TRELLO.LISTS.WAIT_REVIEW,
+      TRELLO.LISTS.COMPLETED,
+    ]);
+    const shipped = new Map(
+      cards.filter((c) => DONE_LISTS.has(c.idList)).map((c) => [c.id, c.due ?? ""]),
+    );
+    if (shipped.size > 0) {
+      for (const { confirm, rowNumber } of await listConfirms()) {
+        if (!shipped.has(confirm.cardId)) continue;
+        if (confirm.chosenDate) continue;              // 已經有配送日就別再動
+        if (confirm.status === "cancelled") continue;  // 取消的不要被改成已排定
+        const ymd = toTaipeiYmd(shipped.get(confirm.cardId) ?? "");
+        if (!ymd) continue;                            // 沒有到期日就不猜日期
+        await writeConfirm(
+          { ...confirm, status: "scheduled", chosenDate: ymd, chosenPeriod: confirm.chosenPeriod },
+          rowNumber,
+        );
+        autoClosed.push(`${confirm.orderNumber}:${ymd}`);
       }
     }
   } catch {
@@ -199,5 +239,6 @@ export async function GET(request: Request) {
     remindedCount: sent.length,
     items: sent,
     autoCancelled,
+    autoClosed,
   });
 }
