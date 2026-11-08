@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { usePurchaseProducts } from "@/hooks/usePurchaseProducts";
+import { uploadFile as uploadToServer } from "@/lib/upload-client";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type {
@@ -132,15 +133,8 @@ export function PurchaseProductsClient() {
     }
     setUploadingImage(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("folder", "purchase-products");
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = (await res.json()) as { ok: boolean; url?: string; error?: string };
-      if (!res.ok || !data.ok || !data.url) {
-        throw new Error(data.error ?? "上傳失敗");
-      }
-      update("imageUrl", data.url);
+      const { url } = await uploadToServer(file, { folder: "purchase-products" });
+      update("imageUrl", url);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "上傳失敗");
     } finally {

@@ -45,6 +45,7 @@ import type {
 } from "@/lib/types";
 import { attributedPurchaseAmount } from "@/lib/purchase-order-link";
 import { readJson } from "@/lib/read-json";
+import { uploadFile as uploadToServer } from "@/lib/upload-client";
 import { FinanceTab } from "./FinanceTab";
 import { LinkedPurchasesSection } from "./LinkedPurchasesSection";
 import { generateWorkOrderJpgBlob } from "@/components/pdf/WorkOrderPDF";
@@ -1030,13 +1031,9 @@ export function OrderDetailClient({ orderId }: Props) {
                               try {
                                 const urls: string[] = [];
                                 for (const f of files) {
-                                  const fd = new FormData();
-                                  fd.append("file", f);
-                                  fd.append("folder", "client-po");
-                                  const res = await fetch("/api/upload", { method: "POST", body: fd });
-                                  const json = (await res.json()) as { url?: string; error?: string };
-                                  if (!json.url) throw new Error(json.error ?? "上傳失敗");
-                                  urls.push(json.url);
+                                  // 手機拍的底單常 5MB 以上，共用上傳會先縮圖（Vercel 4.5MB 上限）
+                                  const { url } = await uploadToServer(f, { folder: "client-po" });
+                                  urls.push(url);
                                 }
                                 updateDraft("clientPoPhotos", [
                                   ...(draft.clientPoPhotos ?? []),

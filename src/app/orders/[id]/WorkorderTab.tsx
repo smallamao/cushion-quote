@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { readJson } from "@/lib/read-json";
+import { uploadFile as uploadToServer } from "@/lib/upload-client";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import { ImageCropModal } from "@/components/pdf/ImageCropModal";
 import { WorkOrderLayoutEditor } from "@/components/pdf/WorkOrderLayoutEditor";
@@ -66,13 +68,9 @@ function SortableRow({
   );
 }
 
+// 共用上傳：照片先在瀏覽器縮圖（Vercel 4.5MB 上限），413 轉成看得懂的訊息
 async function uploadFile(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await fetch("/api/upload", { method: "POST", body: formData });
-  const json = (await res.json()) as { ok?: boolean; url?: string; error?: string };
-  if (!res.ok || !json.url) throw new Error(json.error ?? "圖片上傳失敗");
-  return json.url;
+  return (await uploadToServer(file)).url;
 }
 
 function fmtDateTime(iso: string): string {
@@ -169,7 +167,7 @@ export function WorkorderTab({
       fd.append("file", new File([blob], `工單-${draft.orderNumber || draft.orderId}.pdf`, { type: "application/pdf" }));
       fd.append("folder", "work-order-pdfs");
       const upRes = await fetch("/api/upload", { method: "POST", body: fd });
-      const upJson = (await upRes.json()) as { url?: string };
+      const upJson = await readJson<{ ok?: boolean; url?: string; error?: string }>(upRes);
       if (!upRes.ok || !upJson.url) return;
 
       const patchRes = await fetch(`/api/sheets/orders/${draft.orderId}/workorder-pdf`, {

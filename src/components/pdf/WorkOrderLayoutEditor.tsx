@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, RotateCw, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { readJson } from "@/lib/read-json";
 import { Slider } from "@/components/ui/slider";
 import { ImageCropModal } from "@/components/pdf/ImageCropModal";
 import {
@@ -43,7 +44,7 @@ async function uploadDataUrl(dataUrl: string): Promise<string> {
   const fd = new FormData();
   fd.append("file", new File([blob], `crop-${Date.now()}.jpg`, { type: "image/jpeg" }));
   const res = await fetch("/api/upload", { method: "POST", body: fd });
-  const json = (await res.json()) as { url?: string; error?: string };
+  const json = await readJson<{ ok?: boolean; url?: string; error?: string }>(res);
   if (!res.ok || !json.url) throw new Error(json.error ?? "圖片上傳失敗");
   return json.url;
 }

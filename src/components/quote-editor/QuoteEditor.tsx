@@ -31,6 +31,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClients } from "@/hooks/useClients";
+import { uploadFile as uploadToServer } from "@/lib/upload-client";
 import { useContacts } from "@/hooks/useContacts";
 import { ClientCombobox } from "./ClientCombobox";
 import { ReferrerCombobox } from "./ReferrerCombobox";
@@ -1409,20 +1410,8 @@ export function QuoteEditor() {
     });
   }, []);
 
-  const uploadImage = useCallback(async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
-    const payload = (await response.json()) as { ok?: boolean; url?: string; error?: string };
-    if (!response.ok || !payload.url) {
-      throw new Error(payload.error || "圖片上傳失敗");
-    }
-    return payload.url;
-  }, []);
+  // 共用上傳：照片先縮圖（Vercel 4.5MB 上限），413 轉成看得懂的訊息
+  const uploadImage = useCallback(async (file: File) => (await uploadToServer(file)).url, []);
 
   const removeItem = useCallback((id: string) => {
     setItems((prev) => {

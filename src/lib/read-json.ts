@@ -8,6 +8,12 @@ export async function readJson<T extends { ok?: boolean; error?: string }>(
   res: Response,
 ): Promise<T> {
   const text = await res.text();
+  // Vercel 函式請求上限 4.5MB：超過時平台直接回純文字 413
+  // 「Request Entity Too Large / FUNCTION_PAYLOAD_TOO_LARGE」，不是空 body（2026-11-08 實測）
+  if (res.status === 413) {
+    // 這支也用在訂單儲存等非上傳請求，訊息保持中性；上傳專用說明在 upload-client
+    return { ok: false, error: "內容太大，超過系統單次上限（約 4.5MB）。請減少附圖或分批處理。" } as T;
+  }
   if (!text.trim()) {
     const hint =
       res.status === 504 || res.status === 502

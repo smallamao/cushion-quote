@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, FileText, Hammer, Loader2, MapPin, Phone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { uploadFile as uploadToServer } from "@/lib/upload-client";
 import { Textarea } from "@/components/ui/textarea";
 import { useAfterSales } from "@/hooks/useAfterSales";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -304,22 +305,23 @@ export function MyScheduleClient() {
 
     void (async () => {
       setCompletion((prev) => (prev ? { ...prev, uploading: true } : prev));
+      // 失敗原本是靜默略過：師傅手機照片超過 Vercel 4.5MB 上限就默默不見（2026-11-08）。
+      // 現在照片先縮圖，真的失敗的列出來告訴師傅，其餘照常上傳。
+      const failed: string[] = [];
       try {
         // Upload sequentially to avoid race on state
         for (const file of files) {
-          const form = new FormData();
-          form.append("file", file);
           try {
-            const res = await fetch("/api/upload", { method: "POST", body: form });
-            const json = (await res.json()) as { ok: boolean; url?: string };
-            if (json.ok && json.url) {
-              setCompletion((prev) =>
-                prev ? { ...prev, photos: [...prev.photos, json.url!] } : prev,
-              );
-            }
-          } catch {
-            // silently continue with remaining files
+            const { url } = await uploadToServer(file);
+            setCompletion((prev) =>
+              prev ? { ...prev, photos: [...prev.photos, url] } : prev,
+            );
+          } catch (err) {
+            failed.push(`${file.name}：${err instanceof Error ? err.message : "上傳失敗"}`);
           }
+        }
+        if (failed.length > 0) {
+          alert(`有 ${failed.length} 張沒有上傳成功，請重新選擇：\n${failed.join("\n")}`);
         }
       } finally {
         setCompletion((prev) => (prev ? { ...prev, uploading: false } : prev));

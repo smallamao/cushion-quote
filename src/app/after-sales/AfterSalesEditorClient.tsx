@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CleaningSlotSection } from "@/components/after-sales/CleaningSlotSection";
+import { uploadFile as uploadToServer } from "@/lib/upload-client";
 import { DispatchLinkSection } from "@/components/after-sales/DispatchLinkSection";
 import {
   ArrowLeft,
@@ -112,15 +113,9 @@ function isVideoUrl(url: string): boolean {
   );
 }
 
+// 共用上傳：照片先縮圖（Vercel 4.5MB 上限）；影片不壓，超過上限會直接講清楚
 async function uploadImage(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await fetch("/api/upload", { method: "POST", body: formData });
-  const json = (await res.json()) as { ok?: boolean; url?: string; error?: string };
-  if (!res.ok || !json.url) {
-    throw new Error(json.error || "圖片上傳失敗");
-  }
-  return json.url;
+  return (await uploadToServer(file)).url;
 }
 
 export function AfterSalesEditorClient({ mode, serviceId }: Props) {
@@ -450,15 +445,10 @@ export function AfterSalesEditorClient({ mode, serviceId }: Props) {
       const fetchRes = await fetch(dataUrl);
       const blob = await fetchRes.blob();
       const file = new File([blob], "signature.png", { type: "image/png" });
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", "after-sales-signatures");
-      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
-      const json = (await uploadRes.json()) as { ok?: boolean; url?: string; error?: string };
-      if (!uploadRes.ok || !json.url) throw new Error(json.error ?? "簽名上傳失敗");
+      const { url } = await uploadToServer(file, { folder: "after-sales-signatures" });
       setDraft((prev) => ({
         ...prev,
-        customerSignature: json.url!,
+        customerSignature: url,
         customerSignedAt: new Date().toISOString(),
       }));
       setSignatureOpen(false);

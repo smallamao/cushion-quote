@@ -6,6 +6,7 @@ import { ImagePlus, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { uploadFile as uploadToServer } from "@/lib/upload-client";
 import type {
   CustomOrder,
   MaterialCostType,
@@ -15,13 +16,9 @@ import { MATERIAL_COST_TYPE_LABELS } from "@/lib/types";
 
 const COST_TYPES: MaterialCostType[] = ["material", "labor", "outsourcing", "other"];
 
+// 共用上傳：照片先在瀏覽器縮圖（Vercel 4.5MB 上限），413 轉成看得懂的訊息
 async function uploadFile(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await fetch("/api/upload", { method: "POST", body: formData });
-  const json = (await res.json()) as { ok?: boolean; url?: string; error?: string };
-  if (!res.ok || !json.url) throw new Error(json.error ?? "圖片上傳失敗");
-  return json.url;
+  return (await uploadToServer(file)).url;
 }
 
 interface FinanceTabProps {

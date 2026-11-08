@@ -4,6 +4,7 @@ import { Download, ExternalLink, FileText, Image as ImageIcon, Loader2, Upload, 
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { uploadFile as uploadToServer } from "@/lib/upload-client";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,14 +23,6 @@ interface SignedContractArchiveProps {
     signedContractUrls: string[];
     signedNotes: string;
   }) => void;
-}
-
-interface UploadResponse {
-  ok: boolean;
-  url?: string;
-  fileName?: string;
-  mimeType?: string;
-  error?: string;
 }
 
 function isPdfUrl(url: string): boolean {
@@ -69,19 +62,9 @@ export function SignedContractArchive({
     try {
       const newUrls: string[] = [];
       for (const file of Array.from(files)) {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("folder", "signed-contracts");
-
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const data = (await res.json()) as UploadResponse;
-        if (!res.ok || !data.ok || !data.url) {
-          throw new Error(data.error || "上傳失敗");
-        }
-        newUrls.push(data.url);
+        // 回簽掃描常是多頁照片：共用上傳會先縮圖；PDF 超過上限會直接講清楚
+        const { url } = await uploadToServer(file, { folder: "signed-contracts" });
+        newUrls.push(url);
       }
 
       onChange({
