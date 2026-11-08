@@ -43,6 +43,10 @@ interface WeekRow {
   token: string | null;
   /** 老闆實際把連結傳出去的時間；空＝建好了還沒傳 */
   notifiedAt: string;
+  /** 「準備製作前・最後確認」傳出時間；空＝還沒問 */
+  finalNotifiedAt: string;
+  /** 客人對最後確認的回覆時間；空＝還沒回 */
+  finalRepliedAt: string;
   /** 客人確認後才有；老闆排車時把這條傳給司機 */
   driverToken: string | null;
   chosenDate: string;
@@ -124,6 +128,8 @@ export async function GET(request: Request) {
         dueDate,
         token: found?.token ?? null,
         notifiedAt: found?.notifiedAt ?? "",
+        finalNotifiedAt: found?.finalNotifiedAt ?? "",
+        finalRepliedAt: found?.finalRepliedAt ?? "",
         driverToken: found?.driverToken || null,
         chosenDate: found?.chosenDate ?? "",
         chosenPeriod: found?.chosenPeriod ?? "",
@@ -254,6 +260,35 @@ export async function POST(request: Request) {
 
   // 標記「已傳送給客人」——連結建好 ≠ 已經傳出去，這兩件事要分開記，
   // 否則看板永遠顯示「已發送」，老闆不知道自己傳到哪一筆了。
+  /**
+   * 「準備製作前・最後確認」的兩個標記。
+   *
+   * 🔴 這一步老闆每次都做（傳 LINE 問客人能不能如期進場），系統卻不知道，
+   *    所以他得逐筆打開對話回想「這筆問過了沒」。客人不會主動說要延期，
+   *    只有被問才說——所以訊息不能省，但「問過誰、誰還沒回」交給系統記。
+   */
+  if (action === "final_notified" || action === "final_replied") {
+    const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
+    if (tokens.length === 0) {
+      return NextResponse.json({ ok: false, error: "沒有指定要標記的項目" }, { status: 400 });
+    }
+    const sending = action === "final_notified";
+    const all = await listConfirms();
+    const now = new Date().toISOString();
+    let n = 0;
+    for (const { confirm, rowNumber } of all) {
+      if (!tokens.includes(confirm.token)) continue;
+      // 已標記過就跳過，避免重複複製時把時間覆寫成最新、看不出第一次何時問的
+      if (sending ? confirm.finalNotifiedAt : confirm.finalRepliedAt) continue;
+      await writeConfirm(
+        sending ? { ...confirm, finalNotifiedAt: now } : { ...confirm, finalRepliedAt: now },
+        rowNumber,
+      );
+      n += 1;
+    }
+    return NextResponse.json({ ok: true, marked: n });
+  }
+
   if (action === "notified") {
     const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
     if (tokens.length === 0) return NextResponse.json({ ok: false, error: "沒有指定要標記的項目" }, { status: 400 });
@@ -485,6 +520,8 @@ export async function POST(request: Request) {
       chosenPeriod: "",
       notifiedAt: "",
       driverBatchToken: "",
+      finalNotifiedAt: "",
+      finalRepliedAt: "",
     };
     await appendConfirm(row);
     created.push({ cardId, orderNumber, customerName, token: row.token, reused: false });

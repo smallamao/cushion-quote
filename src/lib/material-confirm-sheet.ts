@@ -22,9 +22,9 @@ import {
 } from "@/lib/material-confirm-types";
 
 export const SHEET = "叫料確認";
-export const RANGE_FULL = `${SHEET}!A:U`;
-export const RANGE_DATA = `${SHEET}!A2:U`;
-export const ROW_RANGE = (sheetRow: number) => `${SHEET}!A${sheetRow}:U${sheetRow}`;
+export const RANGE_FULL = `${SHEET}!A:W`;
+export const RANGE_DATA = `${SHEET}!A2:W`;
+export const ROW_RANGE = (sheetRow: number) => `${SHEET}!A${sheetRow}:W${sheetRow}`;
 
 export const SHEET_HEADERS = [
   "token", "cardId", "訂單編號", "客戶姓名", "狀態", "生產週", "預計出貨日",
@@ -32,6 +32,7 @@ export const SHEET_HEADERS = [
   "簽署IP", "簽署裝置", "建立時間", "更新時間",
   "司機token", "確定日期", "確定時段",
   "已傳送給客人", "司機批次token",
+  "最後確認傳送時間", "客人回覆時間",
 ];
 
 type SheetsClient = NonNullable<Awaited<ReturnType<typeof getSheetsClient>>>;
@@ -78,6 +79,8 @@ export function rowToConfirm(row: string[]): MaterialConfirm {
     chosenPeriod:    (row[18] as DeliveryPeriod) || "",
     notifiedAt:      row[19] ?? "",
     driverBatchToken: row[20] ?? "",
+    finalNotifiedAt: row[21] ?? "",
+    finalRepliedAt:  row[22] ?? "",
   };
 }
 
@@ -104,6 +107,8 @@ export function confirmToRow(c: MaterialConfirm): string[] {
     c.chosenPeriod,                       // S
     c.notifiedAt,                         // T
     c.driverBatchToken,                   // U
+    c.finalNotifiedAt,                    // V
+    c.finalRepliedAt,                     // W
   ];
 }
 

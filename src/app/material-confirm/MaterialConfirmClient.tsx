@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { buildFinalConfirmMessage } from "@/lib/final-confirm-message";
 import { buildMaterialAckMessage } from "@/lib/material-ack-message";
 import { isCustomerConfirmed } from "@/lib/material-confirm-types";
 import type { MaterialConfirmStatus, PreferredSlot } from "@/lib/material-confirm-types";
@@ -24,6 +25,8 @@ interface WeekRow {
   dueDate: string;
   token: string | null;
   notifiedAt: string;
+  finalNotifiedAt: string;
+  finalRepliedAt: string;
   driverToken: string | null;
   chosenDate: string;
   chosenPeriod: string;
@@ -234,6 +237,66 @@ export function MaterialConfirmClient() {
 
   const notSentIds = useMemo(() => rows.filter((r) => !r.token).map((r) => r.cardId), [rows]);
   // 連結建好但還沒傳出去的
+  /**
+   * 待「準備製作前・最後確認」的單。
+   *
+   * 🔴 這一步本來就存在，系統原本不知道，所以老闆得逐筆打開 LINE 回想問過沒。
+   *    條件：客人已簽核、還沒排定配送日、仍有未過期的時段、且還沒問過。
+   */
+  const pendingFinal = useMemo(() => {
+    const d = new Date(Date.now() + 8 * 3600_000);
+    const p2 = (n: number) => String(n).padStart(2, "0");
+    const today = `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
+    return rows.filter(
+      (r) =>
+        r.token && isCustomerConfirmed(r.status) && !r.chosenDate && !r.finalNotifiedAt &&
+        r.preferredSlots.some((s) => s.date >= today),
+    );
+  }, [rows]);
+
+  /** 已問但客人還沒回的——這些要盯 */
+  const awaitingFinalReply = useMemo(
+    () => rows.filter((r) => r.finalNotifiedAt && !r.finalRepliedAt && !r.chosenDate),
+    [rows],
+  );
+
+  async function copyFinalBatch() {
+    const text = pendingFinal
+      .map((r) => {
+        const body = buildFinalConfirmMessage({
+          customerName: r.customerName,
+          slots: r.preferredSlots,
+          fmtDate: fmtMd,
+        });
+        return `──── ${r.orderNumber} ${r.customerName} ────\n${body}`;
+      })
+      .join("\n\n");
+    if (!text) { setError("目前沒有待最後確認的項目"); return; }
+    await copy(text, "final");
+    const tokens = pendingFinal.map((r) => r.token).filter(Boolean) as string[];
+    try {
+      await fetch("/api/sheets/material-confirm", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "final_notified", tokens }),
+      });
+      await load();
+    } catch {
+      /* 標記失敗不影響已複製的內容 */
+    }
+  }
+
+  async function markFinalReplied(token: string | null) {
+    if (!token) return;
+    setBusy(true);
+    try {
+      await fetch("/api/sheets/material-confirm", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "final_replied", tokens: [token] }),
+      });
+      await load();
+    } finally { setBusy(false); }
+  }
+
   const unsentRows = useMemo(() => rows.filter((r) => r.token && !r.notifiedAt && r.status === "sent"), [rows]);
   // 已標記「已傳送」但客人還沒確認的——複製過卻沒真的傳時（例如測試、或擴充功能擋下整批）
   // 就卡在這個狀態：不在批次清單裡、也不在「尚未發送」裡，等於消失。
@@ -657,6 +720,25 @@ export function MaterialConfirmClient() {
             {busy ? "建立中…" : `為 ${notSentIds.length} 筆尚未發送的訂單建立連結`}
           </button>
         )}
+        {/* 準備製作前・最後確認：客人已簽核、還沒問過能不能如期進場 */}
+        {pendingFinal.length > 0 && (
+          <button
+            type="button" disabled={busy}
+            onClick={() => void copyFinalBatch()}
+            title="沿用你現行的 LINE 文案，自動帶入客人預登記的時段"
+            className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+          >
+            {copied === "final"
+              ? "已複製 ✓"
+              : `📋 複製 ${pendingFinal.length} 筆最後確認（貼 LINE 傳送）`}
+          </button>
+        )}
+        {awaitingFinalReply.length > 0 && (
+          <span className="self-center text-xs text-amber-700">
+            ⏳ {awaitingFinalReply.length} 筆已問、客人還沒回
+          </span>
+        )}
+
         {unsentRows.length > 0 && (
           <button
             type="button"
@@ -974,6 +1056,25 @@ export function MaterialConfirmClient() {
                         <span key={i} className="ml-1">{fmtMd(s.date)} {s.period}{i < r.preferredSlots.length - 1 ? "、" : ""}</span>
                       ))}
                     </>
+                  )}
+                  {r.finalNotifiedAt && !r.finalRepliedAt && (
+                    <>
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
+                        ⏳ 最後確認已問・等回覆
+                      </span>
+                      <button
+                        type="button" disabled={busy}
+                        onClick={() => void markFinalReplied(r.token)}
+                        className="ml-1 rounded-lg border border-[var(--border)] px-2 py-0.5 text-[11px] hover:bg-[var(--bg-hover)]"
+                      >
+                        客人已回覆
+                      </button>
+                    </>
+                  )}
+                  {r.finalRepliedAt && (
+                    <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
+                      ✅ 最後確認已回覆
+                    </span>
                   )}
                   {/* 客人常把預選當成已排定，確認完就回一則講清楚，留在 LINE 對話裡當依據 */}
                   <button

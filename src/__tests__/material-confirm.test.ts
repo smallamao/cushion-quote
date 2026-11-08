@@ -93,12 +93,15 @@ const sample: MaterialConfirm = {
   chosenPeriod: "",
   notifiedAt: "",
   driverBatchToken: "",
+  finalNotifiedAt: "",
+  finalRepliedAt: "",
 };
 
 describe("叫料確認 工作表列對應", () => {
   it("欄數與表頭一致（欄序是唯一真相，改欄位必須同步）", () => {
     expect(confirmToRow(sample)).toHaveLength(SHEET_HEADERS.length);
-    expect(SHEET_HEADERS).toHaveLength(21);
+    // 2026-11-08 加入最後確認的兩欄（V 傳送時間、W 回覆時間）
+    expect(SHEET_HEADERS).toHaveLength(23);
   });
 
   it("寫出再讀回完全一致", () => {

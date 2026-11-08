@@ -143,6 +143,16 @@ export interface MaterialConfirm {
   notifiedAt: string;
   /** 同一批交給同一位司機的共用 token（一條連結含多筆） */
   driverBatchToken: string;
+  /**
+   * 「準備製作前・最後確認」何時傳給客人。
+   *
+   * 🔴 這一步本來就存在（老闆每次都做），系統卻完全不知道，所以他得逐筆
+   *    打開 LINE 回想「這筆問過了沒」。客人不會主動說要延期——只有被問才說，
+   *    所以這通訊息無法省略，但「問過誰、誰還沒回」可以交給系統記。
+   */
+  finalNotifiedAt: string;
+  /** 客人對最後確認的回覆時間；空＝還沒回 */
+  finalRepliedAt: string;
 }
 
 /** 客人端只看得到這些——照片一律走 token 端點，不外洩 Trello 卡號與網址。 */

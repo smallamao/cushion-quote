@@ -90,6 +90,8 @@ export async function POST(request: Request) {
     chosenPeriod: "" as const,
     notifiedAt: "",
     driverBatchToken: "",
+    finalNotifiedAt: "",
+    finalRepliedAt: "",
   };
 
   if (existing) {
