@@ -128,6 +128,16 @@ export interface QuickInvoiceForm {
   donationCode: string;
 }
 
+/**
+ * 帶進「總備註」與「內部註記」的簡短說明（老闆 2026-11-08 指定格式「驗證碼： C7555」）。
+ * 防重複用的完整收款憑證不放在畫面上，送出前由 ensureVoucherInNote 補回內部註記。
+ */
+export function receiptShortNote(info: ReceiptInvoiceInfo): string {
+  if (!info.paymentRef) return "";
+  const label = info.paymentType === "LINE PAY" ? "驗證碼" : "卡號末五碼";
+  return `${label}： ${info.paymentRef}`;
+}
+
 export function buildQuickInvoiceForm(info: ReceiptInvoiceInfo, buyerName: string): QuickInvoiceForm {
   return {
     buyerName,
@@ -136,8 +146,8 @@ export function buildQuickInvoiceForm(info: ReceiptInvoiceInfo, buyerName: strin
     amountType: "含稅",
     content: RECEIPT_INVOICE_ITEM_NAME,
     remark: "",
-    overallRemark: "",
-    internalNote: receiptVoucherTag(info),
+    overallRemark: receiptShortNote(info),
+    internalNote: receiptShortNote(info),
     invoiceDate: info.receivedDate,
     email: "",
     carrierType: "none",

@@ -9,6 +9,7 @@ import {
   findReceiptDuplicates,
   parseReceiptInvoiceQuery,
   receiptIssueBlockReason,
+  receiptShortNote,
   receiptSourceId,
   receiptVoucherTag,
   type ReceiptInvoiceInfo,
@@ -92,7 +93,18 @@ describe("buildQuickInvoiceForm", () => {
       content: "沙發",
       invoiceDate: "2026-11-06",
     });
-    expect(form.internalNote).toBe(receiptVoucherTag(P6337));
+    // 老闆指定格式：總備註與內部註記只放「驗證碼： XXXX」
+    expect(form.overallRemark).toBe("驗證碼： P4833");
+    expect(form.internalNote).toBe("驗證碼： P4833");
+    // 送出前補回完整收款憑證，防重複照常
+    const sent = ensureVoucherInNote(form.internalNote, P6337);
+    expect(sent).toBe(`${receiptVoucherTag(P6337)}\n驗證碼： P4833`);
+    expect(findReceiptDuplicates([inv({ internalNote: sent })], P6337)).toHaveLength(1);
+  });
+
+  it("刷卡寫卡號末五碼；沒有憑證碼就留空", () => {
+    expect(receiptShortNote({ ...P6337, paymentType: "刷卡", paymentRef: "12345" })).toBe("卡號末五碼： 12345");
+    expect(receiptShortNote({ ...P6337, paymentRef: "" })).toBe("");
   });
 });
 
