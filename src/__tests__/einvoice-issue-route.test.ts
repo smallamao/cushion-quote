@@ -324,8 +324,28 @@ describe("開立前的載具／Email／捐贈防呆", () => {
     const { status, body } = await callIssue();
     expect(status).toBe(400);
     expect(body.stage).toBe("before_provider");
+    expect(String(body.error)).toMatch(/請刪除這張草稿後重新建立$/);
     expect(issueB2CInvoice).not.toHaveBeenCalled();
     expect(current().status).toBe("draft");
+  });
+
+  it("failed 狀態重開也一樣擋，狀態維持 failed", async () => {
+    seed({ status: "failed", carrierType: "none", carrierValue: "0912345678" });
+    const { status, body } = await callIssue();
+    expect(status).toBe(400);
+    expect(body.stage).toBe("before_provider");
+    expect(issueB2CInvoice).not.toHaveBeenCalled();
+    expect(current().status).toBe("failed");
+  });
+
+  it("B2B 紀錄殘留載具／捐贈欄位：清空後照常開立，不擋", async () => {
+    issueB2BInvoice.mockResolvedValue({ success: true, code: "FP00000001", msg: "" });
+    seed({ buyerType: "b2b", buyerTaxId: "85164778", carrierType: "none", carrierValue: "/ABC", donationCode: "1" });
+    const { status } = await callIssue();
+    expect(status).toBe(200);
+    expect(issueB2BInvoice).toHaveBeenCalledTimes(1);
+    expect(issueB2CInvoice).not.toHaveBeenCalled();
+    expect(current()).toMatchObject({ status: "issued", carrierType: "none", carrierValue: "", donationCode: "" });
   });
 
   it("手機條碼正規化後送 phone", async () => {

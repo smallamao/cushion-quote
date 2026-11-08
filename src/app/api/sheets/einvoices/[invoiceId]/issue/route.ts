@@ -248,7 +248,8 @@ export async function POST(
       if (!isIssuableStatus(record.status)) throw new IssueStatusConflictError(record.status);
       // 防呆：舊草稿可能有「填了載具卻沒選類型」等會被 Giveme 默默忽略的資料
       const contact = checkBuyerContactFields(record);
-      if (!contact.ok) throw new IssueContactInvalidError(contact.error);
+      // 草稿無法修改，且同來源的草稿會擋住重新建立（409），所以要先刪除
+      if (!contact.ok) throw new IssueContactInvalidError(`${contact.error}。請刪除這張草稿後重新建立`);
       fromStatus = record.status;
       return {
         ...record,

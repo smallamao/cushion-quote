@@ -132,6 +132,15 @@ export function autoCarrierType(current: EInvoiceCarrierType, value: string): EI
   return current;
 }
 
+/**
+ * 還在打手機條碼（類型未選、以「/」開頭、不到 8 碼）：畫面先不提示「沒選載具類型」，
+ * 等離開欄位或打滿再提示。只影響提示時機，送出一樣會擋。
+ */
+export function isCarrierStillTyping(type: EInvoiceCarrierType, value: string): boolean {
+  const normalized = normalizeCarrier(value);
+  return type === "none" && normalized.startsWith("/") && normalized.length < 8;
+}
+
 export interface QuickBuyerInput {
   buyerTaxId: string;
   email: string;

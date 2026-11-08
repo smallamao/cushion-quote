@@ -18,6 +18,7 @@ import { formatCurrency } from "@/lib/utils";
 import {
   autoCarrierType,
   buildQuickBuyerPayload,
+  isCarrierStillTyping,
   quickBuyerErrors,
   validateCarrier,
   validateDonationCode,
@@ -280,6 +281,9 @@ export function EInvoicesClient() {
   const [confirmDeleteBatch, setConfirmDeleteBatch] = useState(false);
   const [confirmDeleteFailed, setConfirmDeleteFailed] = useState(false);
   const [expandedCandidateIds, setExpandedCandidateIds] = useState<Set<string>>(new Set());
+  // 載具欄位已離開（blur）的卡片：還在打手機條碼時先不提示錯誤
+  const [carrierBlurredIds, setCarrierBlurredIds] = useState<Set<string>>(new Set());
+  const [quickCarrierBlurred, setQuickCarrierBlurred] = useState(false);
   const [batchIssueConfirm, setBatchIssueConfirm] = useState<{ candidates: EInvoiceCandidate[]; duplicates: BatchIssueDuplicate[]; batchDuplicates: string[][] } | null>(null);
 
   const [snackbar, setSnackbar] = useState<SnackbarState | null>(null);
@@ -506,6 +510,16 @@ export function EInvoicesClient() {
       ...current,
       [candidateId]: { ...(current[candidateId] ?? buildDefaultDraft(candidates.find((item) => item.candidateId === candidateId) as EInvoiceCandidate)), ...patch },
     }));
+  }
+
+  function setCarrierBlurred(candidateId: string, blurred: boolean) {
+    setCarrierBlurredIds((current) => {
+      if (current.has(candidateId) === blurred) return current;
+      const next = new Set(current);
+      if (blurred) next.add(candidateId);
+      else next.delete(candidateId);
+      return next;
+    });
   }
 
   function toggleCandidate(candidateId: string, checked: boolean) {
@@ -1332,13 +1346,17 @@ export function EInvoicesClient() {
                           <Input
                             value={draft.buyerType === "b2b" ? draft.buyerTaxId : draft.carrierValue}
                             placeholder={draft.buyerType === "b2b" ? "12345678" : "/ABC1234 或手機號碼"}
-                            onChange={(e) => updateDraft(
-                              candidate.candidateId,
-                              draft.buyerType === "b2b"
-                                ? { buyerTaxId: e.target.value }
-                                // 打出手機條碼就自動切類型，避免類型停在「不指定」被默默丟掉
-                                : { carrierValue: e.target.value, carrierType: autoCarrierType(draft.carrierType, e.target.value) },
-                            )}
+                            onChange={(e) => {
+                              if (draft.buyerType === "b2c") setCarrierBlurred(candidate.candidateId, false);
+                              updateDraft(
+                                candidate.candidateId,
+                                draft.buyerType === "b2b"
+                                  ? { buyerTaxId: e.target.value }
+                                  // 打出手機條碼就自動切類型，避免類型停在「不指定」被默默丟掉
+                                  : { carrierValue: e.target.value, carrierType: autoCarrierType(draft.carrierType, e.target.value) },
+                              );
+                            }}
+                            onBlur={() => setCarrierBlurred(candidate.candidateId, true)}
                           />
                         </div>
                         <div>
@@ -1359,7 +1377,13 @@ export function EInvoicesClient() {
                           <>
                             <div>
                               <Label>載具類型</Label>
-                              <Select value={draft.carrierType} onValueChange={(value) => updateDraft(candidate.candidateId, { carrierType: value as DraftOverride["carrierType"] })}>
+                              <Select
+                                value={draft.carrierType}
+                                onValueChange={(value) => updateDraft(candidate.candidateId, {
+                                  carrierType: value as DraftOverride["carrierType"],
+                                  ...(value === "none" ? { carrierValue: "" } : {}),
+                                })}
+                              >
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="none">不指定</SelectItem>
@@ -1374,9 +1398,15 @@ export function EInvoicesClient() {
                             </div>
                           </>
                         ) : null}
-                        {draftContactError(draft) ? (
-                          <p className="text-xs text-[var(--error)] md:col-span-2 xl:col-span-4">{draftContactError(draft)}</p>
-                        ) : null}
+                        {(() => {
+                          const error = draftContactError(draft);
+                          const stillTyping = draft.buyerType === "b2c"
+                            && !carrierBlurredIds.has(candidate.candidateId)
+                            && isCarrierStillTyping(draft.carrierType, draft.carrierValue);
+                          return error && !stillTyping ? (
+                            <p className="text-xs text-[var(--error)] md:col-span-2 xl:col-span-4">{error}</p>
+                          ) : null;
+                        })()}
                         <div className="md:col-span-2 xl:col-span-4">
                           <Label>開票備註</Label>
                           <Input value={draft.content} onChange={(e) => updateDraft(candidate.candidateId, { content: e.target.value })} />
@@ -2283,10 +2313,14 @@ export function EInvoicesClient() {
                     value={quickCreateForm.carrierValue}
                     onChange={(e) => {
                       const value = e.target.value;
+                      setQuickCarrierBlurred(false);
                       setQuickCreateForm((f) => ({ ...f, carrierValue: value, carrierType: autoCarrierType(f.carrierType, value) }));
                     }}
+                    onBlur={() => setQuickCarrierBlurred(true)}
                   />
-                  {quickErrors.carrier && <p className="text-xs text-[var(--error)]">{quickErrors.carrier}</p>}
+                  {quickErrors.carrier
+                    && (quickCarrierBlurred || !isCarrierStillTyping(quickCreateForm.carrierType, quickCreateForm.carrierValue))
+                    && <p className="text-xs text-[var(--error)]">{quickErrors.carrier}</p>}
                 </div>
                 <div className="space-y-1">
                   <label className="flex cursor-pointer items-center gap-2 text-xs">

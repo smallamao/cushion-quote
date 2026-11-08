@@ -6,6 +6,7 @@ import {
   buildQuickBuyerPayload,
   checkBuyerContactFields,
   detectCarrierType,
+  isCarrierStillTyping,
   normalizeCarrier,
   quickBuyerErrors,
   validateCarrier,
@@ -154,5 +155,16 @@ describe("快速開立表單", () => {
     expect(errors.donation).toContain("請輸入捐贈碼");
     expect(errors.email).not.toBeNull();
     expect(quickBuyerErrors({ ...form, buyerTaxId: "85164778", carrierValue: "zzz", donate: true })).toEqual({ carrier: null, email: null, donation: null });
+  });
+});
+
+describe("isCarrierStillTyping", () => {
+  it("類型未選、/ 開頭、不到 8 碼才算還在打", () => {
+    expect(isCarrierStillTyping("none", "/AB")).toBe(true);
+    expect(isCarrierStillTyping("none", "／ab12")).toBe(true);
+    expect(isCarrierStillTyping("none", "/ABC12345")).toBe(false);
+    expect(isCarrierStillTyping("none", "0912")).toBe(false);
+    expect(isCarrierStillTyping("mobile_barcode", "/AB")).toBe(false);
+    expect(isCarrierStillTyping("none", "")).toBe(false);
   });
 });

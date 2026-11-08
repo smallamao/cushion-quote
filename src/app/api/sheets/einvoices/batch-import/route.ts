@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
+import { checkBuyerContactFields } from "@/lib/einvoice-carrier";
 import { generateEInvoiceId } from "@/lib/einvoice-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
-import type { EInvoiceRecord, EInvoiceBuyerType, EInvoiceCarrierType } from "@/lib/types";
+import type { EInvoiceRecord, EInvoiceBuyerType } from "@/lib/types";
 
 import { getSession } from "../_auth";
 import { appendEInvoiceRecord, getEInvoiceRecords, getEInvoiceRows } from "../_shared";
@@ -24,6 +25,17 @@ interface EinvoceImportItem {
     unitPrice: number;
   }>;
   content?: string;
+}
+
+/** 匯入資料只有統編與 Email，沒有載具／捐贈欄位 */
+function checkImportContact(invoice: EinvoceImportItem) {
+  return checkBuyerContactFields({
+    buyerType: invoice.buyerUbn ? "b2b" : "b2c",
+    email: typeof invoice.email === "string" ? invoice.email : "",
+    carrierType: "none",
+    carrierValue: "",
+    donationCode: "",
+  });
 }
 
 interface BatchImportRequest {
@@ -138,6 +150,10 @@ export async function POST(request: Request) {
           totalAmount: inv.totalAmount,
           taxType: inv.taxType,
           itemCount: inv.items.length,
+          contactError: (() => {
+            const contact = checkImportContact(inv);
+            return contact.ok ? "" : contact.error;
+          })(),
         }))
       });
     }
@@ -176,6 +192,12 @@ export async function POST(request: Request) {
     const existingRows = await getEInvoiceRows(client);
 
     for (const invoice of body.invoices) {
+      // Email 等格式不對的列不建立草稿（草稿建立後無法修改），列在失敗清單
+      const contact = checkImportContact(invoice);
+      if (!contact.ok) {
+        failedRecords.push({ invoice, error: contact.error });
+        continue;
+      }
       try {
         // Generate collision-free sequential ID (same logic as single-create path)
         const invoiceId = generateEInvoiceId(existingRows);
@@ -197,10 +219,7 @@ export async function POST(request: Request) {
           buyerName: invoice.buyerName,
           buyerTaxId: invoice.buyerUbn,
           buyerAddress: "",
-          email: invoice.email,
-          carrierType: "none" as EInvoiceCarrierType,
-          carrierValue: "",
-          donationCode: "",
+          ...contact.fields,
           invoiceDate: new Date().toISOString().slice(0, 10),
           taxType: (invoice.taxType === "零稅率" ? 1 : invoice.taxType === "免稅" ? 2 : 0) as 0 | 1 | 2 | 4,
           untaxedAmount: invoice.untaxedAmount,
