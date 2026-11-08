@@ -16,6 +16,14 @@ import {
 } from "@/lib/einvoice-issue";
 import { formatCurrency } from "@/lib/utils";
 import {
+  autoCarrierType,
+  buildQuickBuyerPayload,
+  quickBuyerErrors,
+  validateCarrier,
+  validateDonationCode,
+  validateInvoiceEmail,
+} from "@/lib/einvoice-carrier";
+import {
   buildQuickInvoiceForm,
   buyerNameFromCardName,
   duplicateKey,
@@ -24,6 +32,7 @@ import {
   parseReceiptInvoiceQuery,
   receiptIssueBlockReason,
   receiptSourceId,
+  type QuickInvoiceForm,
   type ReceiptInvoiceInfo,
 } from "@/lib/receipt-invoice";
 import { TRELLO } from "@/lib/trello-constants";
@@ -178,6 +187,16 @@ function noticeClassName(tone: NoticeState["tone"]): string {
   }
 }
 
+/** 待開立卡片的載具／Email／捐贈碼錯誤（B2B 只檢查 Email） */
+function draftContactError(draft: DraftOverride): string | null {
+  const emailError = validateInvoiceEmail(draft.email);
+  if (emailError) return emailError;
+  if (draft.buyerType === "b2b") return null;
+  const carrierError = validateCarrier(draft.carrierType, draft.carrierValue);
+  if (carrierError) return carrierError;
+  return draft.donationCode.trim() ? validateDonationCode(draft.donationCode) : null;
+}
+
 function buildDefaultDraft(candidate: EInvoiceCandidate): DraftOverride {
   const buyerName = candidate.clientName || candidate.contactName || candidate.projectName || "匿名客戶";
   return {
@@ -268,16 +287,21 @@ export function EInvoicesClient() {
   const invoiceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-  const [quickCreateForm, setQuickCreateForm] = useState({
+  const [quickCreateForm, setQuickCreateForm] = useState<QuickInvoiceForm>({
     buyerName: "",
     buyerTaxId: "",
     totalAmount: "",
-    amountType: "含稅" as "含稅" | "未稅",
+    amountType: "含稅",
     content: "",
     remark: "",
     overallRemark: "",
     internalNote: "",
     invoiceDate: new Date().toISOString().slice(0, 10),
+    email: "",
+    carrierType: "none",
+    carrierValue: "",
+    donate: false,
+    donationCode: "",
   });
   const [quickCreating, setQuickCreating] = useState(false);
   // 從匯款資訊頁「收款確認 → 開立發票」帶過來的收款（老闆 2026-11-06）
@@ -401,6 +425,8 @@ export function EInvoicesClient() {
       })
     : "";
   const receiptBlocked = receiptBlockReason !== "";
+  const quickErrors = quickBuyerErrors(quickCreateForm);
+  const quickContactInvalid = Boolean(quickErrors.carrier || quickErrors.email || quickErrors.donation);
 
   /**
    * 收款帶入的流程結束（開好、失敗、結果未知或取消）：清掉帶入資料與網址參數，
@@ -414,7 +440,7 @@ export function EInvoicesClient() {
     if (searchParams.get("fromReceipt")) router.replace("/einvoices" as never);
   }
 
-  const emptyQuickForm = () => ({ buyerName: "", buyerTaxId: "", totalAmount: "", amountType: "含稅" as const, content: "", remark: "", overallRemark: "", internalNote: "", invoiceDate: new Date().toISOString().slice(0, 10) });
+  const emptyQuickForm = (): QuickInvoiceForm => ({ buyerName: "", buyerTaxId: "", totalAmount: "", amountType: "含稅", content: "", remark: "", overallRemark: "", internalNote: "", invoiceDate: new Date().toISOString().slice(0, 10), email: "", carrierType: "none", carrierValue: "", donate: false, donationCode: "" });
 
   function handleQuickCreateOpenChange(open: boolean) {
     if (!open && quickCreatingRef.current) return; // 送出中不讓關
@@ -729,6 +755,7 @@ export function EInvoicesClient() {
     if (!quickCreateForm.buyerName.trim()) return;
     if (!inputAmount || inputAmount <= 0) return;
     if (receiptBlocked || quickCreatingRef.current) return;
+    if (quickContactInvalid) return;
     quickCreatingRef.current = true;
     const receipt = receiptPrefill;
     setQuickCreating(true);
@@ -747,9 +774,8 @@ export function EInvoicesClient() {
           sourceType: "manual",
           // 收款帶入的用固定 ID，後端會擋同一筆收款的第二張
           sourceId: receipt ? receiptSourceId(receipt) : `QUICK-${now}`,
-          buyerType: quickCreateForm.buyerTaxId.trim() ? "b2b" : "b2c",
           buyerName: quickCreateForm.buyerName.trim(),
-          buyerTaxId: quickCreateForm.buyerTaxId.trim(),
+          ...buildQuickBuyerPayload(quickCreateForm),
           invoiceDate: quickCreateForm.invoiceDate,
           taxType: 0,
           taxRate: 5,
@@ -805,6 +831,15 @@ export function EInvoicesClient() {
   function handleBatchIssue() {
     if (selectedCandidates.length === 0) {
       setNotice({ tone: "info", title: "請至少勾選一筆待開資料" });
+      return;
+    }
+    const invalidContacts = selectedCandidates.flatMap((candidate) => {
+      const draft = drafts[candidate.candidateId] ?? buildDefaultDraft(candidate);
+      const error = draftContactError(draft);
+      return error ? [`${draft.buyerName}：${error}`] : [];
+    });
+    if (invalidContacts.length > 0) {
+      setNotice({ tone: "error", title: "載具或 Email 有誤，請先修正再開立", detail: invalidContacts.join("\n") });
       return;
     }
     // 手動貼上的來源編號每次都不同，伺服器的同來源防呆擋不到；改用「同買方＋同金額＋近 60 天」提醒
@@ -1294,7 +1329,17 @@ export function EInvoicesClient() {
                         </div>
                         <div>
                           <Label>統編 / 載具</Label>
-                          <Input value={draft.buyerType === "b2b" ? draft.buyerTaxId : draft.carrierValue} onChange={(e) => updateDraft(candidate.candidateId, draft.buyerType === "b2b" ? { buyerTaxId: e.target.value } : { carrierValue: e.target.value })} />
+                          <Input
+                            value={draft.buyerType === "b2b" ? draft.buyerTaxId : draft.carrierValue}
+                            placeholder={draft.buyerType === "b2b" ? "12345678" : "/ABC1234 或手機號碼"}
+                            onChange={(e) => updateDraft(
+                              candidate.candidateId,
+                              draft.buyerType === "b2b"
+                                ? { buyerTaxId: e.target.value }
+                                // 打出手機條碼就自動切類型，避免類型停在「不指定」被默默丟掉
+                                : { carrierValue: e.target.value, carrierType: autoCarrierType(draft.carrierType, e.target.value) },
+                            )}
+                          />
                         </div>
                         <div>
                           <Label>Email</Label>
@@ -1325,9 +1370,12 @@ export function EInvoicesClient() {
                             </div>
                             <div>
                               <Label>捐贈碼</Label>
-                              <Input value={draft.donationCode} onChange={(e) => updateDraft(candidate.candidateId, { donationCode: e.target.value })} />
+                              <Input value={draft.donationCode} placeholder="填了就捐贈" onChange={(e) => updateDraft(candidate.candidateId, { donationCode: e.target.value })} />
                             </div>
                           </>
+                        ) : null}
+                        {draftContactError(draft) ? (
+                          <p className="text-xs text-[var(--error)] md:col-span-2 xl:col-span-4">{draftContactError(draft)}</p>
                         ) : null}
                         <div className="md:col-span-2 xl:col-span-4">
                           <Label>開票備註</Label>
@@ -2211,6 +2259,68 @@ export function EInvoicesClient() {
                 onChange={(e) => setQuickCreateForm((f) => ({ ...f, buyerTaxId: e.target.value.replace(/\D/g, "") }))}
               />
             </div>
+            {!quickCreateForm.buyerTaxId.trim() && (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs">載具</Label>
+                  <Select
+                    value={quickCreateForm.carrierType}
+                    onValueChange={(value) => setQuickCreateForm((f) => ({
+                      ...f,
+                      carrierType: value as QuickInvoiceForm["carrierType"],
+                      carrierValue: value === "none" ? "" : f.carrierValue,
+                    }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">無</SelectItem>
+                      <SelectItem value="mobile_barcode">手機條碼</SelectItem>
+                      <SelectItem value="member_code">會員載具（訂單編號或手機號碼）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder={quickCreateForm.carrierType === "member_code" ? "訂單編號或手機號碼" : "/ABC1234"}
+                    value={quickCreateForm.carrierValue}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setQuickCreateForm((f) => ({ ...f, carrierValue: value, carrierType: autoCarrierType(f.carrierType, value) }));
+                    }}
+                  />
+                  {quickErrors.carrier && <p className="text-xs text-[var(--error)]">{quickErrors.carrier}</p>}
+                </div>
+                <div className="space-y-1">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs">
+                    <Checkbox
+                      checked={quickCreateForm.donate}
+                      onCheckedChange={(v) => setQuickCreateForm((f) => ({ ...f, donate: v === true }))}
+                    />
+                    發票捐贈
+                  </label>
+                  {quickCreateForm.donate && (
+                    <>
+                      <Input
+                        placeholder="捐贈碼（愛心碼，3～7 位數字）"
+                        inputMode="numeric"
+                        maxLength={7}
+                        value={quickCreateForm.donationCode}
+                        onChange={(e) => setQuickCreateForm((f) => ({ ...f, donationCode: e.target.value }))}
+                      />
+                      {quickErrors.donation && <p className="text-xs text-[var(--error)]">{quickErrors.donation}</p>}
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs">Email（自動寄送發票）</Label>
+              <Input
+                type="email"
+                placeholder="選填，只能填一個信箱"
+                value={quickCreateForm.email}
+                onChange={(e) => setQuickCreateForm((f) => ({ ...f, email: e.target.value }))}
+              />
+              {quickErrors.email && <p className="text-xs text-[var(--error)]">{quickErrors.email}</p>}
+            </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <Label className="text-xs">{quickCreateForm.amountType}金額 *</Label>
@@ -2289,7 +2399,7 @@ export function EInvoicesClient() {
             <Button variant="outline" onClick={() => handleQuickCreateOpenChange(false)} disabled={quickCreating}>取消</Button>
             <Button
               onClick={() => void handleQuickCreate()}
-              disabled={quickCreating || receiptBlocked || !quickCreateForm.buyerName.trim() || !quickCreateForm.totalAmount}
+              disabled={quickCreating || receiptBlocked || quickContactInvalid || !quickCreateForm.buyerName.trim() || !quickCreateForm.totalAmount}
             >
               {quickCreating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
               建立並開立

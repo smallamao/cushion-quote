@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { eInvoiceRowToRecord } from "@/lib/einvoice-utils";
+
 const get = vi.hoisted(() => vi.fn());
 const update = vi.hoisted(() => vi.fn());
 const append = vi.hoisted(() => vi.fn());
@@ -17,7 +19,7 @@ vi.mock("@/app/api/sheets/einvoices/_auth", () => ({
 
 const { POST } = await import("@/app/api/sheets/einvoices/route");
 
-function createRequest(): Request {
+function createRequest(overrides: Record<string, unknown> = {}): Request {
   return new Request("http://localhost/api/sheets/einvoices", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -30,6 +32,7 @@ function createRequest(): Request {
       taxAmount: 48,
       totalAmount: 1000,
       items: [{ name: "沙發換布", quantity: 1, unitPrice: 1000, amount: 1000 }],
+      ...overrides,
     }),
   });
 }
@@ -58,5 +61,37 @@ describe("POST /api/sheets/einvoices", () => {
     expect(res.status).toBe(201);
     expect(update).not.toHaveBeenCalled();
     expect(append).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["填了載具但類型是無", { carrierType: "none", carrierValue: "/ABC1234" }],
+    ["手機條碼格式錯", { carrierType: "mobile_barcode", carrierValue: "/ABC12" }],
+    ["自然人憑證", { carrierType: "mobile_barcode", carrierValue: "AB12345678901234" }],
+    ["捐贈碼格式錯", { donationCode: "12" }],
+    ["Email 不是單一信箱", { email: "a@b.com,c@d.com" }],
+  ])("%s → 400，不寫入", async (_label, overrides) => {
+    get.mockResolvedValue({ data: { values: [] } });
+    const res = await POST(createRequest(overrides));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/[\u4e00-\u9fff]/);
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it("手機條碼存成半形大寫", async () => {
+    get.mockResolvedValue({ data: { values: [] } });
+    append.mockResolvedValue({});
+    const res = await POST(createRequest({ carrierType: "mobile_barcode", carrierValue: "／abc1234", donationCode: "919" }));
+    expect(res.status).toBe(201);
+    const row = (append.mock.calls[0]![0] as { requestBody: { values: string[][] } }).requestBody.values[0]!;
+    expect(eInvoiceRowToRecord(row)).toMatchObject({ carrierType: "mobile_barcode", carrierValue: "/ABC1234", donationCode: "919" });
+  });
+
+  it("B2B 忽略載具與捐贈", async () => {
+    get.mockResolvedValue({ data: { values: [] } });
+    append.mockResolvedValue({});
+    const res = await POST(createRequest({ buyerType: "b2b", buyerTaxId: "85164778", carrierType: "none", carrierValue: "垃圾", donationCode: "1" }));
+    expect(res.status).toBe(201);
+    const row = (append.mock.calls[0]![0] as { requestBody: { values: string[][] } }).requestBody.values[0]!;
+    expect(eInvoiceRowToRecord(row)).toMatchObject({ carrierType: "none", carrierValue: "", donationCode: "" });
   });
 });

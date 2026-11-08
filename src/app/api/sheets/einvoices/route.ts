@@ -5,6 +5,7 @@ import type { EInvoiceItemSnapshot, EInvoiceRecord } from "@/lib/types";
 import { isoDateNow, isoNow } from "@/lib/einvoice-utils";
 import { validateTaiwanTaxId } from "@/lib/tax-id";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { checkBuyerContactFields } from "@/lib/einvoice-carrier";
 
 import { getSession } from "./_auth";
 import {
@@ -177,8 +178,6 @@ function validatePayload(payload: CreateEInvoicePayload): string | null {
     if (taxIdError) return taxIdError;
   }
   if (!["none", "mobile_barcode", "member_code", ""].includes(payload.carrierType ?? "none")) return "carrierType is invalid";
-  if (payload.carrierType === "mobile_barcode" && !payload.carrierValue) return "carrierValue is required for mobile_barcode";
-  if (payload.carrierType === "member_code" && !payload.carrierValue) return "carrierValue is required for member_code";
   if (payload.items.length === 0) return "items is required";
   if (payload.totalAmount <= 0) return "totalAmount must be greater than 0";
   return null;
@@ -253,19 +252,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "請求過於頻繁，請稍後再試" }, { status: 429 });
   }
 
-  let payload: CreateEInvoicePayload | null = null;
+  let parsed: CreateEInvoicePayload | null = null;
   try {
-    payload = parseCreatePayload(await request.json());
+    parsed = parseCreatePayload(await request.json());
   } catch {
     return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   }
-  if (!payload) {
+  if (!parsed) {
     return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   }
-  const validationError = validatePayload(payload);
+  const validationError = validatePayload(parsed);
   if (validationError) {
     return NextResponse.json({ ok: false, error: validationError }, { status: 400 });
   }
+  // 載具／Email／捐贈碼：格式不對就擋；手機條碼統一成半形大寫再存
+  const contact = checkBuyerContactFields({
+    buyerType: parsed.buyerType,
+    email: parsed.email ?? "",
+    carrierType: parsed.carrierType ?? "none",
+    carrierValue: parsed.carrierValue ?? "",
+    donationCode: parsed.donationCode ?? "",
+  });
+  if (!contact.ok) {
+    return NextResponse.json({ ok: false, error: contact.error }, { status: 400 });
+  }
+  const payload: CreateEInvoicePayload = { ...parsed, ...contact.fields };
 
   const client = await getSheetsClient();
   if (!client) {

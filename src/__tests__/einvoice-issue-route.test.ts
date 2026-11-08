@@ -311,3 +311,45 @@ describe("POST /api/sheets/einvoices/[id]/resolve-issuing", () => {
     expect(current().status).toBe("issued");
   });
 });
+
+describe("開立前的載具／Email／捐贈防呆", () => {
+  it.each([
+    ["填了載具但類型是無（以前會被默默丟掉）", { carrierType: "none" as const, carrierValue: "/ABC1234" }],
+    ["手機條碼格式錯", { carrierType: "mobile_barcode" as const, carrierValue: "/AB" }],
+    ["自然人憑證", { carrierType: "mobile_barcode" as const, carrierValue: "AB12345678901234" }],
+    ["捐贈碼格式錯", { donationCode: "1" }],
+    ["Email 錯", { email: "nope" }],
+  ])("%s → 400 before_provider，不呼叫 Giveme、紀錄不動", async (_label, overrides) => {
+    seed(overrides);
+    const { status, body } = await callIssue();
+    expect(status).toBe(400);
+    expect(body.stage).toBe("before_provider");
+    expect(issueB2CInvoice).not.toHaveBeenCalled();
+    expect(current().status).toBe("draft");
+  });
+
+  it("手機條碼正規化後送 phone", async () => {
+    seed({ carrierType: "mobile_barcode", carrierValue: "／abc1234", donationCode: "919", email: "a@b.com" });
+    const { status } = await callIssue();
+    expect(status).toBe(200);
+    const input = issueB2CInvoice.mock.calls[0]![0] as Record<string, unknown>;
+    expect(input).toMatchObject({ phone: "/ABC1234", donationCode: "919", email: "a@b.com" });
+    expect(input.orderCode).toBeUndefined();
+    expect(current().carrierValue).toBe("/ABC1234");
+  });
+
+  it("會員載具送 orderCode；無載具兩個都不送", async () => {
+    seed({ carrierType: "member_code", carrierValue: "0912345678" });
+    await callIssue();
+    const input = issueB2CInvoice.mock.calls[0]![0] as Record<string, unknown>;
+    expect(input).toMatchObject({ orderCode: "0912345678" });
+    expect(input.phone).toBeUndefined();
+
+    issueB2CInvoice.mockClear();
+    seed();
+    await callIssue();
+    const plain = issueB2CInvoice.mock.calls[0]![0] as Record<string, unknown>;
+    expect(plain.phone).toBeUndefined();
+    expect(plain.orderCode).toBeUndefined();
+  });
+});

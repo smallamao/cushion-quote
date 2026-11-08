@@ -11,6 +11,7 @@ import {
   isIssueLockHeldBy,
   type ProviderOutcome,
 } from "@/lib/einvoice-issue";
+import { checkBuyerContactFields } from "@/lib/einvoice-carrier";
 import { parseEInvoiceItems, isoNow } from "@/lib/einvoice-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { SHEETS_NO_RETRY } from "@/lib/sheets-retry";
@@ -111,6 +112,9 @@ class IssueStatusConflictError extends Error {
     super(`invoice status ${status} cannot issue`);
   }
 }
+
+/** 紀錄的載具／Email／捐贈碼格式不對：不送 Giveme，請使用者修正 */
+class IssueContactInvalidError extends Error {}
 
 function errorMessageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -242,9 +246,13 @@ export async function POST(
   try {
     issuingRecord = await updateEInvoiceRecord(client, invoiceId, (record) => {
       if (!isIssuableStatus(record.status)) throw new IssueStatusConflictError(record.status);
+      // 防呆：舊草稿可能有「填了載具卻沒選類型」等會被 Giveme 默默忽略的資料
+      const contact = checkBuyerContactFields(record);
+      if (!contact.ok) throw new IssueContactInvalidError(contact.error);
       fromStatus = record.status;
       return {
         ...record,
+        ...contact.fields,
         status: "issuing",
         providerTrackNo: lockToken,
         ...(bodyInvoiceDate ? { invoiceDate: bodyInvoiceDate } : {}),
@@ -253,6 +261,7 @@ export async function POST(
     }, { deadline: providerCutoff });
   } catch (err) {
     if (err instanceof IssueStatusConflictError) return beforeProvider(409, err.message);
+    if (err instanceof IssueContactInvalidError) return beforeProvider(400, err.message);
     return beforeProvider(503, `系統紀錄暫時無法寫入，未送出開立：${errorMessageOf(err)}`);
   }
   if (!issuingRecord) return beforeProvider(404, "invoice not found");

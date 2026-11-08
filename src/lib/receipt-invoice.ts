@@ -10,7 +10,7 @@
  */
 
 import type { PaymentType } from "@/lib/remittance";
-import type { EInvoiceRecord, EInvoiceStatus } from "@/lib/types";
+import type { EInvoiceCarrierType, EInvoiceRecord, EInvoiceStatus } from "@/lib/types";
 
 export const INVOICE_PAYMENT_TYPES: readonly PaymentType[] = ["LINE PAY", "刷卡"];
 
@@ -120,6 +120,12 @@ export interface QuickInvoiceForm {
   overallRemark: string;
   internalNote: string;
   invoiceDate: string;
+  /** B2C 才用：載具、Email、捐贈（有統編時不送） */
+  email: string;
+  carrierType: EInvoiceCarrierType;
+  carrierValue: string;
+  donate: boolean;
+  donationCode: string;
 }
 
 export function buildQuickInvoiceForm(info: ReceiptInvoiceInfo, buyerName: string): QuickInvoiceForm {
@@ -133,6 +139,11 @@ export function buildQuickInvoiceForm(info: ReceiptInvoiceInfo, buyerName: strin
     overallRemark: "",
     internalNote: receiptVoucherTag(info),
     invoiceDate: info.receivedDate,
+    email: "",
+    carrierType: "none",
+    carrierValue: "",
+    donate: false,
+    donationCode: "",
   };
 }
 
