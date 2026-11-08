@@ -190,6 +190,61 @@ export const toolDefinitions: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "query_bookings",
+    description:
+      "查 Notion「預約紀錄」裡的展示間參觀預約。可指定某一天，或從某天起算往後看。" +
+      "例如「今天有誰要來」「這禮拜的預約」。",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "只看這一天，格式 YYYY-MM-DD" },
+        from: { type: "string", description: "從這天起算往後看，格式 YYYY-MM-DD" },
+        limit: { type: "number", description: "最多幾筆，預設 10，最多 50" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "create_notion_booking",
+    description:
+      "在 Notion「預約紀錄」新增一筆展示間參觀預約。使用情境是老闆開車時接到客人電話，" +
+      "用講的把預約記下來，所以缺的欄位就問一句，不要列表單。" +
+      "必填：客人稱呼與參觀時間。參觀時間要換算成 YYYY-MM-DDTHH:mm（台灣時間），" +
+      "客人說「禮拜二下午兩點半」就依今天日期推算出實際日期。" +
+      "來源／狀態／需求只能用列出的選項，講不出來就留空，不要自己造新的。",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "客人稱呼，例如「黃小姐」「黎先生」" },
+        visitAt: { type: "string", description: "參觀時間 YYYY-MM-DDTHH:mm（台灣時間）" },
+        phone: { type: "string", description: "聯絡電話" },
+        source: {
+          type: "string",
+          enum: ["電話", "LINE", "FB", "Mail", "網頁", "自己來", "自助預約"],
+          description: "怎麼來的，預設電話",
+        },
+        status: {
+          type: "string",
+          enum: ["預約參觀", "自行參觀", "預約未到", "取消預約", "無預約"],
+          description: "預設預約參觀",
+        },
+        need: {
+          type: "string",
+          enum: [
+            "新建案", "新建案(預售屋)", "新建案(訂製沙發)", "舊換新", "汰舊換新",
+            "汰舊換新(訂製沙發)", "搬新家", "搬新家(訂製沙發)", "老屋整修", "臥榻",
+            "椅墊訂製", "換皮", "修復沙發", "更換坐墊", "其他",
+          ],
+          description: "客人的需求，對不上就留空",
+        },
+        area: { type: "string", description: "配送區域，例如「新北市中和區」" },
+        sofaSize: { type: "string", description: "預計訂製沙發尺寸，自由文字" },
+        notes: { type: "string", description: "內部備註" },
+      },
+      required: ["name", "visitAt"],
+    },
+  },
 ];
 
 async function handleCreateInvoice(args: Record<string, unknown>): Promise<string> {
@@ -388,6 +443,40 @@ async function handleGetOrderMaterials(args: Record<string, unknown>): Promise<s
     });
   } catch (e) {
     return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function handleQueryBookings(args: Record<string, unknown>): Promise<string> {
+  const { queryBookings } = await import("@/lib/notion-booking");
+  try {
+    return await queryBookings({
+      date: args.date ? String(args.date) : undefined,
+      from: args.from ? String(args.from) : undefined,
+      limit: args.limit ? Number(args.limit) : undefined,
+    });
+  } catch (e) {
+    return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function handleCreateNotionBooking(args: Record<string, unknown>): Promise<string> {
+  const { createBooking } = await import("@/lib/notion-booking");
+  const str = (k: string) => (args[k] == null ? undefined : String(args[k]));
+  try {
+    const r = await createBooking({
+      name: str("name"),
+      visitAt: str("visitAt"),
+      phone: str("phone"),
+      source: str("source"),
+      status: str("status"),
+      need: str("need"),
+      area: str("area"),
+      sofaSize: str("sofaSize"),
+      notes: str("notes"),
+    });
+    return r.message;
+  } catch (e) {
+    return `❌ 建立失敗：${e instanceof Error ? e.message : String(e)}`;
   }
 }
 
@@ -662,6 +751,8 @@ const TOOL_HANDLERS: Record<string, (args: Record<string, unknown>) => Promise<s
   create_after_sales: handleCreateAfterSales,
   query_purchase_orders: handleQueryPurchaseOrders,
   get_order_materials: handleGetOrderMaterials,
+  query_bookings: handleQueryBookings,
+  create_notion_booking: handleCreateNotionBooking,
   create_purchase_order: handleCreatePurchaseOrder,
   query_clients: handleQueryClients,
   query_quotes: handleQueryQuotes,
@@ -681,6 +772,7 @@ export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
   "create_after_sales",
   "create_purchase_order",
   "update_purchase_status",
+  "create_notion_booking",
 ]);
 
 /** 唯讀工具：給只能查、不能改的管道（例如畫面上的助手面板） */
@@ -715,6 +807,8 @@ const SYSTEM_PROMPT = `你是馬鈴薯沙發的業務助理，幫老闆用一句
 - 查詢報價單（query_quotes）
 - 查詢售後報修單（query_after_sales）
 - 查詢電子發票（query_invoices）
+- 查展示間參觀預約（query_bookings）
+- 新增展示間參觀預約到 Notion（create_notion_booking）
 
 說話風格：簡短、有效率、用繁體中文。
 
@@ -758,6 +852,13 @@ const SYSTEM_PROMPT = `你是馬鈴薯沙發的業務助理，幫老闆用一句
 - 使用者提供了客戶姓名 + 問題描述 → 立刻呼叫 create_after_sales
 - 使用者提供了廠商名稱 + 品項清單 → 立刻呼叫 create_purchase_order
 - 使用者用條列式（· 欄位：值）回填剛才詢問的表單 → 解析所有欄位，立刻呼叫工具
+- 提到要記預約／有人要來看沙發／客人約時間，而且給了稱呼＋時間 → 立刻呼叫 create_notion_booking
+
+【預約的特別規則】（老闆常常是開車時接到電話用講的）
+- 只有「客人稱呼」和「參觀時間」是必填。其他沒講就不要問，留空即可。
+- 相對時間要自己換算成日期：「禮拜二下午兩點半」「明天三點」依上面的今天日期推算。
+- 真的缺必填才問，而且一次只問缺的那一項，一句話問完。
+- 建好之後用一句話唸回來（誰、哪天幾點、電話），不要列欄位清單——他在開車用聽的。
 不允許在工具呼叫前先回覆任何文字。`;
 
 const HISTORY_MAX_PAIRS = 6;

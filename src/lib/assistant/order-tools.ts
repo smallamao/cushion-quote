@@ -159,6 +159,7 @@ export const SYSTEM_INSTRUCTION = `你是「馬鈴薯沙發營運系統」的內
 - query_quotes：報價單
 - query_after_sales：售後服務單
 - query_invoices：電子發票
+- query_bookings：Notion「預約紀錄」的展示間參觀預約
 
 規則：
 - 一題可以連續呼叫多個工具，查完再一起作答；需要先查清單再逐筆追細節就去查，不要只查一輪就交差。

@@ -74,12 +74,19 @@ describe("Claude 工具宣告", () => {
   );
   checkTools(agentTools as unknown as ToolLike[], "共用工具表");
 
-  it("共用工具表涵蓋 12 個工具（含訂製訂單查詢與叫料狀況）", () => {
-    expect(agentTools).toHaveLength(12);
+  it("共用工具表涵蓋 14 個工具（含訂製訂單查詢、叫料狀況、Notion 預約）", () => {
+    expect(agentTools).toHaveLength(14);
     const names = agentTools.map((t) => t.name);
     expect(names).toContain("query_orders");
     expect(names).toContain("get_order");
     expect(names).toContain("get_order_materials");
+    expect(names).toContain("query_bookings");
+    expect(names).toContain("create_notion_booking");
+  });
+
+  it("🔴 新增預約會寫進 Notion，面板不可以直接拿到", () => {
+    expect(MUTATING_TOOLS.has("create_notion_booking")).toBe(true);
+    expect(readOnlyTools().map((t) => t.name)).not.toContain("create_notion_booking");
   });
 
   /**
