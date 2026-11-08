@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { findServiceById } from "@/lib/after-sales-sheet";
 import { buildDispatchEvent } from "@/lib/dispatch-calendar";
-import { verifyDispatchToken } from "@/lib/dispatch-link";
+import { dispatchClosedReason, verifyDispatchToken } from "@/lib/dispatch-link";
 
 // node:crypto（驗簽）＋ server-only（讀 Sheets）→ 需 Node runtime。
 export const runtime = "nodejs";
@@ -37,8 +37,10 @@ export async function GET(
   if (!service) {
     return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   }
-  if (service.status === "completed" || service.status === "cancelled") {
-    return NextResponse.json({ ok: false, error: "closed" }, { status: 404 });
+  // 與派工頁同一套停用規則（已結案、預定日過 3 天）
+  const closed = dispatchClosedReason(service);
+  if (closed) {
+    return NextResponse.json({ ok: false, error: closed }, { status: 404 });
   }
 
   const ev = buildDispatchEvent(service);

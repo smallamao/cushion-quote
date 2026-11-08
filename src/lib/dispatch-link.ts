@@ -7,7 +7,8 @@ import crypto from "node:crypto";
  *   發出日 = floor(now/一天) 的 base36（簽進 sig，不可竄改）
  *   sig    = base64url(HMAC-SHA256(密鑰, "dispatch:"+serviceId+":"+發出日)) 取前 32 字
  *
- * 兩層時效：
+ * 三層時效（哪條先到就先失效）：
+ *   0) 預定日過 3 天失效 —— 見檔尾 isPastDispatchWindow（2026-11-08）。
  *   1) 30 天失效 —— 驗證時 today-發出日 > 30 即拒（時間戳在 sig 內，改了就驗不過）。
  *   2) 已完成／已取消失效 —— 由頁面讀工單狀態把關（見 dispatch page），非本模組職責。
  *
@@ -89,4 +90,38 @@ export function buildDispatchPath(serviceId: string): string | null {
   const token = signDispatchToken(serviceId);
   if (!token) return null;
   return `${PATH_PREFIX}/${encodeURIComponent(serviceId)}/${token}`;
+}
+
+/**
+ * 預定日過後幾天，連結就停用（老闆 2026-11-08）。
+ * 起因：AS-20261013-01 預定 10/27，沒人按完成，11/8 師傅仍看得到客人電話地址——
+ * 「結案才停用」靠人記得按，而 30 天是從發出日算，跟實際上門日無關。
+ * 期限跟著工單上的預定日走：改期後內勤改了日期，連結自動跟著延長，不必重發。
+ */
+export const DISPATCH_GRACE_DAYS_AFTER_SCHEDULE = 3;
+const TAIPEI_OFFSET_MS = 8 * 3_600_000;
+
+/** 預定日（YYYY-MM-DD，台灣日期）＋寬限天數已經過了嗎。沒排日期或格式不對 → false（交給 30 天規則）。 */
+export function isPastDispatchWindow(scheduledDate: string, nowMs: number = Date.now()): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate ?? "")) return false;
+  const [y, m, d] = scheduledDate.split("-").map(Number);
+  const lastOpenDay = new Date(Date.UTC(y, m - 1, d + DISPATCH_GRACE_DAYS_AFTER_SCHEDULE))
+    .toISOString()
+    .slice(0, 10);
+  // 伺服器跑在 UTC，直接取日期會差 8 小時；換成台灣日期再比
+  const todayTaipei = new Date(nowMs + TAIPEI_OFFSET_MS).toISOString().slice(0, 10);
+  return todayTaipei > lastOpenDay;
+}
+
+/**
+ * 派工頁與行事曆下載共用的停用判斷（簽章另外驗）。
+ * closed＝已完成／已取消；past_schedule＝預定日已過寬限期；null＝可以看。
+ */
+export function dispatchClosedReason(
+  service: { status: string; scheduledDate: string },
+  nowMs: number = Date.now(),
+): "closed" | "past_schedule" | null {
+  if (service.status === "completed" || service.status === "cancelled") return "closed";
+  if (isPastDispatchWindow(service.scheduledDate, nowMs)) return "past_schedule";
+  return null;
 }

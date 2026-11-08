@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 
 import { findServiceById } from "@/lib/after-sales-sheet";
 import { buildDispatchEvent, googleCalendarUrl } from "@/lib/dispatch-calendar";
-import { verifyDispatchToken } from "@/lib/dispatch-link";
+import {
+  DISPATCH_GRACE_DAYS_AFTER_SCHEDULE,
+  dispatchClosedReason,
+  verifyDispatchToken,
+} from "@/lib/dispatch-link";
 import type { AfterSalesStatus } from "@/lib/types";
 
 // node:crypto（驗簽）＋ server-only（讀 Sheets）→ 需 Node runtime；每次即時讀取。
@@ -89,9 +93,18 @@ export default async function DispatchPage({
   if (!service) {
     return <Notice title="查無此單" desc="找不到對應的派工單，請確認連結是否完整。" />;
   }
-  // 已完成／已取消 → 停用連結（避免結案後電話地址仍被外流查看）。
-  if (service.status === "completed" || service.status === "cancelled") {
+  // 已完成／已取消，或預定日已過 3 天 → 停用連結（避免電話地址在上門後仍被外流查看）。
+  const closed = dispatchClosedReason(service);
+  if (closed === "closed") {
     return <Notice title="此單已結案" desc="這張工單已完成或取消，派工連結已自動停用。" />;
+  }
+  if (closed === "past_schedule") {
+    return (
+      <Notice
+        title="連結已停用"
+        desc={`這張工單的預定日（${fmtDate(service.scheduledDate)}）已過 ${DISPATCH_GRACE_DAYS_AFTER_SCHEDULE} 天，派工連結已自動停用。如需再次前往，請向內勤確認新日期。`}
+      />
+    );
   }
 
   const model = [service.modelNameSnapshot, service.itemDescription].filter(Boolean).join(" ");

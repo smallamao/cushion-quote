@@ -608,7 +608,7 @@ export function AfterSalesListClient() {
                         <button
                           type="button"
                           onClick={(e) => handleCopyDispatch(s.serviceId, e)}
-                          title="複製派工連結（給外部師傅：電話直撥／地址導航，30 天有效）"
+                          title="複製派工連結（給外部師傅：電話直撥／地址導航，預定日後 3 天停用）"
                           className="mr-1.5 rounded border border-[var(--border)] bg-white px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
                         >
                           {copiedDispatchId === s.serviceId ? (

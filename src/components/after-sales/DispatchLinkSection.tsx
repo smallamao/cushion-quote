@@ -55,7 +55,7 @@ export function DispatchLinkSection({ serviceId }: { serviceId: string }) {
         <span>· 免登入 · 清潔／修復通用</span>
       </p>
       <p className="mb-3 text-xs text-[var(--text-tertiary)]">
-        連結 30 天內有效，工單「已完成／已取消」後自動停用。
+        連結在預定日後 3 天停用（改期會自動跟著延長）；工單「已完成／已取消」立即停用；從發出日起最長 30 天。
       </p>
 
       {loading ? (

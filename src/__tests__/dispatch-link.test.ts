@@ -5,6 +5,8 @@ import {
   signDispatchToken,
   verifyDispatchToken,
   buildDispatchPath,
+  dispatchClosedReason,
+  isPastDispatchWindow,
 } from "@/lib/dispatch-link";
 
 /** 複製 lib 內的簽章算式，用來產生「舊版 32 字簽章」驗相容性。 */
@@ -115,5 +117,40 @@ describe("dispatch-link", () => {
     expect(signDispatchToken("AS-1", NOW)).toBeNull();
     expect(buildDispatchPath("AS-1")).toBeNull();
     expect(verifyDispatchToken("AS-1", "whatever", NOW)).toBe(false);
+  });
+});
+
+// 老闆 2026-11-08：AS-20261013-01 預定 10/27，沒人按完成，11/8 師傅還看得到客人電話地址。
+// 預定日過 3 天就停用，不必等有人記得結案。
+describe("isPastDispatchWindow（預定日過 3 天失效）", () => {
+  // 台灣時間 = UTC+8
+  const tpe = (y: number, m: number, d: number, h = 0, min = 0) => Date.UTC(y, m - 1, d, h - 8, min);
+
+  it("10/27 預定：10/30 整天還能看，10/31 零點起失效（台灣時間）", () => {
+    expect(isPastDispatchWindow("2026-10-27", tpe(2026, 10, 27, 9))).toBe(false);
+    expect(isPastDispatchWindow("2026-10-27", tpe(2026, 10, 30, 23, 59))).toBe(false);
+    expect(isPastDispatchWindow("2026-10-27", tpe(2026, 10, 31, 0, 0))).toBe(true);
+    expect(isPastDispatchWindow("2026-10-27", tpe(2026, 11, 8, 12))).toBe(true);
+  });
+
+  it("跨月也算得對", () => {
+    expect(isPastDispatchWindow("2026-10-30", tpe(2026, 11, 2, 23, 59))).toBe(false);
+    expect(isPastDispatchWindow("2026-10-30", tpe(2026, 11, 3, 0, 0))).toBe(true);
+  });
+
+  it("還沒排日期或日期格式不對 → 不用這條規則（照舊 30 天）", () => {
+    expect(isPastDispatchWindow("", tpe(2026, 11, 8))).toBe(false);
+    expect(isPastDispatchWindow("10/27", tpe(2026, 11, 8))).toBe(false);
+  });
+});
+
+describe("dispatchClosedReason", () => {
+  const now = Date.UTC(2026, 10, 8, 4); // 台灣 11/8 中午
+  it("已完成／已取消優先，其次是預定日已過", () => {
+    expect(dispatchClosedReason({ status: "completed", scheduledDate: "2026-11-20" }, now)).toBe("closed");
+    expect(dispatchClosedReason({ status: "cancelled", scheduledDate: "" }, now)).toBe("closed");
+    expect(dispatchClosedReason({ status: "scheduled", scheduledDate: "2026-10-27" }, now)).toBe("past_schedule");
+    expect(dispatchClosedReason({ status: "scheduled", scheduledDate: "2026-11-06" }, now)).toBeNull();
+    expect(dispatchClosedReason({ status: "pending", scheduledDate: "" }, now)).toBeNull();
   });
 });
