@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AI_MAX_TOKENS, AI_MODEL_AGENT, AI_MODEL_VISION } from "@/lib/ai-model";
 import { MUTATING_TOOLS, readOnlyTools, toolDefinitions as agentTools } from "@/lib/agent-tools";
 import {
+  PROPOSE_BOOKING_TOOL,
   PROPOSE_PURCHASE_STATUS_TOOL,
   PROPOSE_STATUS_TOOL,
   SYSTEM_INSTRUCTION,
@@ -69,7 +70,7 @@ function checkTools(tools: readonly ToolLike[], label: string) {
 
 describe("Claude 工具宣告", () => {
   checkTools(
-    [PROPOSE_STATUS_TOOL, PROPOSE_PURCHASE_STATUS_TOOL] as unknown as ToolLike[],
+    [PROPOSE_STATUS_TOOL, PROPOSE_PURCHASE_STATUS_TOOL, PROPOSE_BOOKING_TOOL] as unknown as ToolLike[],
     "面板專屬",
   );
   checkTools(agentTools as unknown as ToolLike[], "共用工具表");
@@ -99,6 +100,7 @@ describe("Claude 工具宣告", () => {
       ...agentTools.map((t) => t.name),
       PROPOSE_STATUS_TOOL.name,
       PROPOSE_PURCHASE_STATUS_TOOL.name,
+      PROPOSE_BOOKING_TOOL.name,
     ]);
     for (const name of mentioned) {
       expect(known.has(name), `系統指令提到 ${name}，但工具表裡沒有這個工具`).toBe(true);

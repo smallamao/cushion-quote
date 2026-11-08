@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import { AI_MAX_TOKENS, AI_MODEL_AGENT, AI_NO_KEY_MESSAGE } from "@/lib/ai-model";
+import { taipeiDateStr } from "@/lib/production-groups";
 import { PURCHASE_STATUSES, isPurchaseStatus, purchaseStatusLabel } from "@/lib/purchase-status";
 import { findOrders, getOrder } from "@/lib/assistant/order-tools";
 
@@ -51,7 +52,7 @@ export const toolDefinitions: Anthropic.Tool[] = [
       properties: {
         status: { type: "string", description: "篩選狀態：draft（草稿）、confirmed（已確認）、received（已到貨）、cancelled（已取消）。不填則查全部。" },
         orderDate: { type: "string", description: "篩選特定日期，格式 YYYY-MM-DD。例如查今天就填今天的日期。不填則不篩選。" },
-        limit: { type: "number", description: "最多顯示幾筆，預設 5，最多 20" },
+        limit: { type: "number", description: "最多列出幾筆，預設 10，最多 50。總數不受此限制。" },
       },
       required: [],
     },
@@ -70,12 +71,16 @@ export const toolDefinitions: Anthropic.Tool[] = [
   },
   {
     name: "query_quotes",
-    description: "查詢報價單列表。可以依狀態篩選：draft（草稿）、sent（已送出）、accepted（已接受）、rejected（已拒絕）、cancelled（已取消）。",
+    description:
+      "查詢報價單列表。可依狀態篩選，或用關鍵字找（比對報價單號、報價名稱、案件編號、內部備註）。" +
+      "⚠️ 報價紀錄沒有客戶姓名欄位，直接用人名查多半查不到——先用 query_orders 以客戶名找到訂單，" +
+      "再拿案件編號回來查。回傳會附上符合條件的總筆數。",
     input_schema: {
       type: "object",
       properties: {
-        status: { type: "string", description: "報價單狀態篩選，不填則查全部" },
-        limit: { type: "number", description: "最多顯示幾筆，預設 5" },
+        query: { type: "string", description: "關鍵字：報價單號、報價名稱、案件編號或內部備註" },
+        status: { type: "string", description: "狀態：draft（草稿）、sent（已送出）、accepted（已接受）、rejected（已拒絕）、cancelled（已取消）" },
+        limit: { type: "number", description: "最多列出幾筆，預設 10，最多 50。總數不受此限制。" },
       },
       required: [],
     },
@@ -100,19 +105,22 @@ export const toolDefinitions: Anthropic.Tool[] = [
       properties: {
         status: { type: "string", description: "篩選狀態：pending、scheduled、in_progress、completed。不填則查全部。" },
         keyword: { type: "string", description: "客戶姓名關鍵字，選填" },
-        limit: { type: "number", description: "最多顯示幾筆，預設 5，最多 20" },
+        limit: { type: "number", description: "最多列出幾筆，預設 10，最多 50。總數不受此限制。" },
       },
       required: [],
     },
   },
   {
     name: "query_invoices",
-    description: "查詢電子發票列表。可以依狀態篩選：draft（草稿）、issued（已開立）、cancelled（已作廢）。",
+    description:
+      "查詢電子發票列表。可依狀態與月份篩選。回傳會附上符合條件的總張數與金額合計，" +
+      "所以「這個月開了幾張」「十月總共多少錢」直接用 month 查，不要從編號推算。",
     input_schema: {
       type: "object",
       properties: {
-        status: { type: "string", description: "篩選狀態：draft、issued、cancelled。不填則查全部。" },
-        limit: { type: "number", description: "最多顯示幾筆，預設 5，最多 20" },
+        status: { type: "string", description: "篩選狀態：draft（草稿）、issued（已開立）、cancelled（已作廢）。不填則查全部。" },
+        month: { type: "string", description: "只看某個月，格式 YYYY-MM（比對發票日期）" },
+        limit: { type: "number", description: "最多列出幾筆明細，預設 10，最多 50。總數不受此限制。" },
       },
       required: [],
     },
@@ -387,7 +395,7 @@ async function handleQueryPurchaseOrders(args: Record<string, unknown>): Promise
 
   const statusFilter = args.status ? String(args.status) : "";
   const dateFilter = args.orderDate ? String(args.orderDate) : "";
-  const limit = Math.min(Number(args.limit ?? 5), 20);
+  const limit = Math.min(Number(args.limit ?? 10), 50);
 
   try {
     const res = await client.sheets.spreadsheets.values.get({
@@ -417,9 +425,12 @@ async function handleQueryPurchaseOrders(args: Record<string, unknown>): Promise
       orders = orders.filter((o) => o.orderDate === dateFilter);
     }
 
+    // 先記總數再截斷——只給前 N 筆卻不講總數，會讓人以為那就是全部
+    //（2026-11-08：問「還有哪些草稿」只看到 20 筆，實際 127 張）
+    const matched = orders.length;
     orders = orders.slice(0, limit);
 
-    if (orders.length === 0) {
+    if (matched === 0) {
       return statusFilter ? `找不到狀態為「${statusFilter}」的採購單。` : "目前沒有採購單。";
     }
 
@@ -427,7 +438,11 @@ async function handleQueryPurchaseOrders(args: Record<string, unknown>): Promise
       `${i + 1}. ${o.orderId}\n   ${o.supplierName}\n   ${o.orderDate} ／ NT$${o.totalAmount.toLocaleString()} ／ ${purchaseStatusLabel(o.status)}`
     );
 
-    return `最近 ${orders.length} 筆採購單：\n\n${lines.join("\n\n")}`;
+    const head =
+      matched > orders.length
+        ? `符合條件的採購單共 ${matched} 張，以下列出最近 ${orders.length} 張（想看更多就指定 limit，最多 50）`
+        : `符合條件的採購單共 ${matched} 張`;
+    return `${head}：\n\n${lines.join("\n\n")}`;
   } catch (e) {
     return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
   }
@@ -586,7 +601,8 @@ async function handleQueryQuotes(args: Record<string, unknown>): Promise<string>
   if (!client) return "❌ Google Sheets 未設定。";
 
   const statusFilter = String(args.status ?? "").trim();
-  const limit = Math.min(Number(args.limit ?? 5), 20);
+  const q = String(args.query ?? "").trim().toLowerCase();
+  const limit = Math.min(Number(args.limit ?? 10), 50);
 
   const STATUS_LABEL: Record<string, string> = {
     draft: "草稿", sent: "已送出", accepted: "已接受", rejected: "已拒絕", cancelled: "已取消",
@@ -597,21 +613,37 @@ async function handleQueryQuotes(args: Record<string, unknown>): Promise<string>
     let quotes = rows.map(quoteRowToRecord).filter((q) => q.quoteId);
 
     if (statusFilter) {
-      quotes = quotes.filter((q) => q.quoteStatus === statusFilter);
+      quotes = quotes.filter((x) => x.quoteStatus === statusFilter);
+    }
+    // 2026-11-08：原本只能列最近幾筆，問「許書琴的報價單」完全查不到
+    if (q) {
+      quotes = quotes.filter(
+        (x) =>
+          x.quoteId.toLowerCase().includes(q) ||
+          (x.quoteName ?? "").toLowerCase().includes(q) ||
+          (x.caseId ?? "").toLowerCase().includes(q) ||
+          (x.internalNotes ?? "").toLowerCase().includes(q),
+      );
     }
 
+    const matched = quotes.length;
     quotes = quotes
       .sort((a, b) => b.quoteId.localeCompare(a.quoteId))
       .slice(0, limit);
 
-    if (quotes.length === 0) {
+    if (matched === 0) {
+      if (q) return `找不到符合「${args.query}」的報價單。報價紀錄本身沒有客戶姓名欄位，用人名查多半查不到——改用案件編號、報價單號，或先用 query_orders 找到客戶的訂單再對。`;
       return statusFilter ? `找不到狀態為「${STATUS_LABEL[statusFilter] ?? statusFilter}」的報價單。` : "目前沒有報價單。";
     }
 
     const lines = quotes.map((q, i) =>
       `${i + 1}. ${q.quoteId}\n   ${q.quoteName || "（未命名）"}／${STATUS_LABEL[q.quoteStatus] ?? q.quoteStatus}`
     );
-    return `最近 ${quotes.length} 筆報價單：\n\n${lines.join("\n\n")}`;
+    const head =
+      matched > quotes.length
+        ? `符合條件的報價單共 ${matched} 筆，以下列出最近 ${quotes.length} 筆（想看更多就指定 limit，最多 50）`
+        : `符合條件的報價單共 ${matched} 筆`;
+    return `${head}：\n\n${lines.join("\n\n")}`;
   } catch (e) {
     return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
   }
@@ -689,7 +721,8 @@ async function handleQueryInvoices(args: Record<string, unknown>): Promise<strin
   if (!client) return "❌ Google Sheets 未設定。";
 
   const statusFilter = String(args.status ?? "").trim();
-  const limit = Math.min(Number(args.limit ?? 5), 20);
+  const month = String(args.month ?? "").trim(); // YYYY-MM
+  const limit = Math.min(Number(args.limit ?? 10), 50);
 
   const STATUS_LABEL: Record<string, string> = {
     draft: "草稿", issued: "已開立", cancelled: "已作廢",
@@ -699,19 +732,30 @@ async function handleQueryInvoices(args: Record<string, unknown>): Promise<strin
     let records = await getEInvoiceRecords(client);
 
     if (statusFilter) records = records.filter((r) => r.status === statusFilter);
+    // 2026-11-08：原本沒有日期篩選，問「這個月開了幾張」只能從編號猜，答不準
+    if (month) records = records.filter((r) => (r.invoiceDate ?? "").startsWith(month));
 
+    const matched = records.length;
+    const sum = records.reduce((n, r) => n + (r.totalAmount ?? 0), 0);
     records = records
       .sort((a, b) => b.invoiceId.localeCompare(a.invoiceId))
       .slice(0, limit);
 
-    if (records.length === 0) {
-      return statusFilter ? `找不到狀態為「${STATUS_LABEL[statusFilter] ?? statusFilter}」的發票。` : "目前沒有發票。";
+    if (matched === 0) {
+      const what = [month && `${month}`, statusFilter && `狀態「${STATUS_LABEL[statusFilter] ?? statusFilter}」`]
+        .filter(Boolean)
+        .join("、");
+      return what ? `找不到${what}的發票。` : "目前沒有發票。";
     }
 
     const lines = records.map((r, i) =>
       `${i + 1}. ${r.invoiceId}\n   ${r.buyerName}／NT$${r.totalAmount.toLocaleString()}／${STATUS_LABEL[r.status] ?? r.status}${r.providerInvoiceNo ? `\n   發票號：${r.providerInvoiceNo}` : ""}`
     );
-    return `最近 ${records.length} 筆發票：\n\n${lines.join("\n\n")}`;
+    const head =
+      matched > records.length
+        ? `符合條件的發票共 ${matched} 張、合計 NT$${sum.toLocaleString()}，以下列出最近 ${records.length} 張（想看更多就指定 limit，最多 50）`
+        : `符合條件的發票共 ${matched} 張、合計 NT$${sum.toLocaleString()}`;
+    return `${head}：\n\n${lines.join("\n\n")}`;
   } catch (e) {
     return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
   }
@@ -795,7 +839,18 @@ export async function executeTool(
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" });
 
-const SYSTEM_PROMPT = `你是馬鈴薯沙發的業務助理，幫老闆用一句話快速建立或查詢工作單。今天日期：${new Date().toISOString().slice(0, 10)}。
+/**
+ * 🔴 日期要在每次請求重算。原本寫在 module 層的樣板字串裡，serverless instance
+ * 活過半夜之後就會一直講昨天（2026-11-08 整理助手時發現）。而且原本用的是 UTC，
+ * 台灣時間早上 8 點前會差一天。
+ */
+function systemPrompt(now: Date = new Date()): string {
+  const today = taipeiDateStr(now);
+  const w = ["日", "一", "二", "三", "四", "五", "六"][new Date(`${today}T00:00:00Z`).getUTCDay()];
+  return SYSTEM_PROMPT_BASE.replace("{{TODAY}}", `${today}（星期${w}）`);
+}
+
+const SYSTEM_PROMPT_BASE = `你是馬鈴薯沙發的業務助理，幫老闆用一句話快速建立或查詢工作單。今天日期：{{TODAY}}，台灣時間。
 
 你能做的事：
 - 開立電子發票（create_invoice）
@@ -807,6 +862,7 @@ const SYSTEM_PROMPT = `你是馬鈴薯沙發的業務助理，幫老闆用一句
 - 查詢報價單（query_quotes）
 - 查詢售後報修單（query_after_sales）
 - 查詢電子發票（query_invoices）
+- 查訂製訂單（query_orders / get_order）——編號兩種都收：畫面上的 S1119／L600，或系統的 ORD-2026-10-018
 - 查展示間參觀預約（query_bookings）
 - 新增展示間參觀預約到 Notion（create_notion_booking）
 
@@ -817,6 +873,8 @@ const SYSTEM_PROMPT = `你是馬鈴薯沙發的業務助理，幫老闆用一句
 - 查詢類工具（query_*）的所有參數都是選填的。使用者說「查採購單」、「查報修單」，直接呼叫工具，不要再問狀態或關鍵字
 - 工具回傳的結果必須完整顯示給使用者，不要壓縮或摘要成一句話
 - 執行完工具後，直接把工具結果貼出來，不要加多餘的前言或後語
+- 🔴 對話歷史只留文字來回，不留工具呼叫紀錄。這是正常的，不要因為看不到工具紀錄就
+  懷疑或撤回自己上一輪的回答，也不要為此道歉
 
 建立類工具的欄位詢問規則：
 當使用者要「開立電子發票」但沒有提供資料時，顯示完整欄位清單：
@@ -909,7 +967,7 @@ export async function runAgent(
     reply = await anthropic.messages.create({
       model: AI_MODEL_AGENT,
       max_tokens: AI_MAX_TOKENS,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt(),
       tools: allowedTools,
       messages,
     });

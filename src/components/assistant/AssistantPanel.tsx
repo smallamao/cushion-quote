@@ -28,16 +28,42 @@ type PendingAction =
       status: string;
       statusLabel: string;
       warning?: string;
+    }
+  | {
+      type: "notion_booking";
+      summary: string;
+      booking: Record<string, unknown>;
     };
 
 function actionTargetId(a: PendingAction): string {
-  return a.type === "status_change" ? a.orderId : a.purchaseId;
+  if (a.type === "status_change") return a.orderId;
+  if (a.type === "purchase_status_change") return a.purchaseId;
+  return a.summary;
 }
 
-function actionEndpoint(a: PendingAction): string {
-  return a.type === "status_change"
-    ? `/api/sheets/orders/${encodeURIComponent(a.orderId)}/status`
-    : `/api/sheets/purchases/${encodeURIComponent(a.purchaseId)}/status`;
+/** 每個動作打哪支端點、送什麼 */
+function actionRequest(a: PendingAction): { url: string; method: string; body: unknown } {
+  if (a.type === "status_change") {
+    return {
+      url: `/api/sheets/orders/${encodeURIComponent(a.orderId)}/status`,
+      method: "PATCH",
+      body: { status: a.status },
+    };
+  }
+  if (a.type === "purchase_status_change") {
+    return {
+      url: `/api/sheets/purchases/${encodeURIComponent(a.purchaseId)}/status`,
+      method: "PATCH",
+      body: { status: a.status },
+    };
+  }
+  return { url: "/api/notion/bookings", method: "POST", body: a.booking };
+}
+
+function actionDoneText(a: PendingAction): string {
+  return a.type === "notion_booking"
+    ? `✅ 預約已建立：${a.summary}`
+    : `✅ 已將 ${actionTargetId(a)} 改為「${a.statusLabel}」`;
 }
 interface Msg {
   role: "user" | "assistant";
@@ -104,10 +130,11 @@ export function AssistantPanel() {
     if (confirming) return;
     setConfirming(true);
     try {
-      const res = await fetch(actionEndpoint(action), {
-        method: "PATCH",
+      const req = actionRequest(action);
+      const res = await fetch(req.url, {
+        method: req.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: action.status }),
+        body: JSON.stringify(req.body),
       });
       const data = await res.json().catch(() => ({}));
       const ok = res.ok && data.ok !== false;
@@ -116,13 +143,13 @@ export function AssistantPanel() {
         copy.push({
           role: "assistant",
           text: ok
-            ? `✅ 已將 ${actionTargetId(action)} 改為「${action.statusLabel}」`
-            : `⚠️ 改狀態失敗：${data.error ?? res.status}`,
+            ? actionDoneText(action)
+            : `⚠️ 失敗：${data.error ?? data.message ?? res.status}`,
         });
         return copy;
       });
     } catch {
-      setMessages((m) => [...m, { role: "assistant", text: "⚠️ 改狀態連線失敗" }]);
+      setMessages((m) => [...m, { role: "assistant", text: "⚠️ 連線失敗，沒有做任何更動。" }]);
     } finally {
       setConfirming(false);
     }

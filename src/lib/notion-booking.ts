@@ -302,8 +302,10 @@ export async function queryBookings(args: {
   const dbId = await bookingDatabaseId();
   if (!dbId) return "❌ 找不到 Notion「預約紀錄」資料庫。";
 
-  const limit = Math.min(Math.max(Number(args.limit ?? 10), 1), 50);
   const day = (args.date ?? "").trim();
+  // 指定某一天就要給完整的一天，預設 10 筆會把當天後面的客人吃掉
+  //（2026-11-08 實測：問「今天有誰要來」剛好回 10 筆，正好是上限）
+  const limit = Math.min(Math.max(Number(args.limit ?? (day ? 100 : 10)), 1), 100);
   const from = (args.from ?? "").trim();
 
   const filter = day
@@ -327,7 +329,7 @@ export async function queryBookings(args: {
     }),
   });
   if (!res.ok) return `❌ 查詢失敗：${res.status}`;
-  const data = (await res.json()) as { results?: NotionPage[] };
+  const data = (await res.json()) as { results?: NotionPage[]; has_more?: boolean };
   const rows = data.results ?? [];
   if (rows.length === 0) return day ? `${day} 沒有預約。` : "查無預約紀錄。";
 
@@ -345,5 +347,7 @@ export async function queryBookings(args: {
       phone ? `　${phone}` : ""
     }${source ? `　來源${source}` : ""}${status ? `　${status}` : ""}`;
   });
-  return `${day ? `${day} ` : ""}共 ${rows.length} 筆預約：\n${lines.join("\n")}`;
+  // 被截斷就要講，不然使用者會以為這就是全部
+  const more = data.has_more ? `（還有更多沒列出，目前上限 ${limit} 筆）` : "";
+  return `${day ? `${day} ` : ""}共 ${rows.length} 筆預約${more}：\n${lines.join("\n")}`;
 }

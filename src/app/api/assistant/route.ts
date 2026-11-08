@@ -9,14 +9,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { AI_MAX_TOKENS, AI_MODEL_AGENT } from "@/lib/ai-model";
 import { executeTool, readOnlyTools } from "@/lib/agent-tools";
 import {
+  PROPOSE_BOOKING,
+  PROPOSE_BOOKING_TOOL,
   PROPOSE_PURCHASE_STATUS_CHANGE,
   PROPOSE_PURCHASE_STATUS_TOOL,
   PROPOSE_STATUS_CHANGE,
   PROPOSE_STATUS_TOOL,
   STATUS_LABELS,
-  SYSTEM_INSTRUCTION,
+  buildSystemInstruction,
 } from "@/lib/assistant/order-tools";
 import { describePurchaseProposal } from "@/lib/assistant/purchase-proposal";
+import { describeBooking, validateBooking, type BookingInput } from "@/lib/notion-booking";
 import type { OrderStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -40,7 +43,12 @@ interface ChatTurn {
  * 寫入動作一律不給這個面板直接執行——改狀態走 propose，由使用者在畫面按確認。
  */
 function panelTools() {
-  return [...readOnlyTools(), PROPOSE_STATUS_TOOL, PROPOSE_PURCHASE_STATUS_TOOL];
+  return [
+    ...readOnlyTools(),
+    PROPOSE_STATUS_TOOL,
+    PROPOSE_PURCHASE_STATUS_TOOL,
+    PROPOSE_BOOKING_TOOL,
+  ];
 }
 
 const NO_WRITES: ReadonlySet<string> = new Set();
@@ -114,6 +122,8 @@ export async function POST(request: Request) {
 
   try {
     const anthropic = new Anthropic({ apiKey });
+    // 每次請求重算日期：serverless instance 會活過半夜
+    const systemInstruction = buildSystemInstruction();
     let resp: Anthropic.Message | null = null;
     let lastToolResult = "";
 
@@ -121,7 +131,7 @@ export async function POST(request: Request) {
       resp = await anthropic.messages.create({
         model: AI_MODEL_AGENT,
         max_tokens: AI_MAX_TOKENS,
-        system: SYSTEM_INSTRUCTION,
+        system: systemInstruction,
         tools: panelTools(),
         messages,
       });
@@ -130,6 +140,36 @@ export async function POST(request: Request) {
         (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
       );
       if (calls.length === 0) break;
+
+      // 新增預約 → 先驗證，通過才給確認按鈕；真正寫入在使用者按下確認之後。
+      const bookingCall = calls.find((c) => c.name === PROPOSE_BOOKING);
+      if (bookingCall) {
+        const input = (bookingCall.input ?? {}) as BookingInput;
+        const v = validateBooking(input);
+        const reply = v.ok
+          ? [
+              `請確認：要新增這筆預約嗎？`,
+              "",
+              describeBooking(v.booking!),
+              ...(v.warnings.length ? ["", `⚠️ ${v.warnings.join("；")}`] : []),
+            ].join("\n")
+          : `還差一點：${v.errors.join("；")}`;
+        return NextResponse.json({
+          ok: true,
+          reply,
+          pendingAction: v.ok
+            ? { type: "notion_booking", summary: describeBooking(v.booking!), booking: input }
+            : undefined,
+          history: [
+            ...history,
+            { role: "user", text: message },
+            {
+              role: "model",
+              text: v.ok ? `（等待使用者確認新增預約：${describeBooking(v.booking!)}）` : reply,
+            },
+          ],
+        });
+      }
 
       // 採購單改狀態 → 一樣不執行，但確認訊息要先查有沒有內容相同的重複單。
       const purchaseCall = calls.find((c) => c.name === PROPOSE_PURCHASE_STATUS_CHANGE);
