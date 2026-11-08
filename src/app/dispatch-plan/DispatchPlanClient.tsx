@@ -38,12 +38,13 @@ function todayTw(): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
-function addDays(ymd: string, n: number): string {
-  const t = Date.parse(`${ymd}T00:00:00+08:00`) + n * 86_400_000;
-  const d = new Date(t + 8 * 3600_000);
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+/** YYYY-MM ± n 個月 */
+function shiftMonth(ym: string, n: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  const total = y * 12 + (m - 1) + n;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
 }
+
 function fmtDate(ymd: string): string {
   const [, m, d] = ymd.split("-");
   const w = WD[new Date(`${ymd}T00:00:00+08:00`).getDay()];
@@ -56,8 +57,10 @@ export function DispatchPlanClient() {
   const [rules, setRules] = useState<Rules>({ softCap: 4, hardCap: 6, maxRoutes: 3, notifyLeadDays: 3 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [from, setFrom] = useState(todayTw);
-  const [to, setTo] = useState(() => addDays(todayTw(), 30));
+  // 月曆負責「看形狀、挑日子」，下方清單負責「做事」——一格塞不下
+  // 訂單編號＋客戶＋時段＋區域＋建議司機＋按鈕這六樣，手機 7 欄更不可能。
+  const [month, setMonth] = useState(() => todayTw().slice(0, 7));
+  const [picked, setPicked] = useState<string | null>(null);
   const [showExpired, setShowExpired] = useState(false);
   const [error, setError] = useState("");
 
@@ -128,7 +131,7 @@ export function DispatchPlanClient() {
       booked: Scheduled[];
       candidates: Array<{ p: Pending; period: string; rank: number }>;
     }>();
-    const inRange = (d: string) => d >= from && d <= to;
+    const inRange = (d: string) => d.slice(0, 7) === month;
     const touch = (d: string) =>
       map.get(d) ?? (map.set(d, { date: d, booked: [], candidates: [] }), map.get(d)!);
 
@@ -144,7 +147,35 @@ export function DispatchPlanClient() {
     }
     return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, scheduled, from, to, today]);
+  }, [pending, scheduled, month, today]);
+
+  /** 月曆格子：補滿整週，開頭的空格用 null。WD 以週日起算，與 getDay() 一致。 */
+  const cells = useMemo(() => {
+    const [y, m] = month.split("-").map(Number);
+    const first = new Date(Date.UTC(y, m - 1, 1));
+    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const out: Array<string | null> = Array(first.getUTCDay()).fill(null);
+    for (let d = 1; d <= daysInMonth; d += 1) {
+      out.push(`${month}-${String(d).padStart(2, "0")}`);
+    }
+    while (out.length % 7 !== 0) out.push(null);
+    return out;
+  }, [month]);
+
+  /** 每天的摘要，給月曆格子用——只放數字與警示，細節留給下方清單 */
+  const dayInfo = useMemo(() => {
+    const m = new Map<string, { booked: number; candidates: number; overSoft: boolean; overHard: boolean }>();
+    for (const d of days) {
+      const booked = d.booked.length;
+      m.set(d.date, {
+        booked,
+        candidates: d.candidates.filter((c) => !scheduled.some((s) => s.token === c.p.token)).length,
+        overSoft: booked > rules.softCap && booked <= rules.hardCap,
+        overHard: booked > rules.hardCap,
+      });
+    }
+    return m;
+  }, [days, scheduled, rules]);
 
   const assignedTokens = new Set(scheduled.map((s) => s.token));
 
@@ -168,24 +199,84 @@ export function DispatchPlanClient() {
         </button>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-xs text-[var(--text-secondary)]">顯示區間</span>
-        <input
-          type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-          className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-sm"
-        />
-        <span className="text-[var(--text-tertiary)]">～</span>
-        <input
-          type="date" value={to} onChange={(e) => setTo(e.target.value)}
-          className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-sm"
-        />
-        <button
-          type="button"
-          onClick={() => { setFrom(todayTw()); setTo(addDays(todayTw(), 30)); }}
-          className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs hover:bg-[var(--bg-hover)]"
-        >
-          回到今天起 30 天
-        </button>
+      {/* 月曆導覽：點一天就把下方清單收斂到那天，再點一次取消 */}
+      <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button" onClick={() => setMonth(shiftMonth(month, -1))}
+            className="rounded-md border border-[var(--border)] px-2 py-0.5 text-sm hover:bg-[var(--bg-hover)]"
+            aria-label="上個月"
+          >
+            ‹
+          </button>
+          <span className="text-sm font-semibold tabular-nums">{month.replace("-", " / ")}</span>
+          <button
+            type="button" onClick={() => setMonth(shiftMonth(month, 1))}
+            className="rounded-md border border-[var(--border)] px-2 py-0.5 text-sm hover:bg-[var(--bg-hover)]"
+            aria-label="下個月"
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMonth(todayTw().slice(0, 7)); setPicked(null); }}
+            className="ml-auto rounded-md border border-[var(--border)] px-2.5 py-1 text-xs hover:bg-[var(--bg-hover)]"
+          >
+            回到本月
+          </button>
+          {picked && (
+            <button
+              type="button" onClick={() => setPicked(null)}
+              className="rounded-md border border-[var(--accent)] px-2.5 py-1 text-xs text-[var(--accent)]"
+            >
+              顯示整月
+            </button>
+          )}
+        </div>
+
+        <div className="mt-2 grid grid-cols-7 gap-1 text-center text-[11px] text-[var(--text-tertiary)]">
+          {WD.map((w) => <div key={w}>{w}</div>)}
+        </div>
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {cells.map((cell, i) => {
+            if (!cell) return <div key={`b${i}`} />;
+            const info = dayInfo.get(cell);
+            const isToday = cell === today;
+            const isPicked = cell === picked;
+            const dim = cell < today;
+            return (
+              <button
+                key={cell}
+                type="button"
+                onClick={() => setPicked(isPicked ? null : cell)}
+                className={[
+                  "min-h-[3.1rem] rounded-md border p-1 text-left transition-colors",
+                  isPicked ? "border-[var(--accent)] bg-[var(--bg-subtle)]" : "border-[var(--border)]",
+                  dim ? "opacity-40" : "hover:bg-[var(--bg-hover)]",
+                ].join(" ")}
+              >
+                <div className={`text-[11px] tabular-nums ${isToday ? "font-bold text-[var(--accent)]" : "text-[var(--text-secondary)]"}`}>
+                  {Number(cell.slice(8))}
+                </div>
+                {info && (
+                  <div className="mt-0.5 space-y-0.5 leading-tight">
+                    {info.booked > 0 && (
+                      <div className={`rounded px-1 text-[10px] ${
+                        info.overHard ? "bg-red-100 text-red-700"
+                        : info.overSoft ? "bg-amber-100 text-amber-800"
+                        : "bg-emerald-100 text-emerald-800"}`}>
+                        排 {info.booked}
+                      </div>
+                    )}
+                    {info.candidates > 0 && (
+                      <div className="text-[10px] text-[var(--text-tertiary)]">候 {info.candidates}</div>
+                    )}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
@@ -227,7 +318,7 @@ export function DispatchPlanClient() {
       )}
 
       <div className="mt-4 space-y-3">
-        {days.map((d) => {
+        {days.filter((d) => !picked || d.date === picked).map((d) => {
           // 🔴 路線數用「已排定的縣市數」估，不用候選——候選只是客人想要，還沒成立。
           //    老闆 2026-11-01：淡水＋土城同一天可以（都算新北，一條路線），
           //    早上新竹下午台北是兩條。所以跨縣市本身不是問題，跨太多條才是。
