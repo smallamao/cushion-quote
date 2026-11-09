@@ -8,7 +8,7 @@ import { Loader2 } from "lucide-react";
 //    當 fallback，等於三份真相。dispatch-rules 是純常數＋純函式、沒有
 //    server-only，前端可以直接用——改常數兩邊一起動，fetch 失敗也不會
 //    默默套到舊數字。
-import { HARD_CAP, isStorageOverdue, SOFT_CAP } from "@/lib/dispatch-rules";
+import { driverLoad, HARD_CAP, isStorageOverdue, SOFT_CAP } from "@/lib/dispatch-rules";
 
 /**
  * 排車視圖：把客人給的希望時段攤成「一天一張卡」，供人工排車。
@@ -25,6 +25,8 @@ interface Pending {
   dueDate: string; weekKey: string; slots: Slot[];
   region: string; city: string; isRemote: boolean; regionUnknown: boolean;
   driver: { name: string; note: string };
+  /** 卡片上目前實際掛的司機標籤；空＝還沒指派。與 driver（建議）不同。 */
+  assignedDriver: string;
   /** 只給一組時段＝沒有彈性（常見原因：舊沙發要配合清潔隊），要最先鎖定 */
   locked: boolean;
 }
@@ -32,7 +34,10 @@ interface Scheduled {
   token: string; orderNumber: string; customerName: string;
   date: string; period: string; slots: Slot[]; dueDate: string;
   region: string; city: string; isRemote: boolean;
+  /** 這一趟是誰跑；空＝卡上還沒掛司機標籤。容量按這個分組。 */
+  assignedDriver: string;
 }
+
 
 const WD = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -168,12 +173,13 @@ export function DispatchPlanClient() {
   const dayInfo = useMemo(() => {
     const m = new Map<string, { booked: number; candidates: number; overSoft: boolean; overHard: boolean }>();
     for (const d of days) {
-      const booked = d.booked.length;
+      // 門檻比的是「單一司機的最高趟數」，不是當天總數
+      const peak = driverLoad(d.booked).peak?.trips ?? 0;
       m.set(d.date, {
-        booked,
+        booked: d.booked.length,
         candidates: d.candidates.filter((c) => !scheduled.some((s) => s.token === c.p.token)).length,
-        overSoft: booked > SOFT_CAP && booked <= HARD_CAP,
-        overHard: booked > HARD_CAP,
+        overSoft: peak > SOFT_CAP && peak <= HARD_CAP,
+        overHard: peak > HARD_CAP,
       });
     }
     return m;
@@ -327,8 +333,12 @@ export function DispatchPlanClient() {
           //    縣市數跟順不順路也沒有對應——三峽＋瑞芳同屬新北但很遠，
           //    2026-02-07 跨苗栗＋新北＋桃園卻跑了 7 趟。判斷留給人。
           const cities = [...new Set(d.booked.map((b) => b.city).filter(Boolean))];
-          const overHard = d.booked.length > HARD_CAP;
-          const overSoft = !overHard && d.booked.length > SOFT_CAP;
+          // 門檻比「單一司機的最高趟數」，不是當天總數——總數會把阿富的台東單
+          // 算進台北的額度裡（老闆 2026-11-09）
+          const load = driverLoad(d.booked);
+          const peak = load.peak?.trips ?? 0;
+          const overHard = peak > HARD_CAP;
+          const overSoft = !overHard && peak > SOFT_CAP;
           return (
             <div key={d.date} className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -338,12 +348,25 @@ export function DispatchPlanClient() {
                 </span>
                 {overHard && (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
-                    🚨 已排 {d.booked.length} 趟，超過上限 {HARD_CAP}
+                    🚨 {load.peak?.name} 一天 {peak} 趟，超過上限 {HARD_CAP}
                   </span>
                 )}
                 {overSoft && (
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
-                    ⚠️ 已排 {d.booked.length} 趟，偏多（常態 {SOFT_CAP} 以內）
+                    ⚠️ {load.peak?.name} 一天 {peak} 趟，偏多（常態 {SOFT_CAP} 以內）
+                  </span>
+                )}
+                {load.perDriver.length > 1 && (
+                  <span className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">
+                    🚚 {load.perDriver.map((x) => `${x.name} ${x.trips}`).join("・")}
+                  </span>
+                )}
+                {load.unassigned > 0 && (
+                  <span
+                    className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]"
+                    title="卡片上還沒掛司機標籤，所以這幾趟沒有算進任何人的額度。系統不猜是誰。"
+                  >
+                    ❓ {load.unassigned} 趟未指派司機
                   </span>
                 )}
                 {cities.length > 0 && (

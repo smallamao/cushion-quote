@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   HARD_CAP, MAX_STORAGE_DAYS, SOFT_CAP,
-  isStorageOverdue, productionStage, suggestDriver,
+  driverLoad, isStorageOverdue, productionStage, suggestDriver,
 } from "@/lib/dispatch-rules";
+import { driverNameFromLabelIds, TRELLO } from "@/lib/trello-constants";
 
 describe("派車規則（老闆 2026-11-01 口述，經 Trello 歷史驗證）", () => {
   /**
@@ -79,5 +80,81 @@ describe("productionStage：製作進度看卡片在哪個清單", () => {
   it("卡片被刪或清單不認得時回「位置不明」，不可當成可排車", () => {
     expect(productionStage(undefined).key).toBe("unknown");
     expect(productionStage("不存在的清單").plannable).toBe(false);
+  });
+});
+
+/**
+ * 🔴 容量改成「每位司機各自算」（老闆 2026-11-09 拍板）。
+ *    先前算當天總趟數，兩種情況都會錯：
+ *      - 阿富跑台東那一趟吃掉台北的額度 → 誤報
+ *      - 5 趟全壓在阿信身上，看起來跟兩人各 2-3 趟一樣安全 → 該報的沒報
+ */
+describe("driverLoad — 趟數分到各司機頭上", () => {
+  it("同一位司機的趟數要累加，peak 取最高的那位", () => {
+    const r = driverLoad([
+      { assignedDriver: "阿信" }, { assignedDriver: "阿信" },
+      { assignedDriver: "阿信" }, { assignedDriver: "簡先生" },
+    ]);
+    expect(r.peak).toEqual({ name: "阿信", trips: 3 });
+    expect(r.perDriver).toEqual([{ name: "阿信", trips: 3 }, { name: "簡先生", trips: 1 }]);
+    expect(r.unassigned).toBe(0);
+  });
+
+  it("阿富的台東單不會算進阿信的額度（這是改動的主因）", () => {
+    // 總數 5 趟會超過 SOFT_CAP=4，但沒有任何一位司機超過
+    const r = driverLoad([
+      { assignedDriver: "阿信" }, { assignedDriver: "阿信" },
+      { assignedDriver: "阿信" }, { assignedDriver: "阿信" },
+      { assignedDriver: "阿富" },
+    ]);
+    expect(r.peak?.trips).toBe(4);
+    expect(r.peak!.trips).toBeLessThanOrEqual(SOFT_CAP); // 不該示警
+  });
+
+  it("反過來：全部壓在一個人身上要抓出來", () => {
+    const r = driverLoad(Array.from({ length: 9 }, () => ({ assignedDriver: "阿信" })));
+    expect(r.peak?.trips).toBe(9);
+    expect(r.peak!.trips).toBeGreaterThan(HARD_CAP); // 要示警
+  });
+
+  it("未指派的不併進任何人，單獨回報（猜成主力會算錯別人的帳）", () => {
+    const r = driverLoad([
+      { assignedDriver: "" }, { assignedDriver: "" }, { assignedDriver: "阿信" },
+    ]);
+    expect(r.unassigned).toBe(2);
+    expect(r.peak).toEqual({ name: "阿信", trips: 1 });
+    expect(r.perDriver).toHaveLength(1);
+  });
+
+  it("空的一天：peak 為 null，呼叫端不能當成 0 趟以外的東西", () => {
+    const r = driverLoad([]);
+    expect(r.peak).toBeNull();
+    expect(r.perDriver).toEqual([]);
+    expect(r.unassigned).toBe(0);
+  });
+});
+
+describe("driverNameFromLabelIds — 從卡片標籤認司機", () => {
+  it("認得現役四位司機", () => {
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_SHIN])).toBe("阿信");
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_FU])).toBe("阿富");
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_YA])).toBe("葉先生");
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_JIAN])).toBe("簡先生");
+  });
+
+  it("認得已停止配合的羅先生／范先生——歷史卡片上還掛著", () => {
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_LOU])).toBe("羅先生");
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_FAN])).toBe("范先生");
+  });
+
+  it("沒有司機標籤回空字串，不猜成主力司機", () => {
+    expect(driverNameFromLabelIds([TRELLO.LABELS.URGENT])).toBe("");
+    expect(driverNameFromLabelIds([])).toBe("");
+    expect(driverNameFromLabelIds(undefined)).toBe("");
+  });
+
+  it("夾雜其他標籤時仍找得到司機", () => {
+    expect(driverNameFromLabelIds([TRELLO.LABELS.URGENT, TRELLO.LABELS.ASSEMBLY, TRELLO.LABELS.DRIVER_FU]))
+      .toBe("阿富");
   });
 });

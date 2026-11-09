@@ -327,11 +327,15 @@ export function readDepositState(card: BoardCardWithChecklists): DepositState {
  */
 export async function getBoardCardsWithDesc(
   boardId: string,
-): Promise<Array<BoardCardLite & { desc: string }>> {
-  return trelloJson<Array<BoardCardLite & { desc: string }>>(`boards/${boardId}/cards`, {
-    fields: "name,due,idList,desc",
-    customFieldItems: "true",
-  });
+): Promise<Array<BoardCardLite & { desc: string; idLabels: string[] }>> {
+  // 🔴 idLabels 是 2026-11-09 加的：排車視圖要把趟數分到各司機頭上，
+  //    而「這張單是誰跑」只存在卡片的司機標籤裡。少抓這個欄位的話
+  //    每一筆都會變成「未指派」——跟先前漏抓 desc 導致區域全變「需確認」
+  //    是同一種錯，所以這次改完有實查 28/28 已排定的單都認得出司機。
+  return trelloJson<Array<BoardCardLite & { desc: string; idLabels: string[] }>>(
+    `boards/${boardId}/cards`,
+    { fields: "name,due,idList,desc,idLabels", customFieldItems: "true" },
+  );
 }
 
 export function getCustomFieldDate(card: BoardCardLite, fieldId: string): string {

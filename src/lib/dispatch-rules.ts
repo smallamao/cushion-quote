@@ -120,3 +120,33 @@ export function productionStage(idList: string | undefined): ProductionStage {
     STAGE_BY_LIST[idList ?? ""] ?? { key: "unknown", label: "位置不明", plannable: false }
   );
 }
+
+/**
+ * 一天的趟數分到各司機頭上。
+ *
+ * 🔴 容量**每位司機各自算**（老闆 2026-11-09 拍板）。先前是算當天總趟數，
+ *    那在兩種情況下都給錯答案：
+ *      - 阿富跑台東那一趟會吃掉台北的額度 → 誤報「偏多」
+ *      - 5 趟全壓在阿信一個人身上，看起來跟兩人各 2-3 趟一樣安全 → 該報的沒報
+ *    實測各司機單日最大值差很多：阿信 7、簡先生 3、阿富 1（台東一趟耗一天）。
+ *
+ * 未指派的單**不併入任何人**，單獨回報。猜成主力司機會把別人的趟數算到
+ * 阿信頭上，比留白更糟（同 delivery-region.ts「抓不到就不猜」的理由）。
+ */
+export function driverLoad(booked: readonly { assignedDriver: string }[]): {
+  perDriver: Array<{ name: string; trips: number }>;
+  unassigned: number;
+  /** 單一司機的最高趟數——示警看這個，不看總數 */
+  peak: { name: string; trips: number } | null;
+} {
+  const counts = new Map<string, number>();
+  let unassigned = 0;
+  for (const b of booked) {
+    if (!b.assignedDriver) { unassigned++; continue; }
+    counts.set(b.assignedDriver, (counts.get(b.assignedDriver) ?? 0) + 1);
+  }
+  const perDriver = [...counts.entries()]
+    .map(([name, trips]) => ({ name, trips }))
+    .sort((a, b) => b.trips - a.trips);
+  return { perDriver, unassigned, peak: perDriver[0] ?? null };
+}

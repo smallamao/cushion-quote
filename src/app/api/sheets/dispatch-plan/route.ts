@@ -10,7 +10,7 @@ import { parseDeliveryRegion } from "@/lib/delivery-region";
 import { suggestDriver } from "@/lib/dispatch-rules";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import { normalizeDeliveryPeriod } from "@/lib/material-confirm-types";
-import { TRELLO } from "@/lib/trello-constants";
+import { driverNameFromLabelIds, TRELLO } from "@/lib/trello-constants";
 import { addCardCommentUnlessTest, getBoardCardsWithDesc } from "@/lib/trello-server";
 
 /**
@@ -38,9 +38,10 @@ export async function GET(request: Request) {
       listConfirms(),
       getBoardCardsWithDesc(TRELLO.BOARD_ID).catch(() => []),
     ]);
-    // 地址在卡片描述裡，沒有獨立欄位
-    const descById = new Map(
-      (cards as Array<{ id: string; desc?: string }>).map((c) => [c.id, c.desc ?? ""]),
+    // 地址在卡片描述裡，沒有獨立欄位；司機在卡片的標籤裡，也沒有獨立欄位。
+    const descById = new Map(cards.map((c) => [c.id, c.desc ?? ""]));
+    const driverById = new Map(
+      cards.map((c) => [c.id, driverNameFromLabelIds(c.idLabels)]),
     );
 
     const pending = confirms
@@ -61,6 +62,8 @@ export async function GET(request: Request) {
           isRemote: region.isRemote,
           regionUnknown: region.unknown,
           driver: suggestDriver(region.city),
+          /** 卡片上目前實際掛的司機標籤；空＝還沒指派。不要跟 driver（建議）混用。 */
+          assignedDriver: driverById.get(c.cardId) ?? "",
           /**
            * 只給一組時段＝完全沒有彈性，要最先鎖定。
            * 老闆 2026-11-01：有些是舊沙發要配合清潔隊時間，改不了。
@@ -87,6 +90,13 @@ export async function GET(request: Request) {
           region: region.label,
           city: region.city,
           isRemote: region.isRemote,
+          /**
+           * 這一趟是誰跑。容量要**每位司機各自算**（老闆 2026-11-09 拍板）：
+           * 阿富去台東那趟不該吃掉台北的額度，反過來 5 趟全壓在阿信身上
+           * 也不該看起來跟兩人各 2-3 趟一樣安全。
+           * 空字串＝卡上還沒掛司機標籤，呼叫端要單獨呈現、不要猜成主力。
+           */
+          assignedDriver: driverById.get(c.cardId) ?? "",
         };
       });
 

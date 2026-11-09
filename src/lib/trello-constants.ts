@@ -148,3 +148,42 @@ export const DRIVER_LIST: DriverInfo[] = [
   // 阿信排不下時由他接手；北部每一個縣市都有兩人可跑，沒有單點依賴。
   { key: "jian", title: "簡先生 (北台灣支援)", confirmTitle: "簡大哥～", phoneNumber: "0910347260", labelId: TRELLO.LABELS.DRIVER_JIAN, serviceArea: "台北、新北、桃園、新竹（支援）" },
 ];
+
+/**
+ * 卡片上掛的司機標籤 → 短名稱（排車視圖用它把趟數分到人頭上）。
+ *
+ * 🔴 為什麼需要：先前排車視圖的容量是算「當天全部趟數」，不分司機。
+ *    那會在兩種情況下給錯答案（老闆 2026-11-09 拍板改成每人各自算）：
+ *      - 阿富跑台東那一趟會吃掉台北的額度，示警誤報
+ *      - 反過來，5 趟全壓在阿信一個人身上時，看起來跟兩人各 2-3 趟一樣安全
+ *    實測佐證：各司機單日最大值差很多——阿信 7、簡先生 3、阿富 1（台東一趟耗一天）。
+ *
+ * 🔴 含已停止配合的羅先生／范先生：舊卡片上還掛著那兩個標籤，
+ *    要能認出來才不會把歷史單算成「未指派」。他們不在 DRIVER_LIST
+ *    （那是「現在能派的人」），但標籤是歷史事實。
+ */
+const DRIVER_LABEL_NAMES: Record<string, string> = {
+  [TRELLO.LABELS.DRIVER_SHIN]: "阿信",
+  [TRELLO.LABELS.DRIVER_YA]: "葉先生",
+  [TRELLO.LABELS.DRIVER_FU]: "阿富",
+  [TRELLO.LABELS.DRIVER_JIAN]: "簡先生",
+  [TRELLO.LABELS.DRIVER_HANG]: "志航",
+  [TRELLO.LABELS.DRIVER_LOU]: "羅先生",
+  [TRELLO.LABELS.DRIVER_FAN]: "范先生",
+};
+
+/**
+ * 從卡片的 idLabels 認出司機。沒有司機標籤時回空字串——
+ * **不要**猜成主力司機：猜錯會把別人的趟數算到阿信頭上，比留白更糟
+ * （同 delivery-region.ts「抓不到就回 null，不猜」的理由）。
+ *
+ * 一張卡理論上只該有一個司機標籤（shipping-notice 指派前會先清掉全部），
+ * 真的有多個時取第一個認得的，並在呼叫端當「已指派」處理。
+ */
+export function driverNameFromLabelIds(idLabels: readonly string[] | undefined): string {
+  for (const id of idLabels ?? []) {
+    const name = DRIVER_LABEL_NAMES[id];
+    if (name) return name;
+  }
+  return "";
+}
