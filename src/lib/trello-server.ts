@@ -515,9 +515,30 @@ export async function getDeliveryInfo(cardId: string): Promise<DeliveryInfo> {
   };
 }
 
-/** 設定卡片出貨日（Trello due）。 */
+/**
+ * 設定卡片出貨日（Trello due）。
+ *
+ * 🔴 一定要把 dueComplete 的現值一起送回去，否則 Trello 會把它清成 false。
+ *    官方 API 文件沒有記載這個連動，是 2026-11-08 從卡片歷史查出來的：
+ *    P6285 與 P6302 都出現「改 due」與「dueComplete true→false」同一秒的紀錄。
+ *    本系統用 dueComplete 代表「出貨通知已發」（見 shipping-notice 的
+ *    onShippingCopied），被清掉就等於內勤看不出哪些客人已經通知過，
+ *    只能重新問一輪——那正是老闆說的「來回不斷確認」的一部分來源。
+ *
+ *    這裡先讀再寫、而不是叫呼叫端傳進來，是因為三個呼叫端（客人選時段、
+ *    司機單筆挑日、司機批次挑日）手上都只有 cardId，拿不到這個值；
+ *    getDeliveryInfo 也只抓 name/desc/labels。多一次 GET 是可接受的代價：
+ *    這些端點一週只會被按幾次。
+ */
 export async function setCardDue(cardId: string, dueIso: string): Promise<void> {
-  await trelloJson(`cards/${cardId}`, { due: dueIso }, { method: "PUT" });
+  const current = await trelloJson<{ dueComplete?: boolean }>(`cards/${cardId}`, {
+    fields: "dueComplete",
+  });
+  await trelloJson(
+    `cards/${cardId}`,
+    { due: dueIso, dueComplete: String(current?.dueComplete ?? false) },
+    { method: "PUT" },
+  );
 }
 
 
