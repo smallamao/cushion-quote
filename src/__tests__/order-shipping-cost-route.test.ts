@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ORDER_RANGE_IDS, orderRowToRecord } from "@/lib/order-utils";
+import { ORDER_COL, ORDER_RANGE_IDS, columnLetter, orderRecordToRow, orderRowToRecord } from "@/lib/order-utils";
 
 /** 假訂單表：rows[i] = 第 i+2 列 */
 const sheet = vi.hoisted(() => ({ rows: [] as string[][], role: "admin" as string | null }));
@@ -33,7 +33,7 @@ vi.mock("@/lib/sheets-client", () => ({
             batchUpdate(req);
             for (const d of req.requestBody.data) {
               const m = /!([A-Z]+)(\d+)$/.exec(d.range)!;
-              const col = m[1] === "S" ? 18 : m[1] === "AF" ? 31 : -1;
+              const col = [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
               sheet.rows[Number(m[2]) - 2][col] = d.values[0][0];
             }
             return {};
@@ -49,7 +49,7 @@ const { PATCH } = await import("@/app/api/sheets/orders/[id]/shipping-cost/route
 function orderRow(id: string, shippingCost: number): string[] {
   const r = Array<string>(52).fill("");
   r[0] = id;
-  r[18] = String(shippingCost);
+  r[ORDER_COL.shippingCost] = String(shippingCost);
   return r;
 }
 
@@ -67,8 +67,20 @@ beforeEach(() => {
 });
 
 describe("PATCH /api/sheets/orders/[id]/shipping-cost", () => {
-  it("欄位 S 確實對應 shippingCost（防欄位位移）", () => {
-    expect(orderRowToRecord(orderRow("X", 123)).shippingCost).toBe(123);
+  it("columnLetter：索引 → A1 欄名", () => {
+    expect([0, 18, 25, 26, 31, 51].map(columnLetter)).toEqual(["A", "S", "Z", "AA", "AF", "AZ"]);
+  });
+
+  it("ORDER_COL 的位置跟 orderRowToRecord／orderRecordToRow 讀寫的位置一致（防欄位位移）", () => {
+    const row = Array<string>(52).fill("");
+    row[ORDER_COL.shippingCost] = "123";
+    row[ORDER_COL.updatedAt] = "2026-11-09T00:00:00.000Z";
+    const rec = orderRowToRecord(row);
+    expect(rec.shippingCost).toBe(123);
+    expect(rec.updatedAt).toBe("2026-11-09T00:00:00.000Z");
+    const written = orderRecordToRow({ ...rec, shippingCost: 4567, updatedAt: "U-MARK" });
+    expect(written[ORDER_COL.shippingCost]).toBe("4567");
+    expect(written[ORDER_COL.updatedAt]).toBe("U-MARK");
   });
 
   it("非 admin 被擋、不寫入", async () => {
@@ -84,9 +96,12 @@ describe("PATCH /api/sheets/orders/[id]/shipping-cost", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, shippingCost: 1500 });
     const ranges = batchUpdate.mock.calls[0][0].requestBody.data.map((d: { range: string }) => d.range);
-    expect(ranges).toEqual(["訂製訂單!S3", "訂製訂單!AF3"]);
-    expect(sheet.rows[1][18]).toBe("1500");
-    expect(sheet.rows[0][18]).toBe("0");
+    expect(ranges).toEqual([
+      `訂製訂單!${columnLetter(ORDER_COL.shippingCost)}3`,
+      `訂製訂單!${columnLetter(ORDER_COL.updatedAt)}3`,
+    ]);
+    expect(sheet.rows[1][ORDER_COL.shippingCost]).toBe("1500");
+    expect(sheet.rows[0][ORDER_COL.shippingCost]).toBe("0");
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ targetId: "ORD-B", action: "update" }));
   });
 

@@ -3,7 +3,15 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api-auth";
 import { appendAuditLog } from "@/lib/audit-log";
 import { updateNotionPageIfExists } from "@/lib/notion-order";
-import { ORDER_RANGE_IDS, ORDER_ROW_RANGE, ORDER_SHEET, isoNow, orderRowToRecord } from "@/lib/order-utils";
+import {
+  ORDER_COL,
+  ORDER_RANGE_IDS,
+  ORDER_ROW_RANGE,
+  ORDER_SHEET,
+  columnLetter,
+  isoNow,
+  orderRowToRecord,
+} from "@/lib/order-utils";
 import { getSheetsClient } from "@/lib/sheets-client";
 
 // PATCH /api/sheets/orders/[id]/shipping-cost
@@ -14,9 +22,9 @@ import { getSheetsClient } from "@/lib/sheets-client";
 //  - 是「設定」不是「累加」：同一個值寫兩次無害（目前值已等於目標就直接回成功、不寫）。
 //  - expectedCurrent 是畫面上看到的舊值；跟表上目前的值不同就回 409，避免拿過期畫面蓋掉新資料。
 
-/** 欄位位置對應 orderRowToRecord：row[18] = shippingCost、row[31] = updatedAt */
-const SHIPPING_COST_COL = "S";
-const UPDATED_AT_COL = "AF";
+/** 欄名從 order-utils 的欄位位置推出（不寫死），跟 orderRowToRecord 讀的是同一份 */
+const SHIPPING_COST_COL = columnLetter(ORDER_COL.shippingCost);
+const UPDATED_AT_COL = columnLetter(ORDER_COL.updatedAt);
 
 interface RouteContext {
   params: Promise<{ id: string }>;

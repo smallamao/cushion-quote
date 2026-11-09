@@ -7,6 +7,28 @@ export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
   `${ORDER_SHEET}!A${sheetRow}:AZ${sheetRow}`;
 
+/**
+ * 需要「單格寫入」的欄位在列裡的位置（0 起算）。orderRowToRecord 也用這份讀，
+ * 單格寫入的 A1 欄名用 orderColumnLetter 從這裡推出——欄位位移時只改這裡，兩邊一起跟著動。
+ * orderRecordToRow 是照順序排的陣列，位置一致性由 order-shipping-cost-route 測試把關。
+ */
+export const ORDER_COL = {
+  shippingCost: 18,
+  updatedAt: 31,
+} as const;
+
+/** 0 起算的欄位索引 → A1 欄名（0 → A、25 → Z、26 → AA） */
+export function columnLetter(index: number): string {
+  let n = index + 1;
+  let out = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    out = String.fromCharCode(65 + rem) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+
 function toNumber(value: string | undefined): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -61,7 +83,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     quotedAmount: toNumber(row[15]),
     materialCost: toNumber(row[16]),
     laborCost: toNumber(row[17]),
-    shippingCost: toNumber(row[18]),
+    shippingCost: toNumber(row[ORDER_COL.shippingCost]),
     otherCost: toNumber(row[19]),
     materialName: row[20] ?? "",
     materialCode: row[21] ?? "",
@@ -87,7 +109,7 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     isArchived: toBoolean(row[28]),
     internalNotes: row[29] ?? "",
     createdAt: row[30] ?? "",
-    updatedAt: row[31] ?? "",
+    updatedAt: row[ORDER_COL.updatedAt] ?? "",
     createdBy: row[32] ?? "",
     materialPurchases: parseJsonSafe<MaterialPurchase[]>(row[33], []),
     notionPageId: row[47] ?? "",

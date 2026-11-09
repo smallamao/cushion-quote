@@ -27,7 +27,7 @@
 import fs from "fs";
 import path from "path";
 
-import { config as loadEnv } from "dotenv";
+import { loadEnvConfig } from "@next/env";
 import { GoogleAuth } from "google-auth-library";
 import { google } from "googleapis";
 
@@ -38,7 +38,7 @@ import { annotateLedger, type LedgerAnnotation } from "@/lib/ledger-annotate";
 import { ORDER_RANGE_DATA, orderRowToRecord } from "@/lib/order-utils";
 import type { ARWithSchedules, BankTransaction } from "@/lib/types";
 
-loadEnv({ path: path.join(process.cwd(), ".env.local") });
+loadEnvConfig(process.cwd());
 
 interface Args {
   files: string[];
