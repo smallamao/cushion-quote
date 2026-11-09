@@ -117,6 +117,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 
 const UNIT_OPTIONS: ItemUnit[] = ["只", "式", "件", "才", "組", "碼", "張", "片"];
 
@@ -345,14 +346,14 @@ function SortableQuoteItemRow({
           className="px-3 py-2"
           style={{ width: colWidths.itemName, minWidth: COL_MIN.itemName }}
         >
-          <textarea
+          <AutoGrowTextarea
             rows={3}
             value={item.name}
             onChange={(e) =>
               onUpdateItem(item.id, { name: e.target.value })
             }
             placeholder="商品名稱 / 描述"
-            className="w-full resize-none rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-sm leading-snug text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+            className="w-full rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-sm leading-snug text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
           />
           <div className="flex items-center gap-2 px-1">
             {item.isCostItem && (
@@ -457,12 +458,12 @@ function SortableQuoteItemRow({
             <div className="flex gap-4">
               <div className="flex-1">
                 <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">備註</div>
-                <textarea
+                <AutoGrowTextarea
                   rows={2}
                   value={item.notes}
                   onChange={(e) => onUpdateItem(item.id, { notes: e.target.value })}
                   placeholder="內部備註，不會顯示在報價單上..."
-                  className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+                  className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
                 />
               </div>
               {showManualCostInput && (

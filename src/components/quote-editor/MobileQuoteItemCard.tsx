@@ -10,6 +10,7 @@ import {
 import React, { useRef } from "react";
 
 import { Input } from "@/components/ui/input";
+import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import {
   Select,
   SelectContent,
@@ -86,12 +87,12 @@ export function MobileQuoteItemCard({
       {/* Name field */}
       <div className="mb-3">
         <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">商品名稱</div>
-        <textarea
+        <AutoGrowTextarea
           rows={2}
           value={item.name}
           onChange={(e) => onUpdateItem(item.id, { name: e.target.value })}
           placeholder="商品名稱 / 描述"
-          className="w-full resize-none rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1.5 text-sm leading-snug text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+          className="w-full rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1.5 text-sm leading-snug text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] hover:border-[var(--border)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
         />
       </div>
 
@@ -166,12 +167,12 @@ export function MobileQuoteItemCard({
           {/* Notes */}
           <div>
             <div className="mb-1 text-[11px] text-[var(--text-tertiary)]">備註</div>
-            <textarea
+            <AutoGrowTextarea
               rows={2}
               value={item.notes}
               onChange={(e) => onUpdateItem(item.id, { notes: e.target.value })}
               placeholder="內部備註，不會顯示在報價單上..."
-              className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
+              className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-tertiary)] focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--accent)]"
             />
           </div>
 
