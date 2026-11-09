@@ -101,6 +101,21 @@ async function addCardLabel(cardId: string, labelId: string): Promise<void> {
   if (!res.ok) throw new Error(`Trello POST 失敗 ${res.status}`);
 }
 
+/**
+ * 設定卡片的出貨時間。
+ *
+ * 🔴 `dueComplete` 是必填，而且呼叫端幾乎都該帶「卡片現在的值」：
+ *    Trello 改 due 時若不一併送 dueComplete，會把它**自動清成 false**。
+ *    官方 API 文件沒有寫這件事，是 2026-11-08 從卡片歷史查出來的——
+ *    P6285 與 P6302 都出現同一分鐘內的序列：
+ *      移到待出貨 + dueComplete false→true（複製出貨通知）
+ *      → due 被改 → dueComplete true→false（勾被清掉）
+ *    而本系統用 dueComplete 代表「出貨通知已發」，被清掉就等於
+ *    內勤看不出哪些客人已經通知過，只能重新問一輪。
+ *
+ *    所以只有「真的要改變通知狀態」時才傳字面值（例如 onShippingCopied
+ *    傳 true＝通知剛發出）；其餘一律傳 card.dueComplete ?? false。
+ */
 async function updateCardDue(cardId: string, iso: string, dueComplete: boolean): Promise<void> {
   await trelloPutQ(`cards/${cardId}`, { due: iso, dueComplete: String(dueComplete) });
 }
@@ -535,7 +550,9 @@ function ShippingSettings({ card, customFields, drivers, onBack }: ShippingSetti
       // Update due date if set
       if (shippingDatetime) {
         const iso = new Date(shippingDatetime).toISOString();
-        await updateCardDue(card.id, iso, false);
+        // 🔴 一定要帶現值：這裡原本硬寫 false，於是「更改」司機或出貨時間時
+        //    會把已發出的出貨通知標記默默清掉（見 updateCardDue 的註解）。
+        await updateCardDue(card.id, iso, card.dueComplete ?? false);
       }
       setSaveMsg("✓ 已更新");
       setTimeout(() => setSaveMsg(""), 3000);
