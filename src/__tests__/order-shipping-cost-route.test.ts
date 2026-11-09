@@ -13,6 +13,7 @@ const sheet = vi.hoisted(() => ({
   afterFirstWrite: null as null | ((rows: string[][]) => void),
 }));
 const audit = vi.hoisted(() => vi.fn());
+const notify = vi.hoisted(() => vi.fn());
 const batchUpdate = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api-auth", () => ({
@@ -22,6 +23,7 @@ vi.mock("@/lib/api-auth", () => ({
   },
 }));
 vi.mock("@/lib/audit-log", () => ({ appendAuditLog: audit }));
+vi.mock("@/lib/notifications-sheet", () => ({ appendNotification: notify }));
 vi.mock("@/lib/notion-order", () => ({ updateNotionPageIfExists: async () => false }));
 vi.mock("@/lib/sheets-client", () => ({
   getSheetsClient: async () => ({
@@ -84,6 +86,7 @@ beforeEach(() => {
   sheet.beforeFirstWrite = null;
   sheet.afterFirstWrite = null;
   audit.mockReset();
+  notify.mockReset();
   batchUpdate.mockReset();
 });
 
@@ -179,7 +182,10 @@ describe("PATCH /api/sheets/orders/[id]/shipping-cost", () => {
     expect(sheet.rows[1][ORDER_COL.shippingCost]).toBe("800");
     expect(sheet.rows[1][ORDER_COL.updatedAt]).toBe("OLD-STAMP-B");
     expect(sheet.rows[2][ORDER_COL.shippingCost]).toBe("800");
-    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ targetId: "ORD-B", summary: expect.stringContaining("列位置變動") }));
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ targetId: "ORD-B", summary: expect.stringContaining("需人工核對") }));
+    // 被誤寫那張單的原值不明 → 不能寫「已還原」，而且要發通知給老闆
+    expect(audit.mock.calls.at(-1)?.[0].summary).not.toContain("已還原");
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ type: "shipping_cost_write_conflict", body: expect.stringContaining("第 3 列") }));
   });
 
   it("寫完才有人插入列（寫入已落在本單）→ 照常成功、不還原", async () => {

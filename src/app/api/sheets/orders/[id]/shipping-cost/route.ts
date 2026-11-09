@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/api-auth";
 import { appendAuditLog } from "@/lib/audit-log";
+import { appendNotification } from "@/lib/notifications-sheet";
 import { updateNotionPageIfExists } from "@/lib/notion-order";
 import {
   ORDER_COL,
@@ -141,14 +142,25 @@ export async function PATCH(request: Request, context: RouteContext) {
         afterRow = await readRawRow(landedRow.sheetRow);
       } else {
         if (landedRow) await writeCells(landedRow.sheetRow, prevShippingCostCell, prevUpdatedAtCell);
+        // 注意：補寫的是「本單」寫入前的舊值，被誤寫那張單原本的運費成本沒讀過、無從得知，
+        // 所以這裡不能說「已還原」，要明講需要人工核對，並發通知讓老闆看得到。
+        const incident = landedRow
+          ? `運費成本寫入時訂單表列位置變動，誤寫到第 ${landedRow.sheetRow} 列（${landedRow.id || "空白列"}）。` +
+            `該列的運費成本／更新時間已改成 ${prevShippingCostCell || "空白"}／${prevUpdatedAtCell || "空白"}，` +
+            `但那張單原本的運費成本不明，需人工核對（可對照 Google Sheets 版本記錄）`
+          : `運費成本寫入時訂單表列位置變動，找不到寫入的列（記號 ${marker}），需人工核對`;
         appendAuditLog({
           actor: guard.session.email,
           action: "update",
           targetType: "order",
           targetId: orderId,
-          summary: landedRow
-            ? `運費成本寫入時列位置變動，誤寫到第 ${landedRow.sheetRow} 列（${landedRow.id || "空白"}），已把運費成本／updatedAt 還原成 ${prevShippingCostCell || "空白"}／${prevUpdatedAtCell || "空白"}，請人工確認`
-            : `運費成本寫入時列位置變動，找不到寫入的列（記號 ${marker}），請人工確認`,
+          summary: incident,
+        });
+        await appendNotification({
+          type: "shipping_cost_write_conflict",
+          title: "運費成本寫入異常，需人工核對",
+          body: incident,
+          link: "/orders",
         });
         return NextResponse.json({ ok: false, error: "訂單表剛好有變動，請重新整理再試" }, { status: 409 });
       }
