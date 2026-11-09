@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/api-auth";
 import { parseDeliveryRegion } from "@/lib/delivery-region";
-import {
-  HARD_CAP, MAX_ROUTES, NOTIFY_LEAD_DAYS, SOFT_CAP, suggestDriver,
-} from "@/lib/dispatch-rules";
+// 🔴 規則常數**刻意不從這裡序列化給前端**（2026-11-09）：dispatch-rules.ts 是
+//    純常數＋純函式、沒有 server-only，前端可以直接 import。先前把 softCap/hardCap
+//    包成 `rules` 傳過去，結果 DispatchPlanClient 又自己寫了一份預設值當 fallback，
+//    等於同一組門檻有三份真相（常數、序列化、前端 useState）——改常數前端不會跟著動，
+//    而且 fetch 失敗時畫面會照著舊數字判斷，完全不報錯。
+import { suggestDriver } from "@/lib/dispatch-rules";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import { normalizeDeliveryPeriod } from "@/lib/material-confirm-types";
 import { TRELLO } from "@/lib/trello-constants";
@@ -87,10 +90,7 @@ export async function GET(request: Request) {
         };
       });
 
-    return NextResponse.json({
-      ok: true, pending, scheduled,
-      rules: { softCap: SOFT_CAP, hardCap: HARD_CAP, maxRoutes: MAX_ROUTES, notifyLeadDays: NOTIFY_LEAD_DAYS },
-    });
+    return NextResponse.json({ ok: true, pending, scheduled });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "讀取失敗";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

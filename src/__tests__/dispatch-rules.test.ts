@@ -1,19 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  HARD_CAP, MAX_ROUTES, MAX_STORAGE_DAYS, SOFT_CAP,
+  HARD_CAP, MAX_STORAGE_DAYS, SOFT_CAP,
   isStorageOverdue, productionStage, suggestDriver,
 } from "@/lib/dispatch-rules";
 
 describe("派車規則（老闆 2026-11-01 口述，經 Trello 歷史驗證）", () => {
-  it("容量：軟上限 4、硬上限 6", () => {
-    expect(SOFT_CAP).toBe(4);
-    expect(HARD_CAP).toBe(6);
+  /**
+   * 🔴 這裡原本是 `expect(SOFT_CAP).toBe(4)` 這類恆真句——把常數抄進測試
+   *    不驗任何行為，改常數時只會多一個要一起改的地方。
+   *    留下來的是「兩者的關係」：常態必須小於能力上限，否則示警邏輯
+   *    （overSoft = 超過常態但未超上限）會永遠算不出中間那一檔。
+   */
+  it("常態門檻必須低於能力上限，否則示警分不出兩檔", () => {
     expect(SOFT_CAP).toBeLessThan(HARD_CAP);
   });
 
-  it("一天最多 3 條路線", () => {
-    expect(MAX_ROUTES).toBe(3);
+  it("能力上限要容得下歷史最大值（阿信單日 7 趟，做過兩次）", () => {
+    expect(HARD_CAP).toBeGreaterThanOrEqual(7);
   });
 
   it("東部派阿富、南部派葉先生", () => {

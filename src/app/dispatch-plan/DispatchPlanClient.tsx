@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 
-import { isStorageOverdue } from "@/lib/dispatch-rules";
+// 🔴 門檻直接從 dispatch-rules import，不走 API 序列化（2026-11-09）：
+//    先前 route 把 softCap/hardCap 包成 `rules` 傳過來，這裡又寫了一份預設值
+//    當 fallback，等於三份真相。dispatch-rules 是純常數＋純函式、沒有
+//    server-only，前端可以直接用——改常數兩邊一起動，fetch 失敗也不會
+//    默默套到舊數字。
+import { HARD_CAP, isStorageOverdue, SOFT_CAP } from "@/lib/dispatch-rules";
 
 /**
  * 排車視圖：把客人給的希望時段攤成「一天一張卡」，供人工排車。
@@ -23,7 +28,6 @@ interface Pending {
   /** 只給一組時段＝沒有彈性（常見原因：舊沙發要配合清潔隊），要最先鎖定 */
   locked: boolean;
 }
-interface Rules { softCap: number; hardCap: number; maxRoutes: number; notifyLeadDays: number }
 interface Scheduled {
   token: string; orderNumber: string; customerName: string;
   date: string; period: string; slots: Slot[]; dueDate: string;
@@ -54,7 +58,6 @@ function fmtDate(ymd: string): string {
 export function DispatchPlanClient() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [scheduled, setScheduled] = useState<Scheduled[]>([]);
-  const [rules, setRules] = useState<Rules>({ softCap: 4, hardCap: 6, maxRoutes: 3, notifyLeadDays: 3 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   // 月曆負責「看形狀、挑日子」，下方清單負責「做事」——一格塞不下
@@ -70,12 +73,11 @@ export function DispatchPlanClient() {
     try {
       const res = await fetch("/api/sheets/dispatch-plan", { cache: "no-store" });
       const j = (await res.json()) as {
-        ok: boolean; error?: string; pending?: Pending[]; scheduled?: Scheduled[]; rules?: Rules;
+        ok: boolean; error?: string; pending?: Pending[]; scheduled?: Scheduled[];
       };
       if (!j.ok) { setError(j.error ?? "讀取失敗"); return; }
       setPending(j.pending ?? []);
       setScheduled(j.scheduled ?? []);
-      if (j.rules) setRules(j.rules);
     } catch {
       setError("讀取失敗，請檢查網路");
     } finally {
@@ -170,12 +172,12 @@ export function DispatchPlanClient() {
       m.set(d.date, {
         booked,
         candidates: d.candidates.filter((c) => !scheduled.some((s) => s.token === c.p.token)).length,
-        overSoft: booked > rules.softCap && booked <= rules.hardCap,
-        overHard: booked > rules.hardCap,
+        overSoft: booked > SOFT_CAP && booked <= HARD_CAP,
+        overHard: booked > HARD_CAP,
       });
     }
     return m;
-  }, [days, scheduled, rules]);
+  }, [days, scheduled]);
 
   const assignedTokens = new Set(scheduled.map((s) => s.token));
 
@@ -319,13 +321,14 @@ export function DispatchPlanClient() {
 
       <div className="mt-4 space-y-3">
         {days.filter((d) => !picked || d.date === picked).map((d) => {
-          // 🔴 路線數用「已排定的縣市數」估，不用候選——候選只是客人想要，還沒成立。
-          //    老闆 2026-11-01：淡水＋土城同一天可以（都算新北，一條路線），
-          //    早上新竹下午台北是兩條。所以跨縣市本身不是問題，跨太多條才是。
-          const routes = new Set(d.booked.map((b) => b.city).filter(Boolean)).size;
-          const overHard = d.booked.length > rules.hardCap;
-          const overSoft = !overHard && d.booked.length > rules.softCap;
-          const tooManyRoutes = routes > rules.maxRoutes;
+          // 🔴 只呈現「今天跨了哪些縣市」，**不給門檻**（2026-11-09 移除 MAX_ROUTES）。
+          //    實測 219 個「司機×日」組合：只有 1 天跨到 4 市，門檻形同從不作用；
+          //    而且跨縣市是常態（2 趟的日子跨 2 市 34 天 > 跨 1 市 30 天）。
+          //    縣市數跟順不順路也沒有對應——三峽＋瑞芳同屬新北但很遠，
+          //    2026-02-07 跨苗栗＋新北＋桃園卻跑了 7 趟。判斷留給人。
+          const cities = [...new Set(d.booked.map((b) => b.city).filter(Boolean))];
+          const overHard = d.booked.length > HARD_CAP;
+          const overSoft = !overHard && d.booked.length > SOFT_CAP;
           return (
             <div key={d.date} className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -335,17 +338,20 @@ export function DispatchPlanClient() {
                 </span>
                 {overHard && (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
-                    🚨 已排 {d.booked.length} 趟，超過上限 {rules.hardCap}
+                    🚨 已排 {d.booked.length} 趟，超過上限 {HARD_CAP}
                   </span>
                 )}
                 {overSoft && (
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
-                    ⚠️ 已排 {d.booked.length} 趟，偏多（常態 {rules.softCap} 以內）
+                    ⚠️ 已排 {d.booked.length} 趟，偏多（常態 {SOFT_CAP} 以內）
                   </span>
                 )}
-                {tooManyRoutes && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
-                    ⚠️ {routes} 條路線，超過 {rules.maxRoutes}
+                {cities.length > 0 && (
+                  <span
+                    className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]"
+                    title="這一天已排定的配送縣市。順不順路要看實際距離，系統不替你判斷。"
+                  >
+                    🗺️ {cities.join("・")}
                   </span>
                 )}
               </div>
