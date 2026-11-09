@@ -278,6 +278,13 @@ export async function getBoardCards(boardId: string): Promise<BoardCardLite[]> {
 }
 
 export interface BoardCardWithChecklists extends BoardCardLite {
+  /**
+   * 🔴 這個系統用 dueComplete 代表「出貨通知已發給客人」，不是 Trello 原本的
+   *    「到期日已完成」。出貨通知流程（shipping-notice 的 onShippingCopied）
+   *    在複製訊息時自動打勾，所以它是「三方都喬好、通知已送出」的唯一標記。
+   *    一致性實查 2026-11-09：已出貨 338 張全部為 true，0 例外。
+   */
+  dueComplete?: boolean;
   checklists?: Array<{
     name: string;
     checkItems: Array<{ name: string; state: "complete" | "incomplete" }>;
@@ -293,7 +300,7 @@ export async function getBoardCardsWithChecklists(
   boardId: string,
 ): Promise<BoardCardWithChecklists[]> {
   return trelloJson<BoardCardWithChecklists[]>(`boards/${boardId}/cards`, {
-    fields: "name,due,idList",
+    fields: "name,due,idList,dueComplete",
     checklists: "all",
     checklist_fields: "name",
     checkItem_fields: "name,state",

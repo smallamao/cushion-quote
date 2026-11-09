@@ -4,9 +4,11 @@ import { getActiveSession } from "@/lib/api-auth";
 import { timingSafeEqual } from "@/lib/constant-time";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import { isCustomerConfirmed } from "@/lib/material-confirm-types";
+import { shouldRemindDeliveryNotice } from "@/lib/dispatch-rules";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { listOrderConfirms } from "@/lib/order-confirm-sheet";
 import { TRELLO } from "@/lib/trello-constants";
+import type { BoardCardWithChecklists } from "@/lib/trello-server";
 import {
   addCardCommentUnlessTest,
   getBoardCardsWithChecklists,
@@ -65,6 +67,16 @@ export async function GET(request: Request) {
   const sent: string[] = [];
 
   /**
+   * 整塊板只抓一次。這支 cron 原本在四個區段各自呼叫一次
+   * getBoardCardsWithChecklists，同樣的 579 張卡抓四遍。
+   * 宣告在 handler 內部（不是模組層）所以不跨請求共用，
+   * 失敗時 cache 仍是 null，下一個區段會自己重試。
+   */
+  let cardsCache: BoardCardWithChecklists[] | null = null;
+  const boardCards = async (): Promise<BoardCardWithChecklists[]> =>
+    (cardsCache ??= await getBoardCardsWithChecklists(TRELLO.BOARD_ID));
+
+  /**
    * Trello 卡片進了「Fail 作廢」→ 叫料確認單自動標成取消。
    *
    * 🔴 為什麼要自動（老闆 2026-10-31）：作廢是在 Trello 做的，不該要人再進系統
@@ -77,7 +89,7 @@ export async function GET(request: Request) {
    */
   const autoCancelled: string[] = [];
   try {
-    const cards = await getBoardCardsWithChecklists(TRELLO.BOARD_ID);
+    const cards = await boardCards();
     const failedCardIds = new Set(
       cards.filter((c) => c.idList === TRELLO.LISTS.FAILED).map((c) => c.id),
     );
@@ -113,7 +125,7 @@ export async function GET(request: Request) {
    */
   const autoClosed: string[] = [];
   try {
-    const cards = await getBoardCardsWithChecklists(TRELLO.BOARD_ID);
+    const cards = await boardCards();
     const DONE_LISTS = new Set<string>([
       TRELLO.LISTS.SHIPPED,
       TRELLO.LISTS.WAIT_REVIEW,
@@ -149,7 +161,7 @@ export async function GET(request: Request) {
     //    訂金狀態的事實來源是 Trello「待辦事項」的勾選（沙發線不走應收帳款）。
     const paidCards = new Set<string>();
     try {
-      for (const card of await getBoardCardsWithChecklists(TRELLO.BOARD_ID)) {
+      for (const card of await boardCards()) {
         if (readDepositState(card).paid === true) paidCards.add(card.id);
       }
     } catch {
@@ -232,6 +244,52 @@ export async function GET(request: Request) {
     }
   } catch {
     /* best-effort */
+  }
+
+  /**
+   * ── 配送日快到了，但出貨通知還沒發給客人 ──────────────────
+   *
+   * 🔴 老闆的規則「排定後提前 2-3 天通知客人」原本是**死規則**：
+   *    NOTIFY_LEAD_DAYS 被 import、被序列化給前端、被存進 useState，
+   *    但從頭到尾沒有任何一行拿它做判斷。也就是說這條規則從來沒被系統執行過。
+   *
+   * 🔴 為什麼現在做得到：dueComplete 就是「出貨通知已發」的標記
+   *    （老闆 2026-11-09 說明：客戶與司機時間都 OK、師傅也完成之後，
+   *    發送出貨通知訊息會自動跳 Trello dueComplete）。
+   *    在知道這件事之前，系統裡找不到任何「已通知」的狀態可以比對。
+   *
+   * 刻意的取捨：
+   *   - 卡片不在板上（已封存）→ **跳過**。無從判斷已通知沒有，寧可不吵。
+   *   - 配送日已經過去 → 跳過。那是另一回事（遲到），不是「該提前通知」。
+   *   - 已經打勾 → 跳過。通知發過了。
+   */
+  try {
+    const notified = new Map((await boardCards()).map((c) => [c.id, Boolean(c.dueComplete)]));
+    const today = twYmd(new Date().toISOString());
+    for (const { confirm: c } of await listConfirms()) {
+      const deliver = (c.chosenDate ?? "").slice(0, 10);
+      const verdict = shouldRemindDeliveryNotice({
+        chosenDate: deliver,
+        status: c.status,
+        today,
+        cardOnBoard: notified.has(c.cardId),
+        alreadyNotified: Boolean(notified.get(c.cardId)),
+      });
+      if (!verdict.remind) continue;
+      const daysLeft = verdict.daysLeft;
+
+      await appendNotification({
+        type: "delivery_notice_pending",
+        title: daysLeft === 0
+          ? `🚨 ${c.orderNumber} 今天配送，還沒通知客人`
+          : `📣 ${c.orderNumber} ${daysLeft} 天後配送，還沒通知客人`,
+        body: `${c.customerName}・${deliver} ${c.chosenPeriod || ""}・請到排程出貨頁複製出貨通知傳給客人`,
+        link: "/shipping-notice",
+      });
+      sent.push(`delivery-notice:${c.orderNumber}:${daysLeft}d`);
+    }
+  } catch {
+    /* best-effort，不影響前面已寫入的催辦 */
   }
 
   return NextResponse.json({

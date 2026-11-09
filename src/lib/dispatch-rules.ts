@@ -150,3 +150,44 @@ export function driverLoad(booked: readonly { assignedDriver: string }[]): {
     .sort((a, b) => b.trips - a.trips);
   return { perDriver, unassigned, peak: perDriver[0] ?? null };
 }
+
+/**
+ * 配送日快到了，但出貨通知還沒發給客人——該不該提醒？
+ *
+ * 🔴 抽成純函式是為了測得到。老闆的「提前 2-3 天通知」原本是死規則
+ *    （NOTIFY_LEAD_DAYS 被 import、被序列化、存進 state，卻沒有一行拿它判斷），
+ *    規則的判斷邏輯如果只活在 route handler 裡，就會再變成第二條沒人守的規則。
+ *
+ * 「已通知」的事實來源是 Trello 的 dueComplete：出貨通知流程在複製訊息時
+ * 自動打勾（老闆 2026-11-09 說明），所以它代表「客戶與司機時間都 OK、
+ * 師傅也完成、通知已送出」。
+ */
+export function shouldRemindDeliveryNotice(input: {
+  /** 排定的配送日，YYYY-MM-DD；空＝還沒排 */
+  chosenDate: string;
+  status: string;
+  /** 台灣時區的今天，YYYY-MM-DD */
+  today: string;
+  /** 卡片還在板上嗎。false＝已封存，無從判斷已通知沒有 */
+  cardOnBoard: boolean;
+  /** Trello dueComplete＝出貨通知已發 */
+  alreadyNotified: boolean;
+}): { remind: boolean; daysLeft: number; reason: string } {
+  const deliver = (input.chosenDate ?? "").slice(0, 10);
+  const no = (reason: string, daysLeft = 0) => ({ remind: false, daysLeft, reason });
+
+  if (!deliver) return no("還沒排定配送日");
+  if (input.status === "cancelled") return no("已取消");
+  if (deliver < input.today) return no("配送日已過，屬於遲到不是待通知");
+  // 卡片不在板上時寧可不吵：判斷不了就別發，假警報會讓人整組關掉不看
+  if (!input.cardOnBoard) return no("卡片不在板上，無從判斷");
+  if (input.alreadyNotified) return no("出貨通知已發");
+
+  const daysLeft = Math.round(
+    (Date.parse(`${deliver}T00:00:00+08:00`) - Date.parse(`${input.today}T00:00:00+08:00`)) / 86_400_000,
+  );
+  if (!Number.isFinite(daysLeft)) return no("日期無法解析");
+  if (daysLeft > NOTIFY_LEAD_DAYS) return no("還沒到該通知的時候", daysLeft);
+
+  return { remind: true, daysLeft, reason: daysLeft === 0 ? "今天就要配送" : "進入通知期" };
+}

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   HARD_CAP, MAX_STORAGE_DAYS, SOFT_CAP,
-  driverLoad, isStorageOverdue, productionStage, suggestDriver,
+  NOTIFY_LEAD_DAYS,
+  driverLoad, isStorageOverdue, productionStage,
+  shouldRemindDeliveryNotice, suggestDriver,
 } from "@/lib/dispatch-rules";
 import { driverNameFromLabelIds, TRELLO } from "@/lib/trello-constants";
 
@@ -156,5 +158,78 @@ describe("driverNameFromLabelIds — 從卡片標籤認司機", () => {
   it("夾雜其他標籤時仍找得到司機", () => {
     expect(driverNameFromLabelIds([TRELLO.LABELS.URGENT, TRELLO.LABELS.ASSEMBLY, TRELLO.LABELS.DRIVER_FU]))
       .toBe("阿富");
+  });
+});
+
+/**
+ * 🔴 老闆的「排定後提前 2-3 天通知客人」原本是死規則：NOTIFY_LEAD_DAYS 被
+ *    import、被序列化給前端、被存進 useState，卻沒有一行拿它做判斷。
+ *    2026-11-09 才做得到——因為那天才知道 Trello 的 dueComplete 就是
+ *    「出貨通知已發」的標記，在那之前系統裡沒有「已通知」狀態可以比對。
+ */
+describe("shouldRemindDeliveryNotice — 配送前通知客人", () => {
+  const base = { status: "scheduled", today: "2026-11-09", cardOnBoard: true, alreadyNotified: false };
+
+  it("進入通知期（剩 3 天以內）要提醒", () => {
+    for (const [date, days] of [["2026-11-12", 3], ["2026-11-11", 2], ["2026-11-10", 1]] as const) {
+      const r = shouldRemindDeliveryNotice({ ...base, chosenDate: date });
+      expect(r.remind, date).toBe(true);
+      expect(r.daysLeft).toBe(days);
+    }
+  });
+
+  it("今天就要配送＝最緊急，一定要提醒", () => {
+    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-09" });
+    expect(r.remind).toBe(true);
+    expect(r.daysLeft).toBe(0);
+    expect(r.reason).toContain("今天");
+  });
+
+  it("還太早（剩 4 天）先不吵", () => {
+    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-13" });
+    expect(r.remind).toBe(false);
+    expect(r.daysLeft).toBe(4);
+  });
+
+  it("出貨通知已發就不再提醒", () => {
+    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", alreadyNotified: true });
+    expect(r.remind).toBe(false);
+    expect(r.reason).toContain("已發");
+  });
+
+  it("配送日已過不歸這一類（那是遲到，另有機制）", () => {
+    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-08" });
+    expect(r.remind).toBe(false);
+  });
+
+  it("卡片不在板上時不吵——判斷不了就別發假警報", () => {
+    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", cardOnBoard: false });
+    expect(r.remind).toBe(false);
+    expect(r.reason).toContain("板上");
+  });
+
+  it("取消的單不提醒", () => {
+    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", status: "cancelled" });
+    expect(r.remind).toBe(false);
+  });
+
+  it("還沒排配送日的不提醒", () => {
+    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: "" }).remind).toBe(false);
+  });
+
+  it("壞日期不丟錯、也不亂發", () => {
+    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: "not-a-date" }).remind).toBe(false);
+  });
+
+  it("門檻跟著 NOTIFY_LEAD_DAYS 走，不是寫死的 3", () => {
+    // 剛好等於門檻要發、超過一天不發——這組斷言在常數被調整時仍然成立。
+    // 🔴 日期加減一律用 UTC 午夜當基準：先前這裡用 `+08:00` 解析再 toISOString()，
+    //    等於把結果轉回 UTC，少 8 小時就少一天，測試自己算錯而不是實作錯。
+    const addDays = (ymd: string, n: number) =>
+      new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+    const onEdge = addDays("2026-11-09", NOTIFY_LEAD_DAYS);
+    const past = addDays("2026-11-09", NOTIFY_LEAD_DAYS + 1);
+    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: onEdge }).remind).toBe(true);
+    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: past }).remind).toBe(false);
   });
 });
