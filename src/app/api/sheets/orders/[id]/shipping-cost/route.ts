@@ -71,16 +71,37 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     const sheetRow = rowIndex + 2;
 
-    const readRow = async () => {
+    const readRawRow = async (row: number): Promise<string[]> => {
       const res = await client.sheets.spreadsheets.values.get({
         spreadsheetId: client.spreadsheetId,
-        range: ORDER_ROW_RANGE(sheetRow),
+        range: ORDER_ROW_RANGE(row),
       });
-      const row = (res.data.values ?? [])[0] as string[] | undefined;
-      return row && row[0] === orderId ? orderRowToRecord(row) : null;
+      return ((res.data.values ?? [])[0] as string[] | undefined) ?? [];
     };
+    /** 哪一列的 updatedAt 等於這次寫入的記號 → { sheetRow, id }；找不到回 null */
+    const findMarkerRow = async (marker: string) => {
+      const res = await client.sheets.spreadsheets.values.batchGet({
+        spreadsheetId: client.spreadsheetId,
+        ranges: [ORDER_RANGE_IDS, `${ORDER_SHEET}!${UPDATED_AT_COL}2:${UPDATED_AT_COL}10000`],
+      });
+      const [ids, stamps] = (res.data.valueRanges ?? []).map((v) => (v.values ?? []) as string[][]);
+      const i = (stamps ?? []).findIndex((r) => r[0] === marker);
+      return i === -1 ? null : { sheetRow: i + 2, id: ids?.[i]?.[0] ?? "" };
+    };
+    const writeCells = (row: number, shippingCostCell: string, updatedAtCell: string) =>
+      client.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: client.spreadsheetId,
+        requestBody: {
+          valueInputOption: "RAW",
+          data: [
+            { range: `${ORDER_SHEET}!${SHIPPING_COST_COL}${row}`, values: [[shippingCostCell]] },
+            { range: `${ORDER_SHEET}!${UPDATED_AT_COL}${row}`, values: [[updatedAtCell]] },
+          ],
+        },
+      });
 
-    const existing = await readRow();
+    const beforeRow = await readRawRow(sheetRow);
+    const existing = beforeRow[0] === orderId ? orderRowToRecord(beforeRow) : null;
     if (!existing) {
       // 找列與讀列之間有人插入／刪除列：寧可請使用者重試，也不要寫到別張單
       return NextResponse.json({ ok: false, error: "訂單列位置變動，請重新整理後再試" }, { status: 409 });
@@ -99,21 +120,41 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    const updatedAt = isoNow();
-    await client.sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: client.spreadsheetId,
-      requestBody: {
-        valueInputOption: "RAW",
-        data: [
-          { range: `${ORDER_SHEET}!${SHIPPING_COST_COL}${sheetRow}`, values: [[String(shippingCost)]] },
-          { range: `${ORDER_SHEET}!${UPDATED_AT_COL}${sheetRow}`, values: [[updatedAt]] },
-        ],
-      },
-    });
+    const prevShippingCostCell = beforeRow[ORDER_COL.shippingCost] ?? "";
+    const prevUpdatedAtCell = beforeRow[ORDER_COL.updatedAt] ?? "";
+    // updatedAt 同時當作這次寫入的記號（ISO 到毫秒），列位置變動時用來找出兩格實際寫到哪一列
+    const marker = isoNow();
+    await writeCells(sheetRow, String(shippingCost), marker);
 
-    // 寫入後讀回確認真的落地（API 成功回應不代表資料寫進去了）
-    const saved = await readRow();
-    if (!saved || saved.shippingCost !== shippingCost) {
+    // 寫入後讀回確認真的落地（API 成功回應不代表資料寫進去了），並確認這一列還是同一張單。
+    let afterRow = await readRawRow(sheetRow);
+    if (afterRow[0] !== orderId) {
+      // 找列到寫入之間有人插入／刪除列。Sheets 沒有交易／列鎖，只能事後補救：
+      // 用記號找出剛寫的兩格落在哪一列——
+      //  - 落在本單（位移發生在寫入之後）→ 寫入其實正確，照常完成；
+      //  - 落在別張單（位移發生在讀取與寫入之間）→ 立刻把那兩格還原成寫入前讀到的值，回 409。
+      // 殘餘風險：還原用的是寫入前從「本單」讀到的舊值。位移若剛好發生在讀取與寫入之間，
+      // 那兩格原本屬於別張單，舊值未必相同；且還原本身也可能再遇到位移。
+      // 機率極低（兩次 API 往返之間有人增刪訂單列），所以記稽核紀錄供人工比對。
+      const landedRow = await findMarkerRow(marker);
+      if (landedRow && landedRow.id === orderId) {
+        afterRow = await readRawRow(landedRow.sheetRow);
+      } else {
+        if (landedRow) await writeCells(landedRow.sheetRow, prevShippingCostCell, prevUpdatedAtCell);
+        appendAuditLog({
+          actor: guard.session.email,
+          action: "update",
+          targetType: "order",
+          targetId: orderId,
+          summary: landedRow
+            ? `運費成本寫入時列位置變動，誤寫到第 ${landedRow.sheetRow} 列（${landedRow.id || "空白"}），已把運費成本／updatedAt 還原成 ${prevShippingCostCell || "空白"}／${prevUpdatedAtCell || "空白"}，請人工確認`
+            : `運費成本寫入時列位置變動，找不到寫入的列（記號 ${marker}），請人工確認`,
+        });
+        return NextResponse.json({ ok: false, error: "訂單表剛好有變動，請重新整理再試" }, { status: 409 });
+      }
+    }
+    const saved = orderRowToRecord(afterRow);
+    if (saved.shippingCost !== shippingCost) {
       return NextResponse.json({ ok: false, error: "寫入後讀回的運費成本不符，請重新整理確認" }, { status: 500 });
     }
 

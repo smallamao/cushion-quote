@@ -507,3 +507,19 @@ describe("運費提領", () => {
     expect(freightStatus(1000, 1200)).toBe("different");
   });
 });
+
+describe("運費提領：多個單號與退款", () => {
+  const atm = (memo: string) => tx({ description: "ATM現金", debit: 1000, memo });
+  it("「L1234 S997運」挑緊貼「運」的 P／S 單號", () => {
+    expect(freightOrderNumber(atm("L1234 S997運"))).toBe("S997");
+    expect(freightOrderNumber(atm("Ｓ８８２ Ｐ０３３２運"))).toBe("P332");
+    expect(freightOrderNumber(atm("運費 S997"))).toBe("S997");
+  });
+  it("多個 P／S 單號但都沒緊貼「運」→ 不猜", () => {
+    expect(freightOrderNumber(atm("S882 S997 付運"))).toBe("");
+  });
+  it("「S997 退運費」等含「退」的排除", () => {
+    expect(freightOrderNumber(atm("S997 退運費"))).toBe("");
+    expect(freightOrderNumber(tx({ description: "退款", debit: 500, memo: "S997運費" }))).toBe("");
+  });
+});

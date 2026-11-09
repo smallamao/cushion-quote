@@ -212,16 +212,34 @@ export function isNonOrderCredit(tx: BankTransaction): boolean {
 
 /**
  * 支出是不是付司機的運費：備註或摘要裡有訂單編號（P／S）＋「運」字
- * （老闆寫「Ｓ９９７運費」或簡寫「Ｓ１００１運」都有）。回傳備註裡的單號（已去前導零），不是就回空字串。
- * L 開頭是進貨單號，不算運費。
+ * （老闆寫「Ｓ９９７運費」或簡寫「Ｓ１００１運」都有）。回傳單號（已去前導零），不是就回空字串。
+ * - 備註裡所有單號都掃過，挑緊貼「運」字的那個 P／S 單號（例「L1234 S997運」→ S997）；
+ *   沒有緊貼的，只有一個 P／S 單號時才用它。L 開頭是進貨單號，不算運費。
+ * - 含「退」（退運費、退款）的是退錢不是付運費，排除。
  */
 export function freightOrderNumber(tx: BankTransaction): string {
   if (!tx.debit || tx.debit <= 0) return "";
-  const memo = nfkc(tx.memo);
-  const desc = nfkc(tx.description);
-  if (!memo.includes("運") && !desc.includes("運")) return "";
-  const no = extractOrderNumber(memo) || extractOrderNumber(desc);
-  return /^[PS]/.test(no) ? no : "";
+  const memo = nfkc(tx.memo).toUpperCase();
+  const desc = nfkc(tx.description).toUpperCase();
+  const both = `${memo} ${desc}`;
+  if (both.includes("退") || !both.includes("運")) return "";
+  // 先照原樣找，找不到再去掉空白找（同 extractOrderNumber）
+  return freightNumberIn(memo) || freightNumberIn(desc) || freightNumberIn(memo.replace(/\s+/g, ""));
+}
+
+/** 文字裡的 P／S 單號：優先緊貼「運」字（前後可隔空白）的那個，否則只有一個時才回傳 */
+function freightNumberIn(upper: string): string {
+  const re = /(?<![A-Z])([PSL])0*(\d{3,6})(?!\d)/g;
+  const found = [...upper.matchAll(re)]
+    .filter((m) => m[1] !== "L")
+    .map((m) => ({
+      no: `${m[1]}${m[2]}`,
+      adjacent:
+        /^\s*運/.test(upper.slice((m.index ?? 0) + m[0].length)) || /運\s*$/.test(upper.slice(0, m.index ?? 0)),
+    }));
+  const adjacent = found.find((f) => f.adjacent);
+  if (adjacent) return adjacent.no;
+  return found.length === 1 ? found[0].no : "";
 }
 
 export function freightStatus(total: number, current: number): FreightStatus {

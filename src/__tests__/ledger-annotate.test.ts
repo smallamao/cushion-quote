@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import type { BankVerifyRow, VerifySchedule } from "@/lib/bank-verify";
-import { annotateLedger, paymentKind } from "@/lib/ledger-annotate";
+import {
+  annotateLedger,
+  buildLedgerOutput,
+  minuteKey,
+  parseAfter,
+  parseCsvLine,
+  paymentKind,
+  rawRowsByTxId,
+  type LedgerAnnotation,
+} from "@/lib/ledger-annotate";
+import { parseSinopacCSV } from "@/lib/bank-csv-parser";
 import type { BankTransaction } from "@/lib/types";
 
 let seq = 0;
@@ -105,5 +115,63 @@ describe("annotateLedger", () => {
     expect(notes.get(freight.txId)).toEqual({ I: "P0332", J: "", K: "運費", category: "freight" });
     expect(notes.get(purchase.txId)).toEqual({ I: "L019", J: "", K: "進貨款", category: "purchase" });
     expect(notes.get(other.txId)).toEqual({ I: "", J: "", K: "", category: "debit" });
+  });
+});
+
+const CSV = [
+  "帳號,168-018-0008591-8【大戶】新台幣",
+  "查詢日期,20261101~20261130",
+  "交易日,計息日,摘要,支出,存入,餘額,匯率,備註",
+  "2026/11/04 09:52:10,2026/11/04,跨行轉帳,,1000,5000,,S997 訂金",
+  "",
+  '2026/11/04 09:53,2026/11/04,ATM現金,600,,4400,,"16667 Ｓ９９７運費, 阿信"',
+  "2026/12/01 10:00,2026/12/01,跨行轉帳,,2000,6400,,P0332",
+  "合計,,,,,",
+].join("\n");
+
+describe("parseCsvLine", () => {
+  it("雙引號欄位裡的逗號不拆、\"\" 還原成一個引號", () => {
+    expect(parseCsvLine('a,"b,c",d')).toEqual(["a", "b,c", "d"]);
+    expect(parseCsvLine('"x ""y""",')).toEqual(['x "y"', ""]);
+  });
+});
+
+describe("rawRowsByTxId", () => {
+  it("原始八欄跟解析出的交易一對一配對（空行、合計行略過）", () => {
+    const txs = parseSinopacCSV(CSV).transactions;
+    const raw = rawRowsByTxId(CSV);
+    expect(raw.size).toBe(txs.length);
+    expect(raw.get(txs[0].txId)).toEqual(["2026/11/04 09:52:10", "2026/11/04", "跨行轉帳", "", "1000", "5000", "", "S997 訂金"]);
+    expect(raw.get(txs[1].txId)?.[7]).toBe("16667 Ｓ９９７運費, 阿信");
+    expect(raw.get(txs[1].txId)).toHaveLength(8);
+  });
+  it("篩選條件跟 parseSinopacCSV 一致：交易日解析不了的行兩邊都略過，配對不錯位", () => {
+    const bad = CSV.replace("2026/12/01 10:00", "壞掉");
+    const txs = parseSinopacCSV(bad).transactions;
+    const raw = rawRowsByTxId(bad);
+    expect(raw.size).toBe(2);
+    expect(txs.map((t) => raw.get(t.txId)?.[0])).toEqual(["2026/11/04 09:52:10", "2026/11/04 09:53"]);
+  });
+});
+
+describe("parseAfter／minuteKey", () => {
+  it("只比到分鐘，格式寬鬆（/ 或 -、補零）", () => {
+    expect(parseAfter("2026/11/04 09:52")).toBe("2026-11-04 09:52");
+    expect(parseAfter(" 2026-11-4 9:52 ")).toBe("2026-11-04 09:52");
+    expect(minuteKey("2026-11-04", "09:52:59")).toBe("2026-11-04 09:52");
+    expect(parseAfter("2026/11/04")).toBeNull();
+    expect(parseAfter("昨天")).toBeNull();
+  });
+});
+
+describe("buildLedgerOutput", () => {
+  it("≤ --after 的列視為已併入；跨月份插 null 分隔", () => {
+    const txs = parseSinopacCSV(CSV).transactions;
+    const raw = rawRowsByTxId(CSV);
+    const notes = new Map<string, LedgerAnnotation>(txs.map((t) => [t.txId, { I: "", J: "", K: "", category: "debit" }]));
+    // 09:52:10 跟 --after 09:52 同一分鐘 → 視為已有
+    const out = buildLedgerOutput(txs, notes, raw, "2026-11-04 09:52");
+    expect(out.map((r) => (r ? r.raw[0] : null))).toEqual(["2026/11/04 09:53", null, "2026/12/01 10:00"]);
+    expect(buildLedgerOutput(txs, notes, raw, "2026-11-04 09:51")).toHaveLength(4);
   });
 });

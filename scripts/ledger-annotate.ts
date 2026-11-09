@@ -6,12 +6,13 @@
  *     --after "YYYY/MM/DD HH:MM" --out 註記.json
  *
  *   <csv...>  一個或多個永豐「往來明細」CSV（重疊的交易只留一筆）
- *   --after   只輸出交易日「嚴格晚於」這個時間的列（跟 CSV 第一欄去空白後做字串比較，
- *             所以格式要跟 CSV 一樣，例 "2026/11/04 09:52"）。通常填帳本最後一列的交易日。
+ *   --after   帳本最後一列的交易日時間，例 "2026/11/04 09:52"。解析成日期＋時間後只比到「分鐘」
+ *             （秒數忽略），≤ 這個時間的列視為帳本已有、不輸出，只輸出更晚的列。
  *   --out     輸出 JSON 檔
  *
  * 輸出（JSON 陣列，依交易時間排序；跨月份之間插一個 null 當分隔）：
- *   { raw: [A..H 八欄原始字串，原封不動], I: 訂製編號, J: 單號／名稱, K: 補充說明, category }
+ *   { raw: [A..H 八欄], I: 訂製編號, J: 單號／名稱, K: 補充說明, category }
+ *   raw 是 CSV 拆欄後的欄位值：只去掉包住欄位的雙引號（"" 還原成 "），內容不做其他更動。
  *
  * 規則（實作在 src/lib/ledger-annotate.ts）：
  *   入帳 ✅／🔍 → I＝單號、J＝客戶名、K＝訂金／尾款／全額（看分期名稱）
@@ -32,11 +33,11 @@ import { GoogleAuth } from "google-auth-library";
 import { google } from "googleapis";
 
 import { AR_RANGE_DATA, AR_SCHEDULE_RANGE_DATA, arRowToRecord, arScheduleRowToRecord } from "@/lib/ar-utils";
-import { parseSinopacCSV, parseSinopacFiles } from "@/lib/bank-csv-parser";
+import { parseSinopacFiles } from "@/lib/bank-csv-parser";
 import { buildVerifySchedules, verifyBankTransactions } from "@/lib/bank-verify";
-import { annotateLedger, type LedgerAnnotation } from "@/lib/ledger-annotate";
+import { annotateLedger, buildLedgerOutput, parseAfter, rawRowsByTxId } from "@/lib/ledger-annotate";
 import { ORDER_RANGE_DATA, orderRowToRecord } from "@/lib/order-utils";
-import type { ARWithSchedules, BankTransaction } from "@/lib/types";
+import type { ARWithSchedules } from "@/lib/types";
 
 loadEnvConfig(process.cwd());
 
@@ -61,32 +62,6 @@ function parseArgs(argv: string[]): Args {
     process.exit(1);
   }
   return { files, after, out };
-}
-
-/**
- * 每個檔案的資料列原始八欄，按 parseSinopacCSV 產生交易的順序排好，用來跟交易一對一配對。
- * 篩選條件必須跟 parseSinopacCSV 一致（非空行、≥6 欄、交易日可解析）。
- */
-function rawRowsByTxId(text: string): Map<string, string[]> {
-  const lines = text.split(/\r?\n/);
-  const header = lines.findIndex((l) => l.split(",")[0]?.trim() === "交易日");
-  const raws: string[][] = [];
-  if (header >= 0) {
-    for (const line of lines.slice(header + 1)) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const cols = trimmed.split(",");
-      if (cols.length < 6) continue;
-      const date = (cols[0] ?? "").trim().split(" ")[0] ?? "";
-      if (date.length < 8) continue;
-      raws.push(Array.from({ length: 8 }, (_, i) => cols[i] ?? ""));
-    }
-  }
-  const txs = parseSinopacCSV(text).transactions;
-  if (txs.length !== raws.length) {
-    throw new Error(`原始列數 ${raws.length} 與解析出的交易數 ${txs.length} 對不上，無法逐列註記`);
-  }
-  return new Map(txs.map((t, i) => [t.txId, raws[i]]));
 }
 
 async function loadSheets() {
@@ -116,13 +91,13 @@ async function loadSheets() {
   return { ars, orders };
 }
 
-type OutRow = { raw: string[] } & LedgerAnnotation;
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const afterKey = parseAfter(args.after);
+  if (!afterKey) throw new Error(`--after 格式不對：「${args.after}」，要像 "2026/11/04 09:52"`);
   const files = args.files.map((f) => ({
     name: path.basename(f),
-    text: fs.readFileSync(f, "utf-8").replace(/^﻿/, ""),
+    text: fs.readFileSync(f, "utf-8").replace(/^\uFEFF/, ""),
   }));
   const rawById = new Map<string, string[]>();
   for (const f of files) {
@@ -140,18 +115,8 @@ async function main() {
   });
   const notes = annotateLedger(parsed.transactions, result, orders);
 
-  const keep = (t: BankTransaction) => (rawById.get(t.txId)?.[0] ?? "").trim() > args.after;
-  const selected = parsed.transactions.filter(keep);
-
-  const output: Array<OutRow | null> = [];
-  let month = "";
-  for (const t of selected) {
-    const m = t.txDate.slice(0, 7);
-    if (month && m !== month) output.push(null);
-    month = m;
-    const note = notes.get(t.txId) ?? { I: "", J: "", K: "", category: "unknown" as const };
-    output.push({ raw: rawById.get(t.txId) ?? [], ...note });
-  }
+  const output = buildLedgerOutput(parsed.transactions, notes, rawById, afterKey);
+  const rowCount = output.filter(Boolean).length;
 
   fs.writeFileSync(args.out, `${JSON.stringify(output, null, 2)}\n`, "utf-8");
 
@@ -159,7 +124,7 @@ async function main() {
   const counts = new Map<string, number>();
   for (const r of output) if (r) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
   const filled = output.filter((r) => r && (r.I || r.J || r.K)).length;
-  console.log(`輸出 ${selected.length} 列（${output.length - selected.length} 個月份分隔）→ ${args.out}`);
+  console.log(`輸出 ${rowCount} 列（${output.length - rowCount} 個月份分隔）→ ${args.out}`);
   console.log(`有填 I/J/K：${filled} 列`);
   for (const [k, v] of [...counts].sort()) console.log(`  ${k}: ${v}`);
 }

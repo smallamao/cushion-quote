@@ -8,6 +8,7 @@ import {
   type BankVerifyResult,
   type BankVerifyRow,
 } from "@/lib/bank-verify";
+import { parseSinopacCSV } from "@/lib/bank-csv-parser";
 import type { BankTransaction, CustomOrder } from "@/lib/types";
 
 export type LedgerCategory =
@@ -93,4 +94,104 @@ export function annotateLedger(
     }
   }
   return out;
+}
+
+// ── 腳本用的純函式（scripts/ledger-annotate.ts） ───────────────────
+
+/** 一行 CSV 拆欄：支援雙引號包住的欄位（裡面可以有逗號、"" 代表一個引號） */
+export function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else if (ch === '"') {
+        quoted = false;
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === ",") {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+/**
+ * 一個檔案的資料列原始八欄（CSV 拆欄後的欄位值，只去掉包欄位的引號，內容不改），
+ * 跟 parseSinopacCSV 解析出的交易一對一配對 → txId → 八欄。
+ * 「哪幾行算交易」的篩選必須跟 parseSinopacCSV 一致（非空行、≥6 欄、交易日可解析），
+ * 配不起來（列數不同）就丟錯，不硬配。
+ */
+export function rawRowsByTxId(text: string): Map<string, string[]> {
+  const lines = text.split(/\r?\n/);
+  const header = lines.findIndex((l) => l.split(",")[0]?.trim() === "交易日");
+  const raws: string[][] = [];
+  if (header >= 0) {
+    for (const line of lines.slice(header + 1)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.split(",").length < 6) continue;
+      const first = (trimmed.split(",")[0] ?? "").trim();
+      const space = first.lastIndexOf(" ");
+      if ((space < 0 ? first : first.slice(0, space)).length < 8) continue;
+      const cols = parseCsvLine(trimmed);
+      raws.push(Array.from({ length: 8 }, (_, i) => cols[i] ?? ""));
+    }
+  }
+  const txs = parseSinopacCSV(text).transactions;
+  if (txs.length !== raws.length) {
+    throw new Error(`原始列數 ${raws.length} 與解析出的交易數 ${txs.length} 對不上，無法逐列註記`);
+  }
+  return new Map(txs.map((t, i) => [t.txId, raws[i]]));
+}
+
+const pad2 = (s: string) => s.padStart(2, "0");
+
+/** 日期＋時間 → 比較用的「YYYY-MM-DD HH:MM」（只到分鐘，秒數忽略）。格式不對回 null */
+export function minuteKey(date: string, time: string): string | null {
+  const d = date.trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  const t = time.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!d || !t) return null;
+  return `${d[1]}-${pad2(d[2])}-${pad2(d[3])} ${pad2(t[1])}:${t[2]}`;
+}
+
+/** --after 參數（例「2026/11/04 09:52」）→ minuteKey；格式不對回 null */
+export function parseAfter(arg: string): string | null {
+  const [date = "", time = ""] = arg.trim().split(/\s+/);
+  return minuteKey(date, time);
+}
+
+export type LedgerOutRow = { raw: string[] } & LedgerAnnotation;
+
+/**
+ * 組輸出：只留晚於 afterKey 的交易（≤ afterKey 視為帳本已有），依交易順序排，
+ * 跨月份之間插一個 null 當分隔。
+ */
+export function buildLedgerOutput(
+  transactions: BankTransaction[],
+  notes: Map<string, LedgerAnnotation>,
+  rawById: Map<string, string[]>,
+  afterKey: string,
+): Array<LedgerOutRow | null> {
+  const output: Array<LedgerOutRow | null> = [];
+  let month = "";
+  for (const t of transactions) {
+    const key = minuteKey(t.txDate, t.txTime);
+    if (!key || key <= afterKey) continue;
+    const m = key.slice(0, 7);
+    if (month && m !== month) output.push(null);
+    month = m;
+    output.push({ raw: rawById.get(t.txId) ?? [], ...(notes.get(t.txId) ?? { ...BLANK, category: "unknown" }) });
+  }
+  return output;
 }

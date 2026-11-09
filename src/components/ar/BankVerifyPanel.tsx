@@ -176,8 +176,15 @@ const FREIGHT_STATUS_TEXT: Record<FreightByOrder["status"], string> = {
   different: "運費成本不同",
 };
 
+const FREIGHT_LOWER_TEXT = "⚠️ 明細合計比系統少（可能有其他月份或轉帳付的運費）";
+
 function freightTxText(r: FreightRow): string {
   return `${r.tx.txDate.slice(5)} $${fmt(r.amount)}`;
+}
+
+/** 明細合計比系統現有的運費成本少：多半是別的月份或轉帳另外付過，不能一鍵蓋掉 */
+function isFreightLower(f: FreightByOrder): boolean {
+  return f.status === "different" && f.total < f.currentShippingCost;
 }
 
 function FreightOrderRow({
@@ -204,12 +211,14 @@ function FreightOrderRow({
         {f.clientName && <span>{f.clientName}</span>}
         <span className="text-[var(--text-secondary)]">提領：{f.rows.map(freightTxText).join("、")}</span>
         <span className="text-[var(--text-secondary)]">目前運費成本 ${fmt(f.currentShippingCost)}</span>
-        <span className={f.status === "same" ? "text-green-700" : "text-amber-700"}>{FREIGHT_STATUS_TEXT[f.status]}</span>
+        <span className={f.status === "same" ? "text-green-700" : "text-amber-700"}>
+          {isFreightLower(f) ? FREIGHT_LOWER_TEXT : FREIGHT_STATUS_TEXT[f.status]}
+        </span>
       </div>
       {f.status !== "same" && (
-        <Button variant="secondary" size="sm" disabled={busy} onClick={() => onWrite(f)}>
+        <Button variant={isFreightLower(f) ? "ghost" : "secondary"} size="sm" disabled={busy} onClick={() => onWrite(f)}>
           {busy && <Loader2 className="h-3 w-3 animate-spin" />}
-          寫入運費成本
+          {isFreightLower(f) ? "確認後改成明細合計…" : "寫入運費成本"}
         </Button>
       )}
     </div>
@@ -334,15 +343,21 @@ export function BankVerifyPanel() {
   }
 
   async function handleWriteOne(f: FreightByOrder) {
+    const withdrawals = f.rows.map((r) => `・${freightTxText(r)}`).join("\n");
+    const warning = isFreightLower(f)
+      ? `\n\n${FREIGHT_LOWER_TEXT}\n系統現有 $${fmt(f.currentShippingCost)} 比這份明細的合計多，改寫後會變少。確定這張單只付了這些運費才按確定。`
+      : "";
     const ok = window.confirm(
-      `${f.orderNumber}${f.clientName ? `（${f.clientName}）` : ""}\n運費成本 $${fmt(f.currentShippingCost)} → $${fmt(f.total)}\n\n確定寫入？`,
+      `${f.orderNumber}${f.clientName ? `（${f.clientName}）` : ""}\n運費成本 $${fmt(f.currentShippingCost)} → $${fmt(f.total)}\n\n明細提領：\n${withdrawals}${warning}\n\n確定寫入？`,
     );
     if (!ok) return;
     setFreightMessage((await writeShippingCost(f)) || `${f.orderNumber} 運費成本已設為 $${fmt(f.total)}`);
   }
 
   async function handleWriteAllEmpty() {
-    const lines = freightEmpty.map((f) => `${f.orderNumber}：$0 → $${fmt(f.total)}`).join("\n");
+    const lines = freightEmpty
+      .map((f) => `${f.orderNumber}：$0 → $${fmt(f.total)}（${f.rows.map(freightTxText).join("、")}）`)
+      .join("\n");
     if (!window.confirm(`將寫入 ${freightEmpty.length} 張單的運費成本：\n${lines}\n\n確定寫入？`)) return;
     const errors: string[] = [];
     for (const f of freightEmpty) {

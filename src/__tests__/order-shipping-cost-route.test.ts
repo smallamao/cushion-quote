@@ -4,7 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ORDER_COL, ORDER_RANGE_IDS, columnLetter, orderRecordToRow, orderRowToRecord } from "@/lib/order-utils";
 
 /** 假訂單表：rows[i] = 第 i+2 列 */
-const sheet = vi.hoisted(() => ({ rows: [] as string[][], role: "admin" as string | null }));
+const sheet = vi.hoisted(() => ({
+  rows: [] as string[][],
+  role: "admin" as string | null,
+  /** 第一次寫入「之前」改動表（模擬讀列與寫入之間有人插入列） */
+  beforeFirstWrite: null as null | ((rows: string[][]) => void),
+  /** 第一次寫入「之後」改動表（模擬寫完才位移，或寫入沒落地） */
+  afterFirstWrite: null as null | ((rows: string[][]) => void),
+}));
 const audit = vi.hoisted(() => vi.fn());
 const batchUpdate = vi.hoisted(() => vi.fn());
 
@@ -29,13 +36,25 @@ vi.mock("@/lib/sheets-client", () => ({
             const row = sheet.rows[Number(m[1]) - 2];
             return { data: { values: row ? [[...row]] : [] } };
           },
+          batchGet: async ({ ranges }: { ranges: string[] }) => ({
+            data: {
+              valueRanges: ranges.map((range) => {
+                const m = /!([A-Z]+)2:[A-Z]+10000$/.exec(range)!;
+                const col = [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+                return { values: sheet.rows.map((r) => [r[col] ?? ""]) };
+              }),
+            },
+          }),
           batchUpdate: async (req: { requestBody: { data: Array<{ range: string; values: string[][] }> } }) => {
+            const first = batchUpdate.mock.calls.length === 0;
             batchUpdate(req);
+            if (first) sheet.beforeFirstWrite?.(sheet.rows);
             for (const d of req.requestBody.data) {
               const m = /!([A-Z]+)(\d+)$/.exec(d.range)!;
               const col = [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
               sheet.rows[Number(m[2]) - 2][col] = d.values[0][0];
             }
+            if (first) sheet.afterFirstWrite?.(sheet.rows);
             return {};
           },
         },
@@ -62,6 +81,8 @@ function patch(id: string, body: unknown): Promise<Response> {
 beforeEach(() => {
   sheet.rows = [orderRow("ORD-A", 0), orderRow("ORD-B", 800)];
   sheet.role = "admin";
+  sheet.beforeFirstWrite = null;
+  sheet.afterFirstWrite = null;
   audit.mockReset();
   batchUpdate.mockReset();
 });
@@ -129,6 +150,54 @@ describe("PATCH /api/sheets/orders/[id]/shipping-cost", () => {
   ])("驗證失敗回 400：%j", async (body) => {
     expect((await patch("ORD-A", body)).status).toBe(400);
     expect(batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it("body 不是 JSON 回 400", async () => {
+    const res = await PATCH(new Request("http://localhost/x", { method: "PATCH", body: "not json" }), {
+      params: Promise.resolve({ id: "ORD-A" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("讀列到寫入之間有人插入列 → 把誤寫的那列還原、回 409、記稽核", async () => {
+    const other = orderRow("ORD-NEW", 300);
+    other[ORDER_COL.updatedAt] = "OLD-STAMP-NEW";
+    sheet.rows[1][ORDER_COL.updatedAt] = "OLD-STAMP-B";
+    // ORD-B 原本在第 3 列；寫入前 ORD-NEW 插到 ORD-A 後面 → 第 3 列變成 ORD-NEW
+    sheet.beforeFirstWrite = (rows) => rows.splice(1, 0, other);
+    const res = await patch("ORD-B", { shippingCost: 1500, expectedCurrent: 800 });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "訂單表剛好有變動，請重新整理再試" });
+    // 第 3 列（ORD-NEW）被寫過又還原成寫入前讀到的值；ORD-B 本身沒動。
+    // 還原值來自 ORD-B 的舊值（800），不是 ORD-NEW 原本的 300——這就是 route 註解寫的殘餘風險，靠稽核紀錄人工修。
+    expect(batchUpdate).toHaveBeenCalledTimes(2);
+    const restore = batchUpdate.mock.calls[1][0].requestBody.data;
+    expect(restore.map((d: { range: string }) => d.range)).toEqual([
+      `訂製訂單!${columnLetter(ORDER_COL.shippingCost)}3`,
+      `訂製訂單!${columnLetter(ORDER_COL.updatedAt)}3`,
+    ]);
+    expect(sheet.rows[1][ORDER_COL.shippingCost]).toBe("800");
+    expect(sheet.rows[1][ORDER_COL.updatedAt]).toBe("OLD-STAMP-B");
+    expect(sheet.rows[2][ORDER_COL.shippingCost]).toBe("800");
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ targetId: "ORD-B", summary: expect.stringContaining("列位置變動") }));
+  });
+
+  it("寫完才有人插入列（寫入已落在本單）→ 照常成功、不還原", async () => {
+    sheet.afterFirstWrite = (rows) => rows.unshift(orderRow("ORD-NEW", 300));
+    const res = await patch("ORD-B", { shippingCost: 1500, expectedCurrent: 800 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, shippingCost: 1500 });
+    expect(batchUpdate).toHaveBeenCalledTimes(1);
+    expect(sheet.rows.find((r) => r[0] === "ORD-B")?.[ORDER_COL.shippingCost]).toBe("1500");
+  });
+
+  it("寫入後讀回的值不符 → 500、不記成功稽核", async () => {
+    sheet.afterFirstWrite = (rows) => {
+      rows[1][ORDER_COL.shippingCost] = "800";
+    };
+    const res = await patch("ORD-B", { shippingCost: 1500, expectedCurrent: 800 });
+    expect(res.status).toBe(500);
+    expect(audit).not.toHaveBeenCalled();
   });
 
   it("找不到訂單回 404", async () => {
