@@ -1,0 +1,122 @@
+import { NextResponse } from "next/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ORDER_RANGE_IDS, orderRowToRecord } from "@/lib/order-utils";
+
+/** 假訂單表：rows[i] = 第 i+2 列 */
+const sheet = vi.hoisted(() => ({ rows: [] as string[][], role: "admin" as string | null }));
+const audit = vi.hoisted(() => vi.fn());
+const batchUpdate = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/api-auth", () => ({
+  requireAdmin: async () => {
+    if (sheet.role === "admin") return { session: { role: "admin", email: "a@test" } };
+    return { denied: NextResponse.json({ ok: false, error: "forbidden" }, { status: sheet.role ? 403 : 401 }) };
+  },
+}));
+vi.mock("@/lib/audit-log", () => ({ appendAuditLog: audit }));
+vi.mock("@/lib/notion-order", () => ({ updateNotionPageIfExists: async () => false }));
+vi.mock("@/lib/sheets-client", () => ({
+  getSheetsClient: async () => ({
+    spreadsheetId: "SS",
+    sheets: {
+      spreadsheets: {
+        values: {
+          get: async ({ range }: { range: string }) => {
+            if (range === ORDER_RANGE_IDS) return { data: { values: sheet.rows.map((r) => [r[0]]) } };
+            const m = /!A(\d+):AZ\d+$/.exec(range);
+            if (!m) throw new Error(`unexpected range ${range}`);
+            const row = sheet.rows[Number(m[1]) - 2];
+            return { data: { values: row ? [[...row]] : [] } };
+          },
+          batchUpdate: async (req: { requestBody: { data: Array<{ range: string; values: string[][] }> } }) => {
+            batchUpdate(req);
+            for (const d of req.requestBody.data) {
+              const m = /!([A-Z]+)(\d+)$/.exec(d.range)!;
+              const col = m[1] === "S" ? 18 : m[1] === "AF" ? 31 : -1;
+              sheet.rows[Number(m[2]) - 2][col] = d.values[0][0];
+            }
+            return {};
+          },
+        },
+      },
+    },
+  }),
+}));
+
+const { PATCH } = await import("@/app/api/sheets/orders/[id]/shipping-cost/route");
+
+function orderRow(id: string, shippingCost: number): string[] {
+  const r = Array<string>(52).fill("");
+  r[0] = id;
+  r[18] = String(shippingCost);
+  return r;
+}
+
+function patch(id: string, body: unknown): Promise<Response> {
+  return PATCH(new Request("http://localhost/x", { method: "PATCH", body: JSON.stringify(body) }), {
+    params: Promise.resolve({ id }),
+  });
+}
+
+beforeEach(() => {
+  sheet.rows = [orderRow("ORD-A", 0), orderRow("ORD-B", 800)];
+  sheet.role = "admin";
+  audit.mockReset();
+  batchUpdate.mockReset();
+});
+
+describe("PATCH /api/sheets/orders/[id]/shipping-cost", () => {
+  it("欄位 S 確實對應 shippingCost（防欄位位移）", () => {
+    expect(orderRowToRecord(orderRow("X", 123)).shippingCost).toBe(123);
+  });
+
+  it("非 admin 被擋、不寫入", async () => {
+    sheet.role = "technician";
+    expect((await patch("ORD-A", { shippingCost: 1000, expectedCurrent: 0 })).status).toBe(403);
+    sheet.role = null;
+    expect((await patch("ORD-A", { shippingCost: 1000, expectedCurrent: 0 })).status).toBe(401);
+    expect(batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it("只寫運費成本與 updatedAt 兩格，讀回確認並記稽核", async () => {
+    const res = await patch("ORD-B", { shippingCost: 1500, expectedCurrent: 800 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, shippingCost: 1500 });
+    const ranges = batchUpdate.mock.calls[0][0].requestBody.data.map((d: { range: string }) => d.range);
+    expect(ranges).toEqual(["訂製訂單!S3", "訂製訂單!AF3"]);
+    expect(sheet.rows[1][18]).toBe("1500");
+    expect(sheet.rows[0][18]).toBe("0");
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ targetId: "ORD-B", action: "update" }));
+  });
+
+  it("畫面舊值跟表上不同 → 409、不寫入", async () => {
+    const res = await patch("ORD-B", { shippingCost: 1500, expectedCurrent: 0 });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ currentShippingCost: 800 });
+    expect(batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it("目前值已等於目標 → 冪等成功、不寫入（重按一次無害）", async () => {
+    await patch("ORD-A", { shippingCost: 1000, expectedCurrent: 0 });
+    batchUpdate.mockReset();
+    const res = await patch("ORD-A", { shippingCost: 1000, expectedCurrent: 0 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, unchanged: true });
+    expect(batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ shippingCost: -1, expectedCurrent: 0 }],
+    [{ shippingCost: "1000", expectedCurrent: 0 }],
+    [{ shippingCost: 1000 }],
+    [{ shippingCost: Number.NaN, expectedCurrent: 0 }],
+  ])("驗證失敗回 400：%j", async (body) => {
+    expect((await patch("ORD-A", body)).status).toBe(400);
+    expect(batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it("找不到訂單回 404", async () => {
+    expect((await patch("ORD-X", { shippingCost: 1, expectedCurrent: 0 })).status).toBe(404);
+  });
+});

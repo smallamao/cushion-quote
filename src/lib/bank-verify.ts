@@ -90,11 +90,43 @@ export interface BankVerifyResult {
   /** 涵蓋區間之間的空檔（例：上傳了八月、十月，缺九月） */
   gaps: DateRange[];
   debitCount: number;
+  /** 🚚 運費提領：支出備註有「單號＋運」的每一筆（單號查不到的 orderId 為空） */
+  freightRows: FreightRow[];
+  /** 🚚 依訂單加總的運費提領（只含查得到的訂單） */
+  freightByOrder: FreightByOrder[];
   dateFrom: string;
   dateTo: string;
 }
 
-type OrderLite = Pick<CustomOrder, "orderId" | "orderNumber" | "caseId" | "clientName">;
+/** 一筆 ATM 現金提領付司機運費（例：備註「16667 Ｓ９９７運費」） */
+export interface FreightRow {
+  tx: BankTransaction;
+  /** 訂單上存的單號（保留前導零，例 P0332）；查不到訂單時是備註裡抓到的單號 */
+  orderNumber: string;
+  /** 查不到訂單時為空字串 */
+  orderId: string;
+  clientName: string;
+  amount: number;
+  /** 訂單目前的「運費成本」；查不到訂單時為 0 */
+  currentShippingCost: number;
+}
+
+/** same：運費成本已等於提領合計；empty：運費成本還是 0；different：有填但金額不同 */
+export type FreightStatus = "same" | "empty" | "different";
+
+export interface FreightByOrder {
+  orderId: string;
+  orderNumber: string;
+  clientName: string;
+  /** 這張單在明細裡所有運費提領的合計 */
+  total: number;
+  currentShippingCost: number;
+  status: FreightStatus;
+  rows: FreightRow[];
+}
+
+type OrderLite = Pick<CustomOrder, "orderId" | "orderNumber" | "caseId" | "clientName"> &
+  Partial<Pick<CustomOrder, "shippingCost">>;
 
 const nfkc = (s: string | undefined | null): string => (s ?? "").normalize("NFKC");
 
@@ -176,6 +208,72 @@ const NON_ORDER_RE = /利息|回饋|退款|刷退|退刷|紅利|現金回饋/;
 
 export function isNonOrderCredit(tx: BankTransaction): boolean {
   return NON_ORDER_RE.test(nfkc(tx.description)) || NON_ORDER_RE.test(nfkc(tx.memo));
+}
+
+/**
+ * 支出是不是付司機的運費：備註或摘要裡有訂單編號（P／S）＋「運」字
+ * （老闆寫「Ｓ９９７運費」或簡寫「Ｓ１００１運」都有）。回傳備註裡的單號（已去前導零），不是就回空字串。
+ * L 開頭是進貨單號，不算運費。
+ */
+export function freightOrderNumber(tx: BankTransaction): string {
+  if (!tx.debit || tx.debit <= 0) return "";
+  const memo = nfkc(tx.memo);
+  const desc = nfkc(tx.description);
+  if (!memo.includes("運") && !desc.includes("運")) return "";
+  const no = extractOrderNumber(memo) || extractOrderNumber(desc);
+  return /^[PS]/.test(no) ? no : "";
+}
+
+export function freightStatus(total: number, current: number): FreightStatus {
+  if (current === total) return "same";
+  if (!current) return "empty";
+  return "different";
+}
+
+/** 找出運費提領，並依訂單加總。單號比對兩邊都先去前導零（訂單存 P0332、備註寫 P332 都對得上） */
+export function detectFreight(
+  transactions: BankTransaction[],
+  orders: OrderLite[],
+): { freightRows: FreightRow[]; freightByOrder: FreightByOrder[] } {
+  const orderByNumber = new Map<string, OrderLite>();
+  for (const o of orders) {
+    const no = extractOrderNumber(o.orderNumber);
+    if (no && !orderByNumber.has(no)) orderByNumber.set(no, o);
+  }
+  const freightRows: FreightRow[] = transactions.flatMap((tx) => {
+    const no = freightOrderNumber(tx);
+    if (!no) return [];
+    const order = orderByNumber.get(no);
+    return [
+      {
+        tx,
+        orderNumber: order?.orderNumber ?? no,
+        orderId: order?.orderId ?? "",
+        clientName: order?.clientName ?? "",
+        amount: tx.debit ?? 0,
+        currentShippingCost: order?.shippingCost ?? 0,
+      },
+    ];
+  });
+  const grouped = new Map<string, FreightRow[]>();
+  for (const r of freightRows) {
+    if (!r.orderId) continue;
+    grouped.set(r.orderId, [...(grouped.get(r.orderId) ?? []), r]);
+  }
+  const freightByOrder: FreightByOrder[] = [...grouped.values()].map((rows) => {
+    const total = rows.reduce((acc, r) => acc + r.amount, 0);
+    const first = rows[0];
+    return {
+      orderId: first.orderId,
+      orderNumber: first.orderNumber,
+      clientName: first.clientName,
+      total,
+      currentShippingCost: first.currentShippingCost,
+      status: freightStatus(total, first.currentShippingCost),
+      rows,
+    };
+  });
+  return { freightRows, freightByOrder };
 }
 
 // ── 系統端資料 ───────────────────────────────────────────────
@@ -520,7 +618,9 @@ export function verifyBankTransactions(
     return !!r && isNearEnd(s, r);
   });
 
-  return { rows, systemOnly, crossPeriod, coverage, gaps, debitCount, dateFrom, dateTo };
+  const { freightRows, freightByOrder } = detectFreight(transactions, orders);
+
+  return { rows, systemOnly, crossPeriod, coverage, gaps, debitCount, freightRows, freightByOrder, dateFrom, dateTo };
 }
 
 /** 備註裡的長串數字（帳號）只留末五碼：7000024411500765241 → …65241 */

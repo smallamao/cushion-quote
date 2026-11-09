@@ -1,8 +1,9 @@
 "use client";
 
 // 應收帳款 →「銀行對帳」分頁：上傳永豐往來明細，逐筆核對入帳是否都已記進應收。
-// 🔴 唯讀：這裡沒有任何寫回按鈕。收款一律在客人回報時從應收明細頁記錄，
+// 🔴 收款唯讀：這裡不寫回任何收款。收款一律在客人回報時從應收明細頁記錄，
 //    這頁只負責找出「銀行有、系統沒有」與「系統有、銀行沒有」的落差。
+//    唯一的寫入是「🚚 運費提領」把 ATM 付司機的運費「設定」成訂單的運費成本（按鈕＋確認才寫）。
 
 import { AlertCircle, ExternalLink, Loader2, Upload, X } from "lucide-react";
 import Link from "next/link";
@@ -17,6 +18,8 @@ import {
   maskMemo,
   verifyBankTransactions,
   type BankVerifyRow,
+  type FreightByOrder,
+  type FreightRow,
   type VerifyCategory,
   type VerifySchedule,
 } from "@/lib/bank-verify";
@@ -161,6 +164,58 @@ function SystemOnlyRow({ s }: { s: VerifySchedule }) {
   );
 }
 
+const FREIGHT_META = {
+  icon: "🚚",
+  label: "運費提領",
+  hint: "ATM 提領付司機運費（備註有單號＋運）；按「寫入運費成本」把訂單的運費成本設成提領合計",
+};
+
+const FREIGHT_STATUS_TEXT: Record<FreightByOrder["status"], string> = {
+  same: "✅ 已一致",
+  empty: "運費成本未填",
+  different: "運費成本不同",
+};
+
+function freightTxText(r: FreightRow): string {
+  return `${r.tx.txDate.slice(5)} $${fmt(r.amount)}`;
+}
+
+function FreightOrderRow({
+  f,
+  busy,
+  onWrite,
+}: {
+  f: FreightByOrder;
+  busy: boolean;
+  onWrite: (f: FreightByOrder) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-sm sm:flex-row sm:items-center sm:gap-4">
+      <div className="w-28 shrink-0">
+        <Link
+          href={`/orders/${encodeURIComponent(f.orderId)}`}
+          className="inline-flex items-center gap-1 font-medium text-[var(--accent)] hover:underline"
+        >
+          {f.orderNumber} <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+      <div className="w-24 shrink-0 font-semibold tabular-nums">${fmt(f.total)}</div>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+        {f.clientName && <span>{f.clientName}</span>}
+        <span className="text-[var(--text-secondary)]">提領：{f.rows.map(freightTxText).join("、")}</span>
+        <span className="text-[var(--text-secondary)]">目前運費成本 ${fmt(f.currentShippingCost)}</span>
+        <span className={f.status === "same" ? "text-green-700" : "text-amber-700"}>{FREIGHT_STATUS_TEXT[f.status]}</span>
+      </div>
+      {f.status !== "same" && (
+        <Button variant="secondary" size="sm" disabled={busy} onClick={() => onWrite(f)}>
+          {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+          寫入運費成本
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function Section({
   meta,
   count,
@@ -191,6 +246,8 @@ export function BankVerifyPanel() {
   const [loadError, setLoadError] = useState("");
   const [files, setFiles] = useState<CsvFile[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [writingIds, setWritingIds] = useState<string[]>([]);
+  const [freightMessage, setFreightMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -246,6 +303,59 @@ export function BankVerifyPanel() {
     return map;
   }, [result]);
 
+  const freightUnknown = useMemo(() => (result?.freightRows ?? []).filter((r) => !r.orderId), [result]);
+  const freightEmpty = useMemo(() => (result?.freightByOrder ?? []).filter((f) => f.status === "empty"), [result]);
+
+  /** 呼叫窄端點把運費成本「設定」成提領合計；成功就更新畫面上的訂單快照。回傳錯誤訊息（成功為空字串） */
+  async function writeShippingCost(f: FreightByOrder): Promise<string> {
+    setWritingIds((prev) => [...prev, f.orderId]);
+    try {
+      const res = await fetch(`/api/sheets/orders/${encodeURIComponent(f.orderId)}/shipping-cost`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shippingCost: f.total, expectedCurrent: f.currentShippingCost }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        shippingCost?: number;
+        currentShippingCost?: number;
+      };
+      const saved = json.ok ? json.shippingCost ?? f.total : json.currentShippingCost;
+      if (typeof saved === "number") {
+        setOrders((prev) => prev.map((o) => (o.orderId === f.orderId ? { ...o, shippingCost: saved } : o)));
+      }
+      return json.ok ? "" : `${f.orderNumber}：${json.error ?? "寫入失敗"}`;
+    } catch {
+      return `${f.orderNumber}：寫入失敗，請檢查網路後再試`;
+    } finally {
+      setWritingIds((prev) => prev.filter((id) => id !== f.orderId));
+    }
+  }
+
+  async function handleWriteOne(f: FreightByOrder) {
+    const ok = window.confirm(
+      `${f.orderNumber}${f.clientName ? `（${f.clientName}）` : ""}\n運費成本 $${fmt(f.currentShippingCost)} → $${fmt(f.total)}\n\n確定寫入？`,
+    );
+    if (!ok) return;
+    setFreightMessage((await writeShippingCost(f)) || `${f.orderNumber} 運費成本已設為 $${fmt(f.total)}`);
+  }
+
+  async function handleWriteAllEmpty() {
+    const lines = freightEmpty.map((f) => `${f.orderNumber}：$0 → $${fmt(f.total)}`).join("\n");
+    if (!window.confirm(`將寫入 ${freightEmpty.length} 張單的運費成本：\n${lines}\n\n確定寫入？`)) return;
+    const errors: string[] = [];
+    for (const f of freightEmpty) {
+      const err = await writeShippingCost(f);
+      if (err) errors.push(err);
+    }
+    setFreightMessage(
+      errors.length
+        ? `${freightEmpty.length - errors.length} 張完成，${errors.length} 張失敗：${errors.join("；")}`
+        : `${freightEmpty.length} 張單的運費成本已寫入`,
+    );
+  }
+
   async function addFiles(list: FileList | null) {
     const incoming = await readCsvFiles(list);
     setFiles((prev) => [...prev, ...incoming.filter((f) => !prev.some((p) => p.key === f.key))]);
@@ -254,7 +364,7 @@ export function BankVerifyPanel() {
   return (
     <div className="space-y-4">
       <p className="text-xs text-[var(--text-secondary)]">
-        上傳永豐「往來明細」CSV（可一次多個月），逐筆核對入帳是否都已記進應收帳款。這裡只核對、不會寫入任何資料。
+        上傳永豐「往來明細」CSV（可一次多個月），逐筆核對入帳是否都已記進應收帳款。這裡只核對、不會寫入收款；只有「🚚 運費提領」可以按鈕寫入訂單的運費成本。
       </p>
 
       <div
@@ -404,6 +514,39 @@ export function BankVerifyPanel() {
               <BankRow key={r.tx.txId} row={r} />
             ))}
           </Section>
+          {(result.freightByOrder.length > 0 || freightUnknown.length > 0) && (
+            <details open className="group space-y-2">
+              <summary className="cursor-pointer select-none text-sm font-semibold text-[var(--text-primary)]">
+                {FREIGHT_META.icon} {FREIGHT_META.label}（{result.freightByOrder.length + freightUnknown.length}）
+                <span className="ml-2 text-xs font-normal text-[var(--text-tertiary)]">{FREIGHT_META.hint}</span>
+              </summary>
+              <div className="mt-2 space-y-1.5">
+                {freightEmpty.length > 0 && (
+                  <Button variant="secondary" size="sm" disabled={writingIds.length > 0} onClick={() => void handleWriteAllEmpty()}>
+                    全部寫入（運費成本未填的 {freightEmpty.length} 張）
+                  </Button>
+                )}
+                {freightMessage && <div className="text-xs text-[var(--text-secondary)]">{freightMessage}</div>}
+                {result.freightByOrder.map((f) => (
+                  <FreightOrderRow
+                    key={f.orderId}
+                    f={f}
+                    busy={writingIds.includes(f.orderId)}
+                    onWrite={(x) => void handleWriteOne(x)}
+                  />
+                ))}
+                {freightUnknown.map((r) => (
+                  <div
+                    key={r.tx.txId}
+                    className="flex gap-2 rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+                  >
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    {r.tx.txDate.slice(5)} ${fmt(r.amount)}「{maskMemo(r.tx.memo)}」：找不到訂單 {r.orderNumber}，請確認單號
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
           <Section meta={CROSS_PERIOD_META} count={result.crossPeriod.length} defaultOpen={false}>
             {result.crossPeriod.map((s) => (
               <SystemOnlyRow key={s.scheduleId} s={s} />

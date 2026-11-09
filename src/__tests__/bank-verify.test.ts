@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   accountIdsForCsv,
   buildVerifySchedules,
+  detectFreight,
   extractLast5,
   extractOrderNumber,
+  freightOrderNumber,
+  freightStatus,
   maskMemo,
   mergeRanges,
   scheduleRef,
@@ -435,5 +438,72 @@ describe("mergeRanges", () => {
         { from: "2026-08-01", to: "2026-08-31" },
       ]),
     ).toEqual({ coverage: [{ from: "2026-08-01", to: "2026-09-30" }], gaps: [] });
+  });
+});
+
+describe("運費提領", () => {
+  const FREIGHT_ORDERS = [
+    { orderId: "ORD-997", orderNumber: "S997", caseId: "CA-1", clientName: "甲", shippingCost: 0 },
+    { orderId: "ORD-1001", orderNumber: "S1001", caseId: "CA-2", clientName: "乙", shippingCost: 1500 },
+    { orderId: "ORD-332", orderNumber: "P0332", caseId: "CA-3", clientName: "丙", shippingCost: 800 },
+  ];
+  const atm = (memo: string, debit: number, over: Partial<BankTransaction> = {}) =>
+    tx({ description: "ATM現金", debit, memo, ...over });
+
+  it("全形備註、「運費」與簡寫「運」都認得，前導零單號兩邊都對得上", () => {
+    const { freightRows } = detectFreight(
+      [atm("16667 Ｓ９９７運費", 1000), atm("16667 Ｓ１００１運", 1500), atm("16667 Ｐ０３３２運", 500)],
+      FREIGHT_ORDERS,
+    );
+    expect(freightRows.map((r) => [r.orderNumber, r.orderId, r.amount])).toEqual([
+      ["S997", "ORD-997", 1000],
+      ["S1001", "ORD-1001", 1500],
+      ["P0332", "ORD-332", 500],
+    ]);
+  });
+
+  it("沒有「運」字、入帳、或 L 進貨單號都不算運費", () => {
+    expect(freightOrderNumber(atm("16667 Ｓ９９７", 1000))).toBe("");
+    expect(freightOrderNumber(tx({ credit: 1000, memo: "S997運費" }))).toBe("");
+    expect(freightOrderNumber(atm("L019 運費", 1000))).toBe("");
+    expect(freightOrderNumber(tx({ description: "運費", debit: 300, memo: "S997" }))).toBe("S997");
+  });
+
+  it("查不到的單號照樣列出，但沒有 orderId、不進訂單加總", () => {
+    const { freightRows, freightByOrder } = detectFreight([atm("16667 Ｓ５５５運費", 900)], FREIGHT_ORDERS);
+    expect(freightRows).toHaveLength(1);
+    expect(freightRows[0]).toMatchObject({ orderNumber: "S555", orderId: "", amount: 900 });
+    expect(freightByOrder).toEqual([]);
+  });
+
+  it("同一張單多筆提領加總，並判斷 same／empty／different", () => {
+    const { freightByOrder } = detectFreight(
+      [
+        atm("16667 Ｓ９９７運費", 1000),
+        atm("16667 Ｓ９９７運", 500),
+        atm("16667 Ｓ１００１運", 1500),
+        atm("16667 Ｐ０３３２運", 500),
+      ],
+      FREIGHT_ORDERS,
+    );
+    expect(freightByOrder.map((f) => [f.orderNumber, f.total, f.currentShippingCost, f.status, f.rows.length])).toEqual([
+      ["S997", 1500, 0, "empty", 2],
+      ["S1001", 1500, 1500, "same", 1],
+      ["P0332", 500, 800, "different", 1],
+    ]);
+  });
+
+  it("verifyBankTransactions 也回傳運費結果", () => {
+    const r = verifyBankTransactions([atm("16667 Ｓ８８２運費", 600)], [], [{ ...ORDERS[0], shippingCost: 0 }], {
+      ownAccounts: OWN,
+    });
+    expect(r.freightByOrder).toMatchObject([{ orderId: "ORD-1", total: 600, status: "empty" }]);
+    expect(r.debitCount).toBe(1);
+  });
+
+  it("freightStatus", () => {
+    expect(freightStatus(1000, 1000)).toBe("same");
+    expect(freightStatus(1000, 0)).toBe("empty");
+    expect(freightStatus(1000, 1200)).toBe("different");
   });
 });
