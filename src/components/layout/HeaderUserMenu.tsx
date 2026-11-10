@@ -99,7 +99,7 @@ function NotificationPanel({
 export function HeaderUserMenu() {
   const { user } = useCurrentUser();
   const { unreadCount: replyUnread, items: replyItems, markAsRead: markReplyRead } = useUnreadReplies();
-  const { unread: notifUnread, markAsRead: markNotifRead } = useAppNotifications(user?.role === "admin");
+  const { unread: notifUnread, markAsRead: markNotifRead, refresh: refreshNotif } = useAppNotifications(user?.role === "admin");
   const totalUnread = replyUnread + notifUnread.length;
   const entries: PanelEntry[] = [
     ...notifUnread.map((n) => ({ id: `n-${n.id}`, title: n.title, body: n.body, link: n.link, time: n.createdAt })),
@@ -147,7 +147,12 @@ export function HeaderUserMenu() {
       <div ref={notiRef} className="relative">
         <button
           type="button"
-          onClick={() => { setNotiOpen((v) => !v); setMenuOpen(false); }}
+          onClick={() => {
+            // 鈴鐺不再定時查（通知改推 Telegram），點開時補查一次
+            if (!notiOpen) void refreshNotif();
+            setNotiOpen((v) => !v);
+            setMenuOpen(false);
+          }}
           className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[var(--bg-subtle)]"
           aria-label="通知"
         >

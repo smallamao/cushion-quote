@@ -61,9 +61,10 @@ export function useAppNotifications(enabled = true) {
     setLastRead(now);
   }, []);
 
-  // 原本每 30 秒一次、人不在也照跑；改成 2 分鐘、閒置就停、回來補查
-  usePolling(fetchItems, enabled);
+  // 原本每 30 秒一次、人不在也照跑。2026-11-10 起通知同步推老闆 Telegram，
+  // 鈴鐺不再定時查：打開頁面、切回視窗、閒置後回來時才補查（另一位管理員換頁即更新）
+  usePolling(fetchItems, enabled, { interval: false });
 
   const unread = items.filter((i) => i.createdAt > lastRead);
-  return { items, unread, unreadCount: unread.length, markAsRead };
+  return { items, unread, unreadCount: unread.length, markAsRead, refresh: fetchItems };
 }

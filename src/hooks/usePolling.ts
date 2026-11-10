@@ -13,8 +13,15 @@ const ACTIVITY_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touc
  * - 切回畫面、視窗重新取得焦點、閒置後重新動滑鼠 → 若上次查詢超過 30 秒就立刻補查
  *
  * 規則與緣由見 lib/polling.ts（Vercel CPU 額度用完被暫停）。
+ *
+ * @param interval false＝不定時查，只在掛上、切回畫面、取得焦點、閒置後回來時補查
+ *   （通知鈴鐺：老闆已改收 Telegram，2026-11-10）
  */
-export function usePolling(fetchFn: () => void | Promise<void>, enabled = true) {
+export function usePolling(
+  fetchFn: () => void | Promise<void>,
+  enabled = true,
+  { interval = true }: { interval?: boolean } = {},
+) {
   const fnRef = useRef(fetchFn);
   useEffect(() => {
     fnRef.current = fetchFn;
@@ -36,9 +43,11 @@ export function usePolling(fetchFn: () => void | Promise<void>, enabled = true) 
 
     run();
 
-    const timer = setInterval(() => {
-      if (shouldPollNow({ visible: visible(), lastActivityMs: lastActivity, nowMs: Date.now() })) run();
-    }, POLL_INTERVAL_MS);
+    const timer = interval
+      ? setInterval(() => {
+          if (shouldPollNow({ visible: visible(), lastActivityMs: lastActivity, nowMs: Date.now() })) run();
+        }, POLL_INTERVAL_MS)
+      : undefined;
 
     const onActivity = () => {
       const wasIdle = !shouldPollNow({ visible: true, lastActivityMs: lastActivity, nowMs: Date.now() });
@@ -55,10 +64,10 @@ export function usePolling(fetchFn: () => void | Promise<void>, enabled = true) 
     window.addEventListener("focus", onReturn);
 
     return () => {
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
       for (const ev of ACTIVITY_EVENTS) window.removeEventListener(ev, onActivity);
       document.removeEventListener("visibilitychange", onReturn);
       window.removeEventListener("focus", onReturn);
     };
-  }, [enabled]);
+  }, [enabled, interval]);
 }
