@@ -205,7 +205,7 @@ export function DispatchPlanClient() {
       */}
       {!trelloOk && (
         <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          ⚠️ 讀不到 Trello，這一頁的**配送區域與司機**都不完整，容量示警會失準。
+          ⚠️ 讀不到 Trello，這一頁的<strong>配送區域與司機</strong>都不完整，容量示警會失準。
           請重新整理；一直失敗就先別照這頁排車。
         </div>
       )}
