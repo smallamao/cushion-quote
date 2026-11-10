@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-const POLL_INTERVAL = 30_000;
+import { usePolling } from "@/hooks/usePolling";
 const LS_KEY = "cq-notif-last-read";
 
 export interface AppNotifItem {
@@ -21,7 +21,6 @@ export interface AppNotifItem {
 export function useAppNotifications(enabled = true) {
   const [items, setItems] = useState<AppNotifItem[]>([]);
   const [lastRead, setLastRead] = useState<string>("");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     let lr = "";
@@ -62,34 +61,8 @@ export function useAppNotifications(enabled = true) {
     setLastRead(now);
   }, []);
 
-  useEffect(() => {
-    if (!enabled) return;
-    void fetchItems();
-    function startPolling() {
-      if (intervalRef.current) return;
-      intervalRef.current = setInterval(() => {
-        if (document.visibilityState === "visible") void fetchItems();
-      }, POLL_INTERVAL);
-    }
-    function handleVisibility() {
-      if (document.visibilityState === "visible") {
-        void fetchItems();
-        startPolling();
-      } else if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-    startPolling();
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [fetchItems, enabled]);
+  // 原本每 30 秒一次、人不在也照跑；改成 2 分鐘、閒置就停、回來補查
+  usePolling(fetchItems, enabled);
 
   const unread = items.filter((i) => i.createdAt > lastRead);
   return { items, unread, unreadCount: unread.length, markAsRead };

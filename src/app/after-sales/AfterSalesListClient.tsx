@@ -63,7 +63,8 @@ export function AfterSalesListClient() {
         /* 剪貼簿不可用時靜默略過（可改用詳情頁複製） */
       });
   };
-  const { markAsRead } = useUnreadReplies();
+  // 只用來標已讀；輪詢交給頂端選單，不重複打伺服器
+  const { markAsRead } = useUnreadReplies({ poll: false });
   const isAdmin = user?.role === "admin";
 
   // 一鍵約清潔時段：建空白到府清潔單＋產生客人選時段連結（內勤零登打）

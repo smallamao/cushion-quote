@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
-const POLL_INTERVAL = 15_000; // 15 秒，小團隊在 Sheets API 配額內
+import { usePolling } from "@/hooks/usePolling";
 
 export interface UnreadItem {
   serviceId: string;
@@ -11,11 +11,14 @@ export interface UnreadItem {
   occurredAt: string;
 }
 
-export function useUnreadReplies() {
+/**
+ * @param poll 是否定時查詢。只需要 markAsRead 的頁面（售後列表）傳 false，
+ *   不要跟頂端選單重複輪詢（2026-11-10 Vercel CPU 額度用完被暫停）。
+ */
+export function useUnreadReplies({ poll = true }: { poll?: boolean } = {}) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [items, setItems] = useState<UnreadItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchCount = useCallback(async () => {
     try {
@@ -48,39 +51,8 @@ export function useUnreadReplies() {
     }
   }, []);
 
-  useEffect(() => {
-    void fetchCount();
-
-    function startPolling() {
-      if (intervalRef.current) return;
-      intervalRef.current = setInterval(() => {
-        if (document.visibilityState === "visible") {
-          void fetchCount();
-        }
-      }, POLL_INTERVAL);
-    }
-
-    function handleVisibility() {
-      if (document.visibilityState === "visible") {
-        void fetchCount();
-        startPolling();
-      } else if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-
-    startPolling();
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [fetchCount]);
+  // 原本每 15 秒一次、人不在也照跑；改成 2 分鐘、閒置就停、回來補查
+  usePolling(fetchCount, poll);
 
   return { unreadCount, items, loading, markAsRead, refresh: fetchCount };
 }
