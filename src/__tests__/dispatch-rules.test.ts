@@ -134,6 +134,40 @@ describe("driverLoad — 趟數分到各司機頭上", () => {
     expect(r.perDriver).toEqual([]);
     expect(r.unassigned).toBe(0);
   });
+
+  /**
+   * 🔴 2026-11-09 審查抓到的漏報：司機標籤是內勤處理出貨通知時才掛上的，
+   *    所以「還沒處理的未來日子」大多沒標籤。只看 peak 會把
+   *    「5 趟未指派 + 1 趟阿信」算成 1 趟，完全不示警。
+   *    worstCase 不猜人，只承認這些趟可能落在同一個人身上。
+   */
+  it("worstCase＝最忙的司機 ＋ 全部未指派（補上只看 peak 的漏報）", () => {
+    const r = driverLoad([
+      ...Array.from({ length: 5 }, () => ({ assignedDriver: "" })),
+      { assignedDriver: "阿信" },
+    ]);
+    expect(r.peak).toEqual({ name: "阿信", trips: 1 });
+    expect(r.unassigned).toBe(5);
+    expect(r.worstCase).toBe(6);        // ← 才是該用來示警的數字
+  });
+
+  it("全部都有指派時，worstCase 等於 peak（不會憑空加料）", () => {
+    const r = driverLoad([
+      { assignedDriver: "阿信" }, { assignedDriver: "阿信" }, { assignedDriver: "阿富" },
+    ]);
+    expect(r.worstCase).toBe(2);
+    expect(r.worstCase).toBe(r.peak?.trips);
+  });
+
+  it("全部未指派時，worstCase 等於總趟數", () => {
+    const r = driverLoad(Array.from({ length: 4 }, () => ({ assignedDriver: "" })));
+    expect(r.peak).toBeNull();
+    expect(r.worstCase).toBe(4);
+  });
+
+  it("空的一天 worstCase 為 0", () => {
+    expect(driverLoad([]).worstCase).toBe(0);
+  });
 });
 
 describe("driverNameFromLabelIds — 從卡片標籤認司機", () => {
@@ -168,13 +202,19 @@ describe("driverNameFromLabelIds — 從卡片標籤認司機", () => {
  *    「出貨通知已發」的標記，在那之前系統裡沒有「已通知」狀態可以比對。
  */
 describe("shouldRemindDeliveryNotice — 配送前通知客人", () => {
-  const base = { status: "scheduled", today: "2026-11-09", cardOnBoard: true, alreadyNotified: false };
+  const READY = TRELLO.LISTS.WAIT_SHIPPING;
+  const PROD = TRELLO.LISTS.PRODUCTION;
+  const base = {
+    status: "scheduled", today: "2026-11-09", idList: READY, alreadyNotified: false,
+    readyList: READY, productionList: PROD,
+  };
 
-  it("進入通知期（剩 3 天以內）要提醒", () => {
+  it("待出貨＋進入通知期（剩 3 天以內）→ 催去發通知", () => {
     for (const [date, days] of [["2026-11-12", 3], ["2026-11-11", 2], ["2026-11-10", 1]] as const) {
       const r = shouldRemindDeliveryNotice({ ...base, chosenDate: date });
       expect(r.remind, date).toBe(true);
       expect(r.daysLeft).toBe(days);
+      expect(r.kind).toBe("notify");
     }
   });
 
@@ -183,6 +223,35 @@ describe("shouldRemindDeliveryNotice — 配送前通知客人", () => {
     expect(r.remind).toBe(true);
     expect(r.daysLeft).toBe(0);
     expect(r.reason).toContain("今天");
+  });
+
+  /**
+   * 🔴 這條是 2026-11-09 審查抓到的：原本只判斷「在不在板上」，而作廢的卡
+   *    **還在板上**。同一支 cron 的自動取消刻意不動 confirmed／scheduled
+   *    （客人簽名的存證），所以一張簽過名又被拖進作廢的單會被天天催四天。
+   */
+  it("卡片在「Fail 作廢」清單 → 一律不催（即使狀態還沒變成 cancelled）", () => {
+    const r = shouldRemindDeliveryNotice({
+      ...base, chosenDate: "2026-11-10", idList: TRELLO.LISTS.FAILED, status: "scheduled",
+    });
+    expect(r.remind).toBe(false);
+    expect(r.kind).toBe("none");
+  });
+
+  it("還在「生產中」→ 要提醒，但動作是看進度不是發通知", () => {
+    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", idList: PROD });
+    expect(r.remind).toBe(true);
+    expect(r.kind).toBe("production_behind");
+  });
+
+  it("已出貨／待驗收／完成／還沒進生產的清單都不催", () => {
+    for (const list of [
+      TRELLO.LISTS.SHIPPED, TRELLO.LISTS.WAIT_REVIEW,
+      TRELLO.LISTS.COMPLETED, TRELLO.LISTS.ORDER, TRELLO.LISTS.REQUEST,
+    ]) {
+      const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", idList: list });
+      expect(r.remind, list).toBe(false);
+    }
   });
 
   it("還太早（剩 4 天）先不吵", () => {
@@ -198,19 +267,17 @@ describe("shouldRemindDeliveryNotice — 配送前通知客人", () => {
   });
 
   it("配送日已過不歸這一類（那是遲到，另有機制）", () => {
-    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-08" });
-    expect(r.remind).toBe(false);
+    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-08" }).remind).toBe(false);
   });
 
-  it("卡片不在板上時不吵——判斷不了就別發假警報", () => {
-    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", cardOnBoard: false });
+  it("卡片不在板上（已封存）時不吵——判斷不了就別發假警報", () => {
+    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", idList: "" });
     expect(r.remind).toBe(false);
     expect(r.reason).toContain("板上");
   });
 
   it("取消的單不提醒", () => {
-    const r = shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", status: "cancelled" });
-    expect(r.remind).toBe(false);
+    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: "2026-11-10", status: "cancelled" }).remind).toBe(false);
   });
 
   it("還沒排配送日的不提醒", () => {
@@ -222,14 +289,44 @@ describe("shouldRemindDeliveryNotice — 配送前通知客人", () => {
   });
 
   it("門檻跟著 NOTIFY_LEAD_DAYS 走，不是寫死的 3", () => {
-    // 剛好等於門檻要發、超過一天不發——這組斷言在常數被調整時仍然成立。
     // 🔴 日期加減一律用 UTC 午夜當基準：先前這裡用 `+08:00` 解析再 toISOString()，
     //    等於把結果轉回 UTC，少 8 小時就少一天，測試自己算錯而不是實作錯。
     const addDays = (ymd: string, n: number) =>
       new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-    const onEdge = addDays("2026-11-09", NOTIFY_LEAD_DAYS);
-    const past = addDays("2026-11-09", NOTIFY_LEAD_DAYS + 1);
-    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: onEdge }).remind).toBe(true);
-    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: past }).remind).toBe(false);
+    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: addDays("2026-11-09", NOTIFY_LEAD_DAYS) }).remind).toBe(true);
+    expect(shouldRemindDeliveryNotice({ ...base, chosenDate: addDays("2026-11-09", NOTIFY_LEAD_DAYS + 1) }).remind).toBe(false);
+  });
+});
+
+/**
+ * 🔴 2026-11-09 審查抓到：現役司機的事實來源是司機設定表（Sheets，老闆可從
+ *    設定頁新增並填 labelId）。原本這裡是一張硬編碼對照表，等於第三份真相——
+ *    從設定頁新增的司機會永遠被算成「未指派」。
+ */
+describe("driverNameFromLabelIds — 現役名單由外部傳入", () => {
+  it("認得設定表新增的司機（不在程式的 DRIVER_LIST 裡）", () => {
+    const roster = [{ labelId: "brand-new-label-id", title: "新來的王先生 (小貨車)[ABC-1234]" }];
+    expect(driverNameFromLabelIds(["brand-new-label-id"], roster)).toBe("新來的王先生");
+  });
+
+  it("括號與車號會被去掉，徽章才放得下", () => {
+    const roster = [{ labelId: "L1", title: "阿信 (兩人）[BXH-6828]" }];
+    expect(driverNameFromLabelIds(["L1"], roster)).toBe("阿信");
+  });
+
+  it("即使傳了新名單，仍認得已停止配合的歷史標籤", () => {
+    const roster = [{ labelId: "L1", title: "阿信" }];
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_LOU], roster)).toBe("羅先生");
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_FAN], roster)).toBe("范先生");
+  });
+
+  it("不傳名單時退回 DRIVER_LIST", () => {
+    expect(driverNameFromLabelIds([TRELLO.LABELS.DRIVER_FU])).toBe("阿富");
+  });
+
+  it("名單裡 labelId 空白的司機不會誤配到沒有標籤的卡", () => {
+    const roster = [{ labelId: "", title: "還沒設標籤的人" }];
+    expect(driverNameFromLabelIds([], roster)).toBe("");
+    expect(driverNameFromLabelIds([""], roster)).toBe("");
   });
 });

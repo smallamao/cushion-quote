@@ -90,3 +90,35 @@ describe("setCardDue 必須保留 dueComplete", () => {
     expect(put?.url).toContain("/cards/card5");
   });
 });
+
+describe("setCardDue 的失敗路徑", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  /**
+   * 🔴 2026-11-09 審查指出的測試缺口：讀現值失敗時不該還去寫。
+   *    硬寫下去等於用猜的 dueComplete 覆蓋真值——那正是這次要修的 bug。
+   *    寧可整個失敗（呼叫端有 try/catch 會在卡片留言標註），也不要寫錯。
+   */
+  it("讀現值失敗時不送 PUT，整個丟錯讓呼叫端知道", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        calls.push(method);
+        if (method === "GET") return new Response("boom", { status: 500 });
+        return new Response("{}", { status: 200 });
+      }),
+    );
+    vi.resetModules();
+    process.env.TRELLO_KEY = "test-key";
+    process.env.TRELLO_TOKEN = "test-token";
+    const { setCardDue } = await import("@/lib/trello-server");
+
+    await expect(setCardDue("card9", "2026-11-20T08:00:00.000Z")).rejects.toThrow();
+    expect(calls).toEqual(["GET"]);          // ← 沒有 PUT
+  });
+});

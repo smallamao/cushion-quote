@@ -70,6 +70,8 @@ export function DispatchPlanClient() {
   const [month, setMonth] = useState(() => todayTw().slice(0, 7));
   const [picked, setPicked] = useState<string | null>(null);
   const [showExpired, setShowExpired] = useState(false);
+  /** Trello 讀不到時，區域與司機資料都不完整，示警會失準——要明講不能靜默 */
+  const [trelloOk, setTrelloOk] = useState(true);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -78,11 +80,12 @@ export function DispatchPlanClient() {
     try {
       const res = await fetch("/api/sheets/dispatch-plan", { cache: "no-store" });
       const j = (await res.json()) as {
-        ok: boolean; error?: string; pending?: Pending[]; scheduled?: Scheduled[];
+        ok: boolean; error?: string; pending?: Pending[]; scheduled?: Scheduled[]; trelloOk?: boolean;
       };
       if (!j.ok) { setError(j.error ?? "讀取失敗"); return; }
       setPending(j.pending ?? []);
       setScheduled(j.scheduled ?? []);
+      setTrelloOk(j.trelloOk !== false);
     } catch {
       setError("讀取失敗，請檢查網路");
     } finally {
@@ -174,7 +177,8 @@ export function DispatchPlanClient() {
     const m = new Map<string, { booked: number; candidates: number; overSoft: boolean; overHard: boolean }>();
     for (const d of days) {
       // 門檻比的是「單一司機的最高趟數」，不是當天總數
-      const peak = driverLoad(d.booked).peak?.trips ?? 0;
+      // 用最壞情況：未指派的趟最後可能全落在同一人身上，不能當成 0
+      const peak = driverLoad(d.booked).worstCase;
       m.set(d.date, {
         booked: d.booked.length,
         candidates: d.candidates.filter((c) => !scheduled.some((s) => s.token === c.p.token)).length,
@@ -193,6 +197,18 @@ export function DispatchPlanClient() {
       <p className="mt-1 text-sm text-[var(--text-secondary)]">
         把客人給的希望時段按日期攤開，含配送區域。排車由你決定，系統只負責攤平與示警。
       </p>
+
+      {/*
+        🔴 Trello 讀不到時一定要明講。區域會全變「需確認」、司機全變未指派，
+           而容量示警是看司機趟數的，資料一空就什麼都不會亮——使用者會以為
+           「今天沒有需要注意的日子」。資料不完整比沒有警示更危險。
+      */}
+      {!trelloOk && (
+        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          ⚠️ 讀不到 Trello，這一頁的**配送區域與司機**都不完整，容量示警會失準。
+          請重新整理；一直失敗就先別照這頁排車。
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
         <span className="text-[var(--text-secondary)]">
@@ -336,9 +352,14 @@ export function DispatchPlanClient() {
           // 門檻比「單一司機的最高趟數」，不是當天總數——總數會把阿富的台東單
           // 算進台北的額度裡（老闆 2026-11-09）
           const load = driverLoad(d.booked);
-          const peak = load.peak?.trips ?? 0;
+          // 示警比「最忙的司機 ＋ 全部未指派」的上界。只看已指派會漏報：
+          // 司機標籤是處理出貨通知時才掛的，未來的日子大多還沒掛。
+          const peak = load.worstCase;
           const overHard = peak > HARD_CAP;
           const overSoft = !overHard && peak > SOFT_CAP;
+          const peakLabel = load.unassigned > 0
+            ? `最多 ${peak} 趟（含 ${load.unassigned} 趟未指派）`
+            : `${load.peak?.name} 一天 ${peak} 趟`;
           return (
             <div key={d.date} className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -348,12 +369,12 @@ export function DispatchPlanClient() {
                 </span>
                 {overHard && (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
-                    🚨 {load.peak?.name} 一天 {peak} 趟，超過上限 {HARD_CAP}
+                    🚨 {peakLabel}，超過上限 {HARD_CAP}
                   </span>
                 )}
                 {overSoft && (
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
-                    ⚠️ {load.peak?.name} 一天 {peak} 趟，偏多（常態 {SOFT_CAP} 以內）
+                    ⚠️ {peakLabel}，偏多（常態 {SOFT_CAP} 以內）
                   </span>
                 )}
                 {load.perDriver.length > 1 && (

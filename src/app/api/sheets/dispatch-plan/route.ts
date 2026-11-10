@@ -8,6 +8,7 @@ import { parseDeliveryRegion } from "@/lib/delivery-region";
 //    等於同一組門檻有三份真相（常數、序列化、前端 useState）——改常數前端不會跟著動，
 //    而且 fetch 失敗時畫面會照著舊數字判斷，完全不報錯。
 import { suggestDriver } from "@/lib/dispatch-rules";
+import { listDrivers } from "@/lib/drivers-sheet";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import { normalizeDeliveryPeriod } from "@/lib/material-confirm-types";
 import { driverNameFromLabelIds, TRELLO } from "@/lib/trello-constants";
@@ -34,14 +35,28 @@ export async function GET(request: Request) {
   if (guard.denied) return guard.denied;
 
   try {
-    const [confirms, cards] = await Promise.all([
+    const [confirms, cards, roster] = await Promise.all([
       listConfirms(),
-      getBoardCardsWithDesc(TRELLO.BOARD_ID).catch(() => []),
+      getBoardCardsWithDesc(TRELLO.BOARD_ID).catch(() => null),
+      // 現役司機的事實來源是司機設定表（老闆可從設定頁新增）。讀不到就退回
+      // 程式內的 DRIVER_LIST——driverNameFromLabelIds 的預設值會處理。
+      listDrivers().catch(() => null),
     ]);
+    /**
+     * 🔴 Trello 讀不到時要讓畫面知道（2026-11-09 審查抓到）。
+     *    先前是 .catch(() => [])，於是失敗時所有卡片資料都變空：
+     *    區域全是「需確認」、司機全是未指派，而容量示警改用「單一司機最高趟數」
+     *    之後，peak 會變成 0，**整個月的 🚨 ⚠️ 一起靜默消失**。
+     *    使用者只會看到「N 趟未指派」，以為只是標籤還沒掛。
+     *    資料不完整比沒有警示更危險，所以明講出來。
+     */
+    const trelloOk = cards !== null;
+    const boardCards = cards ?? [];
     // 地址在卡片描述裡，沒有獨立欄位；司機在卡片的標籤裡，也沒有獨立欄位。
-    const descById = new Map(cards.map((c) => [c.id, c.desc ?? ""]));
+    const descById = new Map(boardCards.map((c) => [c.id, c.desc ?? ""]));
+    const activeRoster = roster?.filter((d) => d.active) ?? undefined;
     const driverById = new Map(
-      cards.map((c) => [c.id, driverNameFromLabelIds(c.idLabels)]),
+      boardCards.map((c) => [c.id, driverNameFromLabelIds(c.idLabels, activeRoster)]),
     );
 
     const pending = confirms
@@ -100,7 +115,7 @@ export async function GET(request: Request) {
         };
       });
 
-    return NextResponse.json({ ok: true, pending, scheduled });
+    return NextResponse.json({ ok: true, pending, scheduled, trelloOk });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "讀取失敗";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

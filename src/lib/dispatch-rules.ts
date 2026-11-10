@@ -6,14 +6,20 @@
  */
 
 /**
- * 一天幾趟的「常態」——超過只是值得看一眼，不是異常。
+ * 一天幾趟「開始值得看一眼」的門檻（單一司機）。
  *
- * 近四個月 87 個出貨日共 182 趟：中位數 2、九成在 4 以內。
- * 🔴 這是**需求**造成的分布，不是能力上限（老闆 2026-11-08 更正）：
- *    「訂單量不多，大部分都只有排到 5-6 趟」。拿歷史載量當產能天花板是
- *    推論錯誤——歷史是在「人工避免壓同一天」的排法下產生的。
+ * 🔴 2026-11-09 審查抓到自相矛盾：這裡原本是 4，理由寫「九成在 4 以內」，
+ *    但老闆原話是「大部分都只有排到 5-6 趟」——於是 UI 會把老闆眼中的
+ *    常態日標成「偏多」，是會天天響的假警報。
+ *
+ *    兩個數字都對，但量的是不同東西：
+ *      4  = 歷史實際載量的九十百分位（87 個出貨日、182 趟），由**需求**決定
+ *      5-6= 老闆眼中「忙碌但正常」的一天
+ *      8  = 能力上限，見 HARD_CAP
+ *    示警門檻要用「人該多看一眼的點」，不是需求分布的百分位，
+ *    所以取 6：7 趟以上才是真的偏多，8 以上才超過能力。
  */
-export const SOFT_CAP = 4;
+export const SOFT_CAP = 6;
 
 /**
  * 一天幾趟的能力上限（單一司機）。
@@ -138,6 +144,18 @@ export function driverLoad(booked: readonly { assignedDriver: string }[]): {
   unassigned: number;
   /** 單一司機的最高趟數——示警看這個，不看總數 */
   peak: { name: string; trips: number } | null;
+  /**
+   * 最壞情況：最忙的那位司機，再加上全部未指派的趟數。
+   *
+   * 🔴 2026-11-09 審查抓到的漏報：司機標籤是內勤在處理出貨通知時才掛上的，
+   *    所以「還沒處理的未來日子」大多沒有標籤。原本只看 peak 的話，
+   *    「5 趟未指派 + 1 趟阿信」會算成 peak=1，完全不示警。
+   *    （我當初量到「28/28 已排定都認得出司機」是選樣偏差——那 28 筆的
+   *    配送日全在過去，是已經處理完的單。）
+   *
+   *    這個上界**不猜人**，只承認「這些趟最後可能落在同一個人身上」。
+   */
+  worstCase: number;
 } {
   const counts = new Map<string, number>();
   let unassigned = 0;
@@ -148,7 +166,8 @@ export function driverLoad(booked: readonly { assignedDriver: string }[]): {
   const perDriver = [...counts.entries()]
     .map(([name, trips]) => ({ name, trips }))
     .sort((a, b) => b.trips - a.trips);
-  return { perDriver, unassigned, peak: perDriver[0] ?? null };
+  const peak = perDriver[0] ?? null;
+  return { perDriver, unassigned, peak, worstCase: (peak?.trips ?? 0) + unassigned };
 }
 
 /**
@@ -168,20 +187,47 @@ export function shouldRemindDeliveryNotice(input: {
   status: string;
   /** 台灣時區的今天，YYYY-MM-DD */
   today: string;
-  /** 卡片還在板上嗎。false＝已封存，無從判斷已通知沒有 */
-  cardOnBoard: boolean;
+  /**
+   * 卡片目前在哪個 Trello 清單；空字串＝卡片不在板上（已封存）。
+   *
+   * 🔴 2026-11-09 審查抓到：原本只判斷「在不在板上」。作廢的卡**還在板上**，
+   *    而同一支 cron 的自動取消刻意不動 confirmed／scheduled（那是客人簽名的
+   *    存證），所以一張簽過名又被拖進「Fail 作廢」的單會被天天催，連催四天。
+   *    實查當下 0 筆符合，但路徑是通的，而且與「判斷不了就不發」的原則矛盾。
+   */
+  idList: string;
   /** Trello dueComplete＝出貨通知已發 */
   alreadyNotified: boolean;
-}): { remind: boolean; daysLeft: number; reason: string } {
+  /** 哪些清單代表「做完了、等出貨」——在這裡面才該發出貨通知 */
+  readyList: string;
+  /** 哪些清單代表「還在生產」——配送日近了卻還沒做完，該催的是進度 */
+  productionList: string;
+}): {
+  remind: boolean;
+  daysLeft: number;
+  reason: string;
+  /**
+   * 該做什麼動作。notify＝去複製出貨通知；production_behind＝去看製作進度。
+   * 兩者的行動完全不同，催錯方向就是白忙（同這支 cron 把三種情境分開講的理由）。
+   */
+  kind: "notify" | "production_behind" | "none";
+} {
   const deliver = (input.chosenDate ?? "").slice(0, 10);
-  const no = (reason: string, daysLeft = 0) => ({ remind: false, daysLeft, reason });
+  const no = (reason: string, daysLeft = 0) =>
+    ({ remind: false, daysLeft, reason, kind: "none" as const });
 
   if (!deliver) return no("還沒排定配送日");
   if (input.status === "cancelled") return no("已取消");
   if (deliver < input.today) return no("配送日已過，屬於遲到不是待通知");
   // 卡片不在板上時寧可不吵：判斷不了就別發，假警報會讓人整組關掉不看
-  if (!input.cardOnBoard) return no("卡片不在板上，無從判斷");
+  if (!input.idList) return no("卡片不在板上，無從判斷");
   if (input.alreadyNotified) return no("出貨通知已發");
+
+  // 只有「等出貨」與「還在生產」這兩種清單需要提醒。
+  // 作廢、已出貨、待驗收、完成、以及還沒進生產的，都不該催。
+  const isReady = input.idList === input.readyList;
+  const inProduction = input.idList === input.productionList;
+  if (!isReady && !inProduction) return no("不在待出貨／生產中，不屬於待通知");
 
   const daysLeft = Math.round(
     (Date.parse(`${deliver}T00:00:00+08:00`) - Date.parse(`${input.today}T00:00:00+08:00`)) / 86_400_000,
@@ -189,5 +235,10 @@ export function shouldRemindDeliveryNotice(input: {
   if (!Number.isFinite(daysLeft)) return no("日期無法解析");
   if (daysLeft > NOTIFY_LEAD_DAYS) return no("還沒到該通知的時候", daysLeft);
 
-  return { remind: true, daysLeft, reason: daysLeft === 0 ? "今天就要配送" : "進入通知期" };
+  return {
+    remind: true,
+    daysLeft,
+    reason: daysLeft === 0 ? "今天就要配送" : "進入通知期",
+    kind: isReady ? "notify" : "production_behind",
+  };
 }

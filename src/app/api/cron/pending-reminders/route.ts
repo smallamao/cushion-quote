@@ -264,7 +264,9 @@ export async function GET(request: Request) {
    *   - 已經打勾 → 跳過。通知發過了。
    */
   try {
-    const notified = new Map((await boardCards()).map((c) => [c.id, Boolean(c.dueComplete)]));
+    const cards = await boardCards();
+    const notified = new Map(cards.map((c) => [c.id, Boolean(c.dueComplete)]));
+    const listOf = new Map(cards.map((c) => [c.id, c.idList]));
     const today = twYmd(new Date().toISOString());
     for (const { confirm: c } of await listConfirms()) {
       const deliver = (c.chosenDate ?? "").slice(0, 10);
@@ -272,21 +274,36 @@ export async function GET(request: Request) {
         chosenDate: deliver,
         status: c.status,
         today,
-        cardOnBoard: notified.has(c.cardId),
+        idList: listOf.get(c.cardId) ?? "",
         alreadyNotified: Boolean(notified.get(c.cardId)),
+        readyList: TRELLO.LISTS.WAIT_SHIPPING,
+        productionList: TRELLO.LISTS.PRODUCTION,
       });
       if (!verdict.remind) continue;
       const daysLeft = verdict.daysLeft;
+      const when = daysLeft === 0 ? "今天" : `${daysLeft} 天後`;
 
-      await appendNotification({
-        type: "delivery_notice_pending",
-        title: daysLeft === 0
-          ? `🚨 ${c.orderNumber} 今天配送，還沒通知客人`
-          : `📣 ${c.orderNumber} ${daysLeft} 天後配送，還沒通知客人`,
-        body: `${c.customerName}・${deliver} ${c.chosenPeriod || ""}・請到排程出貨頁複製出貨通知傳給客人`,
-        link: "/shipping-notice",
-      });
-      sent.push(`delivery-notice:${c.orderNumber}:${daysLeft}d`);
+      // 兩種情境的行動完全不同：東西做好了只是沒通知 vs 東西還沒做好。
+      // 催錯方向就是白忙——同這支 cron 把叫料的三種情境分開講的理由。
+      if (verdict.kind === "production_behind") {
+        await appendNotification({
+          type: "delivery_production_behind",
+          title: `🚨 ${c.orderNumber} ${when}要配送，但還在生產中`,
+          body: `${c.customerName}・配送 ${deliver} ${c.chosenPeriod || ""}・先確認製作進度，別直接發通知`,
+          link: "/material-confirm",
+        });
+        sent.push(`delivery-behind:${c.orderNumber}:${daysLeft}d`);
+      } else {
+        await appendNotification({
+          type: "delivery_notice_pending",
+          title: daysLeft === 0
+            ? `🚨 ${c.orderNumber} 今天配送，還沒通知客人`
+            : `📣 ${c.orderNumber} ${when}配送，還沒通知客人`,
+          body: `${c.customerName}・${deliver} ${c.chosenPeriod || ""}・請到排程出貨頁複製出貨通知傳給客人`,
+          link: "/shipping-notice",
+        });
+        sent.push(`delivery-notice:${c.orderNumber}:${daysLeft}d`);
+      }
     }
   } catch {
     /* best-effort，不影響前面已寫入的催辦 */

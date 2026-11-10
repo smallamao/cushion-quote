@@ -150,26 +150,20 @@ export const DRIVER_LIST: DriverInfo[] = [
 ];
 
 /**
- * 卡片上掛的司機標籤 → 短名稱（排車視圖用它把趟數分到人頭上）。
+ * 已停止配合、但歷史卡片上還掛著標籤的司機。
  *
- * 🔴 為什麼需要：先前排車視圖的容量是算「當天全部趟數」，不分司機。
- *    那會在兩種情況下給錯答案（老闆 2026-11-09 拍板改成每人各自算）：
- *      - 阿富跑台東那一趟會吃掉台北的額度，示警誤報
- *      - 反過來，5 趟全壓在阿信一個人身上時，看起來跟兩人各 2-3 趟一樣安全
- *    實測佐證：各司機單日最大值差很多——阿信 7、簡先生 3、阿富 1（台東一趟耗一天）。
+ * 🔴 現役司機的事實來源是**司機設定表**（`drivers-sheet.ts`，Sheets 裡有
+ *    labelId 欄位，老闆可以從設定頁新增）。這裡**只放** DRIVER_LIST 與設定表
+ *    都不會再有的歷史標籤——否則就會變成第三份真相，新增的司機永遠被算成
+ *    「未指派」。這正是同一批改動裡批評過的「門檻有三份」的錯。
  *
- * 🔴 含已停止配合的羅先生／范先生：舊卡片上還掛著那兩個標籤，
- *    要能認出來才不會把歷史單算成「未指派」。他們不在 DRIVER_LIST
- *    （那是「現在能派的人」），但標籤是歷史事實。
+ *    羅先生 [0725-ED]、范先生 [BFR-7003] 於 2026-10-31 停止配合。
+ *    志航已不在 DRIVER_LIST，但舊卡上有標籤。
  */
-const DRIVER_LABEL_NAMES: Record<string, string> = {
-  [TRELLO.LABELS.DRIVER_SHIN]: "阿信",
-  [TRELLO.LABELS.DRIVER_YA]: "葉先生",
-  [TRELLO.LABELS.DRIVER_FU]: "阿富",
-  [TRELLO.LABELS.DRIVER_JIAN]: "簡先生",
-  [TRELLO.LABELS.DRIVER_HANG]: "志航",
+const RETIRED_DRIVER_LABELS: Record<string, string> = {
   [TRELLO.LABELS.DRIVER_LOU]: "羅先生",
   [TRELLO.LABELS.DRIVER_FAN]: "范先生",
+  [TRELLO.LABELS.DRIVER_HANG]: "志航",
 };
 
 /**
@@ -177,12 +171,24 @@ const DRIVER_LABEL_NAMES: Record<string, string> = {
  * **不要**猜成主力司機：猜錯會把別人的趟數算到阿信頭上，比留白更糟
  * （同 delivery-region.ts「抓不到就回 null，不猜」的理由）。
  *
+ * `roster` 傳現役司機（呼叫端從 `listDrivers()` 讀，或退回 DRIVER_LIST）。
+ * 不傳就只認得 DRIVER_LIST ＋ 歷史標籤，設定頁新增的司機會認不出來。
+ *
  * 一張卡理論上只該有一個司機標籤（shipping-notice 指派前會先清掉全部），
  * 真的有多個時取第一個認得的，並在呼叫端當「已指派」處理。
  */
-export function driverNameFromLabelIds(idLabels: readonly string[] | undefined): string {
+export function driverNameFromLabelIds(
+  idLabels: readonly string[] | undefined,
+  roster: readonly { labelId: string; title: string }[] = DRIVER_LIST,
+): string {
+  const byLabel = new Map<string, string>(Object.entries(RETIRED_DRIVER_LABELS));
+  for (const d of roster) {
+    if (!d.labelId) continue;
+    // 顯示用短名：標題裡的括號與車號對排車沒用，只會把徽章擠爆
+    byLabel.set(d.labelId, d.title.replace(/\s*[（(\[].*$/, "").trim() || d.title);
+  }
   for (const id of idLabels ?? []) {
-    const name = DRIVER_LABEL_NAMES[id];
+    const name = byLabel.get(id);
     if (name) return name;
   }
   return "";
