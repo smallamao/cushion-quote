@@ -1,4 +1,4 @@
-import { productionWindow } from "@/lib/production-window";
+import { productionWindow, weekMonday } from "@/lib/production-window";
 
 /**
  * 交期達成率（On-Time Delivery）——按生產週統計「承諾區間內交付」的比例。
@@ -43,6 +43,8 @@ export type OtdOutcome = "on_time" | "late" | "late_undelivered" | "pending";
 export interface OtdItem {
   orderNumber: string;
   customerName: string;
+  /** 生產週的週一——分組鍵，直接從 weekKey 推，不要從承諾日反推 */
+  weekMonday: string;
   /** 承諾的製作完成日 */
   promisedEnd: string;
   chosenDate: string;
@@ -87,6 +89,7 @@ export function classifyOtd(order: OtdOrder, today: string): OtdItem | null {
   const base = {
     orderNumber: order.orderNumber,
     customerName: order.customerName,
+    weekMonday: weekMonday(order.weekKey),
     promisedEnd: end,
     chosenDate: delivered,
   };
@@ -117,23 +120,26 @@ export function buildOtdByWeek(orders: readonly OtdOrder[], today: string): OtdW
     if (o.status === "cancelled") continue;
     const item = classifyOtd(o, today);
     if (!item) continue;
-    // 用承諾完工日當分組鍵的來源：同一生產週的單共用同一個 end
-    const list = groups.get(item.promisedEnd) ?? [];
+    // 用生產週的週一當分組鍵。同一週的單共用同一個承諾日。
+    const list = groups.get(item.weekMonday) ?? [];
     list.push(item);
-    groups.set(item.promisedEnd, list);
+    groups.set(item.weekMonday, list);
   }
 
   return [...groups.entries()]
-    .map(([promisedEnd, items]) => {
+    .map(([mondayKey, items]) => {
       const onTime = items.filter((i) => i.outcome === "on_time").length;
       const late = items.filter((i) => i.outcome === "late").length;
       const lateUndelivered = items.filter((i) => i.outcome === "late_undelivered").length;
       const pending = items.filter((i) => i.outcome === "pending").length;
       const judged = onTime + late + lateUndelivered;
       return {
-        // 承諾完工日 = 週一+9，回推得到週一
-        weekMonday: addDaysBack(promisedEnd, 9),
-        promisedEnd,
+        weekMonday: mondayKey,
+        // 🔴 承諾日取自 productionWindow()，**不要**從它反推週一。
+        //    先前這裡寫 addDaysBack(promisedEnd, 9)，那個 9 是
+        //    BUFFER_DAYS(3)+WINDOW_DAYS(6) 硬算的；2026-11-10 另一個 session
+        //    把 BUFFER 改成 4，這段就立刻算錯了。衍生值不要抄，要現算。
+        promisedEnd: items[0]?.promisedEnd ?? "",
         items: items.sort((a, b) => b.lateDays - a.lateDays),
         onTime,
         late,
@@ -147,10 +153,3 @@ export function buildOtdByWeek(orders: readonly OtdOrder[], today: string): OtdW
     .sort((a, b) => a.weekMonday.localeCompare(b.weekMonday));
 }
 
-function addDaysBack(ymd: string, n: number): string {
-  const t = Date.parse(`${ymd}T00:00:00Z`);
-  if (!Number.isFinite(t)) return ymd;
-  const d = new Date(t - n * 86_400_000);
-  const pad = (x: number) => String(x).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-}
