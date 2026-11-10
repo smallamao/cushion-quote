@@ -472,7 +472,7 @@ export function DispatchPlanClient() {
                             🚚 {c.p.driver.name}
                           </span>
                         )}
-                        {isStorageOverdue(c.p.dueDate, d.date) && (
+                        {isStorageOverdue(c.p.weekKey, d.date) && (
                           <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
                             ⚠️ 完工後逾兩週
                           </span>

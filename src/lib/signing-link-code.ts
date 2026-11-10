@@ -9,14 +9,15 @@ import { randomBytes } from "node:crypto";
  *     lookup 端不做長度驗證，因此舊連結在有效期內繼續有效。
  */
 
-/** 短碼字母表（54 個字元），排除易混淆字元 0/O/1/l/I。 */
-export const CODE_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ";
+// 🔴 字母表與長度搬到 signing-link-format.ts（Edge 安全、無 node:crypto），
+//    好讓 middleware 也能共用同一份定義。這裡 re-export 維持既有呼叫端不變。
+export {
+  CODE_ALPHABET,
+  LEGACY_SHORT_CODE_LEN,
+  SHORT_CODE_LEN,
+} from "@/lib/signing-link-format";
 
-/** 目前短碼長度（10 字元）。 */
-export const SHORT_CODE_LEN = 10;
-
-/** 舊版短碼長度（6 字元）；已發出的連結不會因版本更新失效。 */
-export const LEGACY_SHORT_CODE_LEN = 6;
+import { CODE_ALPHABET } from "@/lib/signing-link-format";
 
 /**
  * 產生 len 位短碼（僅含 CODE_ALPHABET 字元）。

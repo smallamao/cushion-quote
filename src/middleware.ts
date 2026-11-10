@@ -9,6 +9,7 @@ import {
   roleHomePath,
 } from "@/lib/permissions";
 import { checkRateLimit, extractClientIp } from "@/lib/rate-limit";
+import { shortCodeFromPath } from "@/lib/signing-link-format";
 import { verifySessionEdge } from "@/lib/auth-edge";
 import { timingSafeEqual } from "@/lib/constant-time";
 
@@ -69,17 +70,16 @@ function isSchedulerApiRequest(request: NextRequest, pathname: string): boolean 
 //   s.potatosofa.com/Ab7kQ2  →  內部 /sign/Ab7kQ2
 // 未設定或主機不符時不啟用（一般 /s/{code} 與 /sign/{code} 仍照常）。
 const SIGN_SHORT_HOST = (process.env.NEXT_PUBLIC_SIGN_SHORT_HOST ?? "").trim().toLowerCase();
-const SHORT_CODE_RE = /^\/([A-Za-z0-9]{6,32})\/?$/;
 
 function shortHostRewrite(request: NextRequest): NextResponse | null {
   if (!SIGN_SHORT_HOST) return null;
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   if (host !== SIGN_SHORT_HOST) return null;
   const { pathname } = request.nextUrl;
-  const m = pathname.match(SHORT_CODE_RE);
-  if (!m) return null;
+  const code = shortCodeFromPath(pathname);
+  if (!code) return null;
   const url = request.nextUrl.clone();
-  url.pathname = `/sign/${m[1]}`;
+  url.pathname = `/sign/${code}`;
   const headers = new Headers(request.headers);
   headers.set("x-pathname", url.pathname);
   return NextResponse.rewrite(url, { request: { headers } });

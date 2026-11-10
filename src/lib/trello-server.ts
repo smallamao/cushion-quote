@@ -377,41 +377,10 @@ export const SCHEDULE_DAY_FIELD = "5dbffb41d3233f81ca015792";
  *    原本的寫法（排程日 ~ 排程日+6，due 更晚時取 due）兩點都錯，
  *    P6202 因此顯示成 10/12～10/26。
  */
-const BUFFER_DAYS = 3;
-const WINDOW_DAYS = 6;
-
-function addDaysYmd(ymd: string, n: number): string {
-  const t = Date.parse(`${ymd}T00:00:00Z`);
-  if (!Number.isFinite(t)) return ymd;
-  const d = new Date(t + n * 86400000);
-  const pad = (x: number) => String(x).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-}
-
-/** 任一天 → 所屬生產週的週一（週一為一週之始）。 */
-export function weekMonday(ymd: string): string {
-  const t = Date.parse(`${ymd}T00:00:00Z`);
-  if (!Number.isFinite(t)) return ymd;
-  const d = new Date(t);
-  const dow = d.getUTCDay();            // 0=日
-  const back = dow === 0 ? 6 : dow - 1; // 回推到週一
-  return addDaysYmd(ymd, -back);
-}
-
-/**
- * 客人看到的「製作完成區間」。
- *
- * 🔴 一律從**生產週的週一**算，不看各筆排程日、也不看卡片 due：
- *    - 同一週一起生產，整週共用一個區間（老闆 2026-09-30 明確指正）
- *    - due 長期不可信：2026-09-27 對帳實測 17 筆對不上，而且兩邊都可能是舊的那一方
- *    - 排程日在 Numbers 與 Trello 之間零筆不一致，是唯一可信的錨點
- */
-export function productionWindow(weekKeyOrScheduleYmd: string): { start: string; end: string } {
-  if (!weekKeyOrScheduleYmd) return { start: "", end: "" };
-  const monday = weekMonday(weekKeyOrScheduleYmd);
-  const start = addDaysYmd(monday, BUFFER_DAYS);
-  return { start, end: addDaysYmd(start, WINDOW_DAYS) };
-}
+// 🔴 製作區間的算術搬到 production-window.ts（純函式、無 server-only），
+//    因為排車視圖的前端也需要它。這裡 re-export 維持既有呼叫端不變。
+export { addDaysYmd, productionWindow, weekMonday } from "@/lib/production-window";
+import { productionWindow } from "@/lib/production-window";
 
 export interface ProductionWindow {
   /** 製作起日＝排程日 */

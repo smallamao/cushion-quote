@@ -1,3 +1,5 @@
+import { productionWindow } from "@/lib/production-window";
+
 /**
  * 排車規則。全部來自老闆 2026-11-01 的口述，並以 Trello 歷史出貨日驗證過。
  *
@@ -74,14 +76,28 @@ export function suggestDriver(city: string): { name: string; note: string } {
 }
 
 /**
- * 製作完成到配送之間放太久。
- * dueDate＝預計出貨（製作完成）日，deliveryYmd＝打算排的配送日。
+ * 製作完成到配送之間放太久（＝要倉儲，老闆：「避免放置超過二周」）。
+ *
+ * 🔴 2026-11-10 修掉錨點錯誤：這個函式原本吃卡片的 `dueDate`，而那是專案
+ *    自己宣告不可信的欄位——`production-window.ts` 的註解寫著
+ *    「due 長期不可信：2026-09-27 對帳實測 17 筆對不上」，實測準確度只有
+ *    29%（誤差 −20 ～ +18 天）。拿它當完工日算放置天數，結果必然是錯的。
+ *
+ *    改成吃 `weekKey`（生產週），由 productionWindow() 推出製作完成日。
+ *    排程日／生產週是「Numbers 與 Trello 之間零筆不一致」的唯一可信錨點，
+ *    而且那個區間已經寫進給客人的訊息，就是對外承諾的完工日。
+ *
+ * 實測影響：13 筆客人第一志願晚於製作完成日（需倉儲，中位 5 天），
+ * 其中 2 筆超過兩週上限——P6275 要放 31 天、P6263 放 15 天，
+ * 而舊的算法因為錨點錯，這兩筆都沒被標出來。
  */
-export function isStorageOverdue(dueDate: string, deliveryYmd: string): boolean {
-  const due = Date.parse(`${(dueDate ?? "").slice(0, 10)}T00:00:00+08:00`);
-  const del = Date.parse(`${deliveryYmd}T00:00:00+08:00`);
-  if (!Number.isFinite(due) || !Number.isFinite(del)) return false;
-  return (del - due) / 86_400_000 > MAX_STORAGE_DAYS;
+export function isStorageOverdue(weekKey: string, deliveryYmd: string): boolean {
+  const { end } = productionWindow(weekKey);
+  if (!end) return false;                 // 沒有生產週＝算不出來，不猜
+  const done = Date.parse(`${end}T00:00:00Z`);
+  const del = Date.parse(`${(deliveryYmd ?? "").slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(done) || !Number.isFinite(del)) return false;
+  return (del - done) / 86_400_000 > MAX_STORAGE_DAYS;
 }
 
 /**
