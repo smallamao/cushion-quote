@@ -52,13 +52,13 @@ describe("派車規則（老闆 2026-11-01 口述，經 Trello 歷史驗證）",
    * 🔴 2026-11-10 改了錨點：原本吃卡片的 dueDate，而那是專案自己宣告不可信的
    *    欄位（實測準確度 29%、誤差 −20～+18 天）。現在吃生產週，由
    *    productionWindow() 推出製作完成日（生產週一 +9）。
-   *    2026-10-22 是週四 → 該週週一 10-19 → 完工日 10-28。
+   *    2026-10-22 是週四 → 該週週一 10-19 → 完工日 10-29（2026-11-10 起完工區間改為週一+4，完工日＝週一+10）。
    */
-  it("從製作完成日（生產週一+9）起算，超過兩週才算寄放超期", () => {
-    const WEEK = "2026-10-22";                       // 該週完工日 = 2026-10-28
-    expect(productionWindow(WEEK).end).toBe("2026-10-28");  // 先確認前提
-    expect(isStorageOverdue(WEEK, "2026-11-11")).toBe(false); // 剛好 14 天
-    expect(isStorageOverdue(WEEK, "2026-11-12")).toBe(true);  // 15 天
+  it("從製作完成日（生產週一+10）起算，超過兩週才算寄放超期", () => {
+    const WEEK = "2026-10-22";                       // 該週完工日 = 2026-10-29
+    expect(productionWindow(WEEK).end).toBe("2026-10-29");  // 先確認前提
+    expect(isStorageOverdue(WEEK, "2026-11-12")).toBe(false); // 剛好 14 天
+    expect(isStorageOverdue(WEEK, "2026-11-13")).toBe(true);  // 15 天
     expect(isStorageOverdue(WEEK, "2026-10-30")).toBe(false); // 2 天
     expect(MAX_STORAGE_DAYS).toBe(14);
   });
@@ -66,7 +66,7 @@ describe("派車規則（老闆 2026-11-01 口述，經 Trello 歷史驗證）",
   it("同一生產週的任何一天都得到同樣的完工日（整週共用區間）", () => {
     // 老闆 2026-09-30：同一週一起生產，不看各筆排程日
     const days = ["2026-10-19", "2026-10-20", "2026-10-22", "2026-10-25"]; // 週一～週日
-    const results = days.map((d) => isStorageOverdue(d, "2026-11-12"));
+    const results = days.map((d) => isStorageOverdue(d, "2026-11-13"));
     expect(new Set(results).size, "同週不同天算出不同答案").toBe(1);
     expect(results[0]).toBe(true);
   });
