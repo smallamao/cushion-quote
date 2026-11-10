@@ -46,3 +46,20 @@ export async function singleFlight<T>(key: string, fn: () => Promise<T>): Promis
   _inflight.set(key, promise as Promise<unknown>);
   return promise;
 }
+
+/**
+ * 讀試算表的共用快取：TTL 內直接回上次的結果，同時進來的請求只讀一次，
+ * 讀取失敗不快取（下一次重試）。寫入端要呼叫 cacheInvalidate(key)。
+ *
+ * 2026-11-10：Vercel Hobby 的 CPU 額度（每月 4 小時）用完被暫停到 12/9，
+ * 大宗是頂端輪詢每次重讀整張表。快取在同一個伺服器實例內共用。
+ */
+export async function cachedRead<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const hit = cacheGet<T>(key);
+  if (hit !== undefined) return hit;
+  return singleFlight(key, async () => {
+    const data = await fn();
+    cacheSet(key, data, ttlMs);
+    return data;
+  });
+}

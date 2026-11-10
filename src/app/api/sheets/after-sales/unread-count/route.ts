@@ -4,11 +4,14 @@ import { NextResponse } from "next/server";
 // 停用帳號 30 天內照樣進得來。改用 lib/api-auth 的共用實作，停用與降權立刻生效。
 
 import { getActiveSession } from "@/lib/api-auth";
-import { listServices } from "@/lib/after-sales-sheet";
+import { REPLIES_CACHE_KEY, SERVICES_CACHE_KEY, listServices } from "@/lib/after-sales-sheet";
+import { cachedRead } from "@/lib/sheets-cache";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { selectUnreadReplies } from "@/lib/unread-replies";
 import { findUserByEmail, updateUser } from "@/lib/users-sheet";
 
+
+const CACHE_TTL_MS = 60_000;
 
 /** GET — 回傳未讀回覆數 + 最新 20 筆未讀明細 */
 export async function GET(request: Request) {
@@ -22,14 +25,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, unreadCount: 0, items: [] });
   }
 
-  const res = await client.sheets.spreadsheets.values.batchGet({
-    spreadsheetId: client.spreadsheetId,
-    ranges: ["使用者!A2:H", "售後服務回應!A2:G"],
-  });
-
-  const [usersData, repliesData] = res.data.valueRanges ?? [];
-  const userRows = (usersData?.values ?? []) as string[][];
-  const replyRows = (repliesData?.values ?? []) as string[][];
+  // 頂端每 2 分鐘輪詢一次（2026-11-10 Vercel CPU 額度用完被暫停）：
+  // 回覆表最大，整張共用 60 秒（有人回覆／刪單時 after-sales-sheet 會清掉）；
+  // 使用者表很小，而且「上次已讀時間」按完已讀要立刻生效，每次照讀。
+  const [usersRes, replyRows] = await Promise.all([
+    client.sheets.spreadsheets.values.get({ spreadsheetId: client.spreadsheetId, range: "使用者!A2:H" }),
+    cachedRead(REPLIES_CACHE_KEY, CACHE_TTL_MS, async () => {
+      const r = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: "售後服務回應!A2:G",
+      });
+      return (r.data.values ?? []) as string[][];
+    }),
+  ]);
+  const userRows = (usersRes.data.values ?? []) as string[][];
 
   const emailLower = session.email.toLowerCase();
   const userRow = userRows.find(
@@ -60,7 +69,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, unreadCount: 0, items: [] });
     }
     try {
-      const services = await listServices();
+      const services = await cachedRead(SERVICES_CACHE_KEY, CACHE_TTL_MS, listServices);
       assignedServiceIds = new Set(
         services.filter((sv) => (sv.assignedTo ?? "").trim() === me).map((sv) => sv.serviceId),
       );

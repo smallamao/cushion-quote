@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { after } from "next/server";
 
+import { cacheInvalidate, cachedRead } from "@/lib/sheets-cache";
 import { getSheetsClient } from "@/lib/sheets-client";
 import { sendPushToAll } from "@/lib/web-push-server";
 
@@ -78,19 +79,31 @@ export async function appendNotification(
   } catch {
     /* best-effort */
   }
+  // 鈴鐺清單有 60 秒快取，新通知要立刻看得到
+  cacheInvalidate(NOTIFICATIONS_CACHE_KEY);
   // 寫入失敗也照推：鈴鐺沒記到至少手機要響，不要兩邊一起沉默
   schedulePush(n);
 }
+
+/**
+ * 頂端鈴鐺每 2 分鐘查一次（多個視窗、多人）。整張表讀一次共用 60 秒，
+ * 寫入時 appendNotification 會清掉（2026-11-10 Vercel CPU 額度用完被暫停）。
+ */
+const NOTIFICATIONS_CACHE_KEY = "notifications:rows";
+const NOTIFICATIONS_CACHE_TTL_MS = 60_000;
 
 export async function listRecentNotifications(limit = 30): Promise<AppNotification[]> {
   const client = await getSheetsClient();
   if (!client) return [];
   try {
-    const res = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.spreadsheetId,
-      range: RANGE_DATA,
+    const rows = await cachedRead(NOTIFICATIONS_CACHE_KEY, NOTIFICATIONS_CACHE_TTL_MS, async () => {
+      const res = await client.sheets.spreadsheets.values.get({
+        spreadsheetId: client.spreadsheetId,
+        range: RANGE_DATA,
+      });
+      return (res.data.values ?? []) as string[][];
     });
-    const items = ((res.data.values ?? []) as string[][])
+    const items = rows
       .filter((r) => r[0])
       .map((r) => ({
         id: r[0] ?? "",

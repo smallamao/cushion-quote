@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cacheInvalidate } from "@/lib/sheets-cache";
 import { getSheetsClient } from "@/lib/sheets-client";
 import type {
   AfterSalesReply,
@@ -16,6 +17,17 @@ const MAIN_RANGE_IDS = `${MAIN_SHEET}!A2:A`;
 const REPLY_SHEET = "售後服務回應";
 const REPLY_RANGE_FULL = `${REPLY_SHEET}!A:G`;
 const REPLY_RANGE_DATA = `${REPLY_SHEET}!A2:G`;
+
+/**
+ * 頂端「未讀回覆」輪詢用的快取鍵（見 api/sheets/after-sales/unread-count）。
+ * 這個檔案裡所有寫入售後單／回覆的函式都要清掉，別處看到的才不會是舊資料。
+ */
+export const REPLIES_CACHE_KEY = "after-sales:replies-rows";
+export const SERVICES_CACHE_KEY = "after-sales:services";
+function invalidateAfterSalesCaches() {
+  cacheInvalidate(REPLIES_CACHE_KEY);
+  cacheInvalidate(SERVICES_CACHE_KEY);
+}
 
 function parseJsonArray(value: string | undefined): string[] {
   if (!value) return [];
@@ -189,6 +201,7 @@ export async function createService(input: {
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(service)] },
   });
+  invalidateAfterSalesCaches();
   return service;
 }
 
@@ -220,6 +233,7 @@ export async function updateService(
     valueInputOption: "RAW",
     requestBody: { values: [serviceToRow(updated)] },
   });
+  invalidateAfterSalesCaches();
   return updated;
 }
 
@@ -268,6 +282,7 @@ export async function deleteService(serviceId: string): Promise<boolean> {
   } catch {
     /* best-effort */
   }
+  invalidateAfterSalesCaches();
   return true;
 }
 
@@ -334,5 +349,6 @@ export async function createReply(input: {
     valueInputOption: "RAW",
     requestBody: { values: [replyToRow(reply)] },
   });
+  invalidateAfterSalesCaches();
   return reply;
 }
