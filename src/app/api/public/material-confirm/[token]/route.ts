@@ -13,7 +13,7 @@ import { NextResponse } from "next/server";
 import { isPublicLinkExpired } from "@/lib/public-link-expiry";
 
 import { appendNotification } from "@/lib/notifications-sheet";
-import { findByToken, generateToken, writeConfirm } from "@/lib/material-confirm-sheet";
+import { findByToken, generateToken, listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import {
   confirmDueIso,
   hasFuturesFabric,
@@ -346,10 +346,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       }
     }
 
+    // 老闆 2026-11-10：「同時能顯示該週的進度嗎？這週 10 張，已確認 4 張，還差 6 張」
+    //   —— 不然每收到一則就得開看板自己數。真痛點是「誰還沒回」會卡住整週的組件叫料。
+    //   取數失敗不影響確認結果（客人那端已經簽完了），只是通知少一行。
+    let progress = "";
+    try {
+      const all = await listConfirms();
+      const week = all.filter((r) => r.confirm.weekKey === c.weekKey);
+      const done = week.filter((r) => r.confirm.status === "confirmed").length;
+      const left = week.length - done;
+      progress = `\n📊 本週 ${week.length} 張，已確認 ${done} 張`
+               + (left > 0
+                   ? `，還差 ${left} 張：${week
+                       .filter((r) => r.confirm.status !== "confirmed")
+                       .map((r) => r.confirm.orderNumber)
+                       .join("、")}`
+                   : "　✅ 全部確認完，可以進組件叫料");
+    } catch {
+      progress = "";
+    }
+
     await appendNotification({
       type: "material_confirm",
       title: `✅ ${c.orderNumber} 客戶已確認叫料`,
-      body: `${signerName}　希望收件：${slots.map(fmtSlot).join("、")}`,
+      body: `${signerName}　希望收件：${slots.map(fmtSlot).join("、")}${progress}`,
       link: "/material-confirm",
     });
 
