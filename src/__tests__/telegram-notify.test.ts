@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   absoluteLink,
   buildNotificationText,
   buildReplyText,
+  sendTelegram,
   shouldNotifyReply,
   splitForTelegram,
 } from "@/lib/telegram";
@@ -80,5 +81,39 @@ describe("splitForTelegram", () => {
     const chunks = splitForTelegram([line, line, line, line, line].join("\n"));
     expect(chunks.length).toBe(2);
     expect(chunks.every((c) => c.length <= 3800)).toBe(true);
+  });
+});
+
+describe("sendTelegram 送法", () => {
+  const ENV = { ...process.env };
+  afterEach(() => {
+    process.env = { ...ENV };
+    vi.unstubAllGlobals();
+  });
+
+  it("沒有直送設定時改請客服系統代發，帶暗號、不帶機器人密碼", async () => {
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_CHAT_ID;
+    process.env.TELEGRAM_RELAY_URL = "https://cs.example/api/internal/notify";
+    process.env.TELEGRAM_RELAY_SECRET = "relay-secret";
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(sendTelegram("🔔 測試")).resolves.toEqual({ sent: 1 });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://cs.example/api/internal/notify");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer relay-secret");
+    expect(JSON.parse(String(init.body))).toEqual({ text: "🔔 測試" });
+  });
+
+  it("兩種都沒設定就安靜略過", async () => {
+    for (const k of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_RELAY_URL", "TELEGRAM_RELAY_SECRET"]) delete process.env[k];
+    await expect(sendTelegram("x")).resolves.toEqual({ sent: 0, skipped: "missing-telegram-config" });
+  });
+
+  it("代發失敗要丟錯（呼叫端記 log），不可靜默", async () => {
+    process.env.TELEGRAM_RELAY_URL = "https://cs.example/api/internal/notify";
+    process.env.TELEGRAM_RELAY_SECRET = "relay-secret";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("unauthorized", { status: 401 })));
+    await expect(sendTelegram("x")).rejects.toThrow("401");
   });
 });

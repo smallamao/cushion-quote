@@ -20,8 +20,26 @@ export function appOrigin(): string {
   return (process.env.APP_ORIGIN || DEFAULT_ORIGIN).replace(/\/+$/, "");
 }
 
+/**
+ * 兩種送法，先直送、沒有就代發：
+ * 1. 直送：本專案有 TELEGRAM_BOT_TOKEN＋TELEGRAM_CHAT_ID
+ * 2. 代發：TELEGRAM_RELAY_URL＋TELEGRAM_RELAY_SECRET，請客服系統（potato-sofa-cs
+ *    /api/internal/notify）用它的機器人轉發。2026-11-10 用這個：客服系統的 token
+ *    在 Vercel 設成敏感資料讀不出來，也不必再複製一份。
+ */
+function directConfig() {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+  return token && chatId ? { token, chatId } : null;
+}
+function relayConfig() {
+  const url = process.env.TELEGRAM_RELAY_URL?.trim();
+  const secret = process.env.TELEGRAM_RELAY_SECRET?.trim();
+  return url && secret ? { url, secret } : null;
+}
+
 export function isTelegramConfigured(): boolean {
-  return Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim() && process.env.TELEGRAM_CHAT_ID?.trim());
+  return Boolean(directConfig() || relayConfig());
 }
 
 /** 站內路徑（/quotes）補成完整網址，Telegram 才點得開 */
@@ -82,9 +100,26 @@ export function splitForTelegram(text: string): string[] {
 
 /** 送出；沒設定回 skipped，送失敗丟錯（呼叫端自己決定要不要吞） */
 export async function sendTelegram(text: string): Promise<{ sent: number; skipped?: string }> {
-  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
-  if (!token || !chatId) return { sent: 0, skipped: "missing-TELEGRAM_BOT_TOKEN-or-TELEGRAM_CHAT_ID" };
+  const direct = directConfig();
+  if (!direct) {
+    const relay = relayConfig();
+    if (!relay) return { sent: 0, skipped: "missing-telegram-config" };
+    let relayed = 0;
+    for (const chunk of splitForTelegram(text)) {
+      const res = await fetch(relay.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${relay.secret}` },
+        body: JSON.stringify({ text: chunk }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(`Telegram relay failed (${res.status}): ${detail.slice(0, 200)}`);
+      }
+      relayed += 1;
+    }
+    return { sent: relayed };
+  }
+  const { token, chatId } = direct;
   let sent = 0;
   for (const chunk of splitForTelegram(text)) {
     const res = await fetch(`${API}/bot${token}/sendMessage`, {
