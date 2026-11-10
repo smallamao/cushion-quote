@@ -1,11 +1,11 @@
-import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, WorkOrderPhotoLayoutItem } from "@/lib/types";
+import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, OrderRework, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
-export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:AZ`;
-export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:AZ10000`;
+export const ORDER_RANGE_FULL = `${ORDER_SHEET}!A:BA`;
+export const ORDER_RANGE_DATA = `${ORDER_SHEET}!A2:BA10000`;
 export const ORDER_RANGE_IDS = `${ORDER_SHEET}!A2:A10000`;
 export const ORDER_ROW_RANGE = (sheetRow: number) =>
-  `${ORDER_SHEET}!A${sheetRow}:AZ${sheetRow}`;
+  `${ORDER_SHEET}!A${sheetRow}:BA${sheetRow}`;
 
 /**
  * 需要「單格寫入」的欄位在列裡的位置（0 起算）。orderRowToRecord 也用這份讀，
@@ -117,6 +117,8 @@ export function orderRowToRecord(row: string[]): CustomOrder {
     clientPoNumber: row[49] ?? "",
     clientPoPhotos: parseJsonSafe<string[]>(row[50], []),
     packageCount: toNumber(row[51]) || undefined,
+    // BA 欄（索引 52）。2026-11-10 新增，舊列沒有這一格 → parseJsonSafe 回 []
+    reworks: parseJsonSafe<OrderRework[]>(row[52], []),
   };
 
   // Migrate legacy imageUrl → photos[0] for each item
@@ -184,6 +186,7 @@ export function orderRecordToRow(r: CustomOrder): string[] {
     r.clientPoNumber ?? "",
     JSON.stringify(r.clientPoPhotos ?? []),
     r.packageCount ? String(r.packageCount) : "",
+    JSON.stringify(r.reworks ?? []),
   ];
 }
 

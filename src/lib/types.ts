@@ -1220,6 +1220,40 @@ export type OrderItemCategory =
   | "維修"
   | "大和樂活";
 
+/**
+ * 重做紀錄。老闆 2026-11-10：「我希望紀錄做錯的歸因，人工太常出錯了」。
+ *
+ * 兩個軸刻意分開：
+ *   symptom（症狀）＝ 哪裡不對，例如尺寸錯
+ *   cause（歸因）  ＝ 哪一關出錯，例如工單抄錯
+ * 同一個「尺寸錯」可能來自客人量錯、報價判讀錯、工單抄錯、師傅換算錯，
+ * 四者的改法完全不同。只記症狀等於知道發燒但不知道病因。
+ *
+ * 🔴 cause 允許留空：當下常常只看得到症狀，根因要問過才知道。
+ *    留空的要能被撈出來提醒補，否則會變成又一個沒人填的欄位。
+ */
+export type ReworkSymptom = "尺寸" | "材質色號" | "工法" | "件數" | "泡棉規格" | "其他";
+export type ReworkCause = "客人給錯" | "報價寫錯" | "工單抄錯" | "叫料錯" | "師傅做錯" | "廠商料問題";
+/** 發現時機。出貨前攔下來只賠工時，客人反映要再跑一趟、賠信任——成本差十倍 */
+export type ReworkFoundAt = "製作中" | "出貨前" | "客人反映";
+
+export interface OrderRework {
+  id: string;
+  /** 記錄時間（ISO） */
+  at: string;
+  /** 對應 OrderItem.id；空＝整張單 */
+  itemId: string;
+  /** 品項名稱快照：品項之後被改名或刪掉，這筆紀錄仍看得懂 */
+  itemName: string;
+  symptom: ReworkSymptom;
+  /** 空＝當下還不知道根因，之後補 */
+  cause: ReworkCause | "";
+  foundAt: ReworkFoundAt;
+  /** 選填。分類給統計用，這句給人看——防止再犯靠的是這句 */
+  note: string;
+  recordedBy: string;
+}
+
 export interface OrderItem {
   id: string;
   name: string;
@@ -1295,6 +1329,8 @@ export interface CustomOrder {
   clientId?: string;
   /** 散客用：LINE OA 對話網址（無客戶主檔時直接存在訂單上） */
   lineChatUrl?: string;
+  /** 重做紀錄（可多筆）。空陣列＝沒重做過 */
+  reworks?: OrderRework[];
   /**
    * B2B 客戶自己的採購單號。可在訂單列表搜尋，方便對方報單號時查件。
    * 內部限定：不印在工單、不同步 Notion、師傅帳號看不到。

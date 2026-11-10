@@ -33,7 +33,9 @@ vi.mock("@/lib/sheets-client", () => ({
         values: {
           get: async ({ range }: { range: string }) => {
             if (range === ORDER_RANGE_IDS) return { data: { values: sheet.rows.map((r) => [r[0]]) } };
-            const m = /!A(\d+):AZ\d+$/.exec(range);
+            // 結尾欄不要寫死（原本是 AZ）：訂製訂單加欄位時 ORDER_ROW_RANGE 會變寬，
+            // 寫死的話假試算表會比對不到而丟錯，看起來像路由壞掉，其實是 mock 過期。
+            const m = /!A(\d+):[A-Z]+\d+$/.exec(range);
             if (!m) throw new Error(`unexpected range ${range}`);
             const row = sheet.rows[Number(m[1]) - 2];
             return { data: { values: row ? [[...row]] : [] } };

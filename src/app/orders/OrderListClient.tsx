@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList, Copy, FileBarChart2, FileText, Loader2, Navigation, Pencil, Phone, Plus, ReceiptText, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ClipboardList, Copy, FileBarChart2, FileText, Loader2, Navigation, Pencil, Phone, Plus, ReceiptText, RefreshCw, Search, Trash2, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +31,9 @@ import type { ARRecord, CustomOrder, OrderInvoiceStatus, OrderItemCategory, Orde
 import { compareOrders } from "@/lib/order-sort";
 import { findOverdue } from "@/lib/order-overdue";
 import { OverdueAlert } from "@/components/orders/OverdueAlert";
+import { ReworkDialog } from "@/components/orders/ReworkDialog";
+import { ReworkStatsModal } from "@/components/orders/ReworkStatsModal";
+import type { OrderRework } from "@/lib/types";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
   // 紅色不是「出錯」，是「卡住」：客人已簽核、單子自動開出來了，但交期與排程沒人填，
@@ -223,6 +226,38 @@ export function OrderListClient() {
         cur.map((o) => (o.orderId === order.orderId ? { ...o, installDate: prevDate } : o)),
       );
       alert(err instanceof Error ? err.message : "出貨日更新失敗");
+    }
+  }, []);
+
+  // 重做紀錄：樂觀更新，失敗回滾（PUT 部分更新，只送 reworks）
+  // ★ recordedBy 不在這裡填——前端填的身分是可以亂寫的，而且上一個 bug 就是
+  //   createdBy 寫死空字串導致 77 張訂單查不出是誰開的。一律由 API 以登入身分蓋章。
+  const [reworkTarget, setReworkTarget] = useState<CustomOrder | null>(null);
+  const [reworkStatsOpen, setReworkStatsOpen] = useState(false);
+
+  const handleSaveReworks = useCallback(async (order: CustomOrder, reworks: OrderRework[]) => {
+    const prev = order.reworks ?? [];
+    setOrders((cur) =>
+      cur.map((o) => (o.orderId === order.orderId ? { ...o, reworks } : o)),
+    );
+    setReworkTarget((cur) => (cur && cur.orderId === order.orderId ? { ...cur, reworks } : cur));
+    try {
+      const res = await fetch(`/api/sheets/orders/${order.orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reworks }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? "重做紀錄儲存失敗");
+    } catch (err) {
+      setOrders((cur) =>
+        cur.map((o) => (o.orderId === order.orderId ? { ...o, reworks: prev } : o)),
+      );
+      setReworkTarget((cur) =>
+        cur && cur.orderId === order.orderId ? { ...cur, reworks: prev } : cur,
+      );
+      alert(err instanceof Error ? err.message : "重做紀錄儲存失敗");
+      throw err;
     }
   }, []);
 
@@ -538,6 +573,15 @@ export function OrderListClient() {
             <ReceiptText className="h-4 w-4" />
             <span className="ml-1 hidden sm:inline">請款單</span>
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setReworkStatsOpen(true)}
+            title="做錯/重做的次數統計：錯在哪、哪一關出錯、哪個品類最常出問題"
+          >
+            <Undo2 className="h-4 w-4" />
+            <span className="ml-1 hidden sm:inline">重做統計</span>
+          </Button>
           <Button onClick={() => router.push("/orders/new" as never)}>
             <Plus className="mr-1 h-4 w-4" />
             新增訂單
@@ -754,6 +798,20 @@ export function OrderListClient() {
                         工單
                       </Button>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-7 px-2 text-xs ${(order.reworks?.length ?? 0) > 0 ? "text-amber-600" : "text-[var(--text-secondary)]"}`}
+                      title="記一筆重做（做錯要重來）"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setReworkTarget(order);
+                      }}
+                    >
+                      <Undo2 className="mr-1 h-3.5 w-3.5" />
+                      重做
+                      {(order.reworks?.length ?? 0) > 0 && ` ${order.reworks?.length}`}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1015,6 +1073,22 @@ export function OrderListClient() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className={`h-7 w-7 p-0 ${(order.reworks?.length ?? 0) > 0 ? "text-amber-600" : "text-[var(--text-secondary)]"}`}
+                            title={
+                              (order.reworks?.length ?? 0) > 0
+                                ? `已記錄 ${order.reworks?.length} 筆重做`
+                                : "記一筆重做（做錯要重來）"
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReworkTarget(order);
+                            }}
+                          >
+                            <Undo2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="h-7 w-7 p-0 text-[var(--text-secondary)]"
                             title="複製訂單"
                             disabled={copying === order.orderId}
@@ -1046,6 +1120,18 @@ export function OrderListClient() {
           </table>
         </div>
       )}
+
+      <ReworkDialog
+        order={reworkTarget}
+        onClose={() => setReworkTarget(null)}
+        onSave={handleSaveReworks}
+      />
+
+      <ReworkStatsModal
+        open={reworkStatsOpen}
+        onOpenChange={setReworkStatsOpen}
+        orders={orders}
+      />
 
       {/* Monthly report modal */}
       <MonthlyReportModal
