@@ -119,7 +119,9 @@ describe("fitLabelFontSize", () => {
 describe("訂單包數寫進試算表（AZ 欄）", () => {
   it("存進去讀回來一樣；沒填寫空字串", () => {
     const row = orderRecordToRow(makeOrder({ packageCount: 3 }));
-    expect(row).toHaveLength(52);
+    // 鎖「包數在索引 51（AZ 欄）」，不鎖整列長度——後面還會加欄位，
+    // 列變長是正常的，鎖長度只會讓每次加欄位都無謂地紅一次。
+    expect(row.length).toBeGreaterThanOrEqual(52);
     expect(row[51]).toBe("3");
     expect(orderRowToRecord(row).packageCount).toBe(3);
     expect(orderRecordToRow(makeOrder())[51]).toBe("");

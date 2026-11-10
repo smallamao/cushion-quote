@@ -127,10 +127,18 @@ export async function PUT(request: Request, context: RouteContext) {
     const autoAdvanced =
       existing.status === "pending_setup" && patch.status === undefined && hasSchedule;
 
+    // 重做紀錄的「誰記的」一律由伺服器蓋章，不收前端送上來的值。
+    // 前端填的身分可以亂寫，而且 createdBy 就是因為寫死空字串，77 張訂單
+    // 事後查不出是誰開的（2026-11-10 修）。歸因資料沒有記錄者就沒辦法回頭問。
+    const mergedReworks = (patch.reworks ?? existing.reworks ?? []).map((r) =>
+      r.recordedBy ? r : { ...r, recordedBy: guard.session.email },
+    );
+
     // Merge patch, preserving immutable fields
     const updated: CustomOrder = {
       ...existing,
       ...patch,
+      reworks: mergedReworks,
       status: autoAdvanced ? "production" : (patch.status ?? existing.status),
       // These fields must never be overwritten by the caller
       orderId: existing.orderId,
