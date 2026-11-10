@@ -29,6 +29,8 @@ import { StatementModal } from "@/components/orders/StatementModal";
 import { PDFPreviewModal } from "@/components/pdf/PDFPreviewModal";
 import type { ARRecord, CustomOrder, OrderInvoiceStatus, OrderItemCategory, OrderStatus } from "@/lib/types";
 import { compareOrders } from "@/lib/order-sort";
+import { findOverdue } from "@/lib/order-overdue";
+import { OverdueAlert } from "@/components/orders/OverdueAlert";
 
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
   // 紅色不是「出錯」，是「卡住」：客人已簽核、單子自動開出來了，但交期與排程沒人填，
@@ -104,6 +106,8 @@ export function OrderListClient() {
   const [categoryFilter, setCategoryFilter] = useState<OrderItemCategory | "all">("all");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
+  // 點了警示列的「只看這幾筆」之後，把清單縮到那幾張單號；再點一次或改其他篩選就解除
+  const [focusNumbers, setFocusNumbers] = useState<string[] | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<CustomOrder | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -480,11 +484,18 @@ export function OrderListClient() {
         const orderMonth = (o.orderDate ?? "").slice(0, 7);
         if (orderMonth !== monthFilter) return false;
       }
+      if (focusNumbers && !focusNumbers.includes(o.orderNumber)) return false;
       return true;
     });
     filteredOrders.sort(compareOrders);
     return filteredOrders;
-  }, [orders, debouncedSearch, categoryFilter, statusFilter, monthFilter]);
+  }, [orders, debouncedSearch, categoryFilter, statusFilter, monthFilter, focusNumbers]);
+
+  // 在製品超期：承諾交期由已完工訂單按品類回推（維修實測是其他品類的兩倍）
+  const overdue = useMemo(() => {
+    const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+    return findOverdue(orders, today);
+  }, [orders]);
 
   return (
     <div className="space-y-6">
@@ -533,6 +544,9 @@ export function OrderListClient() {
           </Button>
         </div>
       </div>
+
+      {/* 在製品超期警示：全部在承諾內時整條不出現，避免天天看一行綠字而麻痺 */}
+      <OverdueAlert items={overdue} onFocus={setFocusNumbers} />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
