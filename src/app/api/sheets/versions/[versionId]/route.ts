@@ -317,7 +317,11 @@ export async function PATCH(
       after(async () => {
         let orderId = "";
         try {
-          const created = await createOrder(client, { sourceType: "quote", versionId });
+          const created = await createOrder(client, {
+            sourceType: "quote",
+            versionId,
+            createdBy: "回簽歸檔自動開單",
+          });
           orderId = created.orderId;
         } catch {
           orderId = "";
