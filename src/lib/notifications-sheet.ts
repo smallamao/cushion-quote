@@ -6,6 +6,7 @@ import { after } from "next/server";
 
 import { cacheInvalidate, cachedRead } from "@/lib/sheets-cache";
 import { getSheetsClient } from "@/lib/sheets-client";
+import { appOrigin, buildNotificationText, sendTelegram } from "@/lib/telegram";
 import { sendPushToAll } from "@/lib/web-push-server";
 
 const SHEET = "通知";
@@ -52,6 +53,12 @@ function schedulePush(n: Pick<AppNotification, "type" | "title" | "body" | "link
       await sendPushToAll({ title: n.title, body: n.body, link: n.link, tag: n.type });
     } catch {
       /* best-effort：推播失敗不影響已寫入的通知 */
+    }
+    // 同一則也推老闆 Telegram（2026-11-10）：手機即時收到，不必開著網頁等鈴鐺
+    try {
+      await sendTelegram(buildNotificationText(n, appOrigin()));
+    } catch (err) {
+      console.error("notification telegram failed", err instanceof Error ? err.message : err);
     }
   };
   try {
