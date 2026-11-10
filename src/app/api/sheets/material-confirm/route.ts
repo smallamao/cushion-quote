@@ -30,7 +30,7 @@ interface WeekRow {
   orderNumber: string;
   customerName: string;
   scheduleDate: string;   // YYYY-MM-DD（台灣）
-  /** 製作完成區間起日（＝該週週一+3）；LINE 批次傳送的 {{完工}} 用 */
+  /** 製作完成區間起日（＝該週週一+4）；LINE 批次傳送的 {{完工}} 用 */
   productionStart: string;
   /** 製作完成區間迄日（＝起日+6）*/
   productionEnd: string;
