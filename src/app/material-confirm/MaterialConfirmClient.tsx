@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { buildFinalConfirmMessage } from "@/lib/final-confirm-message";
+import { buildFinalConfirmTemplate, finalConfirmBatchLine } from "@/lib/final-confirm-message";
 import { buildMaterialAckMessage } from "@/lib/material-ack-message";
 import { isCustomerConfirmed } from "@/lib/material-confirm-types";
 import type { MaterialConfirmStatus, PreferredSlot } from "@/lib/material-confirm-types";
@@ -260,29 +260,37 @@ export function MaterialConfirmClient() {
     [rows],
   );
 
+  /**
+   * 「準備製作前・最後確認」改走 LINE 批次傳送擴充功能（v3.13.0 起支援 {{時段}}）：
+   * 複製清單（一列一筆）＋範本各一次，貼進擴充功能。
+   *
+   * 🔴 2026-11-10 老闆踩到：原本「複製」當下就記成已問，那批就從待確認消失，
+   *    但他其實還沒傳。現在複製不標記，傳完再按「標記已傳送」；按錯可「退回」。
+   */
   async function copyFinalBatch() {
     const text = pendingFinal
-      .map((r) => {
-        const body = buildFinalConfirmMessage({
-          customerName: r.customerName,
-          slots: r.preferredSlots,
-          fmtDate: fmtMd,
-        });
-        return `──── ${r.orderNumber} ${r.customerName} ────\n${body}`;
-      })
-      .join("\n\n");
+      .map((r) => finalConfirmBatchLine(r.orderNumber, r.customerName, r.preferredSlots, fmtMd))
+      .join("\n");
     if (!text) { setError("目前沒有待最後確認的項目"); return; }
     await copy(text, "final");
+  }
+
+  async function copyFinalTemplate() {
+    await copy(buildFinalConfirmTemplate(), "final-tpl");
+  }
+
+  async function markFinalSent() {
     const tokens = pendingFinal.map((r) => r.token).filter(Boolean) as string[];
-    try {
-      await fetch("/api/sheets/material-confirm", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "final_notified", tokens }),
-      });
-      await load();
-    } catch {
-      /* 標記失敗不影響已複製的內容 */
-    }
+    if (tokens.length === 0) return;
+    if (!confirm(`確定這 ${tokens.length} 筆「準備製作前・最後確認」都已經用 LINE 傳出去了？`)) return;
+    await postTokens("final_notified", tokens, "標記失敗");
+  }
+
+  async function revertFinalSent() {
+    const tokens = awaitingFinalReply.map((r) => r.token).filter(Boolean) as string[];
+    if (tokens.length === 0) return;
+    if (!confirm(`把這 ${tokens.length} 筆退回「待最後確認」？（只在其實還沒傳出去時使用）`)) return;
+    await postTokens("final_unnotify", tokens, "退回失敗");
   }
 
   async function markFinalReplied(token: string | null) {
@@ -333,7 +341,7 @@ export function MaterialConfirmClient() {
    *    ——不會出現在任何待辦欄位，那位客人就永遠收不到連結。
    *    原本完全沒有退路，只能靠自己記得。
    */
-  async function postTokens(action: "unnotified" | "reopen", tokens: string[], failMsg: string,
+  async function postTokens(action: "unnotified" | "reopen" | "final_notified" | "final_unnotify", tokens: string[], failMsg: string,
                             force = false) {
     if (tokens.length === 0) return;
     setBusy(true);
@@ -725,20 +733,44 @@ export function MaterialConfirmClient() {
         )}
         {/* 準備製作前・最後確認：客人已簽核、還沒問過能不能如期進場 */}
         {pendingFinal.length > 0 && (
-          <button
-            type="button" disabled={busy}
-            onClick={() => void copyFinalBatch()}
-            title="沿用你現行的 LINE 文案，自動帶入客人預登記的時段"
-            className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
-          >
-            {copied === "final"
-              ? "已複製 ✓"
-              : `📋 複製 ${pendingFinal.length} 筆最後確認（貼 LINE 傳送）`}
-          </button>
+          <>
+            <button
+              type="button" disabled={busy}
+              onClick={() => void copyFinalBatch()}
+              title="一列一筆「編號 名字 時段:…」，貼進 LINE 批次傳送的訂單欄位"
+              className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+            >
+              {copied === "final" ? "已複製 ✓" : `📋 複製 ${pendingFinal.length} 筆最後確認清單`}
+            </button>
+            <button
+              type="button" disabled={busy}
+              onClick={() => void copyFinalTemplate()}
+              title="訊息範本（含 {{姓名}}、{{時段}}），貼進 LINE 批次傳送的訊息欄"
+              className="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-medium text-indigo-700 disabled:opacity-40"
+            >
+              {copied === "final-tpl" ? "已複製 ✓" : "📋 複製最後確認訊息範本"}
+            </button>
+            <button
+              type="button" disabled={busy}
+              onClick={() => void markFinalSent()}
+              title="LINE 傳完之後再按，這批就移到「已問、等回覆」"
+              className="rounded-lg border border-emerald-300 px-3 py-2 text-sm font-medium text-emerald-700 disabled:opacity-40"
+            >
+              ✅ {pendingFinal.length} 筆已傳送
+            </button>
+          </>
         )}
         {awaitingFinalReply.length > 0 && (
-          <span className="self-center text-xs text-amber-700">
+          <span className="flex items-center gap-2 self-center text-xs text-amber-700">
             ⏳ {awaitingFinalReply.length} 筆已問、客人還沒回
+            <button
+              type="button" disabled={busy}
+              onClick={() => void revertFinalSent()}
+              title="其實還沒傳出去 → 退回待最後確認"
+              className="rounded border border-amber-300 px-2 py-0.5 text-amber-800 disabled:opacity-40"
+            >
+              ↩︎ 退回（還沒傳）
+            </button>
           </span>
         )}
 

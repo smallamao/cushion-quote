@@ -23,26 +23,50 @@ export function givenName(full: string): string {
   return t.length >= 3 ? t.slice(1) : t;
 }
 
-export function buildFinalConfirmMessage({
-  customerName,
-  slots,
-  fmtDate,
-}: FinalConfirmOptions): string {
-  const lines = slots.map((s, i) => `　${i + 1}. ${fmtDate(s.date)} ${s.period}`);
+/**
+ * 給「LINE 批次傳送」擴充功能（v3.13.0 起）用的訊息範本：
+ * 跟 buildFinalConfirmMessage 同一套字句，只把姓名、時段換成 {{姓名}}、{{時段}}。
+ * 擴充功能把每列「時段:A｜B｜C」排成「　1. A」三行，代進 {{時段}}。
+ */
+export function buildFinalConfirmTemplate(): string {
+  return finalConfirmLines("{{姓名}}", ["{{時段}}"]).join("\n");
+}
+
+/** 批次清單的一列：「P6332 宜庭 時段:11/19(四) 上午 10:00-12:00｜11/20(五) …」 */
+export function finalConfirmBatchLine(
+  orderNumber: string,
+  customerName: string,
+  slots: PreferredSlot[],
+  fmtDate: (ymd: string) => string,
+): string {
+  const slotText = slots.map((s) => `${fmtDate(s.date)} ${s.period}`).join("｜");
+  return `${orderNumber} ${givenName(customerName)} 時段:${slotText}`;
+}
+
+function finalConfirmLines(name: string, slotLines: string[]): string[] {
   return [
     "【準備製作前・最後確認】",
     "",
-    `${givenName(customerName)} 您好 👋`,
+    `${name} 您好 👋`,
     "上游材料（木架、泡棉）準備陸續進廠",
     "廠內作業尚未開始製作",
     "",
-    ...(lines.length > 0
-      ? ["您預登記的收件時段：", ...lines, ""]
+    ...(slotLines.length > 0
+      ? ["您預登記的收件時段：", ...slotLines, ""]
       : []),
     "請確認是否能如期進沙發：",
     "",
     "若可如期，將依預登記時段優先配送",
     "若裝潢延誤或無法進場，請立即告知",
     "我們會協助調整排程，避免成品放置過久 🙇‍♂️",
-  ].join("\n");
+  ];
+}
+
+export function buildFinalConfirmMessage({
+  customerName,
+  slots,
+  fmtDate,
+}: FinalConfirmOptions): string {
+  const lines = slots.map((s, i) => `　${i + 1}. ${fmtDate(s.date)} ${s.period}`);
+  return finalConfirmLines(givenName(customerName), lines).join("\n");
 }

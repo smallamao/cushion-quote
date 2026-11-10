@@ -289,6 +289,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, marked: n });
   }
 
+  // 「準備製作前・最後確認」退回未傳送：複製過但沒真的傳出去時用。已回覆的不退。
+  if (action === "final_unnotify") {
+    const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
+    if (tokens.length === 0) return NextResponse.json({ ok: false, error: "沒有指定要退回的項目" }, { status: 400 });
+    const all = await listConfirms();
+    let n = 0;
+    for (const { confirm, rowNumber } of all) {
+      if (!tokens.includes(confirm.token) || !confirm.finalNotifiedAt || confirm.finalRepliedAt) continue;
+      await writeConfirm({ ...confirm, finalNotifiedAt: "" }, rowNumber);
+      n += 1;
+    }
+    return NextResponse.json({ ok: true, reverted: n });
+  }
+
   if (action === "notified") {
     const tokens = Array.isArray(body.tokens) ? (body.tokens as unknown[]).map(String).filter(Boolean) : [];
     if (tokens.length === 0) return NextResponse.json({ ok: false, error: "沒有指定要標記的項目" }, { status: 400 });
