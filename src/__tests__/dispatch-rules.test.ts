@@ -4,7 +4,7 @@ import {
   HARD_CAP, MAX_STORAGE_DAYS, SOFT_CAP,
   NOTIFY_LEAD_DAYS,
   driverLoad, isStorageOverdue, productionStage,
-  shouldRemindDeliveryNotice, suggestDriver,
+  shouldRemindDeliveryNotice, shouldRemindProductionOverdue, suggestDriver,
 } from "@/lib/dispatch-rules";
 import { productionWindow } from "@/lib/production-window";
 import { driverNameFromLabelIds, TRELLO } from "@/lib/trello-constants";
@@ -345,5 +345,73 @@ describe("driverNameFromLabelIds — 現役名單由外部傳入", () => {
     const roster = [{ labelId: "", title: "還沒設標籤的人" }];
     expect(driverNameFromLabelIds([], roster)).toBe("");
     expect(driverNameFromLabelIds([""], roster)).toBe("");
+  });
+});
+
+/**
+ * 🔴 2026-11-10 實查 P6282 王祖均：製作完成已過 6 天、還沒排配送日，
+ *    但它穿過了全部三道既有催辦——叫料催辦只掃 status==="sent"（它是
+ *    confirmed_offline）、配送通知催辦要有 chosenDate（它沒有）、
+ *    自動結案只處理已出貨的卡。於是完全隱形。
+ *
+ *    但同一天也有 6 張超期的單，其中 5 張通知已發、最近還有動作——
+ *    那是有人在處理的老單。全部都催就是每天 6 則噪音。
+ */
+describe("shouldRemindProductionOverdue — 完工了卻沒排配送", () => {
+  const READY = TRELLO.LISTS.WAIT_SHIPPING;
+  const PROD = TRELLO.LISTS.PRODUCTION;
+  const base = {
+    productionEnd: "2026-11-04", today: "2026-11-10", chosenDate: "",
+    status: "confirmed_offline", alreadyNotified: false,
+    idList: PROD, readyList: READY, productionList: PROD,
+  };
+
+  it("完工區間已過、沒排配送、沒通知 → 要催（P6282 的情形）", () => {
+    const r = shouldRemindProductionOverdue(base);
+    expect(r.remind).toBe(true);
+    expect(r.overdueDays).toBe(6);
+  });
+
+  it("待出貨清單也算（做完了但沒排車一樣會卡住）", () => {
+    expect(shouldRemindProductionOverdue({ ...base, idList: READY }).remind).toBe(true);
+  });
+
+  it("已排定配送日 → 不催（歸配送通知那一類，避免兩邊都響）", () => {
+    const r = shouldRemindProductionOverdue({ ...base, chosenDate: "2026-11-15" });
+    expect(r.remind).toBe(false);
+    expect(r.reason).toContain("配送通知");
+  });
+
+  it("出貨通知已發 → 不催（有人在處理的老單，就是那 5 張）", () => {
+    const r = shouldRemindProductionOverdue({ ...base, alreadyNotified: true });
+    expect(r.remind).toBe(false);
+    expect(r.reason).toContain("有人在處理");
+  });
+
+  it("還在製作區間內 → 不催", () => {
+    expect(shouldRemindProductionOverdue({ ...base, productionEnd: "2026-11-20" }).remind).toBe(false);
+    // 剛好今天完工也不算超期
+    expect(shouldRemindProductionOverdue({ ...base, productionEnd: "2026-11-10" }).remind).toBe(false);
+  });
+
+  it("排程日沒填 → 算不出完工日，不猜也不催", () => {
+    const r = shouldRemindProductionOverdue({ ...base, productionEnd: "" });
+    expect(r.remind).toBe(false);
+    expect(r.reason).toContain("不猜");
+  });
+
+  it("取消的不催", () => {
+    expect(shouldRemindProductionOverdue({ ...base, status: "cancelled" }).remind).toBe(false);
+  });
+
+  it("已出貨／完成等清單不催", () => {
+    for (const list of [TRELLO.LISTS.SHIPPED, TRELLO.LISTS.COMPLETED, TRELLO.LISTS.ORDER, TRELLO.LISTS.FAILED]) {
+      expect(shouldRemindProductionOverdue({ ...base, idList: list }).remind, list).toBe(false);
+    }
+  });
+
+  it("壞日期不丟錯、也不亂催", () => {
+    expect(shouldRemindProductionOverdue({ ...base, productionEnd: "bad" }).remind).toBe(false);
+    expect(shouldRemindProductionOverdue({ ...base, today: "bad" }).remind).toBe(false);
   });
 });

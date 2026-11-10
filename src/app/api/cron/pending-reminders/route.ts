@@ -4,7 +4,8 @@ import { getActiveSession } from "@/lib/api-auth";
 import { timingSafeEqual } from "@/lib/constant-time";
 import { listConfirms, writeConfirm } from "@/lib/material-confirm-sheet";
 import { isCustomerConfirmed } from "@/lib/material-confirm-types";
-import { shouldRemindDeliveryNotice } from "@/lib/dispatch-rules";
+import { shouldRemindDeliveryNotice, shouldRemindProductionOverdue } from "@/lib/dispatch-rules";
+import { productionWindow } from "@/lib/production-window";
 import { appendNotification } from "@/lib/notifications-sheet";
 import { listOrderConfirms } from "@/lib/order-confirm-sheet";
 import { TRELLO } from "@/lib/trello-constants";
@@ -12,6 +13,7 @@ import type { BoardCardWithChecklists } from "@/lib/trello-server";
 import {
   addCardCommentUnlessTest,
   getBoardCardsWithChecklists,
+  getCustomFieldDate,
   readDepositState,
   toTaipeiYmd,
 } from "@/lib/trello-server";
@@ -307,6 +309,51 @@ export async function GET(request: Request) {
     }
   } catch {
     /* best-effort，不影響前面已寫入的催辦 */
+  }
+
+  /**
+   * ── 製作完成區間已過，卻還沒排定配送日 ──────────────────
+   *
+   * 🔴 這類單會穿過所有既有的催辦（2026-11-10 實查 P6282 王祖均）：
+   *    叫料催辦只掃 status==="sent"（它是 confirmed_offline）、配送通知催辦
+   *    要有 chosenDate（它沒有）、自動結案只處理已出貨的卡。於是它超期 6 天，
+   *    三道機制全部跳過，看板上也找不到。
+   *
+   *    刻意不催「所有超期的單」：同一天實查 6 張超期，其中 5 張通知已發、
+   *    最近還有動作，那是有人在處理的老單。全催就是每天 6 則噪音。
+   */
+  try {
+    const cards = await boardCards();
+    const today = twYmd(new Date().toISOString());
+    const cardById = new Map(cards.map((c) => [c.id, c]));
+    for (const { confirm: c } of await listConfirms()) {
+      const card = cardById.get(c.cardId);
+      if (!card) continue;                            // 不在板上就無從判斷
+      const verdict = shouldRemindProductionOverdue({
+        // 完工日一律從排程日／生產週推，不用卡片 due——due 準確度只有 29%
+        productionEnd: productionWindow(
+          toTaipeiYmd(getCustomFieldDate(card, TRELLO.CUSTOM_FIELDS.SCHEDULE_DAY)),
+        ).end,
+        today,
+        chosenDate: (c.chosenDate ?? "").slice(0, 10),
+        status: c.status,
+        alreadyNotified: Boolean(card.dueComplete),
+        idList: card.idList,
+        readyList: TRELLO.LISTS.WAIT_SHIPPING,
+        productionList: TRELLO.LISTS.PRODUCTION,
+      });
+      if (!verdict.remind) continue;
+
+      await appendNotification({
+        type: "production_overdue_unscheduled",
+        title: `🚨 ${c.orderNumber} 製作完成已過 ${verdict.overdueDays} 天，還沒排配送`,
+        body: `${c.customerName}・這張單不在任何催辦名單裡，容易被漏掉，請確認進度或排車`,
+        link: "/dispatch-plan",
+      });
+      sent.push(`prod-overdue:${c.orderNumber}:${verdict.overdueDays}d`);
+    }
+  } catch {
+    /* best-effort */
   }
 
   return NextResponse.json({

@@ -258,3 +258,51 @@ export function shouldRemindDeliveryNotice(input: {
     kind: isReady ? "notify" : "production_behind",
   };
 }
+
+/**
+ * 製作完成區間已經過去，卻還沒排定配送日——這種單會穿過所有既有的催辦。
+ *
+ * 🔴 為什麼需要它（2026-11-10 實查 P6282 王祖均）：
+ *    - 叫料確認催辦只掃 `status === "sent"`，而這張是 confirmed_offline
+ *    - 配送通知催辦要有 chosenDate 才算，而這張還沒排
+ *    - 自動結案只處理已進「已出貨／待驗收／完成」的卡
+ *    於是它超期 6 天，三道機制全部跳過，畫面上也看不到。
+ *
+ * 🔴 為什麼不是「所有超期的單都催」：同一天實查有 6 張超期，但其中 5 張
+ *    （P6089×2、P6294×2、P6264）的出貨通知已發、而且最近 1～6 天內還有動作
+ *    ——那是「有人在處理的老單」，不是掉在地上的。全部都催就是每天 6 則噪音，
+ *    而這支 cron 的價值完全建立在零假警報上。
+ *    鑑別條件：還沒排配送日 ＋ 出貨通知還沒發。
+ */
+export function shouldRemindProductionOverdue(input: {
+  /** productionWindow(生產週).end；空＝排程日沒填，算不出來 */
+  productionEnd: string;
+  /** 台灣時區的今天，YYYY-MM-DD */
+  today: string;
+  /** 已排定的配送日；有值＝已經在排車流程裡，不屬於這一類 */
+  chosenDate: string;
+  status: string;
+  /** Trello dueComplete＝出貨通知已發 */
+  alreadyNotified: boolean;
+  /** 卡片目前的清單；只有生產中與待出貨才算 */
+  idList: string;
+  readyList: string;
+  productionList: string;
+}): { remind: boolean; overdueDays: number; reason: string } {
+  const no = (reason: string) => ({ remind: false, overdueDays: 0, reason });
+
+  if (!input.productionEnd) return no("排程日未填，算不出完工日——不猜");
+  if (input.status === "cancelled") return no("已取消");
+  if (input.chosenDate) return no("已排定配送日，歸配送通知那一類");
+  if (input.alreadyNotified) return no("出貨通知已發，有人在處理");
+  if (input.idList !== input.readyList && input.idList !== input.productionList) {
+    return no("不在生產中／待出貨");
+  }
+
+  const overdueDays = Math.round(
+    (Date.parse(`${input.today}T00:00:00Z`) - Date.parse(`${input.productionEnd}T00:00:00Z`)) / 86_400_000,
+  );
+  if (!Number.isFinite(overdueDays) || overdueDays <= 0) return no("還在製作區間內");
+
+  return { remind: true, overdueDays, reason: "完工區間已過但還沒排配送" };
+}
