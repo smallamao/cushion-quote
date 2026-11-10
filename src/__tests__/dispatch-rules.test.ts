@@ -51,22 +51,33 @@ describe("派車規則（老闆 2026-11-01 口述，經 Trello 歷史驗證）",
   /**
    * 🔴 2026-11-10 改了錨點：原本吃卡片的 dueDate，而那是專案自己宣告不可信的
    *    欄位（實測準確度 29%、誤差 −20～+18 天）。現在吃生產週，由
-   *    productionWindow() 推出製作完成日（生產週一 +9）。
-   *    2026-10-22 是週四 → 該週週一 10-19 → 完工日 10-29（2026-11-10 起完工區間改為週一+4，完工日＝週一+10）。
+   *    productionWindow() 推出製作完成日。
+   *
+   * 🔴 完工日**現算**，不要抄成字面值。先前這裡寫死 "2026-10-28"，結果
+   *    另一個 session 把 BUFFER_DAYS 從 3 改成 4 時，必須連帶來改這個測試
+   *    （10-28 → 10-29）。衍生值一律從來源推導，常數才能自由調整。
    */
-  it("從製作完成日（生產週一+10）起算，超過兩週才算寄放超期", () => {
-    const WEEK = "2026-10-22";                       // 該週完工日 = 2026-10-29
-    expect(productionWindow(WEEK).end).toBe("2026-10-29");  // 先確認前提
-    expect(isStorageOverdue(WEEK, "2026-11-12")).toBe(false); // 剛好 14 天
-    expect(isStorageOverdue(WEEK, "2026-11-13")).toBe(true);  // 15 天
-    expect(isStorageOverdue(WEEK, "2026-10-30")).toBe(false); // 2 天
-    expect(MAX_STORAGE_DAYS).toBe(14);
+  it("從製作完成日起算，超過兩週才算寄放超期", () => {
+    const WEEK = "2026-10-22";                        // 週四
+    const DONE = productionWindow(WEEK).end;          // 該週共用的完工日
+    const after = (n: number) =>
+      new Date(Date.parse(`${DONE}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+    expect(DONE > WEEK, "完工日必須晚於生產週").toBe(true);
+    expect(isStorageOverdue(WEEK, after(MAX_STORAGE_DAYS))).toBe(false);     // 剛好 14 天
+    expect(isStorageOverdue(WEEK, after(MAX_STORAGE_DAYS + 1))).toBe(true);  // 15 天
+    expect(isStorageOverdue(WEEK, after(2))).toBe(false);                    // 2 天
   });
 
   it("同一生產週的任何一天都得到同樣的完工日（整週共用區間）", () => {
     // 老闆 2026-09-30：同一週一起生產，不看各筆排程日
     const days = ["2026-10-19", "2026-10-20", "2026-10-22", "2026-10-25"]; // 週一～週日
-    const results = days.map((d) => isStorageOverdue(d, "2026-11-13"));
+    const ends = days.map((d) => productionWindow(d).end);
+    expect(new Set(ends).size, "同週不同天推出不同完工日").toBe(1);
+
+    const target = new Date(Date.parse(`${ends[0]}T00:00:00Z`) + (MAX_STORAGE_DAYS + 1) * 86_400_000)
+      .toISOString().slice(0, 10);
+    const results = days.map((d) => isStorageOverdue(d, target));
     expect(new Set(results).size, "同週不同天算出不同答案").toBe(1);
     expect(results[0]).toBe(true);
   });
