@@ -109,7 +109,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await createOrder(client, body);
+    const result = await createOrder(client, { ...body, createdBy: guard.session.email });
     if (result.alreadyExists) {
       return NextResponse.json(
         { ok: true, orderId: result.orderId, alreadyExists: true },

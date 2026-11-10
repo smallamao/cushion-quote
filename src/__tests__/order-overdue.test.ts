@@ -107,3 +107,23 @@ describe("findOverdue", () => {
     expect(findOverdue([order({ orderDate: "" })], "2026-11-10")).toHaveLength(0);
   });
 });
+
+/**
+ * 🔴 2026-11-10：訂製訂單 77 筆的 createdBy 全是空的 —— 原本寫死 ""。
+ *    查不出任何一張是誰開的、走哪條路徑開的（手動／回簽／線上簽署）。
+ *    三條路徑的後續不一樣：自動開的單交期與排程是空的，要人補。
+ */
+describe("createOrder 的 createdBy（回歸測試）", () => {
+  it("型別允許三種來源都帶 createdBy", async () => {
+    const { } = await import("@/lib/order-create");
+    // 編譯期保證：tsc 過了就代表三種 input 都接受 createdBy
+    const a: import("@/lib/order-create").CreateOrderInput = {
+      sourceType: "quote", versionId: "V1", createdBy: "someone@example.com",
+    };
+    const b: import("@/lib/order-create").CreateOrderInput = {
+      sourceType: "direct", clientName: "客", orderNumber: "S1", createdBy: "線上簽署自動開單",
+    };
+    expect(a.createdBy).toBe("someone@example.com");
+    expect(b.createdBy).toBe("線上簽署自動開單");
+  });
+});

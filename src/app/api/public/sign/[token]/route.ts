@@ -300,6 +300,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         const created = await createOrder(client, {
           sourceType: "quote",
           versionId: link.versionId,
+          // 客人自己簽的，沒有登入者；記來源而不是記人
+          createdBy: "線上簽署自動開單",
         });
         autoOrderId = created.orderId;
       } catch {

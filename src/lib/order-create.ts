@@ -25,7 +25,15 @@ import type { CustomOrder, OrderItemCategory, OrderDeliveryMethod } from "@/lib/
  * 兩邊行為一定一致。
  */
 
-export type CreateOrderInput =
+/**
+ * 建單來源。`createdBy` 一律由呼叫端帶入 —— 它不是「誰按的按鈕」，是
+ * 「這張單怎麼來的」：後台手動開、回簽自動開、客人線上簽署自動開，
+ * 三條路徑的後續處理不一樣（自動開的單交期與排程是空的，要人補）。
+ *
+ * 🔴 2026-11-10 修：原本寫死空字串，77 張訂單的 createdBy 全是空的，
+ *    查不出任何一張是誰、用哪條路徑開的。
+ */
+export type CreateOrderInput = { createdBy?: string } & (
   | { sourceType: "quote"; versionId: string }
   | {
       sourceType: "direct";
@@ -33,7 +41,8 @@ export type CreateOrderInput =
       orderNumber: string;
       itemCategory?: string;
       clientId?: string;
-    };
+    }
+);
 
 export interface CreateOrderResult {
   orderId: string;
@@ -296,7 +305,7 @@ export async function createOrder(
     internalNotes: "",
     createdAt: now,
     updatedAt: now,
-    createdBy: "",
+    createdBy: input.createdBy ?? "",
     materialPurchases: [],
     clientId,
     installAddress,
