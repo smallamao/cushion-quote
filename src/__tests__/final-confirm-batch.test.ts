@@ -19,9 +19,9 @@ const slots = [
 function extRender(line: string, tpl: string): string {
   const m = line.match(/時段[:：]\s*(.+)$/)!;
   const head = line.slice(0, m.index).trim();
-  const name = head.replace(/P\d{4,}/i, "").trim();
+  const order = (head.match(/P\d{4,}/i) ?? [""])[0].toUpperCase();
   const slotLines = m[1].split(/[｜|]/).map((x) => x.trim()).filter(Boolean).map((x, i) => `　${i + 1}. ${x}`).join("\n");
-  return tpl.replace("{{姓名}}", name).replace("{{時段}}", slotLines);
+  return tpl.replace("{{訂單}}", order).replace("{{時段}}", slotLines);
 }
 
 describe("準備製作前・最後確認：批次清單＋範本", () => {
@@ -33,13 +33,14 @@ describe("準備製作前・最後確認：批次清單＋範本", () => {
 
   it("範本經擴充功能代換後，跟單筆訊息一字不差", () => {
     const line = finalConfirmBatchLine("P6332", "蔡宜庭", slots, fmt);
-    const single = buildFinalConfirmMessage({ customerName: "蔡宜庭", slots, fmtDate: fmt });
+    const single = buildFinalConfirmMessage({ orderNumber: "P6332", customerName: "蔡宜庭", slots, fmtDate: fmt });
     expect(extRender(line, buildFinalConfirmTemplate())).toBe(single);
   });
 
   it("範本含兩個變數", () => {
     const t = buildFinalConfirmTemplate();
-    expect(t).toContain("{{姓名}} 您好 👋");
+    expect(t).toContain("{{訂單}} 您好 👋");
+    expect(t).not.toContain("{{姓名}}");
     expect(t).toContain("您預登記的收件時段：\n{{時段}}\n");
   });
 });

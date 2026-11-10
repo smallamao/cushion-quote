@@ -11,6 +11,8 @@ import type { PreferredSlot } from "@/lib/material-confirm-types";
  * 系統代替不了「問」，但可以記住問過誰、誰還沒回。
  */
 export interface FinalConfirmOptions {
+  /** 開頭打招呼用單號（老闆 2026-11-10：「P6332 您好」，不用姓名） */
+  orderNumber: string;
   customerName: string;
   slots: PreferredSlot[];
   /** 「11/9(一)」這種格式，由呼叫端提供，與看板顯示共用同一支 */
@@ -25,11 +27,11 @@ export function givenName(full: string): string {
 
 /**
  * 給「LINE 批次傳送」擴充功能（v3.13.0 起）用的訊息範本：
- * 跟 buildFinalConfirmMessage 同一套字句，只把姓名、時段換成 {{姓名}}、{{時段}}。
+ * 跟 buildFinalConfirmMessage 同一套字句，只把單號、時段換成 {{訂單}}、{{時段}}。
  * 擴充功能把每列「時段:A｜B｜C」排成「　1. A」三行，代進 {{時段}}。
  */
 export function buildFinalConfirmTemplate(): string {
-  return finalConfirmLines("{{姓名}}", ["{{時段}}"]).join("\n");
+  return finalConfirmLines("{{訂單}}", ["{{時段}}"]).join("\n");
 }
 
 /** 批次清單的一列：「P6332 宜庭 時段:11/19(四) 上午 10:00-12:00｜11/20(五) …」 */
@@ -43,11 +45,11 @@ export function finalConfirmBatchLine(
   return `${orderNumber} ${givenName(customerName)} 時段:${slotText}`;
 }
 
-function finalConfirmLines(name: string, slotLines: string[]): string[] {
+function finalConfirmLines(greetingName: string, slotLines: string[]): string[] {
   return [
     "【準備製作前・最後確認】",
     "",
-    `${name} 您好 👋`,
+    `${greetingName} 您好 👋`,
     "上游材料（木架、泡棉）準備陸續進廠",
     "廠內作業尚未開始製作",
     "",
@@ -63,10 +65,10 @@ function finalConfirmLines(name: string, slotLines: string[]): string[] {
 }
 
 export function buildFinalConfirmMessage({
-  customerName,
+  orderNumber,
   slots,
   fmtDate,
 }: FinalConfirmOptions): string {
   const lines = slots.map((s, i) => `　${i + 1}. ${fmtDate(s.date)} ${s.period}`);
-  return finalConfirmLines(givenName(customerName), lines).join("\n");
+  return finalConfirmLines(orderNumber, lines).join("\n");
 }
