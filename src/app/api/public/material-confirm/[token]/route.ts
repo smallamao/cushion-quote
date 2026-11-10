@@ -355,13 +355,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       const week = all.filter((r) => r.confirm.weekKey === c.weekKey);
       const done = week.filter((r) => r.confirm.status === "confirmed").length;
       const left = week.length - done;
-      progress = `\n📊 本週 ${week.length} 張，已確認 ${done} 張`
+      // 手機上一長串讀不下去（老闆 2026-11-10）：單號另起一行、不要黏在句尾
+      progress = `\n\n📊 本週 ${week.length} 張，已確認 ${done} 張`
                + (left > 0
-                   ? `，還差 ${left} 張：${week
+                   ? `，還差 ${left} 張：\n${week
                        .filter((r) => r.confirm.status !== "confirmed")
                        .map((r) => r.confirm.orderNumber)
                        .join("、")}`
-                   : "　✅ 全部確認完，可以進組件叫料");
+                   : "\n✅ 全部確認完，可以進組件叫料");
     } catch {
       progress = "";
     }
@@ -369,7 +370,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     await appendNotification({
       type: "material_confirm",
       title: `✅ ${c.orderNumber} 客戶已確認叫料`,
-      body: `${signerName}　希望收件：${slots.map(fmtSlot).join("、")}${progress}`,
+      // 標題已經有客戶姓名，不重複；收件時段一行一個，手機上才看得清楚
+      body: `預選收件資訊：\n${slots.map(fmtSlot).join("\n")}${progress}`,
       link: "/material-confirm",
     });
 
