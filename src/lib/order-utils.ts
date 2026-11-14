@@ -1,3 +1,4 @@
+import { cleanOrderTitle } from "@/lib/workorder-normalize";
 import type { CustomOrder, MaterialPurchase, OrderItem, OrderNote, OrderRework, WorkOrderPhotoLayoutItem } from "@/lib/types";
 
 export const ORDER_SHEET = "訂製訂單";
@@ -255,14 +256,17 @@ export function resolveOrderTitle(
   quoteNameSnapshot: string | undefined | null,
   lines: OrderTitleLineLike[] = [],
 ): string {
-  const fromCase = (caseName ?? "").trim();
+  // 每個候選都先去雜訊（客戶/場所前綴、括號補充、方案名稱）；清乾淨後是空的就往下退。
+  // 2026-11-14 抽樣：10/15 張的訂製內容被人工改過，最糟的是「確認方案（高支撐泡棉）」——
+  // 那是報價的方案名稱，工單上完全看不出要做什麼。
+  const fromCase = cleanOrderTitle(caseName);
   if (fromCase) return fromCase;
 
-  const fromQuote = (quoteNameSnapshot ?? "").trim();
+  const fromQuote = cleanOrderTitle(quoteNameSnapshot);
   if (fromQuote) return fromQuote;
 
   const firstVisible = lines
     .filter((l) => l.showOnQuote !== false && !l.isCostItem)
     .sort((a, b) => (a.lineNo ?? 0) - (b.lineNo ?? 0))[0];
-  return (firstVisible?.itemName ?? "").split("\n")[0].trim();
+  return cleanOrderTitle((firstVisible?.itemName ?? "").split("\n")[0]);
 }

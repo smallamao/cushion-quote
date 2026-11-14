@@ -14,6 +14,7 @@ import {
 import { lineRowToRecord } from "@/app/api/sheets/_v2-utils";
 import { classifyOrderCategory, inferDeliveryMethod } from "@/lib/order-category";
 import { versionLinesToOrderItems } from "@/lib/quote-mappers";
+import { stripQuoteConditions } from "@/lib/workorder-normalize";
 import type { CustomOrder, OrderItemCategory, OrderDeliveryMethod } from "@/lib/types";
 
 /**
@@ -145,10 +146,10 @@ export async function createOrder(
     // 走這條而不是讓報價系統直連客服資料庫，是為了不把 service_role 金鑰
     // 多複製一份到這個專案（老闆 2026-10-13 選 B 案）。
     lineChatUrl = (versionRow[26] ?? "").match(/https:\/\/chat\.line\.biz\/\S+/)?.[0] ?? "";
-    initialNotes = scopeDescription
-      .split("\n")
-      .map((line: string) => line.trim())
-      .filter((line: string) => line.length > 0)
+    // 🔴 報價條件不進工單。對外說明的讀者是客人（營業稅、含送達、牌價級距），
+    //    工單的讀者是師傅。2026-11-14 抽樣：系統帶過來的 53 行備註有 23 行是報價條件，
+    //    人工改完只剩 1 行殘留——等於每張單都要重寫一次。
+    initialNotes = stripQuoteConditions(scopeDescription)
       .map((text: string, i: number) => ({
         id: `note-${i + 1}`,
         text,

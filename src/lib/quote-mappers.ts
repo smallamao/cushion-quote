@@ -1,4 +1,5 @@
 import type { FlexQuoteItem, OrderItem, VersionLineRecord } from "@/lib/types";
+import { foamShorthand, normalizeInchToCm } from "@/lib/workorder-normalize";
 import { buildSplitItemFields } from "@/lib/split-panel-metadata";
 
 /**
@@ -50,7 +51,8 @@ export function toFlexItemsFromVersion(lines: VersionLineRecord[]): FlexQuoteIte
 
 /** 不是要製作的品項，不該出現在師傅的工單上。 */
 const NON_MAKE_ITEM =
-  /(運費|配送費|來回搬運|來回運送|搬運|自行取件|自行送件|自取|丈量|車資|安裝費|折讓)/;
+  // 2026-11-14：「來回收送」漏在外面，整行跟著進工單（師傅看到一項「來回收送」要做什麼？）
+  /(運費|配送費|來回搬運|來回運送|來回收送|收送|搬運|清運|自行取件|自行送件|自取|丈量|車資|安裝費|折讓)/;
 /** 尺寸行：支援 cm 與「公分」、W/D/H 前綴、7-10cm 這種區間寫法。 */
 const DIMENSION_LINE =
   /(?:W|w)?\s*\d+(?:\.\d+)?\s*(?:x|×|X)\s*(?:D|H|h|d)?\s*\d+(?:\.\d+)?(?:\s*[~\-–]\s*\d+(?:\.\d+)?)?(?:\s*(?:x|×|X)\s*(?:H|h)?\s*\d+(?:\.\d+)?(?:\s*[~\-–]\s*\d+(?:\.\d+)?)?)?\s*(?:cm|CM|公分)/;
@@ -177,9 +179,11 @@ export function versionLinesToOrderItems(
     const make = (name: string, dimensions: string, quantity: string): OrderItem => ({
       id: `item-${items.length + 1}`,
       name,
-      dimensions,
+      // 師傅用整數公分，報價用英吋換算值（7.6cm）。只換對得上換算表的，
+      // 量出來的 43.5cm 不可以動（2026-11-14 抽樣）。
+      dimensions: normalizeInchToCm(dimensions),
       quantity: quantity || fallbackQty,
-      foamSpec,
+      foamSpec: foamShorthand(foamSpec),
       foamColor: null,
       itemType: "normal",
       colorCode: colorCode || undefined,

@@ -79,7 +79,8 @@ describe("versionLinesToOrderItems", () => {
       }),
     ]);
     expect(items[0].colorCode).toBe("BF02-04");
-    expect(items[0].foamSpec).toContain("高支撐");
+    // 2026-11-14 起泡棉翻成師傅的料號用語（抽樣 15 張工單，人工每次都要自己換寫法）
+    expect(items[0].foamSpec).toBe("(HRH 硬Q料)");
     expect(items[0].dimensions).toBe("W181.8 x D60 x 5cm");
   });
 
@@ -100,7 +101,7 @@ describe("versionLinesToOrderItems", () => {
     ]);
     expect(items[0].subNote ?? "").not.toContain("兼顧");
     expect(items[0].subNote ?? "").not.toContain("最常使用");
-    expect(items[0].foamSpec).toContain("標準高密度泡棉");
+    expect(items[0].foamSpec).toBe("(一般硬Q料)");
   });
 
   it("成本列與不顯示的行一律不帶進訂單", () => {
