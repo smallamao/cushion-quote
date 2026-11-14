@@ -84,7 +84,7 @@ describe("summarizeReworks — 分類計數", () => {
     }),
     order({
       orderId: "b",
-      itemCategory: "繃布",
+      itemCategory: "繃布裱板",
       reworks: [rework({ id: "r3", symptom: "材質色號", cause: "", foundAt: "客人反映" })],
     }),
   ];
@@ -106,7 +106,7 @@ describe("summarizeReworks — 分類計數", () => {
   it("品類是從訂單帶過來的，一張單有幾筆就算幾筆", () => {
     expect(summarizeReworks(orders).byCategory).toEqual([
       { key: "臥榻墊", count: 2 },
-      { key: "繃布", count: 1 },
+      { key: "繃布裱板", count: 1 },
     ]);
   });
 

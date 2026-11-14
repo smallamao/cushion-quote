@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { findArForOrder, paymentToneClass, summarizePayment } from "@/lib/ar-summary";
 import { useCompanies } from "@/hooks/useCompanies";
 import { MonthlyReportModal } from "@/components/orders/MonthlyReportModal";
 import { StatementModal } from "@/components/orders/StatementModal";
@@ -335,11 +336,9 @@ export function OrderListClient() {
   //   2. versionId → 月結待出(已合併) → consolidatedArId（有報價的合併請款）
   //   3. relatedOrderIds 含 orderId（無報價 B2B 合併請款）
   const [arMaps, setArMaps] = useState<{
-    byVersion: Map<string, ARRecord>;
-    byId: Map<string, ARRecord>;
-    byOrder: Map<string, ARRecord>;
+    all: ARRecord[];
     versionToConsolidated: Map<string, string>;
-  }>({ byVersion: new Map(), byId: new Map(), byOrder: new Map(), versionToConsolidated: new Map() });
+  }>({ all: [], versionToConsolidated: new Map() });
   const [arReloadTick, setArReloadTick] = useState(0);
 
   useEffect(() => {
@@ -350,22 +349,13 @@ export function OrderListClient() {
         .catch(() => ({}))as Promise<{ pending?: Array<{ versionId: string; consolidatedArId: string; status: string }> }>,
     ])
       .then(([arJson, pendingJson]) => {
-        const byVersion = new Map<string, ARRecord>();
-        const byId = new Map<string, ARRecord>();
-        const byOrder = new Map<string, ARRecord>();
-        for (const ar of arJson.ars ?? []) {
-          if (ar.arStatus === "cancelled") continue;
-          byId.set(ar.arId, ar);
-          if (ar.versionId) byVersion.set(ar.versionId, ar);
-          for (const oid of ar.relatedOrderIds ?? []) byOrder.set(oid, ar);
-        }
         const versionToConsolidated = new Map<string, string>();
         for (const p of pendingJson.pending ?? []) {
           if (p.status === "consolidated" && p.versionId && p.consolidatedArId) {
             versionToConsolidated.set(p.versionId, p.consolidatedArId);
           }
         }
-        setArMaps({ byVersion, byId, byOrder, versionToConsolidated });
+        setArMaps({ all: arJson.ars ?? [], versionToConsolidated });
       })
       .catch(() => {});
   }, [arReloadTick]);
@@ -373,16 +363,8 @@ export function OrderListClient() {
   // 訂單 → AR 解析（merged=true 表示合併請款，一張 AR 涵蓋多單）
   const resolveOrderAr = useCallback(
     (order: CustomOrder): { ar: ARRecord; merged: boolean } | null => {
-      if (order.versionId) {
-        const direct = arMaps.byVersion.get(order.versionId);
-        if (direct) return { ar: direct, merged: false };
-        const consolidatedId = arMaps.versionToConsolidated.get(order.versionId);
-        const viaMonthly = consolidatedId ? arMaps.byId.get(consolidatedId) : undefined;
-        if (viaMonthly) return { ar: viaMonthly, merged: true };
-      }
-      const viaOrders = arMaps.byOrder.get(order.orderId);
-      if (viaOrders) return { ar: viaOrders, merged: true };
-      return null;
+      // 比對邏輯與訂單詳情頁共用（lib/ar-summary.ts），不要在兩邊各寫一份
+      return findArForOrder(order, arMaps.all, arMaps.versionToConsolidated);
     },
     [arMaps],
   );
@@ -738,6 +720,15 @@ export function OrderListClient() {
                     <span>{order.itemCategory || "—"}</span>
                     <span>下單：{order.orderDate || "—"}</span>
                   </div>
+                  {/* 尾款：客戶自取帶現金來問還差多少，以前要再開應收帳款頁重查一次（老闆 2026-11-14） */}
+                  {(() => {
+                    const resolved = resolveOrderAr(order);
+                    const pay = summarizePayment(resolved?.ar, resolved?.merged);
+                    if (pay.tone === "none") return null;
+                    return (
+                      <div className={`mt-1 text-xs ${paymentToneClass(pay.tone)}`}>{pay.label}</div>
+                    );
+                  })()}
                   <div className="mt-2 flex items-center justify-end gap-1 border-t border-[var(--border)] pt-2">
                     <div className="mr-auto flex items-center gap-1">
                       {(() => {
@@ -996,16 +987,21 @@ export function OrderListClient() {
                           }
                           const { ar, merged } = resolved;
                           const badge = AR_BADGE[ar.arStatus] ?? AR_BADGE.active;
+                          const pay = summarizePayment(ar, merged);
                           return (
                             <button
                               onClick={() => router.push(`/receivables/${ar.arId}`)}
-                              title={`${badge.label}${merged ? "（合併請款）" : ""} · 檢視應收帳款 ${ar.arId}`}
-                              className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-[var(--bg-hover)]"
+                              title={`${badge.label}${merged ? "（合併請款）" : ""} · ${pay.label} · 檢視應收帳款 ${ar.arId}`}
+                              className="flex h-7 items-center gap-1.5 rounded px-1 transition-colors hover:bg-[var(--bg-hover)]"
                             >
-                              <span className={`relative inline-block h-2.5 w-2.5 rounded-full ${badge.dot}`}>
+                              <span className={`relative inline-block h-2.5 w-2.5 shrink-0 rounded-full ${badge.dot}`}>
                                 {merged && (
                                   <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full border border-white bg-blue-500" />
                                 )}
+                              </span>
+                              {/* 燈號看不出差多少錢，把數字一起印出來（老闆 2026-11-14） */}
+                              <span className={`whitespace-nowrap text-xs ${paymentToneClass(pay.tone)}`}>
+                                {pay.tone === "due" ? `尾款 $${Math.round(pay.outstanding).toLocaleString()}` : pay.label}
                               </span>
                             </button>
                           );

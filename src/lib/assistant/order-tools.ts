@@ -220,6 +220,7 @@ export const SYSTEM_INSTRUCTION = `你是「馬鈴薯沙發營運系統」的內
 - query_after_sales：售後服務單
 - query_invoices：電子發票
 - query_bookings：Notion「預約紀錄」的展示間參觀預約
+- query_receivables：尾款／收款狀況（客戶到店付款時用）
 - propose_booking：新增一筆展示間參觀預約（提議，使用者按確認才建）
 
 規則：

@@ -214,6 +214,23 @@ export const toolDefinitions: Anthropic.Tool[] = [
     },
   },
   {
+    name: "query_receivables",
+    description:
+      "查某位客戶或某張訂單還差多少尾款：應收總額、已收、未收。" +
+      "客戶自取或到店付款時最常用——「吳宜蓁還差多少」「S1119 收清了嗎」。" +
+      "⚠️ 合併請款的未收金額是整批的，不是單張訂單的尾款，回傳會標明，轉述時不可省略。",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "客戶名、工單編號（S1119／L600）、系統工單號或案件編號",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "create_notion_booking",
     description:
       "在 Notion「預約紀錄」新增一筆展示間參觀預約。使用情境是老闆開車時接到客人電話，" +
@@ -469,6 +486,15 @@ async function handleQueryBookings(args: Record<string, unknown>): Promise<strin
       from: args.from ? String(args.from) : undefined,
       limit: args.limit ? Number(args.limit) : undefined,
     });
+  } catch (e) {
+    return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function handleQueryReceivables(args: Record<string, unknown>): Promise<string> {
+  const { queryReceivables } = await import("@/lib/assistant/receivables-tool");
+  try {
+    return await queryReceivables({ query: args.query ? String(args.query) : undefined });
   } catch (e) {
     return `❌ 查詢失敗：${e instanceof Error ? e.message : String(e)}`;
   }
@@ -796,6 +822,7 @@ const TOOL_HANDLERS: Record<string, (args: Record<string, unknown>) => Promise<s
   query_purchase_orders: handleQueryPurchaseOrders,
   get_order_materials: handleGetOrderMaterials,
   query_bookings: handleQueryBookings,
+  query_receivables: handleQueryReceivables,
   create_notion_booking: handleCreateNotionBooking,
   create_purchase_order: handleCreatePurchaseOrder,
   query_clients: handleQueryClients,
@@ -864,6 +891,7 @@ const SYSTEM_PROMPT_BASE = `你是馬鈴薯沙發的業務助理，幫老闆用�
 - 查詢電子發票（query_invoices）
 - 查訂製訂單（query_orders / get_order）——編號兩種都收：畫面上的 S1119／L600，或系統的 ORD-2026-10-018
 - 查展示間參觀預約（query_bookings）
+- 查尾款／收款狀況（query_receivables）
 - 新增展示間參觀預約到 Notion（create_notion_booking）
 
 說話風格：簡短、有效率、用繁體中文。

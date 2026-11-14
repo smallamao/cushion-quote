@@ -35,6 +35,7 @@ import { useClients } from "@/hooks/useClients";
 import { useCompanies } from "@/hooks/useCompanies";
 import { ClientCombobox } from "@/components/quote-editor/ClientCombobox";
 import type {
+  ARRecord,
   CustomOrder,
   OrderDeliveryMethod,
   OrderInvoiceStatus,
@@ -43,6 +44,7 @@ import type {
   PurchaseOrder,
   PurchaseOrderItem,
 } from "@/lib/types";
+import { findArForOrder, paymentToneClass, summarizePayment } from "@/lib/ar-summary";
 import { attributedPurchaseAmount } from "@/lib/purchase-order-link";
 import { readJson } from "@/lib/read-json";
 import { uploadFile as uploadToServer } from "@/lib/upload-client";
@@ -118,6 +120,9 @@ export function OrderDetailClient({ orderId }: Props) {
   const canSeeClientPo = user?.role === "admin" || user?.role === "sales";
 
   const [order, setOrder] = useState<CustomOrder | null>(null);
+  // 收款摘要：客戶自取帶現金來問尾款，以前要另外開應收帳款頁重查（老闆 2026-11-14）
+  const [ars, setArs] = useState<ARRecord[]>([]);
+  const [versionToConsolidated, setVersionToConsolidated] = useState<Map<string, string>>(new Map());
   const [draft, setDraft] = useState<CustomOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -161,6 +166,35 @@ export function OrderDetailClient({ orderId }: Props) {
         if (!cancelled) setError(err instanceof Error ? err.message : "載入失敗");
       } finally {
         if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
+  // 抓應收帳款，算這張訂單的尾款
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [arRes, pendingRes] = await Promise.all([
+          fetch("/api/sheets/ar", { cache: "no-store" }).then((r) => r.json()),
+          fetch("/api/sheets/ar/pending-monthly", { cache: "no-store" })
+            .then((r) => r.json())
+            .catch(() => ({})),
+        ]);
+        if (cancelled) return;
+        setArs((arRes as { ars?: ARRecord[] }).ars ?? []);
+        const map = new Map<string, string>();
+        for (const p of (pendingRes as { pending?: Array<{ versionId: string; consolidatedArId: string; status: string }> }).pending ?? []) {
+          if (p.status === "consolidated" && p.versionId && p.consolidatedArId) {
+            map.set(p.versionId, p.consolidatedArId);
+          }
+        }
+        setVersionToConsolidated(map);
+      } catch {
+        if (!cancelled) setArs([]);
       }
     })();
     return () => {
@@ -536,6 +570,47 @@ export function OrderDetailClient({ orderId }: Props) {
         {/* Tab A: 基本資訊 */}
         <TabsContent value="basic">
           <div className="space-y-6">
+            {/* 收款摘要放在最上面：客人站在旁邊問尾款時沒時間切分頁 */}
+            {(() => {
+              const resolved = findArForOrder(order, ars, versionToConsolidated);
+              const pay = summarizePayment(resolved?.ar, resolved?.merged);
+              if (pay.tone === "none") return null;
+              return (
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-5 py-4">
+                  <div>
+                    <div className="text-xs text-[var(--text-tertiary)]">應收總額</div>
+                    <div className="text-sm tabular-nums">${pay.total.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-[var(--text-tertiary)]">已收</div>
+                    <div className="text-sm tabular-nums">${pay.received.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-[var(--text-tertiary)]">
+                      {pay.tone === "merged" ? "整批尾款" : "尾款"}
+                    </div>
+                    <div className={`text-xl tabular-nums ${paymentToneClass(pay.tone)}`}>
+                      {pay.tone === "paid" ? "已收清" : `$${Math.round(pay.outstanding).toLocaleString()}`}
+                    </div>
+                  </div>
+                  {pay.tone === "merged" && (
+                    <div className="text-xs text-sky-600 dark:text-sky-400">
+                      合併請款：這個金額含其他訂單，不等於本單尾款
+                    </div>
+                  )}
+                  {resolved && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-auto"
+                      onClick={() => router.push(`/receivables/${resolved.ar.arId}` as never)}
+                    >
+                      記錄收款
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
             <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {/* 工單編號 */}
